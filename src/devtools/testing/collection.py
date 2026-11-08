@@ -867,7 +867,7 @@ def _lane_contract(item: Any, contract: str | None, lane: str) -> bool:
     """Whether a Large rule's lane contract omits the item here; the nightly lists a release-only
     one skipped, with its reason, so it is never a red."""
     if contract == "nightly_only" and lane != "nightly":
-        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
+        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly")
         return True
     if contract == "release_only" and lane == "nightly":
         item.add_marker(pytest.mark.skip(reason=RELEASE_ONLY))

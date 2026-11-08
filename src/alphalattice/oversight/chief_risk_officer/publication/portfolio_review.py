@@ -194,7 +194,7 @@ def _fold(
 class PortfolioReviewPublicationService:
     """Publish and reopen one review. It owns no pointer.
 
-    The receipts the publications name answer two questions more (W3): the
+    The receipts the publications name answer two questions more: the
     last fresh review of a basis -- what a later dossier on the same basis
     carries forward -- and the issuers' register: every issue a fresh review
     raised, open until one resolves it. Both are read from the register kept

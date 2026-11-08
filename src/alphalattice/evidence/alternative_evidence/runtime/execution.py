@@ -14,9 +14,9 @@ What each preparation used, and why, is appended to
 `runtime/execution/preparations.jsonl`: a receipt, never identity. An Alpha study fits
 one model at a time on the budget's cores, behind LightGBM's sealed canary
 (`alpha_modeling.runtime.lightgbm_threads`); what its fits used is appended to
-`runtime/execution/model-fits.jsonl` (binding plan, B3). Each Task the Host starts reads
+`runtime/execution/model-fits.jsonl`. Each Task the Host starts reads
 DuckDB and Arrow on the budget's cores (`workspace_runtime.reader_threads`); what it started
-with is appended to `runtime/execution/tasks.jsonl` (binding plan, B7); Tasks that run at once
+with is appended to `runtime/execution/tasks.jsonl`; Tasks that run at once
 share the budget's cores by lease (`TaskCpuLeases`). A Feature build in the
 Task spreads its listings' computation over the Host's kept workers on those cores, one of them
 left to the build's writer (`feature_engine.runtime.service`); the rows are the same at any count.
@@ -110,7 +110,7 @@ class PreparationExecution(_Record):
 class PlatformIdentity(_Record):
     """Describe the machine and libraries used by a Task.
 
-    This belongs to the realization record, not the Task identity (binding plan, N4).
+    This belongs to the realization record, not the Task identity.
     """
 
     system: str

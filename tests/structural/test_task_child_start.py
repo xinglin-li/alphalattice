@@ -23,4 +23,4 @@ def test_every_process_pool_owner_is_in_the_child_start_class():
     assert owners == {
         "control/task_control/child.py",
         "foundation/causal_outcomes/execution/publication.py",
-    }, "Review every added start owner and its Task-kind coverage for V610."
+    }, "Review every added start owner and its Task-kind coverage for the shared runner."

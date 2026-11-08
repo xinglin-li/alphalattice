@@ -321,7 +321,7 @@ class RiskReportLinks:
             "link": link.model_dump(mode="json"),
             "export_request": export_request,
             # The links read again from this receipt, bound to its book's Task, which the
-            # receipt names only inside its link (V479).
+            # receipt names only inside its link.
             "next_requests": {
                 "export": export_request,
                 "links": {"operation": "EXPERIMENT_RISK_LINKS", "task_id": str(portfolio_task_id)},

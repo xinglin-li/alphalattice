@@ -25,7 +25,7 @@ const c={console,URLSearchParams,Date,Number,Math,Set,Map,Object,Array,String,Pr
   notRead:(title,error,words='',action='')=>`<div class="warning">${title}:${error}${words?' '+words:''}${action}</div>`,noteLine:(title,body='',tone='',action='')=>`<p class="note-line">${title}${body?' · '+body:''}${action||''}</p>`,hint:(term)=>term,factsRef:(title,body)=>`<p>${title}</p>${body}`,codeRef:(title,text)=>'<p>'+title+'</p><template>'+(typeof text==='string' ? text : JSON.stringify(text))+'</template>',refCell:(uri)=>'<span>'+uri+'</span>',hashCell:(h)=>'<span>'+(h||'—')+'</span>',readingPane:(title,kind,body,close)=>'<aside>'+title+body+'</aside>',sourceRows:(rows)=>rows.map((r)=>[r.label,r.value]),badge:(tone,label)=>`[${tone}:${label}]`,stateLine:(x,o={})=>`[${(typeof x==='string'?x:(x?.lifecycle??x?.state??x?.status??''))}:${o.word??''}]`,skeleton:(shape='rows')=>'SKELETON('+shape+')',emptyState:(s,a='')=>'EMPTY('+s+')'+(a||''),railTools:()=>'',groupHead:(label,count)=>'GROUP('+label+':'+count+')',listFoot:()=>'',readPreference:(k)=>prefs.get(k)??null,savePreference:(k,v)=>prefs.set(k,v),displayOptions:(name,spec)=>{(c.displays||(c.displays={}))[name]=spec;return '<display:'+name+'>';},displayState:(name,spec)=>{const saved=prefs.get('display.'+name)||{};const pick=(rows,v)=>rows?.some(([k])=>k===v)?v:(rows?.[0]?.[0]||'');const props=Object.fromEntries((spec?.properties||[]).map(([key,,on=true])=>[key,saved.props&&key in saved.props?Boolean(saved.props[key]):on]));return {show:spec?.current?.show??pick(spec?.shows,saved.show),group:pick(spec?.groupings,saved.group),order:pick(spec?.orderings,saved.order),props,density:saved.density==='compact'?'compact':'comfortable'};},setDisplay:(name,patch)=>{const next={...(prefs.get('display.'+name)||{}),...patch};prefs.set('display.'+name,next);return next;},evidenceRow:(type,x,o={})=>{const r=typeof type==='object'?type:{type,subject:String(x?.entity_id||x?.issue_handle||x?.span_handle||x?.finding_handle||x?.reference?.label||x?.title||''),state:String(x?.state||''),word:'',why:''};return '<div class="list-row evidence-row '+(o.cls||'')+'" data-kind="'+(r.type||'')+'">ROW('+[o.named?r.kind+' · '+r.subject:r.subject,'['+r.state+':'+(r.word||'')+']',o.why??r.why,...((o.brief?[]:(r.props||[])).concat(o.props||[])).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p),o.time,o.actions,o.attrs].filter(Boolean).join('|')+')</div>';},citePill:(h)=>'<span class="es-cite">'+h+'</span>',objectRow:(s={},x)=>'ROW('+[s.name,s.why,...(((x&&x.props)||[]).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p)),x&&x.time,x&&x.actions,x&&x.attrs].filter(Boolean).join('|')+')'+(x&&x.selected?'[shown]':'')+(s.to&&s.to.action?'<'+s.to.action+':'+s.to.value+'>':'')+(s.to&&s.to.page?'<page:'+s.to.page+':'+((s.to.extra||{}).team||'')+'>':'')+((x&&x.under)||''),statusDot:(s,l)=>'['+s+(l?':'+l:'')+']',btn:(label,action,value)=>`<${action}:${value}>{${label}}`,btnAttrs:(label,action,value,cls,attrs)=>(action==='team-actor'?`<${action}:${value}>{${label}}${attrs||''}`:''),banner:(a,b,tone,action)=>`(${a}|${b}|${action||''})`,icon:(n)=>`{${n}}`,tile:(n)=>`{${n}}`,panel:(title,sub,body)=>`<<${title}>>`+(Array.isArray(body)?body.join(''):body),kv:(rows)=>rows.map(r=>r.join(': ')).join(' | '),
   subjectChoice:library.stubs.subjectPicker,objectHead:(name,meta,actions,state,tools,details={})=>`<header class="object-header"><h1${details.headingId?` id="${details.headingId}"`:''}>${name}</h1>${state||''}${meta||''}${actions||''}${(details.facts||[]).map(([k,v])=>`FACT(${k}=${v})`).join('')}${details.id?`ID(${details.id})`:''}</header>`+(details.subject?`<div class="object-subject">${details.subject}</div>`:''),
   routeUrl:(page)=>'#page='+page,tabStrip:(label,items)=>items.map(x=>(x.on?'*':'')+x.word+' ').join(''),NAV_ATTR:'',controlAttrs:()=>'',codeWords:(code)=>String(code ?? '—'),short:(v,n=8)=>String(v||'').slice(0,n),mono:(v,n=12)=>v?'<span class="mono">'+String(v).slice(0,n)+'</span>':'—',coded:(code)=>`<span class="mono">${code ?? '—'}</span>`,actorWords:(caller)=>String(caller ?? '—'),when:(value)=>String(value ?? '—'),whenText:(value)=>String(value ?? '—'),count:(n)=>String(n),pluralText:(n,one,many,args={})=>String(Number(n)===1?one:many).replace(/\{(\w+)\}/g,(m,k)=>args&&args[k]!==undefined?args[k]:m),countText:(n,one,many)=>(Number(n)===1 ? one : many).replace('{n}',String(n)),table:(headers,rows)=>'<table>'+(Array.isArray(rows)?rows.join(''):rows)+'</table>',tr:(cells)=>'<tr>'+cells.map(String).join('|')+'</tr>'};
-const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
+const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes:');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 c.Data.readShared = (...args) => c.Data.read(...args);
 library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.js'),'utf8'),c);vm.runInContext(library.explainCodeSource(root),c);vm.runInContext(library.prerequisiteWaysSource(root),c);vm.runInContext(runShapes(root),c);library.refusal(c,root);
 for(const name of ['live-activity.js','team-members.js','live-team.js'])vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),c);
@@ -132,7 +132,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   assert.equal((inspected.match(/owner-verified artifact/g)||[]).length,1,'only the compatible artifact verification reads as owner-verified');
   assert.ok(html.includes('WorkProgressObserved · observation')&&html.includes('[metadata:recorded]'),'a worker progress row is an observation, labelled by its schema');
   assert.ok(html.includes('TaskStageVerified · observation')&&html.includes('[metadata:payload not retained]'),'an unretained payload is said, not filled');
-  assert.ok(html.includes('WORKER · OPERATIONAL_ASSERTION')&&html.includes('artifact owner · ARTIFACT_ASSERTION')&&html.includes('data-observation="'),'every fact row keeps its source and authority; its observation id is the row key (round 76)');
+  assert.ok(html.includes('WORKER · OPERATIONAL_ASSERTION')&&html.includes('artifact owner · ARTIFACT_ASSERTION')&&html.includes('data-observation="'),'every fact row keeps its source and authority; its observation id is the row key');
   assert.ok(html.includes('· current state')&&html.includes('Task Control projection, read now'),'the current Task state is shown apart from the history');
   assert.ok(!html.includes('correct'),'no correction is inferred between the two PLANs');
   assert.ok(html.includes('NATIVE_SOMETHING_NEW (codex-native)'),'unknown kind listed by name');
@@ -162,7 +162,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   readbackTask='0e0e0e0e-0000-4000-8000-00000000abcd';await TM.verify(TASK);assert.equal(TM.resolved().get(TASK).level,'discovered','a readback for another Task verifies nothing');
   assert.ok(TM.resolved().get(TASK).note.includes('the owner answered for another Task'));
   readbackTask=null;await TM.verify(TASK);assert.equal(TM.resolved().get(TASK).level,'verified');assert.ok(reads.some(p=>p.includes('/api/experiments/readback?task_id='+TASK)));
-  // V659: reference verification notes use the real bilingual state/kind reader.
+  // reference verification notes use the real bilingual state/kind reader.
   const referenceWords=library.words(root),originalWords={t:c.t,codeWords:c.codeWords};
   Object.assign(c,{t:referenceWords.t,codeWords:referenceWords.codeWords});
   for(const lang of ['en','zh']) {
@@ -227,7 +227,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   html=TM.section();assert.ok(html.includes('Screen the retained factor universe')&&!html.includes('later work in the other session'),'a repaint with new rows keeps the selected session');
   assert.ok(A.section().includes('<team-open:'+S3+'>'),'the feed row of a native event offers its session\'s scene');
   TM.open(S3);assert.equal(JSON.stringify(navigations.at(-1)),JSON.stringify(['team',{team:S3,actor:'',event:''}]),'an explicit entry names its session and clears the exchange: never another session\'s retained one');
-  assert.equal(JSON.stringify(closes),'["undefined"]','the Task inspector closes with the scene entry (round 66: no drawer, no deferred close)');
+  assert.equal(JSON.stringify(closes),'["undefined"]','the Task inspector closes with the scene entry (no drawer, no deferred close)');
   assert.equal(frames.length,1,'the scene heading is brought into view after the page frame');frames.pop()();
   // 6. A feed reset drops the retained groups; a selection that no longer exists says so.
   TM.select(S1);A.absorbPage(page('RESET',[message(S3,S3,'research_lead','question','after the reset',{})]));
@@ -389,7 +389,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   entry=keys(routeUrl('team'));assert.equal(entry.team,S4,'the link keeps the unavailable selection until the reader chooses');
   sum=TM.summary();assert.equal(sum.missing,S4);assert.equal(sum.session,undefined,'the Overview names the missing selection instead of the newest');
   TM.select('');html=TM.section();sum=TM.summary();assert.equal(sum.session,S6);assert.equal(sum.missing,undefined);
-  // 12. C2 (law 140): counted folds keep their ends; details open in place.
+  // 12. Law 140: counted folds keep their ends; details open in place.
   const S7='sess-parent-7';
   A.absorbPage(page('CONTINUED',[
     message(S7,S7,'research_lead','assignment','Refit on the July input.',{recipient:'a7',message_id:'as-7'}),
@@ -418,12 +418,12 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const runAt=html.indexOf('<team-fold:hooks:'+hooks7[0]+' aria-expanded="true"');
   assert.ok(runAt>0&&hooks7.slice(0,3).every((id,i)=>at(id)>runAt&&(i===0||at(hooks7[i-1])<at(id))),'an opened run shows its hooks under its line, in order');
   TM.toggleFold('hooks:'+hooks7[0]);TM.showEvent(hooks7[1]);html=TM.section();
-  assert.ok(at(hooks7[1])>0&&html.includes('<team-event:'+hooks7[1]+' aria-expanded="true" data-fold-count="3">')&&html.includes('class="team-record-inline"'),'a run holding the hook being read opens by itself, the reading in place; its toggle closes the reading with it (C4 item 7)');
+  assert.ok(at(hooks7[1])>0&&html.includes('<team-event:'+hooks7[1]+' aria-expanded="true" data-fold-count="3">')&&html.includes('class="team-record-inline"'),'a run holding the hook being read opens by itself, the reading in place; its toggle closes the reading with it');
   TM.showEvent(hooks7[1]);html=TM.section();
   assert.ok(at(hooks7[1])<0&&html.includes('<li class="team-exchange team-event team-hook-run" data-kind="hooks" data-holds="'+hooks7.slice(0,3).join(' ')+'">'),'closed, the run names the records it holds');
   TM.showEvent(replies7[1]);html=TM.section();
   assert.ok(replies7.every(id=>at(id)>0),'a folded reply being read opens its run');
-  assert.ok(html.includes('class="team-record-inline"')&&!html.includes('class="team-quote"'),'a reply read opens its verification in place, under the exchange it names: no quote repeats it (C4 item 7)');
+  assert.ok(html.includes('class="team-record-inline"')&&!html.includes('class="team-quote"'),'a reply read opens its verification in place, under the exchange it names: no quote repeats it');
   TM.showEvent(q7);html=TM.section();assert.ok(!html.includes('class="team-quote"'),'a comment quotes nothing');
   assert.ok(html.includes('<p class="team-words owner-text" data-clamp="">')&&html.includes('<team-words:'+long7+' aria-expanded="false" data-clamp-way hidden>{Show more}'),'the words carry the clamp mark; their way waits hidden until the page measures a clamp');
   assert.ok(html.includes('y'.repeat(500)+'<span class="muted"> … the feed keeps its first 500 characters</span>'),'the retained preview says where the kept words end');
@@ -440,7 +440,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   choose({show:'asks'});html=TM.section();
   assert.ok(at(q7)>0&&at(id7('as-7'))<0&&at(long7)<0&&!html.includes('team-hook-run')&&at(hooks7[3])<0,'Questions and objections keeps the comments that ask with their replies; the rest and the hooks leave');
   assert.ok(html.includes('5 exchanges')&&html.includes('Showing questions and objections<display-set:'+name7+':show:all>{Show everything}'),'the head counts what is shown; the thread says what it shows and how to show everything');
-  // V637: number-first quantity, independently from the label-only column.
+  // number-first quantity, independently from the label-only column.
   const countWords=library.words(root), countBefore={t:c.t,I18N:c.I18N,countText:c.countText};
   for(const lang of ['en','zh']) {
     countWords.I18N.set(lang);c.t=countWords.t;c.I18N=countWords.I18N;
@@ -607,7 +607,7 @@ const op=(operation,phase,subject,extra={},itemExtra={})=>item('ProductOperation
   const open53=(html.split('id="teamProductFacts"')[1]||'').split('</section>')[0];
   assert.ok(open53.includes('EVIDENCE_PREVIEW'),'pressed, the person groups show');
   assert.ok(!/data-fold="group:EVIDENCE_PREVIEW/.test(open53),'a group that differs only in time does not open');
-  // V682: folded and nonopening groups keep reference declarations beside their clipped main,
+  // folded and nonopening groups keep reference declarations beside their clipped main,
   // the event target and declaring actor in the disclosure.
   const withNames=groupReadings.filter(row=>row.props?.[0]);
   assert.ok(withNames.length,'the labelled Team fixture reaches actual reference-bearing groups');

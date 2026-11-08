@@ -295,7 +295,7 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
 
 
 def test_a_stage_gate_refusal_blocks_the_stage_before_its_work(tmp_path: Path) -> None:
-    """requirement (PERF-1): the Host's memory check blocks a stage, recoverably, unexecuted."""
+    """requirement: the Host's memory check blocks a stage, recoverably, unexecuted."""
     now = datetime(2026, 10, 8, 11, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()

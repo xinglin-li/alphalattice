@@ -1,12 +1,12 @@
-"""Whether this workspace may reach the network, and what decided it (C1 rule 7).
+"""Whether this workspace may reach the network, and what decided it.
 
 Network access is a workspace control, typed and visible: ``NETWORK_ACCESS`` reads it and names
 what decided it, ``NETWORK_ACCESS_SET`` sets it, and every refusal for want of it can say why.
 The operator's ``ALPHALATTICE_NETWORK_DISABLED=1`` forces the process offline (probes and QA
 scenes rely on it); nothing else in the environment opens it. A person sets the control in
-Settings; ``=0`` opened it before the control had a page and is not read any more (V13).
+Settings; ``=0`` opened it before the control had a page and is not read any more.
 A first-use goal's agent sets it under the person's delegation (OP19): that setting carries its
-delegation and its end (``until``), and reads closed after it with no write (V452). The person's
+delegation and its end (``until``), and reads closed after it with no write. The person's
 own setting, theirs or their yes an agent relayed, always wins: a delegation never writes over it.
 """
 
@@ -175,7 +175,7 @@ def _control(workspace: Path, now: datetime) -> tuple[bool | None, dict[str, str
         return None, None, False
     except (OSError, ValueError):
         return False, None, False  # An unreadable control fails closed.
-    # Anything but the two mappings the writer writes reads as closed (OP5, V271): a person's
+    # Anything but the two mappings the writer writes reads as closed (OP5): a person's
     # (version 1), or a delegation's, open only until its end (version 2, OP19), or the
     # person's yes an agent relayed (version 3, OP23).
     keys = {1: {"schema", "version", "network_enabled"}}
@@ -301,7 +301,7 @@ def set_network_access(
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")
     staged.write_text(json.dumps(record), "utf-8")
-    replace_shared_file(staged, path)  # every request reads the control (V477)
+    replace_shared_file(staged, path)  # every request reads the control
     return network_access(workspace, now=now)
 
 

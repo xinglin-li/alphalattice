@@ -188,7 +188,7 @@
         "alphalattice.investment.portfolio_management.mandates.research_effort"
       ],
       "folds_in": [],
-      "note": "the planning desk retired (RT V312) and its contracts with V327; what is left is the research desk's candidate inventory and the paired panel grid (V1's route)"
+      "note": "the planning desk and its contracts retired; what remains is the research desk's candidate inventory and the paired panel grid"
     },
     "alternative evidence": {
       "description": "Alternative evidence preserves issuer sources, scoped readings and cited findings so a portfolio review can trace the evidence it considers.",
@@ -226,7 +226,7 @@
         "alphalattice.control.research_program.authoring.workflow"
       ],
       "folds_in": [],
-      "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
+      "note": "level 1 with no peers: only code importing level 0 alone may move there. The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation after dead code was removed (2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
     },
     "the agent seam": {
       "description": "The agent seam binds an actor's submitted proposal to its producer and execution provenance so domain owners can seal a response with its origin recorded.",

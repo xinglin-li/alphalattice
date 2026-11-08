@@ -8,7 +8,7 @@
  * reports itself hidden (an embedded pane does so permanently); it slows down instead. */
 const LiveActivity = (() => {
   // The first read is the feed's tail and the only way back in time the read offers, so it asks
-  // for the most the read gives (round 24f): the Team page's retained sessions are whatever that
+  // for the most the read gives: the Team page's retained sessions are whatever that
   // tail holds; later reads continue from the cursor.
   const LIMIT = 200, VISIBLE = 50, MAX_GROUPS = 200, MAX_ITEMS = 40, MAX_PAGES = 4;
   const INTERVAL = 3000, HIDDEN_INTERVAL = 15000, BACKOFF = 10000, CATCH_UP = 250;
@@ -361,7 +361,7 @@ const LiveActivity = (() => {
     if (g.task_id) return LiveTasks.open(g.task_id);
     throw Error('This result kind has no reader in the workbench yet.');
   }
-  /* One recorded group as a row (round 20): the state as a dot, the operation and its caller as
+  /* One recorded group as a row: the state as a dot, the operation and its caller as
    * the title, the reference and the state's words as properties, the clock at the end; the way
    * is the verified result or the Task; the reads that follow are the row's hover actions and the
    * exact observations and the full state facts a fact opener on the row. The key anchors reading state through a
@@ -379,14 +379,14 @@ const LiveActivity = (() => {
     const observations = html`${factsRef(html`${t('Exact observations')} · ${g.items.length}`, html`${meta.filter(Boolean).map(bit => html`<p>${bit}</p>`)}${exact}${f.payload.latency_milliseconds !== undefined ? html`<p>${t('Owner latency')}: ${f.payload.latency_milliseconds} ms</p>` : ''}`)}`;
     return objectRow({lead: lead, name: title, why: refusedSubject ? '' : subjectLine(f, g) || t('No reference recorded'), to: way, cls: 'activity-row' + (attention ? ' attention' : '')}, {columns: ['state', 'basis', 'live', 'result', 'failure', 'worker', 'gap', 'observations'], props: [...meta.map((bit, index) => bit && index && !attention && f.basis === 'current' ? ['', bit, 'drop'] : bit), observations], time: clock(g.at), actions: nextRead(f, g), attrs: html`data-activity-key="${g.key}"`});
   }
-  /* The record of one object (round 67): the recorded groups that name its Task, as the feed's
+  /* The record of one object: the recorded groups that name its Task, as the feed's
    * own rows in recorded order; the exact observations under each. */
   function recordOf(taskId) {
     const groups = [...S.groups.values()].filter((g) => g.task_id === taskId).sort((a, b) => a.last - b.last);
     if (!groups.length) return html`<p class="caption">${t('Nothing recorded for this object in the retained activity window.')}</p>`;
     return html`<div class="card-list lines slotted">${groups.map(row)}</div>`;
   }
-  /* The Task's log (round 72): every retained observation of the Task as one line -- the instant,
+  /* The Task's log: every retained observation of the Task as one line -- the instant,
    * who, the words, the telling reference as code -- in recorded order; `starterOf` is who admitted
    * it (the first operation the record holds for it). */
   const lineOf = (v) => observationLine(v, (p) => { const d = declaredWords(p); return [t('External client · not verified'), html`${codeWords(d.operation)} · ${codeWords(d.state)}`, '']; });
@@ -413,14 +413,14 @@ const LiveActivity = (() => {
    * compares: a poll that changed nothing the reader sees replaces nothing. */
   const costLine = () => (S.cost ? t('{n} entries read in {ms} ms · cursor {cursor}', {n: S.cost.observations, ms: S.cost.elapsed_ms, cursor: String(S.cursor || '').slice(-8)}) : t('Not read yet'));
   function paintCost() { if (typeof document === 'undefined' || !document.querySelectorAll) return; for (const el of document.querySelectorAll('[data-activity-cost]')) el.textContent = costLine(); }
-  // N6: the followed Task is a state with its control (notes); the log's sentence is the label's (i)
+  // the followed Task is a state with its control (notes); the log's sentence is the label's (i)
   function section() {
     const rows = ordered();
     const following = S.paused ? followWord() : S.following ? html`${goalScope() ? followWord() : t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
     return runLog({id: 'activityLog', title: t('Workspace activity'), caption: t('Recorded operations, Task returns and verified results · newest first · no simulated progress'), notes: html`${following ? html`<p class="run-log-following">${following}</p>` : ''}${G.error ? notRead(t('Goal'),G.error) : ''}${banners()}`, lines: rows.map(row), empty: emptyState(t('No recorded activity yet.')), status: html`<span data-activity-cost>${t('Not read yet')}</span>`, cls: 'activity-log', linesCls: 'card-list lines slotted activity-rows'});
   }
 
-  /* Announce, never navigate (round 75: count, never toast): a new Task, a verified result, a
+  /* Announce, never navigate (count, never toast): a new Task, a verified result, a
    * refusal or a declared event counts as unseen -- the sidebar's number, the rows' state lines
    * and the record say it; a toast is for the person's own actions. The reader's open object,
    * page and Task Center selection stay exactly where they are. */
@@ -519,7 +519,7 @@ const LiveActivity = (() => {
   }
   function paint() {
     if (typeof LiveTasks !== 'undefined' && LiveTasks.paintActivity) LiveTasks.paintActivity();
-    else Window.renderSide(); // the Tasks row's count (round 62)
+    else Window.renderSide(); // the Tasks row's count
     paintCost();
     if (typeof LiveTeam !== 'undefined' && LiveTeam.refresh) LiveTeam.refresh();
     if (typeof LiveGoals !== 'undefined' && LiveGoals.observe) void LiveGoals.observe();
@@ -537,7 +537,7 @@ const LiveActivity = (() => {
    * in-flight request instead of starting a second loop, and its completion schedules exactly
    * one timer once the page is live again. */
   function stop() { S.stopped = true; clearTimeout(S.timer); S.timer = null; }
-  /* FLOW-1: a Team or Goal page asks the Host to read the bound Sessions' usage once as it opens;
+  /* a Team or Goal page asks the Host to read the bound Sessions' usage once as it opens;
    * nothing reads on a timer, and a failed read shows only in the usage state. */
   let usageAskedAt = 0;
   function readSessionUsage() {

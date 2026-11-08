@@ -99,7 +99,7 @@ def ten_sector(tmp_path_factory):
 def _bytes(root: Path):
     """Every workspace file's bytes, except the writer lease, the activity observer's own
     ledger under `runtime/` (`observations.sqlite` and its WAL/SHM) and the sealed plan
-    previews (`runtime/plan-previews`, V525, V537): the observer records each observed
+    previews (`runtime/plan-previews`): the observer records each observed
     operation and a plan seals its preview, planning included, so those files move with the
     request itself and say nothing about what the update wrote."""
     previews = root / "runtime" / "plan-previews"
@@ -322,7 +322,7 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
         before = _bytes(workspace)
         planned = _json(service, "/api/data-update/plan", method="POST", payload={})
         assert planned["status"] == "PLANNED", planned
-        assert planned["next_requests"] == {  # V418: `data-update run --from` reads it
+        assert planned["next_requests"] == {  # `data-update run --from` reads it
             "run": {"operation": "DATA_UPDATE_RUN", "update_plan_hash": planned["plan_hash"]}
         }
         assert _bytes(workspace) == before and provider.calls == []
@@ -511,7 +511,7 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
             assert refused["status"] == "REFUSED", refused
             assert refused["failure_code"] == "workspace_data_update.plan_required", refused
             assert refused["detail"].startswith("A data update's plan stays runnable"), refused
-            # Plan the update again (V543).
+            # Plan the update again.
             assert refused["next_requests"] == {"replan": {"operation": "DATA_UPDATE_PLAN"}}
         assert service.session.task_control_registry.tasks() == ()
     finally:
@@ -879,12 +879,12 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
 def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     ten_sector, tmp_path, monkeypatch, capsys, payers
 ):
-    """requirement (DATA-RULE-UPDATE): under the shipped rule a session's ordinary day needs no
+    """requirement: under the shipped rule a session's ordinary day needs no
     person: its re-raised move holds the rule's decision and a payer's audit is approved; past
     the audits' own bound (two payers of sixty names) the day stops for the person."""
     from alphalattice.interface.local_application.cli import main as client_main
 
-    # One jump that persists (D2's APA): re-acquired a day later it is the same move.
+    # One jump that persists: re-acquired a day later it is the same move.
     workspace, boot = _quarantine_review_workspace(
         ten_sector, tmp_path, monkeypatch, through=NOW + timedelta(days=1), anomaly="level_shift"
     )
@@ -1560,7 +1560,7 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
 
 
 def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(activated_seed, tmp_path):
-    """requirement (V92): a second activation computes its own column and holds the first; a
+    """requirement: a second activation computes its own column and holds the first; a
     deactivation drops its column catalog's rows and computes nothing, the shipped catalog's
     rows held throughout, and each update publishes the Panel of the catalog it installed."""
 
@@ -1705,7 +1705,7 @@ def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
 def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
     qualified, tmp_path, monkeypatch
 ):
-    """The update's cycle runs the Feature build as its step (W10, V102): a deferred build records
+    """The update's cycle runs the Feature build as its step (W10): a deferred build records
     its retry time on the cycle, the Task waits for it, and the next run builds again, where the
     retired Feature registry answered its deferred Task's projection and nothing resumed it."""
     workspace = tmp_path / "workspace"

@@ -652,7 +652,7 @@ class LocalPortfolioWebSession:
         session = WorkspaceApplicationSession.acquire(self.workspace).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
-        # refresh it when a publication moves the manifest (V182).
+        # refresh it when a publication moves the manifest.
         manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
         if self.resolver is not None:
             resolver = self.resolver
@@ -776,7 +776,7 @@ class LocalPortfolioWebSession:
         if self.operations.automation is not None:
             self.operations.automation.start()
         if not self.resumed_task_ids:
-            # A Host that starts idle sweeps as one that went idle would (V89).
+            # A Host that starts idle sweeps as one that went idle would.
             self.operations.sweep_if_due()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
@@ -937,7 +937,7 @@ class LocalPortfolioWebSession:
         if self.operations is not None and self.operations.research_updates is not None:
             advancement_command = DecisionAdvancementCommand(self.operations.research_updates)
             commands[advancement_command.command_kind] = advancement_command
-        # What the workspace holds now, read from the one holder the applications read (V182).
+        # What the workspace holds now, read from the one holder the applications read.
         manifest = (
             self.workspace_manifest
             if self.operations is None or self.operations.manifests is None
@@ -1285,11 +1285,11 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("POST", "/api/experiments/foundations/draft", "EXPERIMENT_FOUNDATION_DRAFT"),
     ("POST", "/api/experiments/portfolio-draft", "EXPERIMENT_PORTFOLIO_DRAFT"),
     # The CPU budget: how much of the machine a book's preparation uses, the operator's;
-    # the Task queue's waiting places are set on the same route (V100, V266).
+    # the Task queue's waiting places are set on the same route.
     ("GET", "/api/workspace/cpu-budget", "CPU_BUDGET_SHOW"),
     ("POST", "/api/workspace/cpu-budget", "CPU_BUDGET_SET"),
     ("GET", "/api/workspace/backup", "WORKSPACE_BACKUPS"),
-    # A Goal or Team page reads the bound Sessions' usage when it opens (FLOW-1).
+    # A Goal or Team page reads the bound Sessions' usage when it opens.
     ("POST", "/api/workspace/session-usage", "SESSION_USAGE_READ"),
     ("GET", "/api/workspace/usage-reading", "USAGE_READING"),
     ("POST", "/api/workspace/usage-reading", "USAGE_READING_SET"),
@@ -1304,9 +1304,9 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/feature-research/review", "FEATURE_REVIEW"),
     ("POST", "/api/feature-research/activate", "FEATURE_ACTIVATE"),
     ("POST", "/api/feature-research/deactivate", "FEATURE_DEACTIVATE"),
-    # What the UI pass reads (V321): the goals a person keeps (U23, U32; taking, submitting
+    # What the interface reads: the goals a person keeps (U23, U32; taking, submitting
     # and continuing stay an agent's, through the client's route), the saved studies'
-    # sweep (U37) and Guanyin's incidents with their remedies (U38).
+    # sweep and Guanyin's incidents with their remedies.
     ("GET", "/api/goals", "GOAL_LIST"),
     ("GET", "/api/committee", "COMMITTEE_READ"),
     ("GET", "/api/goals/schema", "GOAL_SCHEMA"),
@@ -1350,7 +1350,7 @@ HANDLED_OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/research-update/automation", "RESEARCH_UPDATE_AUTOMATION_READBACK"),
     ("POST", "/api/research-update/automation", "RESEARCH_UPDATE_AUTOMATION_CONFIGURE"),
 )
-"""Dedicated handlers' routes, also published in the session's operation table (U13)."""
+"""Dedicated handlers' routes, also published in the session's operation table."""
 
 _HANDLED_ROUTE: Final[dict[str, tuple[str, str]]] = {
     operation: (method, path) for method, path, operation in HANDLED_OPERATION_ROUTES
@@ -1406,7 +1406,7 @@ def build_local_web_application(
         _activity_routes(web, activity)
     _native_session_routes(web, operations)
 
-    # Every hash and id answered to a client, which reads them back from a beginning (V393).
+    # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)
 
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
@@ -1443,7 +1443,7 @@ def build_local_web_application(
             **operations.session_projection(
                 session_token=web.session_token, include_context=_query.get("context") == ["1"]
             ),
-            # Each operation's route, from the table the Host serves (U13).
+            # Each operation's route, from the table the Host serves.
             "routes": {
                 operation: {"method": method, "path": path}
                 for method, path, operation in (*OPERATION_ROUTES, *HANDLED_OPERATION_ROUTES)
@@ -1489,7 +1489,7 @@ def build_local_web_application(
     _dispatch_routes(web, operations, service)
 
     def case_route(operation: str):  # type: ignore[no-untyped-def]
-        """The case page's call, answered by the goal it names until the UI pass (U23)."""
+        """The case page's call, answered by the goal it names until a later interface update."""
 
         def handle(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
             fields = {**payload, **{key: _one(query, key) for key in query}}
@@ -1965,7 +1965,7 @@ def _dispatch_routes(
         return handle
 
     # A route's write check follows its operation in the registry, never a flag written
-    # beside it (HB, V184): a POST whose operation is not one of the registry's reads
+    # beside it (HB): a POST whose operation is not one of the registry's reads
     # takes it. A GET never writes.
     for method, path, operation in OPERATION_ROUTES:
         web.route(method, path, mutates=method == "POST" and operation not in READ_OPERATIONS)(
@@ -2124,7 +2124,7 @@ def _native_session_event(
 
 def _activity_routes(web: LocalWebApplication, activity: WorkspaceActivity) -> None:
     """The browser's bounded activity feed and the declared sessions' readback. Reads never
-    record; a client reads the feed and declares its events as operations (V266)."""
+    record; a client reads the feed and declares its events as operations."""
 
     def _read(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
         return activity.read(ActivityReadQuery.from_query(query))

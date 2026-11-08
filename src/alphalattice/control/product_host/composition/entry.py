@@ -114,7 +114,7 @@ def restore(
     generation_hash: str | None,
     root: Path | None,
 ) -> dict[str, object]:
-    """Restore one backup generation from the backup root alone, with no Host (V328)."""
+    """Restore one backup generation from the backup root alone, with no Host."""
     from alphalattice.control.product_host.storage.backup import restore_from_root
 
     return restore_from_root(

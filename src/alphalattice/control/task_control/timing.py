@@ -43,7 +43,7 @@ _ENDED = frozenset(
     }
 )
 """The states whose clock stops at their last change: ended, or waiting on someone or on a
-retry time (V520: a deferred Task counted its wait for the provider as running)."""
+retry time (a deferred Task counted its wait for the provider as running)."""
 _STAGE_ENDED = frozenset(
     {WorkItemLifecycle.VERIFIED, WorkItemLifecycle.BLOCKED, WorkItemLifecycle.CANCELLED}
 )

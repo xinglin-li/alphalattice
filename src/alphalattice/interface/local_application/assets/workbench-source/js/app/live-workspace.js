@@ -16,11 +16,11 @@ const PREPARATION_STEPS = ['freeze_sources', 'prepare_data', 'prepare_features',
 const LiveWorkspace = (() => {
   const pages = new Set(['data', 'issues', 'inputs', 'storage']);
   // The preparation scene's key is `welcome` (its reads, its route param, its kept area); the
-  // page that hosts it is the Home (round 74), so the scene reads `here()` where a page is meant.
+  // page that hosts it is the Home, so the scene reads `here()` where a page is meant.
   const here=()=>app.page==='overview' ? 'welcome' : app.page;
   const reads = {welcome:'/api/workspace/preparation', data:'/api/data-update',
     issues:'/api/workspace/data-issues', inputs:'/api/research-inputs', storage:'/api/workspace/storage'};
-  // a request the owner composed goes to its operation's route as the session names it (U13)
+  // a request the owner composed goes to its operation's route as the session names it
   function requestStep(request, expectedOperation) {
     if(!request || request.operation!==expectedOperation || !Data.offers(expectedOperation))
       throw Error(t('Data request is not available. Refresh this page.'));
@@ -56,7 +56,7 @@ const LiveWorkspace = (() => {
   const stringify = v => v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   const facts = rows => kv(rows.map(([k,v]) => [t(k),stringify(v)]));
   const detail = (b, title='Exact identity, scope and receipt') => html`${codeRef(t(title), b)}`;
-  const said = (code) => code ? html`<span class="coded" data-tip="${code}">${codeWords(code)}</span>` : ''; // N6 (law 80): an owner's code in words, the code on hover
+  const said = (code) => code ? html`<span class="coded" data-tip="${code}">${codeWords(code)}</span>` : ''; // law 80: an owner's code in words, the code on hover
   const action = (label,name,value='',reason='',cls='button compact') => typedBtn(t(label),'workspace-'+name,value,cls,S.busy?t('Waiting for the product owner'):reason);
   const primary = (label,name,value='',reason='') => typedBtn(t(label),'workspace-'+name,value,'button primary',S.busy?t('Waiting for the product owner'):reason);
   const task = b => b?.task_id ? action('Inspect task','task',b.task_id) : '';
@@ -76,9 +76,9 @@ const LiveWorkspace = (() => {
     'workspace_data_update.source_access_not_admitted':'Source access is not admitted in this service: the configured provider cannot be reached from here. Nothing was fetched.',
     'data.full_history_audit_approval_required':'A full-history audit of some listings needs explicit approval: preview the update again; the owner names the listings and asks for confirmation.',
     'workspace_data_update.retry_not_due':'The owner\'s retry time has not come yet; continuing is refused until it is due.',
-    'workspace_preparation.retry_not_due':'The owner\'s retry time has not come yet; resuming is refused until it is due.', // U63 (V375)
+    'workspace_preparation.retry_not_due':'The owner\'s retry time has not come yet; resuming is refused until it is due.', // Owner refusal.
     'data.rate_limited':'The market data provider limited the requests; the work waits and resumes from every listing already fetched.',
-    'data.provider_timeout':'The market data provider did not answer in time, after its retries: a listing that timed out is recorded as failed in this run while the others go on, and a universe source that timed out stops the step. No retry time is set; continue once the provider answers.', // U65 (V396): no owner defers on a timeout
+    'data.provider_timeout':'The market data provider did not answer in time, after its retries: a listing that timed out is recorded as failed in this run while the others go on, and a universe source that timed out stops the step. No retry time is set; continue once the provider answers.', // no owner defers on a timeout
     'data.provider_session_unstable':'The market data provider\'s session was unstable; the work waits and resumes from every listing already fetched.',
     'workspace_data_update.stale_plan':'The workspace moved beneath this plan; preview the update again.',
     'workspace_data_update.membership_review_required':'The membership the Panel admits changed during this update: plan again against the new membership.',
@@ -153,7 +153,7 @@ const LiveWorkspace = (() => {
         if(page==='welcome' && body.inputs?.length && !get('inputs')) await refresh('inputs','',true);
       }
       state.loading=false;
-      // N6: the Data overview's figures read the cases and the storage beside the update, quietly --
+      // the Data overview's figures read the cases and the storage beside the update, quietly --
       // on an explicit read, and again when the update's lifecycle moved (a stop raises a case)
       if(page==='data' && (!quiet || !states.get('issues') || state.view?.lifecycle!==previous?.view?.lifecycle)) { void refresh('issues','',true); if(!quiet || !states.get('storage')) void refresh('storage','',true); }
       // Data issues' next page joins the cases read before it (F2: the lobby holds every case read)
@@ -174,7 +174,7 @@ const LiveWorkspace = (() => {
       else if(SCENE_ROUTE[page] && state.body) state.stale=notCurrent(state,e.message); else state.error=e.message;
     }
     // Backups have independent read authority; an inventory refusal cannot hide recovery.
-    if(page==='storage' && !quiet) void readBackups(); // U48: reading makes none
+    if(page==='storage' && !quiet) void readBackups(); // reading makes none
     if(quiet) patchMain(); else render();
   }
   /* The page's own fact about its reads: since when the owners have not answered, how many
@@ -313,7 +313,7 @@ const LiveWorkspace = (() => {
   const OPTION_TEXT={retain_raw_value_with_caveat:'Keep the raw value, with a recorded caveat',quarantine_listing:'Quarantine the listing until it requalifies',exclude_from_next_manifest:'Exclude the listing from the next membership',wait_then_retry:'Wait, then let the owner retry',retry_primary:'Retry the primary source with a bounded full history',escalate_for_human:'Escalate the data-truth conflict for human review'};
   const OPTION_IDS={recoverable_quarantine:'quarantine_listing',exclude_from_next_manifest:'exclude_from_next_manifest',wait_for_provider_recovery:'wait_then_retry',retain_isolated_raw_move_with_caveat:'retain_raw_value_with_caveat',bounded_full_history_retry:'retry_primary',escalate_data_truth_conflict:'escalate_for_human'};
   const optionText=(o)=>t(OPTION_TEXT[String(o?.policy_args?.action || OPTION_IDS[o?.option_id] || '').toLowerCase()] || o?.option_id || '');
-  const optionNote=(o)=>{const a=o?.policy_args || {};const parts=[];if(a.recheck_after_at)parts.push(t('recheck after {t}',{t:when(a.recheck_after_at)}));if(a.retry_after_at)parts.push(t('retry after {t}',{t:when(a.retry_after_at)}));if(a.retry_after_seconds)parts.push(t('the owner retries after {n} min',{n:Math.round(Number(a.retry_after_seconds)/60)}));if(o?.disposition==='human_review')parts.push(t('recorded for human review'));return parts.join(' · ');}; // N6: what tells the responses apart, in the reader's clock
+  const optionNote=(o)=>{const a=o?.policy_args || {};const parts=[];if(a.recheck_after_at)parts.push(t('recheck after {t}',{t:when(a.recheck_after_at)}));if(a.retry_after_at)parts.push(t('retry after {t}',{t:when(a.retry_after_at)}));if(a.retry_after_seconds)parts.push(t('the owner retries after {n} min',{n:Math.round(Number(a.retry_after_seconds)/60)}));if(o?.disposition==='human_review')parts.push(t('recorded for human review'));return parts.join(' · ');}; // what tells the responses apart, in the reader's clock
   function issueSummary(p, delegated=false) {
     const o=p.option || {};
     return [['Response',optionText(o)],[delegated ? 'Executor' : 'Applied by',delegated ? t('External automation under this exact grant') : t(o.disposition==='auto' ? 'the owner, once confirmed' : o.disposition==='human_review' ? 'a person, recorded for review' : 'the owner')],['Applied now',t(delegated ? 'No: this grant only authorizes an exact later confirmation.' : p.effect_applied ? 'Yes' : 'No: recorded as your decision; applied when the Task continues and the owner revalidates the source evidence.')],[delegated ? 'Authorized by' : 'Confirmed by',delegated ? t('You') : actorWords(p.confirmation || 'HUMAN')]];
@@ -326,7 +326,7 @@ const LiveWorkspace = (() => {
     return [['Files selected for cleanup',targets.length],['Reclaimable',bytesText(p.reclaimable_bytes)],['Retained',bytesText(p.retained_bytes)],['Unrooted versions',(p.bindings || []).length ? html`${p.bindings.map(h=>html`${mono(h,SHORT.hash)}<br>`)}` : t('none')],['Exact targets',targets.length ? html`${targets.slice(0,12).map(v=>html`<span class="mono">${v}</span><br>`)}${targets.length>12 ? t('… and {n} more, all listed in the exact plan below',{n:targets.length-12}) : ''}` : t('none: nothing is eligible')],['Kept by policy',html`${(p.limitations || []).map(v=>html`${t(LIMITATION_TEXT[v] || v)}<br>`)}`],
       ...(relinks(p).length ? [['Linked to the model store',html`${t('The retrieval model\'s copy becomes links to this machine\'s model store; nothing is lost.')}<br>${relinks(p).map(([path,bytes])=>html`<span class="mono">${path}</span> · ${bytesText(bytes)}<br>`)}`]] : [])];
   }
-  const relinks=(p)=>Object.entries(p?.relinks || {}); // U44: {path: bytes} of a retained model copy the plan links to the store
+  const relinks=(p)=>Object.entries(p?.relinks || {}); // {path: bytes} of a retained model copy the plan links to the store
   function pinSummary(v) {
     const pinned=(v.roots || []).includes('USER_PINNED');
     return [['Version',mono(v.binding_hash,SHORT.hash)],['Change',t(pinned ? 'Remove your pin: the version keeps every other root it has; without a root it becomes eligible for cleanup.' : 'Pin this version: it is retained by you and never selected for cleanup while the pin stands.')],['Referenced bytes',bytesText(v.logical_bytes)]];
@@ -353,7 +353,7 @@ const LiveWorkspace = (() => {
         if(!b?.plan_hash||!b.task_id)throw Error('No preparation Task to continue.');
         if(b.confirmation_available===false)throw Error(t('Preview the preparation first.'));
         body={status:b.status,task_id:b.task_id,plan_hash:b.plan_hash,retry_after_at:b.retry_after_at || b.progress?.retry_after_at || null,failure_code:b.failure_code};
-        const resume=resumeOf(b); // U63: a deferral names its own resume
+        const resume=resumeOf(b); // a deferral names its own resume
         title=resume ? 'Resume this preparation' : 'Continue this preparation Task';steps=[requestStep(resume || b.next_requests?.confirm,'WORKSPACE_PREPARE_CONFIRM')];
       } else if(kind==='update') {
         body=await Data.post('/api/data-update/plan',{});states.set('update-plan',{body});
@@ -369,7 +369,7 @@ const LiveWorkspace = (() => {
         const b=get('data');
         if(!b?.plan_hash||!b.task_id)throw Error('No data update Task to continue.');
         body={status:b.task_lifecycle,task_id:b.task_id,plan_hash:b.plan_hash,retry_after_at:b.retry_after_at || b.cycle?.retry_after_at || null,failure_code:b.cycle?.failure_code || null,lifecycle:b.task_lifecycle};
-        const resume=resumeOf(b); // U63: a deferral names its own resume
+        const resume=resumeOf(b); // a deferral names its own resume
         title=resume ? 'Resume this update' : 'Continue this data update';steps=[resume ? resumeStep(resume) : ['/api/data-update/run',{update_plan_hash:b.plan_hash}]];
       } else if(kind==='capture') {
         if(!S.family)throw Error('Select a published input family first.');
@@ -421,7 +421,7 @@ const LiveWorkspace = (() => {
         const input=get('storage')?.inputs?.find(v=>v.binding_hash===value);
         if(!input?.available||get('storage').status==='RECOVERY_REQUIRED')throw Error('Input retention is not currently available.');
         body=input;title='Confirm input retention change';steps=[['/api/workspace/storage/pin',{input_binding_hash:value,input_pinned:!input.roots.includes('USER_PINNED')}]];
-      } else if(kind==='pin-index') { // an evidence index pinned or unpinned by its row (round E5), as the Host offers it (U4): the owner's pin route takes the index id
+      } else if(kind==='pin-index') { // an evidence index pinned or unpinned by its row, as the Host offers it (U4): the owner's pin route takes the index id
         const [id,act]=JSON.parse(value), ix=(get('storage')?.evidence?.indexes || []).find(v=>v.index_id===id);
         if(!ix || !(ix.available_actions || []).includes(act))throw Error('Index retention is not currently available.');
         body={...ix,claim:'EVIDENCE_INDEX_RETENTION'};title=act==='UNPIN' ? 'Unpin this evidence index' : 'Pin this evidence index';steps=[['/api/workspace/storage/pin',{input_binding_hash:id,input_pinned:act==='PIN'}]];
@@ -429,7 +429,7 @@ const LiveWorkspace = (() => {
         const ix=(get('storage')?.evidence?.indexes || []).find(v=>v.index_id===value);
         if(!ix)throw Error('Evidence index not found.');
         body={...ix,claim:'EVICTED_EVIDENCE_INDEX_REBUILDS_FROM_ITS_COMMITTED_VECTORS'};title='Rebuild this evidence index';steps=[['/api/workspace/storage/evidence-rebuild',{evidence_index_id:value}]];
-      } else if(kind==='backup') { // U48 (V209): a generation made now, on the person's confirmation
+      } else if(kind==='backup') { // a generation made now, on the person's confirmation
         const bk=get('backups');
         if(!bk || states.get('backups').error)throw Error('The backups are not read; nothing was sent.');
         body=bk;title='Back up the held state now';steps=[['/api/workspace/backup',{}]];
@@ -504,14 +504,14 @@ const LiveWorkspace = (() => {
    * by the preparation's refusal and by Settings, which holds the control */
   const NETWORK = {WORKSPACE_CONTROL_ALLOWED:'Allowed by this workspace\'s network control.', WORKSPACE_CONTROL_OFF:'Off by this workspace\'s network control.', DEFAULT:'Off: the workspace sets no network control, so the network stays off.'};
   function networkWords(n) {
-    // U70 (V452): an opening the first-use goal made holds until its own end, named in the control itself (`set_by`); past
+    // an opening the first-use goal made holds until its own end, named in the control itself (`set_by`); past
     // its end the control reads closed with no write
     if(n?.decided_by==='WORKSPACE_CONTROL' && n.set_by?.delegation){
       if(n.network_allowed) return html`<span data-tip="${n.set_by.delegation}">${t('Opened for you by your first-use goal, until {t}',{t:whenText(n.set_by.until)})}</span>`;
       if(Date.parse(n.set_by.until)<=Date.now()) return t('Closed when your first use ended');
     }
     const by=n?.decided_by || '', key=by==='WORKSPACE_CONTROL' ? (n.network_allowed ? 'WORKSPACE_CONTROL_ALLOWED' : 'WORKSPACE_CONTROL_OFF') : by;
-    // V620 (U93): a hold the person cannot lift here -- the operator's offline switch, a run's offline hold -- reads in the
+    // a hold the person cannot lift here -- the operator's offline switch, a run's offline hold -- reads in the
     // network owner's words, which name who lifts it and how; the page recreates no permission advice
     if(['OPERATOR_OFFLINE_SWITCH','RUN_HELD_OFFLINE'].includes(by) && n.detail) return html`<span data-tip="${by}">${literalWords(t(n.detail))}</span>`;
     return NETWORK[key] ? html`<span data-tip="${by}">${t(NETWORK[key])}</span>` : (n?.detail ? literalWords(t(n.detail)) : '');
@@ -531,7 +531,7 @@ const LiveWorkspace = (() => {
     return html`<section class="panel prep-preview" data-box="decision">${sectionHead(t('Preparation scope · preview'), t('Recorded by the owner as a plan; nothing has been admitted. Confirming is a separate step.'), refused ? badge('blocked', t('Confirmation unavailable')) : stateLine('planned', {word: t('Awaiting confirmation')}))}<div class="panel-body">${kv(preparationSummary(p).map(([k,v])=>[t(k),typeof v==='string'?v:v]))}${refused ? refusal({code:p.source_access_failure || '',reason:why},'warning',{word:t('Confirmation unavailable'),next}) : ''}<div class="flow">${refused ? '' : action('Confirm preparation','preview','reoffer')}${action('Preview again','preview','prepare')}</div>${detail(p)}</div></section>`;
   }
   const readiness = (b) => b.status==='LOCAL_DATA_PRESENT' ? t('Local market data is present but no research input is published. The preview reuses qualified local data without downloading; its qualification is checked there.') : t('This workspace holds no research input. One explicit preparation captures the current index members, acquires their daily history, builds Features and publishes one verified input. Opening this page starts nothing.');
-  /* First use before a Task (round 74): the PLAN preview when one was offered, the workspace's
+  /* First use before a Task: the PLAN preview when one was offered, the workspace's
    * facts from the manifest and the preparation owner, the five stages as the run's steps to
    * come. The one action is the Home head's primary (Prepare workspace). */
   function unprepared(b, state) {
@@ -585,8 +585,8 @@ const LiveWorkspace = (() => {
   }
   /* The attention state in plain language, with the consequence and only the owner's currently
    * permitted continuation. The owner's code stays in the details. */
-  /* U63 (V375): a deferral's words as its owner wrote them -- the provider's, and for an update that the published
-   * research inputs stand (the owner's second sentence, read on its own) -- and its resume request, the same plan again, sent whole by the route the session names (U13). */
+  /* a deferral's words as its owner wrote them -- the provider's, and for an update that the published
+   * research inputs stand (the owner's second sentence, read on its own) -- and its resume request, the same plan again, sent whole by the route the session names. */
   const HELD_WORDS=' The published research inputs are unchanged, and every study keeps reading them.';
   const deferWords=(detail)=>{ const s=String(detail || ''); if(!s) return ''; const held=s.endsWith(HELD_WORDS); return html`<span class="owner-text">${t(held ? s.slice(0,-HELD_WORDS.length) : s)}${held ? html` ${t(HELD_WORDS.trim())}` : ''}</span>`; };
   const resumeOf=(b)=>{ const r=b?.next_requests?.resume; return r && Data.offers(r.operation) ? r : null; };
@@ -699,7 +699,7 @@ const LiveWorkspace = (() => {
   const PREPARATION={key:'preparation',page:'overview',title:'Preparation work',railLabel:'Preparation stages; select to inspect, not execute',factsLabel:'Preparation facts',steps:PREPARATION_STEPS,lines:stageLines(PREPARATION_STEPS.map(([id])=>id)),fallbackLine:'Continuing the reported preparation stage.',
     oneUnit:{freeze_sources:'The sources are captured as one unit: the exact candidate list and its evidence.',publish_inputs:'The input is published as one unit from the panel.',verify_inputs:'The published input is verified as one unit by the input owner.'},
     view:()=>states.get('welcome')?.view,work,aside:stageAside,absorb:absorbListings,completedNow:(b)=>Boolean(b.inputs?.length)};
-  /* The preparation while it runs or waits (round 74): the attention block, the work area, the
+  /* The preparation while it runs or waits: the attention block, the work area, the
    * liveness line with the cancel beside it; the Home's head and the pinned run say the state. */
   function scene(b, v, state) {
     const life=v.lifecycle, id=v.task_id;
@@ -725,7 +725,7 @@ const LiveWorkspace = (() => {
     const head=page==='welcome' ? '' : objectHead(t('Data'),html`<span class="mono">${short(selectedTask(page) || '',SHORT.id)}</span> · ${t('not read')}`,typedBtn(t('Open the current data state'),'workspace-current','','button compact',''));
     return html`${head}${refusal({code:refused,reason:html`${t(REFUSALS[refused])} ${t(page==='welcome' ? 'Nothing else was read or changed; the workspace\'s current preparation is one step away.' : 'Nothing else was read or changed; the workspace\'s current data state is one step away.')}`},'warning',{word:t(page==='welcome' ? 'This preparation Task cannot be shown' : 'This update Task cannot be shown'),action:page==='welcome' ? typedBtn(t('Open the current preparation'),'workspace-current','','button compact','') : ''})}`;
   }
-  /* First use on the Home (round 74): the preparation as the Home's one run. Before a Task: the
+  /* First use on the Home: the preparation as the Home's one run. Before a Task: the
    * facts and the PLAN preview; while it runs or waits: the work area; once the input is
    * verified: nothing -- the Home is the Home. No head of its own. */
   /* The owner cannot plan a preparation while the workspace itself is not readable (its manifest
@@ -738,7 +738,7 @@ const LiveWorkspace = (() => {
   function cannotPrepare() {
     const said=String(S.error || states.get('welcome')?.error || ''), code=(said.match(CANNOT_PREPARE) || [])[0];
     if(!code) return '';
-    // U77 (V481): a workspace prepared before the 2026-10-02 renames reads as the door words it -- the retired spelling it
+    // a workspace prepared before the 2026-10-02 renames reads as the door words it -- the retired spelling it
     // holds, nothing in it changed -- and its way on is a new workspace, never a restore
     if(code.endsWith('prepared_before_renames')) {
       const door=(said.match(/research_workspace\.prepared_before_renames(?::\S*)?: ([\s\S]+)$/) || [])[1] || '';
@@ -792,10 +792,10 @@ const LiveWorkspace = (() => {
    * (from its durable rows), the Feature owner's step while it builds, the cycle's phase otherwise; every denominator is the owner's. */
   function updateWork(b, v, state, shown=null) {
     const stage=shown || v.status.current_stage, c=b.cycle, m=b.maintenance, w=b.work_progress;
-    const wait=null; // N6 (law 58): a wait is said once, by the update's banner
+    const wait=null; // law 58: a wait is said once, by the update's banner
     if(stage!=='maintain_data_feature') return NO_COUNT(null,stageVerified(v,stage));
     if(!c) return {count:html`<span class="tp-denom">${t('The maintenance cycle has not been admitted yet')}</span>`,bar:null,detail:t('The owner admits one cycle for this plan when the stage starts; its phase and units appear here.'),wait};
-    const phase=t(PHASE_TEXT[c.phase] || c.phase), cycleAt=c.updated_at ? t('cycle {phase} · recorded {time}',{phase,time:when(c.updated_at)}) : t('cycle {phase}',{phase}); // N6 (laws 57, 133): the cycle's instant, never an age
+    const phase=t(PHASE_TEXT[c.phase] || c.phase), cycleAt=c.updated_at ? t('cycle {phase} · recorded {time}',{phase,time:when(c.updated_at)}) : t('cycle {phase}',{phase}); // laws 57, 133: the cycle's instant, never an age
     if(w?.availability==='BOUND' && w.stage_id!=='market_data_increment' && c.phase!=='completed') { const step=featureStep(w,state,wait); return {...step,detail:html`${step.detail} · ${cycleAt}`}; }
     if(c.phase==='completed' || c.status==='noop') {
       const cs=c.change_set;
@@ -855,7 +855,7 @@ const LiveWorkspace = (() => {
     if(m.availability && m.availability!=='AVAILABLE') return unitsShell(t(m.availability==='UNREADABLE' ? 'unreadable' : 'not available'),html`${t(m.availability==='UNREADABLE' ? 'The maintenance units recorded for this update could not be read; nothing of another update is shown in their place.' : 'The maintenance units recorded for this update are not available in this workspace; nothing of another update is shown in their place.')} ${said(m.failure_code)}`);
     const rows=log ? [...log.rows.values()] : [], history=!current || !stateMoving(v.lifecycle);
     const latest=rows.at(-1), snapshot=log?.snapshot;
-    const rail=W.logRail({label:history ? t('Last recorded unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(unitKind(latest))} · ${t('recorded {time}',{time:when(latest.updated_at)})}` : t('No unit recorded yet')},state,moving); // N6 (law 133): the unit's instant, never an age
+    const rail=W.logRail({label:history ? t('Last recorded unit') : t('Latest unit'),value:latest ? html`${latest.symbol} · ${t(unitKind(latest))} · ${t('recorded {time}',{time:when(latest.updated_at)})}` : t('No unit recorded yet')},state,moving); // law 133: the unit's instant, never an age
     const status=html`${t('{m} of {l} listings moved · {r} shown',{m:snapshot?.moved ?? m.moved,l:m.counts.listings,r:snapshot?.retained ?? m.retained})}${history ? html` · ${t('recorded work of this update, not current activity')}` : ''}${state.stale ? html` · ${t('last successful read')}` : ''}`;
     const empty=html`<p class="caption prep-log-empty">${t('Listings appear here as the maintenance runner records each unit; a chunk of parallel fetches completes as several units at once.')}</p>`;
     return W.logShell(UPDATE,{label:t('Recent listing activity'),title:t('Recent listing activity'),caption:t('Units the maintenance runner recorded for this target session · newest last · one row per listing, the newest shown'),history,moving,rows:rows.map(maintenanceRow),empty,status,rail});
@@ -863,7 +863,7 @@ const LiveWorkspace = (() => {
   const UPDATE={key:'update',page:'data',title:'Update work',railLabel:'Update stages; select to inspect, not execute',factsLabel:'Update facts',steps:UPDATE_STEPS,lines:UPDATE_LINES,fallbackLine:'Continuing the reported update stage.',
     oneUnit:{validate_update_request:'The request is validated as one unit against the workspace as it stands.',publish_update_receipt:'The receipt is sealed as one unit.'},
     view:()=>states.get('data')?.view,work:updateWork,aside:updateAside,absorb:absorbMaintenance,completedNow:(b)=>b.status==='PUBLISHED'};
-  /* The update's stop or wait, named once with its way on (N6, laws 57-58): what stopped it or
+  /* The update's stop or wait, named once with its way on (laws 57-58): what stopped it or
    * what it waits for, in words, and whether the reader must act; the one way on is the primary.
    * The owner's code is the title's tip and the Facts'. A case the data owner asks about comes
    * first -- Data issues decides and the update continues after -- whatever the lifecycle says. */
@@ -885,7 +885,7 @@ const LiveWorkspace = (() => {
         if(life==='DEFERRED' && !due) { tone='neutral'; ic='clock'; title=t('Waiting until {time}',{time:when(wait)}); words=b.detail ? deferWords(b.detail) : t(code==='data.remediation_wait' ? 'The owner waits for the source to recover, as you decided. Nothing is needed from you until then; after it, continue the update: nothing is retried on its own.' : 'The owner waits for the condition it named. Nothing is needed from you until then; after it, continue the update: nothing is retried on its own.'); way=action(resumeOf(b) ? 'Resume this update' : 'Continue this update','preview','continue-update',t('Not due until {time}',{time:when(wait)})); break; }
         if(ask.decided) { tone='neutral'; ic='checkcircle'; waits=true; title=t('Your decision is recorded'); words=t('Continue the update: the owner checks the evidence again and applies your decision; nothing recorded is undone.'); }
         else if(life==='DEFERRED') { tone='neutral'; ic='clock'; waits=true; title=t('The wait is over'); words=html`${b.detail ? html`${deferWords(b.detail)} ` : ''}${t('Continue the update: the owner tries again under the same plan; listing work already recorded is not fetched again.')}`; }
-        else { title=t('The update stopped'); words=html`${explain(code) || v.stop?.detail || ''} ${t('Retrying runs the stopped stage again under the same plan; if the cause is unchanged it stops there again.')}${causeLine(b.failure_cause || v.stop?.cause,true)}`; } // U71: what its owner saw beside the code
+        else { title=t('The update stopped'); words=html`${explain(code) || v.stop?.detail || ''} ${t('Retrying runs the stopped stage again under the same plan; if the cause is unchanged it stops there again.')}${causeLine(b.failure_cause || v.stop?.cause,true)}`; } // what its owner saw beside the code
         way=action(life==='DEFERRED' && resumeOf(b) && !ask.decided ? 'Resume this update' : ask.decided || life==='DEFERRED' ? 'Continue this update' : 'Retry this update','preview','continue-update','','button primary'); break;
       case 'CANCEL_REQUESTED':
         tone='neutral'; ic='clock'; title=t('Stopping at the next safe checkpoint'); words=t('The worker runs until its next safe checkpoint, a maintenance cycle boundary; nothing already recorded is undone.'); break;
@@ -905,7 +905,7 @@ const LiveWorkspace = (() => {
     const list=s.body?.issues || [], asking=list.filter(x=>['AWAITING_CHOICE','OPTION_REFUSED'].includes(x.status));
     return {count:asking.length,agent:asking.length>0 && asking.every(issueAgent),decided:list.filter(x=>x.status==='CONFIRMED_PENDING_REVALIDATION').length,names:asking.flatMap(x=>(x.case?.listing_ids || []).map(id=>x.subjects?.[id] || short(id,SHORT.id))),read:Boolean(s.body)};
   }
-  /* A held data update as the Home and Tasks name it (N6, law 58): the Data page's title and way
+  /* A held data update as the Home and Tasks name it (law 58): the Data page's title and way
    * on -- a case that asks first, then a recorded decision, then the owner's code in words. */
   function stopWords(v) {
     const life=v?.lifecycle || v?.status;
@@ -1069,7 +1069,7 @@ const LiveWorkspace = (() => {
   /* A data issue's own page: its listing and kind the title, its state under
    * it; the move as figures, the owner's checks, the decisions before it and yours -- the form
    * while it is asked, the record after -- then the exact record. The move's session and who decided
-   * are the head's line (N2, law 126 amended); the listing, the kind and the case are its title and id. */
+   * are the head's line (law 126 amended); the listing, the kind and the case are its title and id. */
   function issuePage(b, token) {
     const history=b.recorded_decisions || [], standing=b.continued_dispositions || [];
     const issue=(b.issues || []).find(v=>v.case.case_token===token);
@@ -1155,11 +1155,11 @@ const LiveWorkspace = (() => {
     // the roles as phrases: a short line breaks between them, never inside one (a CJK line would split a word)
     const role=[v.configured_default ? t('configured default') : '',inputLifecycle(v.lifecycle),v.end && latestEnd && v.end===latestEnd ? t('latest cutoff') : ''].filter(Boolean);
     const roles=role.length ? html`${role.map((w,i)=>html`${i ? ' · ' : ''}<span class="nowrap">${w}</span>`)}` : ''; // a fragment: html keeps its spans
-    // a row (round 28): the recorded sessions as the title, the hash, the role and the files as
+    // a row: the recorded sessions as the title, the hash, the role and the files as
     // props, the decision at the row's end, always shown
     const decision=isChosen ? stateLine('planned',{word:t('Selected in the draft')}) : typedBtn(t('Use for a new Factor draft'),'workspace-input',key,'menu-row',heldInput(v));
     if(v.unreadable) return objectRow({lead: 'file', name: html`${t('Input version')} ${mono(v.binding_hash,SHORT.hash)}`, to: {action: 'workspace-version-open', value: v.binding_hash}, cls: 'version-row'}, {key,columns:['binding','roles','availability'],props:['',html`${coded(v.unreadable)} · ${link(t('Storage & retention'),'storage','inline-link')}`,''],actions:decision});
-    return objectRow({lead: 'file', name: dateRange(v.start, v.end), to: {action: 'workspace-version-open', value: v.binding_hash}, cls: 'version-row'}, {key,selected:isChosen,columns:['binding','roles','availability'],props:[twins ? html`<span class="mono" data-tip="${v.binding_hash}">${short(v.binding_hash,SHORT.hash)}</span>` : '',roles,v.available ? '' : t('unavailable: source files missing')],actions:decision}); // N6: present is the usual state, not a fact to repeat
+    return objectRow({lead: 'file', name: dateRange(v.start, v.end), to: {action: 'workspace-version-open', value: v.binding_hash}, cls: 'version-row'}, {key,selected:isChosen,columns:['binding','roles','availability'],props:[twins ? html`<span class="mono" data-tip="${v.binding_hash}">${short(v.binding_hash,SHORT.hash)}</span>` : '',roles,v.available ? '' : t('unavailable: source files missing')],actions:decision}); // present is the usual state, not a fact to repeat
   }
   /* An input version's own page (F3; law 135's four levels: Data / Research inputs / <family> /
    * <version>): its dates the title, its family the directory above it (`page-directory`); what it
@@ -1194,12 +1194,12 @@ const LiveWorkspace = (() => {
     const publishable=groups.length && working && (!latestCutoff || working>latestCutoff) ? banner(t('New data to publish'),t('Working data through {d}; the latest published version ends {c}.',{d:working,c:latestCutoff || ''}),'neutral',html`${chooser}${action('Preview publication','preview','capture',S.family?'':t('Choose the input family first'),'button primary')}`,'file') : '';
     const publish=html`
       ${capture ? html`<div class="issue-decision" data-capture-status="${capture.status || ''}">${icon(['SUCCEEDED','REUSED_EXACT'].includes(capture.status) ? 'check' : capture.status==='CONFIRMATION_REQUIRED' ? 'file' : 'task')}<span>${capture.status==='REUSED_EXACT' ? t('Exact version already published: {v}. Nothing was re-sealed; select it below.',{v:short(capture.binding_hash,SHORT.hash)}) : capture.status==='CONFIRMATION_REQUIRED' ? t('Previewed, not admitted: {n} of the source changed. Confirm the preview or preview again.',{n:countText(sourceChanges(capture.before,capture.after).length,'{n} field','{n} fields')}) : capture.status==='SUCCEEDED' && capture.publication ? html`${t('Published')} <span class="mono">${short(capture.publication.binding_hash,SHORT.hash)}</span> · ${t('sessions through {d}',{d:capture.publication.source?.panel_through || ''})} · ${t('Task')} <span class="mono">${short(capture.task_id)}</span>` : html`${t('Publication Task')} <span class="mono">${short(capture.task_id)}</span> · ${capture.status ? codeWords(capture.status) : ''}${capture.failure_code ? html` · <span class="mono">${capture.failure_code}</span>` : ''}`}</span>${capture.task_id ? task(capture) : ''}</div>` : ''}
-`; // N6: the publishable state is the first row; the publication's own record follows it
+`; // the publishable state is the first row; the publication's own record follows it
     // F2 (law 136): the versions as a lobby grouped by their family, the latest publication first
     const items=groups.flatMap((group,i)=>{const latestEnd=group.versions.map(v=>v.end).filter(Boolean).sort().at(-1);return [...group.versions].reverse().map(v=>({group,v,latestEnd,rank:i}));});
     const groupsMarkup=items.length ? Lobby.render('inputs',{items,row:(x)=>versionRow(x.group,x.v,chosen,x.latestEnd),axes:[{key:'family',label:t('Input family'),group:(x)=>({key:x.group.input_id,label:x.group.input_id,rank:x.rank,open:true})}],cls:'version-rows',
       words:(x)=>[x.group.input_id,x.v.start,x.v.end,x.v.binding_hash,x.v.lifecycle].join(' '),placeholder:t('Family, dates or hash')}) : '';
-    // N3: the version contract is the page's (i) (`INPUTS_INFO`); the draft's selection is its row's mark
+    // the version contract is the page's (i) (`INPUTS_INFO`); the draft's selection is its row's mark
     return html`${refused}${publishable}${publish}${groupsMarkup}${!groups.length && !refused.length?emptyState(t('No input family published'),link(t('Prepare workspace'),'welcome','button primary'),'page-empty'):''}`;
   }
 
@@ -1209,27 +1209,27 @@ const LiveWorkspace = (() => {
   const ROOT_LABEL={WORKING_DATABASE:['Working database','the DuckDB store the update owner maintains in place; not research input'],IMMUTABLE_INPUTS:['Immutable input versions','sealed source files and Parquet objects; shared objects stored once'],ARTIFACTS:['Feature and outcome artifacts','Panel partitions and outcome snapshots; the current Panel is protected'],RESEARCH_EXPERIMENTS:['Saved experiments','research results and Feature trials; never released by cleanup'],PROVIDER_CACHE:['Provider cache','the raw source cache and the source probe cache'],STAGING:['Staging','files being prepared'],EVIDENCE_KNOWLEDGE:['Evidence knowledge','the evidence data layer: sources, texts, vectors and indexes, detailed under Evidence'],ALTERNATIVE_EVIDENCE:['Alternative evidence','the Alternative Evidence desk\'s sealed records'],PORTFOLIO_LEDGER:['Portfolio ledger','the Portfolio research ledger\'s records'],PREPARATION:['Preparation records','a preparation\'s stage records and evidence; never released by cleanup'],HOST_RECORDS:['Host records','data update plans, change executions, valuation receipts and the Host\'s records; never released by cleanup'],AUTHORITY:['Installed authority','the Evidence and CRO packages and the retained strategies\' authority; never released by cleanup'],RETRIEVAL_MODEL:['Retrieval model','the retained retrieval recipe\'s model copy; a cleanup may link it to the machine\'s model store']};
   const LIMITATION_TEXT={EVIDENCE_INDEX_PAYLOADS_ONLY_VECTORS_BLOBS_AND_ARTIFACTS_RETAINED:'Cleanup may release an evidence index payload only; its vectors, source texts and sealed records stay.',EVICTED_EVIDENCE_INDEX_REBUILDS_FROM_ITS_COMMITTED_VECTORS:'An evicted evidence index rebuilds from its committed vectors, without the model.',CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY:'Only classified input files and Panel/outcome snapshots without a root are eligible.',RAW_HISTORY_BASE_FEATURES_AND_RECOVERY_PATCHES_RETAINED:'Raw history, base Features and recovery patches are always kept.',PANEL_GENERATIONS_PAST_THE_PREVIOUS_AND_UNPUBLISHED_CHUNKS_RELEASED:'A Panel generation no input captured is released once it is past the previous one, and the chunks no generation published with it.',A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES:'A retained retrieval model\'s copy becomes links to the machine\'s model store it matches; nothing is lost.',REPORTS_AND_DECISIONS_RETAINED:'Reports and decisions are kept.',REPLAY_REQUIRES_RETAINED_INPUTS:'Replaying a result needs its input version retained.'};
   const CAPACITY_TEXT={WITHIN_BUDGET:['neutral','Within the managed budget'],CLEANUP_RECOMMENDED:['warning','Near the managed budget: a cleanup preview shows what may be released'],CAP_EXCEEDED:[TONE.attention,'Over the workspace cap: raise it in Settings or plan a cleanup'],BUDGET_AFTER_INPUT_DISCOVERY:['neutral','Budget known after an input is published']};
-  /* The Evidence category (round E5, plan 4.6): what the evidence data layer keeps, physical bytes
+  /* The Evidence category (plan 4.6): what the evidence data layer keeps, physical bytes
    * each object once; the indexes with their availability and protection, pinned or rebuilt by
    * the row; the unreferenced objects; nothing here adds a book's logical bytes into a disk figure. */
   const INDEX_ACTIONS={PIN:['Pin','workspace-pin-index'],UNPIN:['Unpin','workspace-pin-index'],REBUILD:['Rebuild','workspace-rebuild-index']}; // U4: the Host's `available_actions`, in its order
   function evidencePanel(e) {
-    if(!e || typeof e!=='object') return ''; // N3 (law 81): a category the owner does not report is not shown
+    if(!e || typeof e!=='object') return ''; // law 81: a category the owner does not report is not shown
     const sum=e.summary && typeof e.summary==='object' ? e.summary : e;
     const rows=[[t('Originals'),sum.source_object_bytes],[t('Canonical texts'),sum.source_blob_bytes],[t('Vectors'),sum.vector_payload_bytes,sum.vector_object_count!=null ? countText(sum.vector_object_count,'{n} object','{n} objects') : ''],[t('Indexes'),sum.index_payload_bytes],[t('Sealed records'),sum.sealed_artifact_bytes],[t('Staging'),sum.staging_bytes],[t('Task state'),sum.task_state_bytes]].filter(([,v])=>v!=null);
     const railMarkup=rail(html`${rows.map(([label,v,note])=>stat(label,bytesText(v),note || t('physical bytes · each object once')))}`);
     // none while an approved cleanup awaits recovery: the page's banner says why, once (ST6)
     const indexRows=(e.indexes || []).map((ix,i)=>{ const key=String(ix.availability || '').toLowerCase();
-      // U80 (V560): an index that cannot be rebuilt says why, in the owner's words, where its Rebuild would stand
+      // an index that cannot be rebuilt says why, in the owner's words, where its Rebuild would stand
       const actions=html`<span class="flow">${(ix.available_actions || []).filter(a=>INDEX_ACTIONS[a]).map(a=>btnAttrs(t(INDEX_ACTIONS[a][0]),INDEX_ACTIONS[a][1],a==='REBUILD' ? ix.index_id : JSON.stringify([ix.index_id,a]),'text-btn'))}${ix.rebuild_limit ? hint(t('Cannot be rebuilt'),t(ix.rebuild_limit)) : ''}</span>`;
       return tr([count(i+1),html`<span class="mono">${short(ix.index_id,SHORT.hash)}</span>${ix.corpus_hash ? html` <span class="sub-cell mono">${short(ix.corpus_hash,SHORT.hash)}</span>` : ''}`,ix.generation_format || '',count(ix.record_count),bytesText(ix.database_bytes),html`${bytesText(ix.payload_bytes)} <span class="sub-cell">${ix.payload_proof==='PROVED' ? t('proved') : ix.payload_available===false ? t('absent') : codeWords(ix.payload_proof || '')}</span>`,stateLine(key,{next:''}),(ix.protected_by || []).length ? ix.protected_by.map(codeWords).join(' · ') : (ix.eligible ? t('eligible for cleanup') : ''),actions]); });
     const indexes=indexRows.length ? table([{label:'#',type:'num',index:true},{label:t('Index'),type:'text',cls:'col-tight'},{label:t('Format'),type:'text',cls:'col-tight'},{label:t('Records'),type:'num'},{label:t('Database'),type:'num'},{label:t('Payload'),type:'num'},{label:t('Availability'),type:'status',cls:'col-tight'},{label:t('Protected by'),type:'text',absorb:true},{label:'',type:'link'}],indexRows,'',{report:true,countLine:false,classes:'compact evidence-indexes'}) : emptyState(t('No evidence index is kept in this workspace.'));
     const un=e.unreferenced && typeof e.unreferenced==='object' ? Object.entries(e.unreferenced).filter(([,v])=>typeof v==='number' && v>0).map(([k,v])=>`${codeWords(String(k).toUpperCase())} ${count(v)}`) : [];
     return panel(t('Evidence'),t('What the evidence data layer keeps, physical bytes each object once; an index is evicted or rebuilt, never its vectors.'),html`${railMarkup}<h3>${t('Evidence indexes')} <span class="num">${count((e.indexes || []).length)}</span></h3>${indexes}${un.length ? html`<p class="caption">${t('Unreferenced')} · ${un.join(' · ')}</p>` : ''}`,'','data-storage="evidence" data-box="table"');
   }
-  /* U48 (V209): the held state's backups -- the root, each kept generation (newest first), the last
+  /* the held state's backups -- the root, each kept generation (newest first), the last
    * automatic attempt after a data update; a person backs up now; a restore is the client's own
-   * command onto a new directory, with no Host (V328), so the page names it and never runs it. */
+   * command onto a new directory, with no Host, so the page names it and never runs it. */
   async function readBackups() {
     const state={loading:true,body:get('backups') || null,retry:false};states.set('backups',state);
     const active=()=>states.get('backups')===state && here()==='storage';
@@ -1264,7 +1264,7 @@ const LiveWorkspace = (() => {
     const absent=gens[0]?.absent || [];
     const notHeld=absent.length ? html`<p class="caption">${t('Not held by this workspace in the newest generation')} · ${absent.map((v,i)=>html`${i ? ' · ' : ''}<span class="mono">${v}</span>`)}</p>` : '';
     const command=`alphalattice backup restore --dir <new directory> --workspace-id ${app.workspace || '<workspace id>'} --root "${bk.backup_root}"${gens[0] ? ` --generation ${gens[0].generation_hash}` : ''}`;
-    // a restore is the client's own command onto a new directory, with no Host (V328): named in its code dialog, never run here
+    // a restore is the client's own command onto a new directory, with no Host: named in its code dialog, never run here
     const restore=[t('Restore'),html`${t('A command of the client, onto a new or empty directory, with no Host')}${codeRef(t('Restore command'),command,'text')}`];
     // MA2, MA4: the generations are a table's box; a warning or a refusal stands on the ground above it
     return html`${refused}${refusedGenerations}${failed}${panel(t('Backups'),caption,html`${kv([[t('Backup root'),locatorCell(bk.backup_root)],[t('Last automatic backup'),last],restore],'kv-columns')}${list}${notHeld}${detail(bk,'Exact backup listing')}`,make,gens.length ? 'data-storage="backups" data-box="table"' : 'data-storage="backups"')}`;
@@ -1276,8 +1276,8 @@ const LiveWorkspace = (() => {
     const summaryRail=rail(html`${stat(t('Managed on disk'),b.display?.managed ? bytesRead(b.display.managed.split(' (')[0]) : bytesText(b.managed_bytes),t('physical bytes · each object once'))}${stat(t('Referenced'),b.display?.logical ? bytesRead(b.display.logical.split(' (')[0]) : bytesText(b.logical_bytes),html`${bytesText(shared)} ${t('shared between versions')}`)}${stat(t('Free disk'),b.display?.free ? bytesRead(b.display.free.split(' (')[0]) : bytesText(b.free_disk_bytes),t('on this workspace\'s disk'))}${b.display?.cap ? stat(t('Managed cap'),bytesRead(b.display.cap.split(' (')[0]),b.budget ? t(b.budget?.setting?.cap_bytes === 'auto' ? 'automatic from managed data and free disk' : 'set by the operator') : '') : ''}`, 'data-readiness-strip', t('Storage summary'));
     const summary=html`${summaryRail}${capacity}`;
     const rootKeys=[...Object.keys(ROOT_LABEL).filter(k=>k in roots),...Object.keys(roots).filter(k=>!(k in ROOT_LABEL))], fileTotal=rootKeys.reduce((sum,root)=>sum+(Number(roots[root]?.files)||0),0);
-    const breakdown=panel(t('What is kept where'),t('The managed roots of this workspace, from the storage owner\'s inventory; shared objects are counted once, under the first root that names them.'),table([{label:t('Root'),type:'text',absorb:true},{label:t('On disk'),type:'num',cls:'col-tight'},{label:t('Referenced'),type:'num',cls:'col-tight'},{label:t('Files'),type:'num',cls:'col-tight'}],rootKeys.map(root=>{const v=roots[root];return tr([html`${t(ROOT_LABEL[root]?.[0] || root)}${ROOT_LABEL[root]?.[1] ? infoMark(t(ROOT_LABEL[root][1])) : ''}`,bytesText(v.physical_bytes),bytesText(v.logical_bytes),count(v.files)]);}),'',{report:true,countLine:false,foot:[t('Total'),bytesText(b.managed_bytes),bytesText(b.logical_bytes),count(fileTotal)]}),'','data-box="table"'); // words first, figures last (round 60); what a root holds is its (i), so the first screen keeps few words (R4)
-    // rows (round 28): the version as the title, why it is kept and its bytes as props, the
+    const breakdown=panel(t('What is kept where'),t('The managed roots of this workspace, from the storage owner\'s inventory; shared objects are counted once, under the first root that names them.'),table([{label:t('Root'),type:'text',absorb:true},{label:t('On disk'),type:'num',cls:'col-tight'},{label:t('Referenced'),type:'num',cls:'col-tight'},{label:t('Files'),type:'num',cls:'col-tight'}],rootKeys.map(root=>{const v=roots[root];return tr([html`${t(ROOT_LABEL[root]?.[0] || root)}${ROOT_LABEL[root]?.[1] ? infoMark(t(ROOT_LABEL[root][1])) : ''}`,bytesText(v.physical_bytes),bytesText(v.logical_bytes),count(v.files)]);}),'',{report:true,countLine:false,foot:[t('Total'),bytesText(b.managed_bytes),bytesText(b.logical_bytes),count(fileTotal)]}),'','data-box="table"'); // words first, figures last; what a root holds is its (i), so the first screen keeps few words (R4)
+    // rows: the version as the title, why it is kept and its bytes as props, the
     // retention action at the row's end
     const versionName=(hash)=>{const x=Data.inputVersion(hash);return x?.cutoff ? dateRange(x.start,x.cutoff) : html`${t('Input version')} ${mono(hash,SHORT.hash)}`;}; // S (law 96): a version the inputs do not list is named by its words, its hash after
     const versions=panel(t('Retained input versions'),t('Every version and why it is kept. Pinning retains a version by your choice; unpinning leaves its other roots as they are.'),html`<div class="card-list lines slotted version-rows">${(b.inputs || []).map(v=>objectRow({lead: 'file', name: versionName(v.binding_hash), to: Data.inputVersion(v.binding_hash) ? {action: 'workspace-version-open', value: v.binding_hash} : null, cls: 'version-row'}, {key:v.binding_hash,columns:['roots','size','availability'],props:[factsRef(t('Kept because'),html`<p>${v.roots.length ? v.roots.map(r=>t(ROOT_TEXT[r] || r)).join(' · ') : t('no root: eligible for cleanup')}</p>`),bytesText(v.logical_bytes),v.available ? '' : t('unavailable')],actions:action(v.roots.includes('USER_PINNED')?'Remove pin':'Retain input','pin',v.binding_hash,!v.available||b.status==='RECOVERY_REQUIRED'?t('Retention change unavailable'): '','menu-row')}))}</div>`);
@@ -1286,7 +1286,7 @@ const LiveWorkspace = (() => {
     const planLedger=plan ? kv([[t('Reclaimable'),bytesText(plan.reclaimable_bytes)],[t('Retained'),bytesText(plan.retained_bytes)],[html`<strong>${t('Managed total')}</strong>`,html`<strong>${bytesText(Number(plan.reclaimable_bytes||0)+Number(plan.retained_bytes||0))}</strong>`]],'num') : '';
     const resume=(b.pending_cleanup || []).map(hash=>banner(t('An approved cleanup did not finish'),t('Resume it before anything else changes here; it removes only the targets it was approved for.'),'warning',action('Resume approved cleanup','resume-cleanup',hash,'','button primary')));
     const cleanup=plan ? panel(t('Cleanup preview'),t('The exact files an approved cleanup would remove and what stays; nothing is deleted without your confirmation.'),html`${planLedger}${kv(planFacts.map(([k,v])=>[t(k),v]))}`) : '';
-    // N3: what cleanup never removes is the page's (i) (`storageInfo`)
+    // what cleanup never removes is the page's (i) (`storageInfo`)
     return html`${resume}${summary}${cleanup}${breakdown}${versions}${evidencePanel(b.evidence)}${backupsPanel()}${detail(b,'Exact inventory and references')}`;
   }
   function page() {
@@ -1298,7 +1298,7 @@ const LiveWorkspace = (() => {
     // an issue named by the address is its own page (F2); one the owner no longer lists leaves the lobby with a line
     const token=name==='issues' ? hashParams().get('issue') || '' : name==='inputs' ? hashParams().get('version') || '' : '', own=token && b ? (name==='issues' ? issuePage(b,token) : versionPage(b,token)) : null;
     if(own) return html`${S.error||state.error?notRead(t('Workspace action needs attention'),S.error||state.error,explain(String(S.error||state.error).split(':')[0])):''}${noticeFor(name)?noteLine(t('Last operation'),t(noticeFor(name))):''}${own}`;
-    // N3: the documentation a page carried in a box is its (i): the rules, the contract, the policy
+    // the documentation a page carried in a box is its (i): the rules, the contract, the policy
     const terms=(rows)=>rows.map(([k,v])=>`${t(k)}: ${t(v)}`).join(' ');
     const info={issues:terms([['Who confirms','You, as the authorized Human; the product decides nothing on its own.'],['What is decided','One of the responses the data owner permits, for the exact evidence shown; nothing else is confirmable.'],['When it applies','When the Task continues: the owner revalidates the evidence first, then applies the decision.'],['What stays','Saved research and published input versions; a decision changes what the next Task does, never a saved object.']]),
       inputs:terms([['Identity','The binding hash of the sealed source; a materializer or method change re-seals the same data'],['Contents','Source files and Parquet objects, stored once where versions share them'],['Older versions','Retained exactly as sealed; saved research keeps the version it used'],['Selection','Explicit, in a Research Lab draft; nothing is selected for you']]),

@@ -363,7 +363,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
     Counts follow the access kind and symbol across files: moving an existing access is not
     growth. A new access or a second use still needs the product's public entry. The scan alone
-    let five through on 2026-09-30, each registered beside its test (V16).
+    let five through on 2026-09-30, each registered beside its test.
     """
 
     before: Counter[str] = Counter()
@@ -383,7 +383,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
 def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     """A format that does not name its version, readers and upgraders, or names a file that is
-    not there (LAWS.md DA6, V267)."""
+    not there (LAWS.md DA6)."""
 
     out: list[str] = []
     for key, value in sorted(known.items()):

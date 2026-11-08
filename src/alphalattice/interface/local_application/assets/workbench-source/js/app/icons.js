@@ -1,4 +1,4 @@
-/* Line icons: 24 × 24 viewBox, stroke inherits currentColor from the CSS .icon rule. */
+/* Line icons: 24 × 24 viewBox, stroke inherits currentColor from the CSS.icon rule. */
 const ICON = {
   overview: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
   data: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7"/>',

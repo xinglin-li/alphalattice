@@ -365,11 +365,11 @@ def _classify_sector_results(
 class SectorRefreshStager:
     """Acquire current-sector evidence without touching DuckDB.
 
-    The JSON file is a private, run-resumable staging artifact (DA9, V268). It is never a
+    The JSON file is a private, run-resumable staging artifact (DA9). It is never a
     research authority: only a complete, revalidated document may be committed atomically
     into the workspace DuckDB by :meth:`commit`. It binds the provider, the manifest and what
     it stages, never the transport: a staging deferred under two workers resumes under one,
-    each chunk recording the workers that fetched it (PA2, PA3, V257).
+    each chunk recording the workers that fetched it (PA2, PA3).
     """
 
     manifest: UniverseManifest

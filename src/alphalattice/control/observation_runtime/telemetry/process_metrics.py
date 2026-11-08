@@ -204,7 +204,7 @@ def _linux_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str |
 
 class _ProcessExited(Exception):
     """A descendant that exited between the tree's enumeration and its read: gone, not
-    unreadable, so its absence is no limitation of the measurement (V472)."""
+    unreadable, so its absence is no limitation of the measurement."""
 
 
 _ERROR_INVALID_PARAMETER = 87
@@ -843,7 +843,7 @@ def worker_processes(cores: int) -> int:
 
     An execution parameter, never an identity: work spread over them answers what one worker
     answers, which the owner that spreads it proves. The cores are the CPU budget's for the Task
-    (the operator's; binding plan, B7); one stays with the process that hands the work out and
+    (the operator's); one stays with the process that hands the work out and
     writes what comes back, never fewer than one worker. Memory admits as many workers of this
     process's current size as fit in the share of available memory a runtime plan admits by
     default: a worker imports what its parent imported, so the parent's size is a cautious
@@ -1187,7 +1187,7 @@ def busy_logical_processors(
 
     The count is bounded by the processors counted and includes work outside this process.
     A process confined to some processors shares those, not the machine: with
-    `processor_ids` each is read on its own and only theirs is counted (V357), so a busy
+    `processor_ids` each is read on its own and only theirs is counted, so a busy
     machine outside them leaves them free. When processor-time counters are unavailable,
     the reader uses a bounded load-average fallback if the operating system exposes one.
 

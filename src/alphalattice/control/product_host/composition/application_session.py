@@ -87,12 +87,12 @@ class WorkspaceApplicationSession:
     @contextmanager
     def _cpu_lease(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[int]:
         """The CPU budget's cores this Task holds while it runs: its reads' threads and the work
-        items it runs at once (V436).
+        items it runs at once.
 
         A Task that may run beside others takes its share of the budget over the running
         places; the leases of the Tasks running at once stay within the budget (`TASK_LEASES`).
         What it ran with is recorded beside it in the workspace's execution log; the reads give
-        the same bytes at any count (binding plan, B7), and a Task's work items answer in their
+        the same bytes at any count, and a Task's work items answer in their
         order whatever the width (`_WorkPool`).
         """
 
@@ -138,8 +138,8 @@ class WorkspaceApplicationSession:
         The dispatch that drives an admitted Task (this file, Task Control's runner and
         registry) decides no number: a recovery re-verifies its stage prefix from the
         evidence, and the owner's implementation hash moves when the numbers could. The
-        dispatch's own bytes were in this identity until the binding plan's B5, so every
-        edit here refused the recovery of every waiting Task.
+        dispatch's own bytes were in this identity until dispatch left the identity closure,
+        so every edit here refused the recovery of every waiting Task.
         """
         return str(canonical_hash({"implementation": implementation_hash}))
 
@@ -177,7 +177,7 @@ class WorkspaceApplicationSession:
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
             registry.reconcile_after_writer_acquisition(observed_at=datetime.now(UTC))
-            # A Task whose row the store lost reads again from its frozen request (V181).
+            # A Task whose row the store lost reads again from its frozen request.
             registry.rebuild_from_requests(observed_at=datetime.now(UTC))
             return cls(
                 workspace=root,
@@ -255,7 +255,7 @@ __all__ = ["PORTFOLIO_PUBLIC_RUNTIME_FILENAME", "WorkspaceApplicationSession"]
 
 
 def _submitting_agent() -> SubmittingAgent | None:
-    """The agent session of the request being admitted, as the Host's boundary read it (U33)."""
+    """The agent session of the request being admitted, as the Host's boundary read it."""
     provenance = REQUEST_PROVENANCE.get()
     if provenance is None or (provenance.vendor is None and provenance.session is None):
         return None

@@ -1,4 +1,4 @@
-"""A follow learns when its Task moves on (binding plan N8): STATUS may wait on the Host for the
+"""A follow learns when its Task moves on: STATUS may wait on the Host for the
 Task's next stage or lifecycle, and the CLI's `--wait` asks it to instead of polling.
 
 For the UI line's suite: tests/integration/local_application/test_status_follow.py.
@@ -126,7 +126,7 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     )
 
     class _Client:
-        workspace = Path("workspace")  # every client names one (V428)
+        workspace = Path("workspace")  # every client names one
 
         def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
             sent.append(document)
@@ -175,7 +175,7 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
 def test_an_outcome_reads_the_task_state_wherever_the_answer_writes_it(
     body: dict[str, Any], expected: str
 ) -> None:
-    """requirement (V144, V138): work that waits, runs or awaits a decision is pending, in
+    """requirement: work that waits, runs or awaits a decision is pending, in
     ``lifecycle`` or in ``status`` as readbacks write it; a blocked or cancelled Task and a
     stopped trial are refused; nothing unfinished answers OK."""
 
@@ -183,7 +183,7 @@ def test_an_outcome_reads_the_task_state_wherever_the_answer_writes_it(
 
 
 def test_a_wait_follows_the_task_the_answer_started_and_stops_for_a_decision() -> None:
-    """requirement (V137): a Portfolio promotion names the new Alpha Task it started; the
+    """requirement: a Portfolio promotion names the new Alpha Task it started; the
     follow reads that Task, not the finished one the request was about, keeps the admission's
     next requests when the last read offers none, and stops at a review a wait cannot pass."""
 
@@ -197,7 +197,7 @@ def test_a_wait_follows_the_task_the_answer_started_and_stops_for_a_decision() -
     )
 
     class _Client:
-        workspace = Path("workspace")  # every client names one (V428)
+        workspace = Path("workspace")  # every client names one
 
         def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
             sent.append(document)
@@ -245,7 +245,7 @@ class _Stub:
 
 
 def test_the_waiter_never_ends_on_a_timer_and_waits_out_a_host_restart(monkeypatch) -> None:
-    """requirement (WK, V280): without --max-wait the follow waits until the Task ends, a
+    """requirement (WK): without --max-wait the follow waits until the Task ends, a
     Host that stopped or restarted included, and ends with one line: the event and its read."""
 
     task_id = str(uuid4())
@@ -265,7 +265,7 @@ def test_the_waiter_never_ends_on_a_timer_and_waits_out_a_host_restart(monkeypat
     event = final["wait_event"]
     assert event["event"] == "ENDED" and event["task_id"] == task_id
     assert "task show" in event["read"] and task_id in event["read"]
-    # The installed command and the workspace, as every printed command starts (V428, V429).
+    # The installed command and the workspace, as every printed command starts.
     assert event["read"].startswith("alphalattice ") and "--workspace" in event["read"]
     assert len(stub.sent) == 4
 
@@ -481,8 +481,8 @@ def test_every_waiter_ends_on_a_deferral_with_its_retry_time_and_resume(monkeypa
 
 
 def test_a_deferred_tasks_status_names_its_retry_time_and_resume() -> None:
-    """requirement (V507): the read a waiter ends on says when a deferred Task's plan may be
-    sent again and by which request, as its owner's readback words them (V375), and names that
+    """requirement: the read a waiter ends on says when a deferred Task's plan may be
+    sent again and by which request, as its owner's readback words them, and names that
     readback; a kind with no deferral readback goes on by its recovery view."""
 
     task_id = uuid4()
@@ -562,7 +562,7 @@ def test_a_deferred_tasks_clock_stops_while_it_waits() -> None:
 
 
 def test_a_remedy_that_resumed_its_task_is_followed_to_the_tasks_end(monkeypatch) -> None:
-    """regression (V508, the user's review at 244900d8): `incident remediate --remedy RECOVER
+    """regression (the user's review at 244900d8): `incident remediate --remedy RECOVER
     --wait` answered OK at once, the resumed Task's RUNNING nested in `answer`. The receipt
     names the Task and its lifecycle, so the wait follows the Task to its end."""
 
@@ -704,7 +704,7 @@ def _wait_with_output(tmp_path: Any, monkeypatch: Any, answers: list[Any]) -> tu
 
 
 def test_an_interrupted_wait_keeps_the_admitted_task_in_its_output(tmp_path, monkeypatch) -> None:
-    """regression (V273, OP3, OP12): `--wait --output` wrote the answer only after the wait, so
+    """regression (OP3, OP12): `--wait --output` wrote the answer only after the wait, so
     a Ctrl-C while waiting left no file and named the admitted Task nowhere. The admission is
     written first."""
 
@@ -718,7 +718,7 @@ def test_an_interrupted_wait_keeps_the_admitted_task_in_its_output(tmp_path, mon
 def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """requirement (V273): the final answer takes the admission's place in `--output`, and the
+    """requirement: the final answer takes the admission's place in `--output`, and the
     envelope names the file."""
 
     answers = [{"status": "SUCCEEDED", "lifecycle": "SUCCEEDED"}]
@@ -824,7 +824,7 @@ def test_a_wait_on_a_trial_ends_when_a_step_needs_its_recovery(monkeypatch) -> N
 
 
 def test_a_request_reads_a_completed_trial_once() -> None:
-    """requirement (V461): a goal resolves the trial its reference names and the review packet
+    """requirement: a goal resolves the trial its reference names and the review packet
     another names, which reads the same trial again; inside one request a completed trial is
     read once, a running one each time, and outside a request every read is new."""
 
@@ -855,7 +855,7 @@ def test_a_request_reads_a_completed_trial_once() -> None:
 
 
 def test_a_goal_wait_capped_before_its_first_read_is_pending(monkeypatch) -> None:
-    """regression (V563, the user's review at de555b07): `activity wait --goal G --max-wait 1`
+    """regression (the user's review at de555b07): `activity wait --goal G --max-wait 1`
     whose first goal read met a stopped Host answered `MAX_WAIT_REACHED` as OK, exit 0, where
     the Task waiter answers PENDING, exit 3. Both are pending."""
 

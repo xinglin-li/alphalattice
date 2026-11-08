@@ -4,7 +4,7 @@ Everything here is deterministic. The review opens a sealed book, projects it,
 maps it onto admitted issuers, derives an evidence-only obligation from the
 resulting scope, reopens an exact Alternative Evidence publication, and
 assembles the dossier a bounded actor may reason over. The Host composes it with
-the Evidence route and the Task runner (W1: moved from the Host).
+the Evidence route and the Task runner (moved from the Host).
 
 Two rules shape the module:
 
@@ -1112,7 +1112,7 @@ def _ratio(part: float, whole: float) -> float:
 class CarriedReading:
     """Carry an earlier analysis's relevant readings into the current review.
 
-    Findings on filings the run names as read carry at its cutoff (W3),
+    Findings on filings the run names as read carry at its cutoff,
     and the analysis answers for the carried holdings it read latest.
     """
 
@@ -1131,7 +1131,7 @@ class CarriedReading:
     issue_findings: frozenset[str] = frozenset()
     """Findings, by the handle its brief states, that an open issue of the
     issuers' register rests on: carried whether or not their filing is still in
-    the window, since the issue does not age out with it (W3)."""
+    the window, since the issue does not age out with it."""
 
 
 EARLIER_METHOD_NOTE = (
@@ -1182,13 +1182,13 @@ def compile_portfolio_coverage_dossier(
     """Assemble the one dossier of a book analysed as several units.
 
     `carried` are the earlier analyses whose filings in the window no one
-    need read again (W3): each is a child named `c01`, `c02`, ... beside the
+    need read again: each is a child named `c01`, `c02`, ... beside the
     units, carrying only its findings on the filings the run names, each
     finding narrowed to the book's holdings; it answers for the carried
     holdings it read latest, and says when it read them (`read_as_of`).
 
     `open_issues` are the issuers' register's issues open on the book's
-    holdings (W3): each is in the dossier with the findings it rests on, as
+    holdings: each is in the dossier with the findings it rests on, as
     the CRO last stated it, so every book that holds the issuer reads it.
 
     `nothing_filed` are the holdings whose filing index at the cutoff held

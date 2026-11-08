@@ -127,7 +127,7 @@ def test_the_host_seals_publishes_and_replays_the_analysis(tmp_path: Path) -> No
     assert package.structure(handle).state is EvidenceStructureState.SINGLE_SOURCE
     assert package.structure(handle).supporting_document_count == 1
     # The one current report is what the window holds: a topic it does not
-    # serve is no gap (no periodic report is a baseline since W1), so the
+    # serve is no gap (no periodic report is a baseline), so the
     # package names nothing missing -- and whatever it names is an issuer and
     # topic line.
     assert package.missing_evidence == ()

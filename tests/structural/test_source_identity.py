@@ -147,7 +147,7 @@ def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role() -> 
 
 
 def test_study_identities_track_no_platform_or_build_file() -> None:
-    """Binding plan B5: a study's replay compares its kind's implementation closure; a
+    """A study's replay compares its kind's implementation closure; a
     composition, storage, Task or build file there made an edit that decides no number
     refuse every saved study of the kind."""
 
@@ -444,7 +444,7 @@ _ENVIRONMENT_READERS = {
         "the library that fetched the observations, recorded with them"
     ),
     "src/alphalattice/evidence/alternative_evidence/runtime/execution.py": (
-        "the machine a Task ran on, recorded beside its reuse (binding plan, N4)"
+        "the machine a Task ran on, recorded beside its reuse"
     ),
 }
 """Every module that reads the interpreter, the platform or an installed version, and why.
@@ -487,7 +487,7 @@ def _environment_readers(source: Path) -> set[str]:
 
 
 def test_u0_records_an_opened_reads_numbers_and_names_the_sections_that_moved() -> None:
-    """regression (V277): U0 compared each read's verdict, so a result whose `rank_ic` moved from
+    """regression: U0 compared each read's verdict, so a result whose `rank_ic` moved from
     0.01 to 0.9 read OPENS both times; an opened read records its numbers by section, what the
     clock decides left out, and the comparison names each section that moved."""
 
@@ -518,7 +518,7 @@ def test_the_environment_is_read_by_one_helper_and_the_named_keys() -> None:
 
 @pytest.mark.proves("shared_kernel.schema_hash_ignores_prose_and_binds_structure")
 def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
-    """requirement (SH, LAWS.md SC3, V98, V247): a schema's words -- a model's docstring, a
+    """requirement (SH, LAWS.md SC3, V98): a schema's words -- a model's docstring, a
     field's description, an enum's docstring, a title, examples -- move no schema hash; a type,
     a constraint, a default or a required field does. A property named like prose keeps its name."""
 

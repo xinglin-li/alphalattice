@@ -540,7 +540,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert preview["source_inventory"]["issuers_without_source"] == [missing]
         assert preview["source_inventory"]["issuers_with_source"] == COVERAGE_BOOK_SIZE - 1
         # Said before the run: the one unit short of the floor, with the code it fails and the
-        # issuer without a source, and the ways on; the other units are offered (V541).
+        # issuer without a source, and the ways on; the other units are offered.
         units = preview["coverage"]["units"]
         unit = next(value for value in units if missing in value["ordered_entity_ids"])
         issuers = len(unit["ordered_entity_ids"])
@@ -553,7 +553,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         ]
         assert f"1 of {UNIT_COUNT} units fall short" in preview["source_limit"]
         # Official acquisition first; a book of seven units takes no package, since units under
-        # different packages cannot be reviewed together (V546).
+        # different packages cannot be reviewed together.
         ways = preview["source_ways"]
         assert "package" not in ways and ways["package_rule"] == PACKAGE_RULE
         assert ways["official"]["command"].endswith("evidence-consent set --per-issuer 3")
@@ -641,7 +641,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert row["failure_code"] == failed[0]["failure_code"]
         assert row["packet_task_id"] is None
         # The failed unit says why and what to do, and names the issuer without a source; the
-        # book offers the ways to cover it beside the units it can review (V541).
+        # book offers the ways to cover it beside the units it can review.
         assert row["issuers_without_source"] == [missing]
         assert row["detail"] == refusal_words(code)["detail"] and "`source_ways`" in row["detail"]
         assert row["next_action"] == "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
@@ -672,7 +672,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
             )
             assert len(service.registry.tasks()) == count
         # The failed unit's packet does not read: the answer is a refusal naming the code, with
-        # the book's coverage read as the way on (V388).
+        # the book's coverage read as the way on.
         refusal = _run_one(
             service,
             {
@@ -757,7 +757,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         )
         section = _run_one(service, {"operation": "EVIDENCE_CRO"})
         progress = section["coverage_progress"]
-        # The units analysed before the failure are carried (W3): only the failed one is read.
+        # The units analysed before the failure are carried: only the failed one is read.
         recovered = list(failed[0]["ordered_entity_ids"])
         assert progress["units_failed"] == 0 and progress["units_prepared"] == 1, progress
         assert progress["issuers_carried"] == len(COVERAGE_ENTITIES) - len(recovered), progress
@@ -916,8 +916,8 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
         assert rows[pending]["detail"] == refusal_words(stale)["detail"]
         assert rows[pending]["next_action"] == "PREPARE_THE_UNIT_AGAIN"
         assert "detail" not in rows[answered]
-        # Neither its packet nor its Analyst's bundle is offered, which the Host would refuse
-        # (U79); the preview its row names is offered bound (V567).
+        # Neither its packet nor its Analyst's bundle is offered, which the Host would refuse;
+        # the preview its row names is offered bound.
         offered = section["next_requests"]
         assert not {f"packet_{pending}", f"analyst_bundle_{pending}"} & set(offered), offered
         assert offered["preview"] == {**offered["dossier"], "operation": "EVIDENCE_PREVIEW"}
@@ -1387,7 +1387,7 @@ def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_
     now = review.clock()
     coverage = review.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
     (unit,) = coverage.run.units
-    # Exactly the Task a pre-C2 build admitted for a one-unit book.
+    # Exactly the Task a build before coverage runs admitted for a one-unit book.
     policy = replace(review.evidence_policy, admit_model_review=False)
     legacy = AlternativeEvidenceRefreshCommand(
         application=review,

@@ -53,7 +53,7 @@ HOLDINGS_ROWS_PER_BLOCK = 100
 
 @dataclass(frozen=True)
 class EarlierReview:
-    """The book's last review as the bundle names it (V256, OP10).
+    """The book's last review as the bundle names it (OP10).
 
     When it was published, the evidence it read and whether it answers under the installed
     CRO policy.
@@ -148,7 +148,7 @@ def _unreported(dossier: PortfolioReviewDossier) -> list[str]:
 
 
 def _coverage_overflow(dossier: PortfolioReviewDossier) -> tuple[BundleFile, ...]:
-    """Retain every entry of a coverage list that exceeds its inline preview (V609)."""
+    """Retain every entry of a coverage list that exceeds its inline preview."""
     sections = [
         BundleSection(
             key=heading,
@@ -469,7 +469,7 @@ def cutoff_words(evidence_as_of: datetime, formation_session: str | None) -> tup
 
 
 def coverage_words(coverage: PortfolioReviewCoverage) -> tuple[str, ...]:
-    """The dossier's coverage in words: read, quiet and unreached kept apart (FLOW-3).
+    """The dossier's coverage in words: read, quiet and unreached kept apart.
 
     A holding that filed nothing in the window was checked and had nothing to read; it is
     neither unread nor a finding of no risk. Only the unreached share was not read.

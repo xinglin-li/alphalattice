@@ -146,8 +146,7 @@ request opens it)."""
 
 RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ"})
 """Operations whose own record is what they write: a declared event is its row in the feed,
-and a usage reading files its readings, so the observer records no operation beside them
-(V266)."""
+and a usage reading files its readings, so the observer records no operation beside them."""
 
 
 OPENS_NO_GOAL: frozenset[str] = (

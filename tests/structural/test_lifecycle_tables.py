@@ -1,15 +1,15 @@
-"""Every set of Task lifecycle states in src is registered with its reason (V524, S2).
+"""Every set of Task lifecycle states in src is registered with its reason (S2).
 
 A consumer that sorts Task states decides each state on purpose. The sorts are: in flight, a
 waiter's exit, finished, owed, resumable. A state the Task never leaves by itself, put on the
-wrong side, kept a confirm in flight (V506), a waiter past a deferral (V507) and a clock running
-through a wait (V520). The scan finds every set of two or more states in src, named or written
+wrong side, kept a confirm in flight, a waiter past a deferral and a clock running
+through a wait. The scan finds every set of two or more states in src, named or written
 inline in a comparison. Each is pinned here by its module, scope and members, with the reason
 for what it holds and what it leaves out. A new or changed set fails until it is registered.
 
 Who can reach a state is pinned too:
 - only the preparation and data update owners defer a Task, and the research update through
-  the data update's stages (V601);
+  the data update's stages;
 - no Task Control transition sets REVIEW_PENDING, which the client's tables keep for answers'
   `status`;
 - every kind that can defer reads its deferral in STATUS.
@@ -27,7 +27,7 @@ RESUMABLE = "resumable: a queued or interrupted Task is (re)driven; every other 
 FINISHED = "finished: its readback answers for it; every other state is not done"
 ENDED = "ended: nothing more happens to it; a waiting state may still move"
 EXECUTING = "executing now; a waiting or ended Task does no work"
-STOPPED = "stopped and owed a way on; a deferral has its own branch (V507)"
+STOPPED = "stopped and owed a way on; a deferral has its own branch"
 
 REGISTER: dict[tuple[str, str, str], str] = {
     (
@@ -70,7 +70,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DecisionAdvancementApplication._in_flight",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a pending advancement of the strategy answers its own plan whatever target is asked, a "
-    "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
+    "deferred one too, whose run resumes it once due; a cancelling one is not pending",
     (
         "control/product_host/composition/decision_advancement.py",
         "DecisionAdvancementApplication._stopped.stops",
@@ -82,7 +82,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DecisionAdvancementApplication.in_flight",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "every state the Task leaves by itself answers the admitted Task; a deferral is not in "
-    "flight: its rerun resumes it once due and is refused before then (V601)",
+    "flight: its rerun resumes it once due and is refused before then",
     (
         "control/product_host/composition/evidence_review_application.py",
         "EvidenceReviewApplication._active_refresh_task.active",
@@ -114,7 +114,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "control/product_host/composition/resource_estimates.py",
         "_HOLDING_MEMORY",
         "CANCEL_REQUESTED,RUNNING",
-    ): "Tasks still executing hold the memory a refused heavy run waits for (PERF-1)",
+    ): "Tasks still executing hold the memory a refused heavy run waits for",
     (
         "control/product_host/composition/goal_check.py",
         "MOVING",
@@ -145,7 +145,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "PortfolioResearchOperations._tasks_wait",
         "DEFERRED,QUEUED,RUNNING",
     ): "a busy queue puts the verification sweep and the held-state backup off, a deferral "
-    "holding the running place too, which they would only queue behind (V604)",
+    "holding the running place too, which they would only queue behind",
     (
         "control/product_host/composition/portfolio_research_operations.py",
         "PortfolioResearchOperations._recover",
@@ -244,7 +244,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",
         "BLOCKED,DEFERRED",
-    ): "the retry path: refused before the retry time, resumed after it (V375, V506)",
+    ): "the retry path: refused before the retry time, resumed after it",
     (
         "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",
@@ -306,7 +306,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "ResearchStrategyPreparation.readback",
         "BLOCKED,CANCELLED",
     ): "an ended unsuccessful preparation offers its verified durable declaration for a "
-    "new preview (V615); a succeeded one is read back and an interrupted one is recoverable",
+    "new preview; a succeeded one is read back and an interrupted one is recoverable",
     (
         "control/product_host/maintenance/data_update.py",
         "bind_existing_data_workspace",
@@ -328,7 +328,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "WorkspaceDataUpdateApplication._waiting",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a data update that has not ended answers its own plan, a deferred one too, whose run "
-    "resumes it once due; a cancelling one is not waiting (V604)",
+    "resumes it once due; a cancelling one is not waiting",
     (
         "control/product_host/storage/evidence_references.py",
         "_IN_FLIGHT",
@@ -381,7 +381,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "control/task_control/timing.py",
         "_ENDED",
         "BLOCKED,CANCELLED,DEFERRED,RECOVERY_REQUIRED,REVIEW_PENDING,SUCCEEDED",
-    ): "the clock stops: ended, or waiting on someone or on time (V520)",
+    ): "the clock stops: ended, or waiting on someone or on time",
     (
         "foundation/feature_engine/producers/reference_data.py",
         "SectorRefreshStager._load",
@@ -421,25 +421,24 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "BLOCKED,CANCELLED",
     ): "found stopped or cancelled when admitted: its command has nothing to run, so it is "
     "never read as running while that command waits its turn; a succeeded one still is, its "
-    "command publishing (V600)",
+    "command publishing",
     (
         "interface/local_application/dispatcher.py",
         "LocalBackgroundDispatcher._waits_its_turn",
         "QUEUED,RECOVERY_REQUIRED",
     ): "a command that returned before its Task's turn came is kept and driven again once the "
-    "running place is free; a Task in any other state has nothing left for it (V604)",
+    "running place is free; a Task in any other state has nothing left for it",
     (
         "control/product_host/composition/research_update_automation.py",
         "_MOVING",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "an update the automation attends still on its way: read again at the next idle; a "
-    "deferral waits on its retry time instead (V604)",
+    "deferral waits on its retry time instead",
     (
         "control/product_host/composition/research_update_automation.py",
         "_STOPPED",
         "BLOCKED,CANCELLED",
-    ): "an attended update that stopped: its words name the way on, and no plan follows at once "
-    "(V604)",
+    ): "an attended update that stopped: its words name the way on, and no plan follows at once ",
 }
 
 
@@ -454,7 +453,7 @@ def _sets() -> set[tuple[str, str, str]]:
 
 
 def test_every_lifecycle_set_is_registered_with_its_reason() -> None:
-    """requirement (V524, S2): each set of Task states in src is registered with what it holds
+    """requirement (S2): each set of Task states in src is registered with what it holds
     and leaves out, so a new or changed one is classified on purpose before it lands."""
 
     found = _sets()
@@ -478,7 +477,7 @@ def test_only_the_data_owners_defer_and_no_transition_sets_review_pending() -> N
         if "StageDisposition.DEFERRED" in path.read_text(encoding="utf-8")
     )
     assert deferring == [
-        "control/product_host/composition/decision_advancement.py",  # its data stage's (V601)
+        "control/product_host/composition/decision_advancement.py",  # its data stage's
         "control/product_host/data_preparation/application.py",
         "control/product_host/maintenance/data_update.py",
         "control/task_control/runner.py",  # maps the disposition to the Task's lifecycle

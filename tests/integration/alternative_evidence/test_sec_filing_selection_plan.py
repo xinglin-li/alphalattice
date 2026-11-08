@@ -1,6 +1,6 @@
 """SEC filings are planned before capacity is spent: what each issuer filed recently.
 
-Since W1 (2026-09-24) the plan is the filings accepted in the 30 days before the
+Since 2026-09-24 the plan is the filings accepted in the 30 days before the
 cutoff -- major negatives first, then periodic reports, then the other current
 reports, each newest first -- as far as the capacity reaches, every discovered
 filing accounted for, and nothing older kept as a baseline: an issuer that filed
@@ -236,7 +236,7 @@ def test_a_filing_read_earlier_gives_its_capacity_to_what_is_new() -> None:
 
 
 def test_an_issuer_that_filed_nothing_in_the_window_has_an_empty_plan() -> None:
-    """requirement (W1): nothing in the window, nothing read -- the plan is
+    """requirement: nothing in the window, nothing read -- the plan is
     empty and every discovered filing is counted outside it; the packing names
     the issuer as nothing filed from the read that holds this plan."""
 
@@ -280,7 +280,7 @@ def test_an_issuer_that_filed_nothing_in_the_window_has_an_empty_plan() -> None:
 
 
 def test_a_request_under_the_retired_policy_is_refused_at_planning() -> None:
-    """requirement (W1): the 90-day window with fixed baselines is retired; a
+    """requirement: the 90-day window with fixed baselines is retired; a
     request sealed under it still validates (and reads back), is refused if
     planned again, and the window and the baselines cannot be mixed."""
 

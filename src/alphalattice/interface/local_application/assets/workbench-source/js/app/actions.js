@@ -3,15 +3,15 @@
 Object.assign(ACTIONS, {
   close: () => closeDialog(true),
   'data-reload': () => Data.reload(),
-  'page-reload': () => location.reload(), // the render boundary's way on (round 96)
-  'code-open': (id) => openCodeRef(id), // a document's link (round 92)
+  'page-reload': () => location.reload(), // the render boundary's way on
+  'code-open': (id) => openCodeRef(id), // a document's link
   'code-copy': () => copyText($('#dialog .code-document')?.textContent || ''),
   'quick-open': () => Inspect.openQuick(),
   'quick-pick': (v) => Inspect.commandPick(v),
   'focus-toggle': () => Inspect.toggleFocus(),
   'proof-open': (key) => Inspect.openLens(key),
   'proof-close': () => Inspect.closeLens(true),
-  context: () => Window.toggleWorkspace(), // round 81: the popover (Window.bind adds the window's own)
+  context: () => Window.toggleWorkspace(), // the popover (Window.bind adds the window's own)
   'research-map': () => Inspect.researchMap(),
   'tools-menu': toolsMenu,
   'tab-more': (key) => tabMore(key), // a tab strip's More (2026-09-22)
@@ -19,7 +19,7 @@ Object.assign(ACTIONS, {
   'peek-open': () => Inspect.openPeeked(),
   'peek-close': () => Inspect.closePeek(),
   'detail-back': () => Window.back(), // a detail's way one level up (LS5)
-  'inspector-tab': (key) => Inspect.openPanelTab(key), // the panel's two tabs (round 92)
+  'inspector-tab': (key) => Inspect.openPanelTab(key), // the panel's two tabs
   'row-peek': (value) => { const row = (value && $$('#main [data-key]').find((r) => r.dataset.key === value)) || document.activeElement?.closest?.('[data-row], tr'); if (row) { $$('#main [data-held]').forEach((r) => r.removeAttribute('data-held')); row.setAttribute('data-held', ''); Inspect.peek(row); } },
   'step-prev': () => Inspect.step(-1),
   'step-next': () => Inspect.step(1),
@@ -31,7 +31,7 @@ Object.assign(ACTIONS, {
   appearance: () => toggleTheme(),
   'filter-set': (v) => (String(v).startsWith('evidence-') ? LiveReview : Lobby).setFilter(v),
   'filter-clear': (v) => (String(v).startsWith('evidence-') ? LiveReview : Lobby).clearFilter(v),
-  'filter-field': (v) => (String(v).startsWith('evidence-') ? LiveReview : Lobby).addClause(v), // round 95: `+ Filter` chose a field; its values open next
+  'filter-field': (v) => (String(v).startsWith('evidence-') ? LiveReview : Lobby).addClause(v), // `+ Filter` chose a field; its values open next
   'lobby-fold': (v) => Lobby.fold(v), // law 136: a group head folds and opens, kept per list
   'lobby-more': (v) => Lobby.more(v), // a group's rows past its first, in place
   'lobby-clear': (v) => Lobby.clearAll(v),
@@ -66,26 +66,26 @@ const PRODUCT_ACTIONS = {
     'goal-note-save':()=>LiveGoals.noteSave(),
     'goal-abandon':()=>LiveGoals.abandon(),
     'goal-abandon-commit':()=>LiveGoals.abandonCommit(),
-    'goal-first-use-stop':()=>LiveGoals.stopFirstUse(), // U70: the first use's one Stop
-    'activation-confirm':v=>LiveActivation.confirm(v), // U73: a strategy run forward from its book, or stopped
+    'goal-first-use-stop':()=>LiveGoals.stopFirstUse(), // the first use's one Stop
+    'activation-confirm':v=>LiveActivation.confirm(v), // a strategy run forward from its book, or stopped
     'activation-commit':()=>LiveActivation.commit(),
     'activation-read':()=>LiveActivation.read(),
     'book-controls':value=>LiveActivation.controls(value),
     'book-plan':value=>LiveTasks.previewRequest(JSON.parse(value)),
-    'research-update-enable':()=>Settings.setUpdate(true), // U73: the daily update for every strategy that runs forward
+    'research-update-enable':()=>Settings.setUpdate(true), // the daily update for every strategy that runs forward
     'goal-first-use-stop-commit':()=>LiveGoals.stopFirstUseCommit(),
     'goal-export':format=>LiveGoals.exportGoal(format),
     'goal-evidence':i=>LiveGoals.evidence(i),
     'goal-reference-retry':id=>LiveGoals.openReference(id, {retry:true}),
     'goal-continue':i=>LiveGoals.continueFrom(i),
     'goal-more':cursor=>LiveGoals.more(cursor),
-    'model-open':id=>LiveModels.open(id), // U50: a model's review packet
+    'model-open':id=>LiveModels.open(id), // a model's review packet
     'models-list':()=>LiveModels.list(),
     'models-refresh':()=>LiveModels.refresh(),
     'models-page':way=>LiveModels.turn(way),
     'model-confirm':value=>LiveModels.confirm(value), // a person's activation or deactivation, as the Host offers it
     'model-commit':()=>LiveModels.commit(),
-    'feature-research-open':key=>LiveFeatureResearch.open(key), // U56: a formula factor's review packet
+    'feature-research-open':key=>LiveFeatureResearch.open(key), // a formula factor's review packet
     'feature-research-list':()=>LiveFeatureResearch.list(),
     'feature-research-refresh':()=>LiveFeatureResearch.refresh(),
     'feature-research-page':v=>LiveFeatureResearch.turn(v), // the Host's page of the listing
@@ -100,7 +100,7 @@ const PRODUCT_ACTIONS = {
     'workspace-pin-index':key=>LiveWorkspace.preview('pin-index',key),
     'workspace-rebuild-index':key=>LiveWorkspace.preview('rebuild-index',key),
     'workspace-resume-cleanup':key=>LiveWorkspace.preview('resume-cleanup',key),
-    'workspace-backups-page':way=>LiveWorkspace.turnBackups(way), // U48: the kept generations' pages
+    'workspace-backups-page':way=>LiveWorkspace.turnBackups(way), // the kept generations' pages
     'workspace-input':key=>LiveWorkspace.selectInput(key),
     'workspace-task':key=>LiveWorkspace.task(key),
     'workspace-more':key=>LiveWorkspace.more(key),
@@ -113,7 +113,7 @@ const PRODUCT_ACTIONS = {
     'workspace-current':()=>LiveWorkspace.current(),
     'study-catalog':()=>LiveStudy.catalog(),
     'study-open':id=>{rememberList(id,(key)=>'experiment:'+key);objectEntry('study:'+id);return LiveStudy.open(id,app.page);},
-    'alpha-compare-open':id=>navigate('alpha-compare',{study:id,alpha_left_task:id}), // N2 (law 132): the Alpha study's `Compare with…`
+    'alpha-compare-open':id=>navigate('alpha-compare',{study:id,alpha_left_task:id}), // law 132: the Alpha study's `Compare with…`
     'study-export':f=>LiveStudy.exportStudy(f),
     'study-factor-detail':id=>LiveStudy.factorDetail(id),
     'study-curate-preview':()=>LiveStudy.confirm('curate'),
@@ -136,7 +136,7 @@ const PRODUCT_ACTIONS = {
     'study-risk-page':v=>LiveStudy.riskPage(v),
     'review-refresh':()=>LiveReview.refresh(),
     'review-current':()=>LiveReview.working(),
-    'review-pin':v=>LiveReview.selectPublication(v), // a publication row pins it (round F5)
+    'review-pin':v=>LiveReview.selectPublication(v), // a publication row pins it
     'review-collection-page': v => LiveReview.collectionPage(v),
     'review-live-item':v=>LiveReview.setItem(v),
     'review-fold':v=>LiveReview.fold(v),
@@ -165,20 +165,20 @@ const PRODUCT_ACTIONS = {
     'review-source-page':v=>LiveReview.sourcePage(v), // the Sources page's issuers table (2026-09-22)
     'page-jump':selector=>jumpTo(selector), // a long page's section, brought into view (the user's phase 6 reading)
     'review-answer-open':role=>LiveReview.openAnswer(role), // the answer's editor, opened when the material is read (phase 6 reading)
-    'review-documents-page':v=>LiveReview.documentsPage(v), // U57 (A6): the retained documents, by the Host's page
-    'review-issuer-page':v=>LiveReview.issuerPage(v), // the Evidence page's issuers table (round F1)
+    'review-documents-page':v=>LiveReview.documentsPage(v), // the retained documents, by the Host's page
+    'review-issuer-page':v=>LiveReview.issuerPage(v), // the Evidence page's issuers table
     'review-finding-page':v=>LiveReview.findingPage(v), // the Review page's findings table (E2)
     'review-finding-more':v=>LiveReview.findingMore(v),
     'review-name-risk':v=>LiveReview.nameRisk(v),
     'upgrade-acknowledge':()=>Settings.acknowledge(), 'upgrade-read':()=>Settings.readUpgrade(true), // R1: the upgrade overview, acknowledged by a person
-    'storage-cap-set':(value)=>Settings.setStorageCap(value), 'cpu-budget-set':(value)=>Settings.setBudget(value), 'tasks-waiting-set':(value)=>Settings.setWaiting(value), 'tasks-running-set':(value)=>Settings.setRunning(value), 'studies-verify-all':()=>Settings.verifyAll(), // U36, U37 // the operator's CPU budget (Settings, Workspace) // the CRO's turn names a risk citing a finding's alias (contract 10.7)
-    'review-run-page':v=>LiveReview.runPage(v), // the evidence pages' Runs lists (round H4)
+    'storage-cap-set':(value)=>Settings.setStorageCap(value), 'cpu-budget-set':(value)=>Settings.setBudget(value), 'tasks-waiting-set':(value)=>Settings.setWaiting(value), 'tasks-running-set':(value)=>Settings.setRunning(value), 'studies-verify-all':()=>Settings.verifyAll(), // the operator's CPU budget (Settings, Workspace) // the CRO's turn names a risk citing a finding's alias (contract 10.7)
+    'review-run-page':v=>LiveReview.runPage(v), // the evidence pages' Runs lists
     'review-runs-all':()=>LiveReview.runsAll(), // the Overview's Activity past its latest three (E1)
-    'review-packet-page':v=>LiveReview.packetPage(v), // the Review page's packet groups (round H4, a wide book)
+    'review-packet-page':v=>LiveReview.packetPage(v), // the Review page's packet groups (a wide book)
     'review-unit-page':v=>LiveReview.unitPage(v), // the Sources page's units table (law 92)
     'review-checks-page':v=>LiveReview.checksPage(v), // the Review's checks by issuer, fifty a page
-    'report-cite-page':v=>LiveReview.citePage(v), // an issuer section's citations (round H4)
-    'review-issuer-docs':v=>LiveReview.issuerDocs(v), // B3: an issuer's documents, opened in place on Sources
+    'report-cite-page':v=>LiveReview.citePage(v), // an issuer section's citations
+    'review-issuer-docs':v=>LiveReview.issuerDocs(v), // an issuer's documents, opened in place on Sources
     'review-questions':()=>LiveReview.questions(), // item 8: a Report question opens the Review at the open questions
     'review-execution':()=>LiveReview.execution(), // Sources: the preparations and the runs, folded
     'review-issuer-state':(v)=>LiveReview.issuerState(v), // the Overview's coverage key: the Issuers table by what the review reached
@@ -227,9 +227,9 @@ const PRODUCT_ACTIONS = {
     'task-recovery': (id) => LiveTasks.preview('recover',id),
     'task-commit': () => LiveTasks.commit(),
     'task-remedy': (value) => LiveTasks.previewRemedy(value),
-    'task-incident-page': (way) => LiveTasks.turnIncidents(way), // U38: a remedy the Host offers for an open incident
+    'task-incident-page': (way) => LiveTasks.turnIncidents(way), // a remedy the Host offers for an open incident
     'task-remedy-commit': () => LiveTasks.commitRemedy(),
-    'task-replan': (id) => LiveTasks.replanPreview(id), // V615: a Task's re-PLAN as its owner binds it, previewed
+    'task-replan': (id) => LiveTasks.replanPreview(id), // a Task's re-PLAN as its owner binds it, previewed
     'task-replan-commit': (name) => LiveTasks.replanCommit(name), // then the admission it offers, confirmed
     'task-result': (id) => LiveTasks.openResult(id),
     'feature-definitions':binding=>LiveFeatures.open(binding || LiveResearch.context().input_binding_hash),
@@ -252,7 +252,7 @@ const PRODUCT_ACTIONS = {
     'research-confirm': () => LiveResearch.reviewRun(),
     'research-run': () => LiveResearch.run(),
     'research-continue': (id) => LiveResearch.continueFrom(id),
-    'research-portfolio-redraft': (value) => { const [task_id, candidate_id] = JSON.parse(value); return LiveResearch.receiveHandoff({kind: 'alpha_candidate', task_id, candidate_id}); }, // U45: the Alpha study's Portfolio draft, as the refusal names it
+    'research-portfolio-redraft': (value) => { const [task_id, candidate_id] = JSON.parse(value); return LiveResearch.receiveHandoff({kind: 'alpha_candidate', task_id, candidate_id}); }, // the Alpha study's Portfolio draft, as the refusal names it
     'study-promote': () => LiveStudy.confirm('promote'), // R4
     'research-adopt-shared': () => LiveResearch.adoptShared(),
     'research-adopt-confirm': (id) => LiveResearch.confirmAdoption(id),
@@ -266,7 +266,7 @@ const PRODUCT_ACTIONS = {
     'team-actor': (actor) => LiveTeam.showActor(actor),
     'team-committee-point': (point) => LiveTeam.chooseCommitteePoint(point),
     'team-committee-read': () => LiveTeam.committeeRead(),
-    'team-member-open': (actor) => LiveTeam.openMember(actor), // U51: a member's row opens its exchanges on the Conversation
+    'team-member-open': (actor) => LiveTeam.openMember(actor), // a member's row opens its exchanges on the Conversation
     'team-participants-page': (way) => LiveTeam.turnParticipants(way),
     'team-outputs-page': (way) => LiveTeam.turnOutputs(way),
     'team-outputs-older': (which) => LiveTeam.outputsOlder(which),
@@ -277,9 +277,9 @@ const PRODUCT_ACTIONS = {
     'team-more': () => LiveTeam.more(),
     'team-older': () => LiveTeam.readOlder(),
     'team-fold': (key) => LiveTeam.toggleFold(key),
-    'review-view-clear': () => LiveReview.viewClear(), // the reading's chips (round F3)
+    'review-view-clear': () => LiveReview.viewClear(), // the reading's chips
     'team-replies': (id) => LiveTeam.toggleReplies(id),
-    // C2: a clamped exchange opens where it stands
+    // A clamped exchange opens where it stands
     'team-words': (id) => LiveTeam.toggleWords(id),
     // C3: the new exchanges' pill goes to the newest, where it is
     'team-newest': () => followWaypoint(document.querySelector('#main .team-new-bar')),
@@ -289,7 +289,7 @@ const PRODUCT_ACTIONS = {
     'team-verify': (reference) => LiveTeam.verify(reference),
     'research-inspect-shared': (hash) => LiveResearch.inspectShared(hash),
     'research-start': (kind) => LiveResearch.selectKind(kind),
-    'research-input': (key) => LiveResearch.selectInput(key), // the input chip (round 56)
+    'research-input': (key) => LiveResearch.selectInput(key), // the input chip
     'research-set': (value) => LiveResearch.setField(...value.split(':').map(Number)), // a property chip's choice
     'research-dates': () => LiveResearch.focusDates(),
     'goal-kind': (value) => LiveGoals.setKind(value),
@@ -334,7 +334,7 @@ function dispatchAction(name, value) {
 const Events = (() => {
   function onClick(e) {
     const b = e.target.closest('[data-action]');
-    if (!b && !e.target.closest('a, button, input, select, textarea, label, summary, .menu')) { // the row opens the object wherever it is clicked (round 58)
+    if (!b && !e.target.closest('a, button, input, select, textarea, label, summary, .menu')) { // the row opens the object wherever it is clicked
       const main = e.target.closest('[data-row]')?.querySelector(':scope > .list-row-main:is(a, button)') || e.target.closest('tbody > tr')?.querySelector('[data-row-press]'); // law 149: a table row is one press too
       if (main) { main.focus({preventScroll: true}); return main.click(); }
       // an exchange of the thread is read where it is pressed -- the innermost, a reply its own -- but a press that ends a selection of its words reads nothing
@@ -343,7 +343,7 @@ const Events = (() => {
     }
     if (b && !b.disabled && b.getAttribute('aria-disabled') !== 'true') {
       const choice = b.closest('.choice-list');
-      if (choice && (b.classList.contains('picker-option') || b.dataset.action?.startsWith('choice-'))) { e.preventDefault(); Choice.press(choice, b); return; } // round 95: the in-place multiple choice
+      if (choice && (b.classList.contains('picker-option') || b.dataset.action?.startsWith('choice-'))) { e.preventDefault(); Choice.press(choice, b); return; } // the in-place multiple choice
       if (b.classList.contains('picker-option')) { Picker.choose(b); if (b.dataset.action === 'picker-choose') { e.preventDefault(); return; } }
       app.pressed = b; // the element an action came from (a record steps through the list that showed it)
       Window.notePress(b); // inside an open detail or not: a level down, or a new detail
@@ -362,18 +362,18 @@ const Events = (() => {
     if (e.target.dataset.studyLimit!==undefined)return LiveStudy.edit('limit',e.target.dataset.studyLimit,e.target.checked);
     if (e.target.id==='reviewReply') { CodeEditor.input(e.target); return LiveReview.reply(e.target.value); }
     if (e.target.id==='reviewQuestion') return LiveReview.setQuestion(e.target.value);
-    if (e.target.id==='ledgerQuery') return LiveReview.ledgerQuery(e.target.value); // the ledger's search field (round E2)
+    if (e.target.id==='ledgerQuery') return LiveReview.ledgerQuery(e.target.value); // the ledger's search field
     if (e.target.id==='sourceQuery') return LiveReview.sourceQuery(e.target.value); // the issuers table's search field (2026-09-22)
     if (e.target.id?.startsWith('evidenceQuery-')) return LiveReview.collectionQuery(e.target.id.slice('evidenceQuery-'.length),e.target.value);
-    if (e.target.id==='issuerQuery') return LiveReview.issuerQuery(e.target.value); // the Evidence page's issuers (round F1)
-    if (e.target.id==='spanQuery') return LiveReview.spanQuery(e.target.value); // the passages' search field (round E3)
-    if (e.target.dataset.continueLimit!==undefined) return LiveReview.continueLimit(e.target.dataset.continueLimit, e.target.value); // a declared limit of a continuation (round E3)
+    if (e.target.id==='issuerQuery') return LiveReview.issuerQuery(e.target.value); // the Evidence page's issuers
+    if (e.target.id==='spanQuery') return LiveReview.spanQuery(e.target.value); // the passages' search field
+    if (e.target.dataset.continueLimit!==undefined) return LiveReview.continueLimit(e.target.dataset.continueLimit, e.target.value); // a declared limit of a continuation
     if ((e.target.id==='yamlEditor' || e.target.dataset.researchField!==undefined)) return LiveResearch.edit(e);
     const handler = ['holdingsQuery', 'observationRange'].includes(e.target.id) ? ON_INPUT[e.target.id] : null;
     if (handler) handler(e);
     if (e.target.id === 'quickInput') Inspect.drawCommands();
   }
-  /* A picker's choice reaches the same handlers a native field's change did (round 91): the
+  /* A picker's choice reaches the same handlers a native field's change did: the
    * trigger stands in for the field -- its id, its data attributes -- with the chosen value. */
   function changed(trigger, value) {
     const target = {id: trigger.id, value, dataset: trigger.dataset, checked: false, files: null, type: 'picker'};
@@ -420,12 +420,12 @@ const Events = (() => {
     if (el.id === 'taskNotices') LiveActivity.setNotices(el.checked);
     if (el.id === 'networkAccess') Settings.setNetwork(el.checked); // the workspace's network control (CLI-15): the owner answers in the row
     if (el.id === 'usageReading') Settings.setUsage(el.checked);
-    if (el.id === 'researchUpdate') Settings.setUpdate(el.checked); // U73: the daily research update, for the strategies that run forward
+    if (el.id === 'researchUpdate') Settings.setUpdate(el.checked); // the daily research update, for the strategies that run forward
   }
   function onKeydown(e) {
     const dialog = $('#dialog');
     if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.metaKey && e.target.matches?.('[data-read]')) { e.preventDefault(); return dispatchAction('team-event', e.target.dataset.read); } // the focused exchange is read as a press reads it
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && dialog.open && dialog.classList.contains('composer-dialog')) { // round 56: the composer submits
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && dialog.open && dialog.classList.contains('composer-dialog')) { // the composer submits
       e.preventDefault();
       return dialog.querySelector('.dialog-foot :is([data-action="case-save"], [data-action="goal-save"])')?.click();
     }
@@ -435,18 +435,18 @@ const Events = (() => {
       else Inspect.openQuick();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === '\\' && !dialog.open) { // round 62: the side
+    if ((e.ctrlKey || e.metaKey) && e.key === '\\' && !dialog.open) { // the side
       e.preventDefault();
       Window.toggleSide();
       return;
     }
-    if (!dialog.open && Window.hotkeys(e)) return; // round 81
+    if (!dialog.open && Window.hotkeys(e)) return;
     if (Inspect.quickKeydown(e)) return;
     if (Picker.keydown(e)) return;
     if (Choice.keydown(e)) return;
     if (Controls.layerKeys(e)) return;
-    if (Controls.keys(e)) return; // round 51: the chords, `/`, `?`
-    if (Controls.escape(e)) return; // round 51: one layer per Esc, the held row last
+    if (Controls.keys(e)) return; // the chords, `/`, `?`
+    if (Controls.escape(e)) return; // one layer per Esc, the held row last
     if (Controls.walk(e)) return;
     if (e.key === 'Tab' && dialog.open) trapTab(e, dialog);
   }
@@ -464,8 +464,8 @@ const Events = (() => {
     document.addEventListener('pointerdown', (e) => { if (e.target?.id === 'holdingsSession') Portfolio.rememberSessionPlace(true); }, true);
     document.addEventListener('focusin', (e) => { if (e.target?.id === 'holdingsSession') Portfolio.rememberSessionPlace(); }, true);
     document.addEventListener('click', onClick);
-    Inspect.bindHover(); // round 58: hover cards on object links
-    // round 55: a row's right-click opens its ··· at the pointer; elsewhere the browser's own menu
+    Inspect.bindHover(); // hover cards on object links
+    // a row's right-click opens its ··· at the pointer; elsewhere the browser's own menu
     document.addEventListener('contextmenu', (e) => {
       const row = e.target.closest?.('#main [data-row], #main tbody > tr'), root = row?.querySelector('.row-menu');
       if (!root) return;
@@ -473,7 +473,7 @@ const Events = (() => {
       $$('#main [data-held]').forEach((r) => r.removeAttribute('data-held')); row.setAttribute('data-held', '');
       toggleRowMenu(root, {x: e.clientX, y: e.clientY});
     });
-    // a filter field (round 56's menu search, round 72's log filter): the rows `data-filter`
+    // a filter field (menu search, log filter): the rows `data-filter`
     // names inside the closest `data-filter-scope`, by their words; an empty line when none is left
     document.addEventListener('input', (e) => {
       const rows = e.target.dataset?.filter;
@@ -483,7 +483,7 @@ const Events = (() => {
       for (const row of scope.querySelectorAll(rows)) { const hit = !q || row.textContent.toLowerCase().includes(q); row.hidden = !hit; shown += hit ? 1 : 0; }
       const empty = scope.querySelector('.menu-empty'); if (empty) empty.hidden = shown > 0;
     });
-    // the shortcuts sheet's search (round 51): rows by their words, a group with no row hides
+    // the shortcuts sheet's search: rows by their words, a group with no row hides
     document.addEventListener('input', (e) => {
       if (!e.target.matches?.('[data-key-filter]')) return;
       const q = e.target.value.trim().toLowerCase(), sheet = e.target.closest('dialog');

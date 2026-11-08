@@ -99,7 +99,7 @@ const LiveModels = (() => {
   function confirm(value) {
     const at = value.indexOf(':'), kind = value.slice(0, at), id = value.slice(at + 1);
     const m = (S.body?.models || []).find((x) => x.model_id === id), request = m?.next_requests?.[kind];
-    if (!m || !request || !Data.offers(request.operation) || S.busy) return; // U13: the route the session names
+    if (!m || !request || !Data.offers(request.operation) || S.busy) return; // the route the session names
     S.pending = {kind, name: nameOf(m), path: Data.route(request.operation), payload: {model_id: request.model_id}};
     const facts = [[t('Model'), nameOf(m)], [t('Numerical binding'), hashCell(m.contract?.numerical_binding_hash)], [t('Contract receipt'), hashCell(m.contract?.contract_receipt_hash)], ...(m.sandbox ? [[t('Sandbox study'), html`<span class="mono">${short(m.sandbox.study_task_id)}</span> · ${when(m.sandbox.recorded_at)}`]] : [])];
     const activate = kind === 'activate';

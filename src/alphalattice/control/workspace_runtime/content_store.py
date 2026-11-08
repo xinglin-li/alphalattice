@@ -1,10 +1,9 @@
 """Small atomic content-addressed primitive shared by legacy and public stores.
 
 Each file is named by its content's digest and written in its DA9 type: a contract or a
-document as JSON, numerical lanes as Parquet, a rendered page as HTML. A store written
-before V210 kept lanes, documents and pages as packed ``.bin`` bytes under the same
-digest; those are read, never written, until the formats registry names their upgrader
-(V267).
+document as JSON, numerical lanes as Parquet, a rendered page as HTML. A legacy store
+kept lanes, documents and pages as packed ``.bin`` bytes under the same digest; those are
+read, never written, until the formats registry names their upgrader.
 """
 
 from __future__ import annotations
@@ -1075,8 +1074,8 @@ def replace_shared_file(staged: Path, destination: Path) -> None:
     """Replace a file other requests may hold open to read it, despite their brief locks.
 
     Windows refuses to replace a file another handle holds open, and a Host's concurrent reads
-    hold one while they read: the replace waits out short backoffs before it gives up (V477,
-    AX17's overlapping trial reads). Elsewhere the first replace stands.
+    hold one while they read: the replace waits out short backoffs before it gives up.
+    Elsewhere the first replace stands.
     """
     for attempt in range(_WINDOWS_REPLACE_ATTEMPTS):
         try:
@@ -1096,7 +1095,7 @@ def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
     """The digest numerical columns are named by: SHA-256 over their C-order bytes, in order.
 
     One column's digest is that of its packed bytes, the name its ``.bin`` lane had, so a
-    lane keeps its identity across the type change (V210).
+    lane keeps its identity across the type change.
     """
     with span("hash", "columns"):
         digest = hashlib.sha256()
@@ -1322,7 +1321,7 @@ class ContentAddressedStore:
     def load_packed_bytes(self, *, category: str, content_hash: str) -> bytes:
         """The bytes a lane's digest names: its columns' C-order bytes, in order.
 
-        A store written before V210 holds them as a ``.bin`` file, read as it is.
+        A legacy store holds them as a ``.bin`` file, read as it is.
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
@@ -1353,7 +1352,7 @@ class ContentAddressedStore:
         return content_hash
 
     def load_document(self, *, category: str, content_hash: str, extension: str) -> bytes:
-        """Read one document and prove it is the one asked for; a pre-V210 store's is ``.bin``."""
+        """Read one document and prove it is the one asked for; a legacy store's is ``.bin``."""
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.{extension}"
         try:
@@ -1389,8 +1388,8 @@ class ContentAddressedStore:
         return b"".join(values.tobytes() for values in self._columns(target).values())
 
     def _legacy(self, category: str, content_hash: str) -> bytes:
-        # A store written before V210 packed its lanes, documents and pages as `.bin` bytes;
-        # read only, until the formats registry names their upgrader (V267).
+        # A store written in a legacy format packed its lanes, documents and pages as `.bin` bytes;
+        # read only, until the formats registry names their upgrader.
         try:
             return (self.root / category / f"{content_hash}.bin").read_bytes()
         except FileNotFoundError as error:

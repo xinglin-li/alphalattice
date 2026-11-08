@@ -83,7 +83,7 @@ def _view(live: LocalPortfolioWebSession, task_id: str) -> dict[str, Any]:
     body = _json(live, f"/api/tasks/recovery?task_id={task_id}")
     # The document is the typed contract, hash and all; the status block is the projection of
     # the same snapshot as the operation reader sees it (the dispatcher's mask), not a re-read,
-    # and the offered requests stand beside it as navigation (V443).
+    # and the offered requests stand beside it as navigation.
     TaskRecoveryView.model_validate(
         {k: v for k, v in body.items() if k not in {"status", "next_requests", "next_action"}}
     )
@@ -203,7 +203,7 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert "no new Task and no new declaration" in actions["RECOVER"]["scope"]
         assert "An attempt" in actions["RECOVER"]["expected_effect"]
         assert "may stop again" in actions["RECOVER"]["expected_effect"]
-        # V443: each one taking a version is offered bound to the Task and the version this
+        # each one taking a version is offered bound to the Task and the version this
         # view read, so `recovery run --from` sends what was seen.
         bound = {"task_id": stopped["task_id"], "expected_task_hash": stopped["task_record_hash"]}
         version = stopped["task_record_hash"]
@@ -587,7 +587,7 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
         "task_id": task_id,
     }
     # A read of the blocked Task answers REFUSED, so it says why and where it goes on, as a
-    # refusal does (V424, AX14: it named neither).
+    # refusal does (AX14: it named neither).
     status = _json(live, f"/api/status?task_id={task_id}")
     assert outcome_of(status) == "REFUSED"
     assert status["failure_code"] == code
@@ -605,7 +605,7 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
 def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
     live, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (PERF-1): the runner's memory block, read through the recovery view, offers
+    """requirement: the runner's memory block, read through the recovery view, offers
     RECOVER bound to its version; once memory is free the same Task resumes and completes."""
 
     from alphalattice.control.product_host.composition import resource_estimates
@@ -957,7 +957,7 @@ def test_recovery_context_fields_follow_composed_replan_offers(
 
 
 # Its last request raises an inner KeyError on purpose, to prove it is not read as an
-# unknown Task (V449).
+# unknown Task.
 @pytest.mark.untyped_failure
 def test_the_view_refuses_an_unknown_task_and_a_missing_query_typed(
     live: LocalPortfolioWebSession,

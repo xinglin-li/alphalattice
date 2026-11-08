@@ -1,8 +1,8 @@
 # The installed Dynamic Panel LightGBM model (EX). Its reference recipe is the product's current
 # one: `product_recipe.IW184_ESTIMATOR_POINT` at the first IW184 seed. The axes are the space a
-# search proposes from (V309); they stay inside the adapter's domain, and `max_depth` starts at 5
+# search proposes from; they stay inside the adapter's domain, and `max_depth` starts at 5
 # so every `num_leaves` on its axis is admitted (at most 2 ** max_depth). The seed is replication,
-# not search. This wave the declaration enters no identity.
+# not search. The declaration enters no identity.
 model_id: dynamic_panel_lightgbm
 family: gradient_boosted_trees
 fit_protocol: DIRECT_FIT

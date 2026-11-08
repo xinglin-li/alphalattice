@@ -744,7 +744,7 @@ class _Reading:
 class SealedReadings:
     """Index filings read by current analyses, grouped by issuer.
 
-    The filing is the unit of reuse (W3).
+    The filing is the unit of reuse.
 
     A filing is read when a publication under the current binding tuple holds
     it in its document set, its issuer's checks executed and its source is

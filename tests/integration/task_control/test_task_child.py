@@ -45,7 +45,7 @@ def _no_kept_workers():
 def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
     monkeypatch, spread, at, error_type
 ):
-    """V610: both child APIs normalize constructor/start resource refusals and can recover."""
+    """both child APIs normalize constructor/start resource refusals and can recover."""
     # Retire even a warm worker through the public boundary before injecting at its next start.
     with pytest.raises(ChildInterrupted):
         run_in_child(f"{HERE}:ended", {})
@@ -399,7 +399,7 @@ def observe_cancellation(*, started: str, stopped: str, cancelled):
 
 
 def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp_path):
-    """V610: a second worker start refusal drains a real first call through its cancel flag."""
+    """a second worker start refusal drains a real first call through its cancel flag."""
     start = multiprocessing.get_context("spawn").Process.start
     processes = []
 

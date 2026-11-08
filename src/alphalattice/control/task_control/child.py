@@ -378,7 +378,7 @@ ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THRE
 def _worker_started(worker: int = 0) -> None:
     # A spread worker runs every call on one thread (`threads=1`): its libraries are told so
     # before they load, and reserve one thread's buffers rather than one per processor, about
-    # 1.5 GB of commit a worker (V436). The Task's own worker keeps the default its calls run
+    # 1.5 GB of commit a worker. The Task's own worker keeps the default its calls run
     # under (`threads=None`), on which a Risk number can depend (LAWS PA3).
     if worker > 0:
         for name in ONE_THREAD_VARIABLES:
@@ -396,7 +396,7 @@ def _call(
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
     The worker runs a Task's numerical work, which reads only sealed inputs, so each call holds
-    its reads offline whatever the workspace allows, as the parent's run does (V116). With
+    its reads offline whatever the workspace allows, as the parent's run does. With
     `threads`, the numerical libraries are held to that many threads for the call; with
     `answer`, the result is written to that file and the pipe carries only that it was. The
     call's spans, with the worker's CPU seconds and bytes over it, ride beside the answer for

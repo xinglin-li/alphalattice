@@ -758,7 +758,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
         listed = git("ls-tree", "--name-only", base, "--", registry).strip()
         declared_then = git("show", f"{base}:{registry}") if listed else None
-        if fresh or declared != declared_then:
+        if fresh or declared != declared_then or changed_tests:  # an area's shares need every test
             missing = paths - projected.keys()
             if staged:
                 more = read_blobs([":" + path for path in missing], ROOT)

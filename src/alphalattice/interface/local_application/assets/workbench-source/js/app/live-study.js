@@ -4,7 +4,7 @@
  * declaration JSON and exports stay reachable inside disclosures. */
 const LiveStudy = (() => {
   const kinds={factor:'factor.screening-development',alpha:'alpha.model-development',risk:'risk.covariance-development','alpha-compare':'alpha.model-development'};
-  const alphaPage=(page=app.page)=>page==='alpha' || page==='alpha-compare'; // N2: the comparison reads its first study as the Alpha page does
+  const alphaPage=(page=app.page)=>page==='alpha' || page==='alpha-compare'; // the comparison reads its first study as the Alpha page does
   const pages=new Set([...Object.keys(kinds),'foundation']);
   const S={task:null,body:null,status:'empty',error:'',busy:'',revision:0,readPage:'',writeTicket:null,verificationError:'',
     curation:null,roles:{},reasons:{},limits:new Set(),decision:'',target:'',factorQuery:'',
@@ -23,7 +23,7 @@ const LiveStudy = (() => {
   const COMPARISON_UNSUPPORTED='workbench.alpha_comparison_unsupported_study';
   const value=v=>v && typeof v==='object' && Object.hasOwn(v,'availability') ? v.value ?? v.availability : v ?? '';
   const text=v=>{const x=value(v);return typeof x==='object'?JSON.stringify(x):String(x);};
-  const pairs=(v)=>Object.entries(v || {}).map(([k,x])=>[html`<span data-tip="${k}">${codeWords(k)}</span>`,text(x)]); // the key worded, the code in its title (round 86)
+  const pairs=(v)=>Object.entries(v || {}).map(([k,x])=>[html`<span data-tip="${k}">${codeWords(k)}</span>`,text(x)]); // the key worded, the code in its title
   /* A displayed statistic: four decimals for reading; a non-zero value that four decimals would
    * print as zero is shown in exponent form instead, never as 0.0000; the exports and each item's
    * evidence carry the owner's exact value. (`stat` is the card component; this formats a number.) */
@@ -181,7 +181,7 @@ const LiveStudy = (() => {
     const compare=app.page==='alpha-compare';
     const rows=(Data.experiments() || []).filter(v=>compare ? comparisonListed(v) : v.kind===kinds[app.page]);
     const refused=Data.experimentRefusals() || [];
-    // One row per saved experiment (round 13): the state dot, the declared label, the reference,
+    // One row per saved experiment: the state dot, the declared label, the reference,
     // the interval, the input and its cutoff; the row opens the exact object. The state is the
     // listing's, overlaid by Task Control's newer report (Data.lifecycleOf).
     // the list's one verb (law 129; the user, 2026-09-24: 现在没地方创建new experiments): a new experiment of this kind -- the empty list's own way says it when nothing is saved
@@ -206,7 +206,7 @@ const LiveStudy = (() => {
     const l=S.body?.limitations || [];
     return l.length?html`<div class="card-list">${l.map((code)=>objectRow({lead: statusDot('metadata',t('Recorded limitation')), name: coded(code), cls: 'limit-row'}))}</div>`:'';
   }
-  /* The study's facts (round 64): the sources as one kv (each value the way to its object), the
+  /* The study's facts: the sources as one kv (each value the way to its object), the
    * recorded limitations, the declared facts, the lineage and the declaration as JSON — sections
    * of the inspector's Facts mode, opened from the head's `Facts` chip and `···`; the page keeps
    * its figures. What the study admits next is the first section's line. */
@@ -255,7 +255,7 @@ const LiveStudy = (() => {
     return reading;
   }
   const foundationName=(hash)=>{const reading=S.foundationLabel?.hash===hash && S.foundationLabel.revision===S.revision ? S.foundationLabel : readFoundationLabel(hash);return reading.ids ? foundationFactorsTitle(reading.ids) : html`<span class="mono">${LiveViews.shortRef(hash)}</span>`;};
-  // U37: how this read was proved -- in full, or the files' identity unchanged since the full check (the owner's words on hover)
+  // how this read was proved -- in full, or the files' identity unchanged since the full check (the owner's words on hover)
   const verificationWords=(basis)=>basis==='FULL' ? t('in full: every sealed file read') : String(basis).startsWith('FILES_UNCHANGED') ? hint(t('files unchanged since the full check'),String(basis).replace(/^FILES_UNCHANGED\s*/,'')) : codeWords(basis);
   function propertiesSection(lead=[]) {
     const b=S.body,a=b.alpha_source || {};
@@ -305,7 +305,7 @@ const LiveStudy = (() => {
     const selected=new Set(S.body.document.factor.factor_ids), items=S.body.result.evidence_report.items;
     return items.filter(v=>selected.has(v.factor_id)&&(!S.factorQuery||v.factor_id.includes(S.factorQuery))).map(v=>tr([
       btnAttrs(html`<span class="mono">${v.factor_id}</span>${icon('arrow')}`,'study-factor-detail',v.factor_id,'text-btn cell-opener','data-row-press'),coded(v.classification),figure(v.mean_oriented_rank_ic),figure(v.rank_ic_by_q_value),figure(v.validation_pair_coverage_mean),Number.isFinite(Number(v.validation_period_count)) ? count(v.validation_period_count) : text(v.validation_period_count)
-    ])); // N6 (Stripe's list): the factor's name opens its evidence; no trailing link column
+    ])); // the factor's name opens its evidence; no trailing link column
   }
   const FACTOR_HEADERS=()=>[{label:t('Factor'),type:'id'},{label:t('Classification'),type:'text'},{label:t('Rank IC (mean, oriented)'),type:'num'},{label:t('BY q-value'),type:'num'},{label:t('Pair coverage (fraction)'),type:'num'},{label:t('Validation periods'),type:'num'}];
   const factorNote=()=>t('{n} of {m} hypotheses shown: the factors this study declared, each read against the full denominator. Values to four decimals (tiny non-zero values in exponent form); the exact values are in each factor\'s evidence and in the JSON export.',{n:S.body.document.factor.factor_ids.length,m:S.body.result.evidence_report.hypothesis_count});
@@ -314,7 +314,7 @@ const LiveStudy = (() => {
     if(!item)return;
     const choice=S.curation?.choices.find(v=>v.factor_id===id);
     const exact=(v)=>typeof v==='number' ? String(v) : text(v);
-    // N2 (law 131): a row's detail opens in the inspector beside its table, never a dialog
+    // law 131: a row's detail opens in the inspector beside its table, never a dialog
     Window.openInspector({mode:'detail',readHeader:()=>({title:id,kind:t('Factor · recorded evidence')}),title:id,kind:t('Factor · recorded evidence'),by:['study-factor-detail',id],body:html`<section class="inspector-section">${kv([[t('Classification'),coded(item.classification)],[t('Reasons'),(item.reason_codes || []).map(codeWords).join(' · ') || ''],[t('Admissible roles'),choice?.roles.join(', ') || t('none · the decision owner admits no role from this evidence')],[t('Redundancy group'),choice?.cluster_id || ''],[t('Rank IC (mean, oriented) · exact'),exact(item.mean_oriented_rank_ic)],[t('Rank IC t-statistic (HAC)'),exact(item.rank_ic_hac_t_stat)],[t('Raw p-value'),exact(item.rank_ic_raw_p_value)],[t('BY q-value · exact'),exact(item.rank_ic_by_q_value)],[t('Validation periods'),exact(item.validation_period_count)],[t('Pair coverage (fraction) · exact'),exact(item.validation_pair_coverage_mean)]])}<h3>${t('Exact item evidence')}</h3><pre class="code-block code-document">${json(item)}</pre></section>`});
   }
   const curationCount=()=>{const c=S.curation;return t('{a} of {n} have an admissible role; {c} chosen so far. The recorded limitations below must each be acknowledged. Nothing is preselected.',{a:c.choices.filter(v=>v.roles.length).length,n:countText(c.choices.length,'{n} declared factor','{n} declared factors'),c:Object.values(S.roles).filter(Boolean).length});};
@@ -333,7 +333,7 @@ const LiveStudy = (() => {
     // denominator -- said once under them.
     const rows=factorRows();
     const evidence=html`<section class="panel" data-box="table"><div class="table-toolbar"><div class="panel-label"><h2>${t('Factor evidence')} <span class="num">${count(S.body.document.factor.factor_ids.length)}</span></h2>${infoMark(`${factorNote()} ${t('Development evidence')}: ${t('Selection scopes the report, not the full multiple-testing denominator. No prospective validation is implied.')}`)}</div><div class="search-field">${icon('search')}<input id="studyFactorQuery" class="search-input" type="search" placeholder="${t('Find factor')}" aria-label="${t('Find factor')}" value="${S.factorQuery}" autocomplete="off"></div></div><div id="studyFactorTable">${table(FACTOR_HEADERS(),rows,'',{classes:'compact',report:true,grid:true,countLine:false})}</div></section>`;
-    return html`${curationEditor()}${detailSplit(evidence,'detail')}${propertiesSection()}`; // N2 (law 126 amended): the decision first, the evidence the lane's width, the properties after; law 149: a factor's detail beside its table
+    return html`${curationEditor()}${detailSplit(evidence,'detail')}${propertiesSection()}`; // law 126 amended: the decision first, the evidence the lane's width, the properties after; law 149: a factor's detail beside its table
   }
   /* A sealed Foundation's page (N6): what it admits -- its ordered factors and the limitations
    * it carries -- first; where it came from as a side box; the exact identities in Facts. */
@@ -359,7 +359,7 @@ const LiveStudy = (() => {
    * each, and the admission the address names as the page -- its title the crumb's last word,
    * the page's word the way up, `<-` the way back. */
   const foundationFactorsTitle=(ids)=>`${countText(ids.length, '{n} factor', '{n} factors')}${ids.length ? ' · '+ids.slice(0,3).join(', ')+(ids.length>3 ? ' +'+(ids.length-3) : '') : ''}`;
-  const foundationTitle=(a)=>foundationFactorsTitle(a.foundation?.ordered_factor_ids || []); // N6 (law 134): its factors, as a Factor study's label says them
+  const foundationTitle=(a)=>foundationFactorsTitle(a.foundation?.ordered_factor_ids || []); // law 134: its factors, as a Factor study's label says them
   function foundationRefusal(b) {
     const reason=b.missing_factor_task_id ? html`${t('The recorded Factor Task is missing from Task Control.')} ${hashCell(b.missing_factor_task_id,SHORT.id)} ${t('A new Factor study starts from the recorded input; the original declaration is not retained.')}` : t('The recorded Foundation sources could not be verified.');
     const ways=prerequisiteWays(b.next_requests) || link(t('Research inputs'),'inputs','button compact');
@@ -374,7 +374,7 @@ const LiveStudy = (() => {
     const a=S.admission;
     const lede=html`<p class="lede">${t(sealedNow() ? (S.sealed.status==='REUSED_EXACT' ? 'This admission was already sealed: the owner returned the existing artifact exactly; nothing new was published.' : 'Sealed just now from the previewed candidate; immutable from here on.') : 'An immutable research handoff: the explicit source for an Alpha draft.')} ${t('Reading or publishing a Foundation does not train a model, change current inputs or activate a strategy.')}</p>`;
     const tools=[{ic:'file',action:'study-foundation-export',value:a.admission_hash,word:t('Export JSON'),why:t('The admission exactly as sealed')}];
-    // U26: its standing is the list's (the owner's one reading of every admission), read quietly when not yet read
+    // its standing is the list's (the owner's one reading of every admission), read quietly when not yet read
     const listed=[...(S.foundations || []),...(named?.revision===S.revision ? named.rows : [])].find(f=>f.admission?.admission_hash===a.admission_hash);
     if(!listed && !S.foundations) nameFoundations();
     const old=listed?.standing==='HISTORICAL';
@@ -415,7 +415,7 @@ const LiveStudy = (() => {
    * the candidates with their development metrics in the owner's units, the folds with their
    * windows, and the two permitted continuations. A score is development evidence on validation
    * folds, never a realized return; nothing is trained, scored or chosen by reading. */
-  /* U27: an Alpha qualification, a study of its own: the family it qualified over (the development studies on its
+  /* an Alpha qualification, a study of its own: the family it qualified over (the development studies on its
    * goal's question since the goal opened, those attempted without evidence), the candidates it nominated and its
    * disposition -- a candidate set, or no stable current model, a result and never a failure -- with its receipt. */
   const QUALIFIED={CURRENT_ALPHA_CANDIDATE_SET_READY:['verified','Candidate set ready'],NO_STABLE_CURRENT_ALPHA_MODEL:['metadata','No stable current model']};
@@ -445,7 +445,7 @@ const LiveStudy = (() => {
       ])}${codeRef(t('Exact lifecycle receipt'),{content_hash:receipt.content_hash,program_hash:receipt.program_hash,lifecycle:receipt.lifecycle})}`);
     }
     const features=d.ordered_feature_ids || [];
-    // N6: what was trained and how it was evaluated are the study's properties, one line each; the
+    // what was trained and how it was evaluated are the study's properties, one line each; the
     // parameters, the split and the recorded work are their (i)s, the exact declaration the Facts'
     const params=Object.entries(d.model_parameters || {}).filter(([k])=>k!=='family').map(([k,v])=>`${k.replaceAll('_',' ')} ${typeof v==='object' ? JSON.stringify(v) : v}`).join(' · ');
     const alphaRows=[
@@ -460,13 +460,13 @@ const LiveStudy = (() => {
     // Each row leads with its identity, state and action in one cell and keeps the metrics in
     // labelled numeric columns (the label is the header at width, the caption in the narrow
     // card arrangement); the action is never squeezed by the metric columns.
-    // Round 60 (Stripe's table): one line per row — the identity leads, the state is a column, the
+    // one line per row — the identity leads, the state is a column, the
     // metrics are labelled numeric columns and the action is a quiet link at the end.
     const metric=(v)=>html`<td class="num">${figure(v)}</td>`;
     const shortId=(id)=>short(String(id || '').replace(/^alpha-candidate-/,''),SHORT.id);
     const candidateHeaders=[{label:t('Candidate'),type:'id'},{label:t('State'),type:'text'},...['OOS R² (pooled, vs zero)','Rank IC (mean per session)','Decile spread (gross, fraction)','Fold coverage (fraction)'].map((x)=>({label:t(x),type:'num'}))];
     const candidates=(r.candidates || []).map(v=>html`<tr><td><span class="main-cell mono" data-tip="${v.candidate_id}">${shortId(v.candidate_id)}</span></td><td>${[codeWords(v.status),...(v.failure_codes || [])].filter(Boolean).join(' · ')}</td>${metric(v.pooled_oos_r2)}${metric(v.mean_rank_ic)}${metric(v.mean_gross_decile_spread)}${metric(v.fold_coverage_mean)}</tr>`);
-    // N6 (the plan's next steps): an evaluated candidate seeds a Portfolio draft from the side column's box, not a column the table rolls away
+    // an evaluated candidate seeds a Portfolio draft from the side column's box, not a column the table rolls away
     const evaluatedCandidates=(r.candidates || []).filter(v=>v.status==='DEVELOPMENT_EVALUATED');
     const nextStep=evaluatedCandidates.length ? banner(t('Next step'),t('"Create Portfolio draft" opens a source-bound draft on the Lab page: PLAN and one explicit confirmation follow; nothing is refitted or run by opening it.'),'neutral',html`<div class="flow next-step-actions">${evaluatedCandidates.map(v=>typedBtn(evaluatedCandidates.length>1 ? t('Create Portfolio draft from {id}',{id:shortId(v.candidate_id)}) : t('Create Portfolio draft'),'study-portfolio-draft',v.candidate_id,'button primary',b.status==='EXPERIMENT_SUMMARY' ? t('Verify evidence before continuing') : ''))}</div>`,'arrow') : '';
     const windows=Object.fromEntries((p.folds || []).map(f=>[f.fold_index,f]));
@@ -478,7 +478,7 @@ const LiveStudy = (() => {
     const foldCaption=html`${oneCandidate && (b.fold_results || []).length ? html` ${t('All folds belong to candidate {id}.',{id:shortId(b.fold_results[0].candidate_id)})}` : ''}${oneState ? html` ${t('Every fold is {state}.',{state:String(codeWords(b.fold_results[0].status) || '').toLowerCase()})}` : ''}`;
     const candidatesMarkup=html`<section class="panel" data-box="table"><div class="table-toolbar"><div class="panel-label"><h2>${t('Candidates')} <span class="num">${count(candidates.length)}</span></h2>${infoMark(`${t('A candidate is one model configuration. Its numbers are development evidence on the validation folds: OOS R² is pooled against a zero forecast, rank IC is the mean per-session rank correlation of score and matured target, the gross decile spread is per session before costs. A score is not a realized return and no winner is inferred.')} ${t('Values to four decimals, tiny non-zero values in exponent form; the exact values are in the JSON export.')}`)}</div></div>${table(candidateHeaders,candidates,'',{report:true,grid:true,countLine:false})}</section>`;
     const foldsMarkup=html`<section class="panel" data-box="table"><div class="table-toolbar"><div class="panel-label"><h2>${t('Causal folds')} <span class="num">${count(folds.length)}</span></h2>${infoMark(`${t('Each fold trains before its validation window with the declared purge and embargo; the sealed holdout is not among them.')}${foldCaption ? ' '+String(foldCaption).replace(/<[^>]+>/g,'').trim() : ''}`)}</div></div>${b.status==='EXPERIMENT_SUMMARY' ? emptyState(t('Detailed fold evidence appears after verification.')) : table(foldHeaders,folds,'',{report:true,grid:true,countLine:false})}</section>`;
-    return html`${nextStep}${candidatesMarkup}${detailSplit(foldsMarkup,'detail')}${propertiesSection(alphaRows)}`; // N2 (law 126 amended): the next step a notice first, both tables the lane's width, the properties after
+    return html`${nextStep}${candidatesMarkup}${detailSplit(foldsMarkup,'detail')}${propertiesSection(alphaRows)}`; // law 126 amended: the next step a notice first, both tables the lane's width, the properties after
   }
   /* The Risk reader: the estimator and its parameters, the dated formation window and listing
    * axis, the diagnostics per formation in the owner's units (absent ones marked), the exact
@@ -498,21 +498,21 @@ const LiveStudy = (() => {
       [t('Recorded work'),html`${countText(b.execution_numerical_call_count ?? '','{n} numerical call','{n} numerical calls')}${infoMark(t('by the completing execution; this page estimates nothing'))}`]]);
     const linked=Data.riskLinks(target?.task_id);
     const refusedLinks=(Data.riskLinkRefusals?.(target?.task_id) || []).map(r=>refusal(r,'warning',{catalog:true,more:html`<p>${t('Risk link')} ${hashCell(r.link_hash)}</p>`,next:prerequisiteWays(r.next_requests)}));
-    // V616 (U92): the subject a report reference admits, named by its owner before any association is offered -- an
+    // the subject a report reference admits, named by its owner before any association is offered -- an
     // installed strategy book carries no Portfolio study's receipt and captured input, so both ways are held with the
     // owner's words and its way on (the completed studies); a Portfolio study goes on to the owner's exact checks
     const installed=target?.source_kind==='INSTALLED_RESULT' ? b.report_reference_selection?.installed_book : null;
     const refused=installed && installed.available===false ? installed : null;
     const linkHeld=!(ready()&&target) ? t('Open a Portfolio study first') : refused ? (refused.detail ? t(refused.detail) : explainCode(refused.failure_code)) : '';
     const studiesWay=refused?.next_requests?.studies ? link(t('Choose a completed Portfolio study'),'portfolio','text-btn',{book:''}) : '';
-    // N2 (law 126 amended): the next step is a notice first in the content, its verb its button; what it made --
+    // law 126 amended: the next step is a notice first in the content, its verb its button; what it made --
     // the recorded associations, once read -- a section after the figures
     const association=banner(t('Next step'),html`${t('Links this diagnostic to a saved Portfolio book for reading beside it; the book\'s weights, sizing and returns are unchanged (the replay admits no risk matrix).')}${target ? html` ${t('Selected book')}: ${LiveViews.bookWords(target.policy) || LiveViews.shortRef(target.task_id)} · ${t('holdings date')} ${target.session}` : ''}${refused ? html`<p class="caption">${linkHeld} ${studiesWay}</p>` : ''}`,'neutral',html`<div class="flow next-step-actions">${typedBtn(t('Attach this report to a book'),'study-risk-preview','','button primary',linkHeld)}${typedBtn(t('Review retrospective Portfolio-window reference'),'study-risk-window-preview','','button',linkHeld)}${infoMark(t('The retrospective option requires every Portfolio formation, keeps the original Risk source and both cutoffs, and does not claim the assessment was available when the Portfolio was decided. No estimation or allocation follows.'))}${target ? btn(t('Read existing associations'),'study-risk-links',target.task_id,'button compact') : ''}</div>`,'arrow');
     const associations=linked ? html`${refusedLinks}${panel(t('Linked Risk reports'),'',html`${linked.map(v=>html`<div class="feature-row"><div class="grow"><strong>${t('Risk study')} ${LiveViews.shortRef(v.risk_task_id)}</strong><p class="mono">${v.link_hash}</p>${v.report_window ? html`<p class="caption">${t('Post-observed Portfolio-window reference')} · ${v.risk_start} — ${v.risk_end}</p>` : ''}</div>${btn(t('Export JSON'),'study-risk-export',v.link_hash,'button compact')}</div>`)}${!linked.length && !refusedLinks.length ? html`<p class="caption">${t('No Risk report is linked to this Portfolio task.')}</p>` : ''}`)}` : '';
     const absent=shown.some(v=>['shrinkage','condition_number','annualized_volatility_median','equal_weight_predicted_variance','equal_weight_realized_squared_return','gaussian_log_score_per_asset'].some(k=>v[k]==null));
     const scopeColumns=[{label:t('First formation'),type:'date'},{label:t('Last formation'),type:'date'},{label:t('Assets'),type:'num'}];
     const riskColumns=[{label:t('Formation'),type:'date'},{label:t('Realized'),type:'date'},...['Shrinkage (fraction)','Condition (number)','Volatility (median, annualized)','Predicted variance (equal weight)','Realized sq. return (equal weight)','Log score (per asset)'].map(x=>({label:t(x),type:'num'}))];
-    // N6 (the plan: one figure of predicted against realized): the owner's two recorded series per formation, one axis (both are variances)
+    // the owner's two recorded series per formation, one axis (both are variances)
     const expText=(z)=>z==null || !Number.isFinite(Number(z)) ? '' : Number(z)===0 ? '0' : Number(z).toExponential(1);
     const series=rows.map(v=>({date:v.formation_session,predicted:v.equal_weight_predicted_variance==null ? null : Number(v.equal_weight_predicted_variance),realized:v.equal_weight_realized_squared_return==null ? null : Number(v.equal_weight_realized_squared_return)}));
     // the user (2026-09-24): the figure in its box, the lane's width, its axis in one power of ten
@@ -520,7 +520,7 @@ const LiveStudy = (() => {
     const scopesMarkup=scopes.length>1 ? html`<section class="panel section-gap" data-box="table"><div class="table-toolbar"><div class="panel-label"><h2>${t('Dated estimation scopes')}</h2>${infoMark(t('Each dated scope has its own matrix axis. Stability comparisons restart at scope boundaries; the historical coverage union is not a covariance matrix.'))}</div></div>${table(scopeColumns,scopes.map(v=>tr([v.formation_sessions[0],v.formation_sessions.at(-1),v.ordered_listing_ids.length])),'',{report:true,grid:true,countLine:false})}</section>` : '';
     const formations=html`<section class="panel" data-box="table"><div class="table-toolbar"><div class="panel-label"><h2>${t('Formation and realization')} <span class="num">${count(rows.length)}</span></h2>${infoMark(`${t('Predicted variance is the equal-weight variance the matrix implies at the formation; the realized squared return is the next session\'s. Values to four decimals, tiny non-zero values in exponent form; the exact values are in the JSON export.')}${absent ? ' '+t('An empty cell is a diagnostic the owner did not report for that formation.') : ''}`)}</div></div>${table(riskColumns,shown.map(v=>tr([v.formation_session,v.next_session,figure(v.shrinkage),figure(v.condition_number),figure(v.annualized_volatility_median),figure(v.equal_weight_predicted_variance),figure(v.equal_weight_realized_squared_return),figure(v.gaussian_log_score_per_asset)])),'',{report:true,grid:true,countLine:false})}${rows.length>40 ? pager({page:Math.floor(S.riskOffset/40),pages:Math.ceil(rows.length/40),prev:['study-risk-page','-40'],next:['study-risk-page','40']}) : ''}</section>`;
     const axes=codeRef(t('Exact scope axes and source identities'), scopes.map(v=>({surface_hash:v.surface_hash,formation_sessions:v.formation_sessions,ordered_listing_ids:v.ordered_listing_ids})));
-    return html`${association}${figureMarkup || formations}${figureMarkup ? formations : ''}${scopesMarkup}${associations}${propertiesSection(riskRows)}${axes}`; // N2: the next step first, the figure and the formations the lane's width, the properties after
+    return html`${association}${figureMarkup || formations}${figureMarkup ? formations : ''}${scopesMarkup}${associations}${propertiesSection(riskRows)}${axes}`; // the next step first, the figure and the formations the lane's width, the properties after
   }
   function page() {
     const notice=S.error?(S.errorBody ? refusal({...S.errorBody, reason: S.errorBody.reason || S.errorBody.detail || S.errorBody.message || explain(S.error) || ''}) : refusal({code:S.error,reason:explain(S.error) || ''},'warning',{word:t(explain(S.error) ? 'The owner refused this step' : 'Research readback needs attention')})):'';
@@ -549,7 +549,7 @@ const LiveStudy = (() => {
     const lane=b.research_lane!=='EXPLORATION' ? '' : noteLine(t('Explored on a sample'),promoted?.task_id ? html`${t('Its promotion runs as Task {id}.',{id:short(promoted.task_id)})} ${btn(t('Follow the Task'),'task',promoted.task_id,'text-btn')}` : promoted ? codeWords(promoted.status) : b.lane_detail ? html`<span class="owner-text">${b.lane_detail}</span>` : '','neutral',promoted || !b.promotion ? '' : btn(t('Promote to the whole universe'),'study-promote',S.task,'button compact'));
     const standing=b.method_standing==='NOT_CURRENT' ? noteLine(t('Read as recorded'),html`${t('It was sealed under a method this build no longer runs; a continuation declares it again under the installed one.')}${b.method_refusal ? html` · ${coded(b.method_refusal)}` : ''}`,'neutral') : '';
     const tools=[...(app.page==='alpha' && b.status==='EXPERIMENT_PUBLISHED' && !b.lifecycle_research ? [{ic:'grid',action:'alpha-compare-open',value:S.task,word:t('Compare with…'),why:t('A candidate of this study beside one of another saved study')}] : []),{ic:'history',action:'go',value:'history',word:t('Show in History'),why:t('Every saved object, exact readback')},{ic:'file',action:'study-export',value:'html',word:t('Export HTML'),why:t('The owner-rendered report, exactly as saved')},{ic:'file',action:'study-export',value:'json',word:t('Export JSON'),why:t('The full readback')},{ic:'file',action:'study-export',value:'yaml',word:t('Export YAML'),why:t('The declaration as YAML')}].filter(v=>!summary || v.action==='go');
-    return html`${objectHead(f.words || f.brief || t(ROUTES[readPage][1]),meta,actions,badge('historical'),tools,{object:true,id:S.task,facts:headFacts})}${LiveTasks.currentGroup?.() || ''}${notice}${unsupported}${verificationNotice}${lane}${standing}${({factor,alpha,risk}[readPage])()}${standingPanel(b.standing)}${LiveViews.researchTiming(b.timing)}`; // U59: the five marks in one place
+    return html`${objectHead(f.words || f.brief || t(ROUTES[readPage][1]),meta,actions,badge('historical'),tools,{object:true,id:S.task,facts:headFacts})}${LiveTasks.currentGroup?.() || ''}${notice}${unsupported}${verificationNotice}${lane}${standing}${({factor,alpha,risk}[readPage])()}${standingPanel(b.standing)}${LiveViews.researchTiming(b.timing)}`; // the five marks in one place
   }
   function edit(kind,id,v) {
     if(S.busy==='write')return;
@@ -648,7 +648,7 @@ const LiveStudy = (() => {
   }
   function exportAlphaComparison() {const c=S.alphaComparison;if(!c.result)throw Error('No saved Alpha comparison is available to export.');download(JSON.stringify(c.result,null,2),`AlphaLattice-alpha-comparison-${S.task}-${c.rightTask}.json`);}
   function alphaDraft(){return LiveResearch.receiveHandoff({kind:'factor',...selection()});}
-  function fold(i){const b=S.body.fold_results[Number(i)];if(!b)return;Window.openInspector({mode:'detail',readHeader:()=>({title:foldLabel(b.fold_index),kind:t('Alpha · recorded fold')}),title:foldLabel(b.fold_index),kind:t('Alpha · recorded fold'),by:['study-fold',String(i)],body:html`<section class="inspector-section">${kv([[t('Candidate'),html`<span class="mono">${b.candidate_id}</span>`],[t('Recorded fold index'),html`${b.fold_index}${infoMark(t('the owner\'s zero-based index; displayed as {label}',{label:foldLabel(b.fold_index)}))}`]])}${kv(pairs(b.metrics))}<h3>${t('Actual fold boundaries and fit evidence')}</h3><pre class="code-block code-document">${json({preview:S.body.execution_preview.folds?.find(v=>v.fold_index===b.fold_index),fit_ledger:b.fit_ledger,role:b.role,status:b.status,failure:b.failure})}</pre></section>`});} // N2 (law 131): the fold's record beside its table
+  function fold(i){const b=S.body.fold_results[Number(i)];if(!b)return;Window.openInspector({mode:'detail',readHeader:()=>({title:foldLabel(b.fold_index),kind:t('Alpha · recorded fold')}),title:foldLabel(b.fold_index),kind:t('Alpha · recorded fold'),by:['study-fold',String(i)],body:html`<section class="inspector-section">${kv([[t('Candidate'),html`<span class="mono">${b.candidate_id}</span>`],[t('Recorded fold index'),html`${b.fold_index}${infoMark(t('the owner\'s zero-based index; displayed as {label}',{label:foldLabel(b.fold_index)}))}`]])}${kv(pairs(b.metrics))}<h3>${t('Actual fold boundaries and fit evidence')}</h3><pre class="code-block code-document">${json({preview:S.body.execution_preview.folds?.find(v=>v.fold_index===b.fold_index),fit_ledger:b.fit_ledger,role:b.role,status:b.status,failure:b.failure})}</pre></section>`});} // law 131: the fold's record beside its table
   function leaveReads(page) {
     if(S.readPage && S.readPage!==page)return;
     const unfinished=S.busy==='read' || S.status==='loading';

@@ -188,7 +188,7 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert code == 2 and _code(storage) == "storage.human_confirmation_required"
     code, shown = command("goal", "show", opened["goal_id"])
     # The goal offers no revision of the person's sentence (the review at 118f6378), and its
-    # record says its delegation and its end (U70).
+    # record says its delegation and its end.
     assert "revise" not in shown["next_requests"]
     assert shown["record"]["delegation"]["active"] is True
     assert set(shown["record"]["delegation"]["steps"]) >= {"NETWORK_ACCESS_SET"}
@@ -789,7 +789,7 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
 def test_a_first_use_is_the_one_before_the_first_preparation(
     live: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V452): a workspace already prepared has had its first use, so a first-use
+    """requirement: a workspace already prepared has had its first use, so a first-use
     goal is refused there and the person decides each step."""
 
     succeeded = SimpleNamespace(lifecycle=SimpleNamespace(value="SUCCEEDED"))

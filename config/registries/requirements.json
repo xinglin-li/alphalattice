@@ -609,8 +609,20 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.integration_share_only_falls": {
+      "description": "A change that raises an area's integration share of test functions is refused by name, and a row added above unit says why a lower layer cannot prove it.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.layer_contract": {
       "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "testing.narrow_fixture_scratch_goes_with_it": {
+      "description": "A fixture narrower than the session removes the temporary roots it made once its own teardown is done, unless a test failed while it lived; a session fixture keeps its roots to the session's end.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 10

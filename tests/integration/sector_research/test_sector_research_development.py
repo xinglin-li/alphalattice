@@ -991,7 +991,7 @@ def test_the_campaign_compares_calibrates_decides_and_replays(  # type: ignore[n
 
 
 def test_a_campaign_document_is_read_by_the_one_declaration_loader() -> None:
-    """regression (V276): the Sector campaign read its document with a plain `yaml.safe_load`,
+    """regression: the Sector campaign read its document with a plain `yaml.safe_load`,
     which keeps the last of a key written twice; the one declaration loader refuses it."""
 
     import yaml

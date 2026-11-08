@@ -334,7 +334,7 @@ class _Cancelled(Exception):
 
 
 class _Deferred(Exception):
-    """The provider asked the data stage to wait: the update waits with it (V601)."""
+    """The provider asked the data stage to wait: the update waits with it."""
 
     def __init__(self, result: StageExecutionResult) -> None:
         super().__init__(result.failure_code)
@@ -378,8 +378,7 @@ class DecisionAdvancementApplication:
             admitting="RESEARCH_UPDATE_RUN",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(self, updates: PortfolioUpdateApplication, data: WorkspaceDataUpdateApplication):
         """Compose decision, data, scoring and calibration owners for durable QA updates.
@@ -409,7 +408,7 @@ class DecisionAdvancementApplication:
             numerical meaning.
         """
         # This file decides which publications feed scoring and calibration; Task
-        # Control's runner and registry, tracked here until the binding plan's B5,
+        # Control's runner and registry, formerly tracked here,
         # decide lifecycles and no number.
         own = source_rule_closure_hash(
             root=resolve_playpen_root(Path(__file__)),
@@ -824,7 +823,7 @@ class DecisionAdvancementApplication:
             ),
             "limitation": planned_claim(plan.target, plan.data_plan.before.data_through),
             # The plan's way on: its run, which reuses an identical update already made or in
-            # flight (V470).
+            # flight.
             "next_requests": {
                 "run": {"operation": "RESEARCH_UPDATE_RUN", "update_plan_hash": plan.content_hash}
             },
@@ -878,7 +877,7 @@ class DecisionAdvancementApplication:
         for task in self.session.task_control_registry.tasks():
             if task.input == envelope and task.lifecycle is not TaskLifecycle.CANCELLED:
                 # Its data stage's stop a rerun resumes reopens it, as the data update's own does,
-                # and a rerun while its network stays closed is refused by that stop (V600).
+                # and a rerun while its network stays closed is refused by that stop.
                 task = self.data.resume_stopped(task, plan.data_plan)
                 return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         self._fresh(plan)
@@ -1006,7 +1005,7 @@ class DecisionAdvancementApplication:
         """Find an admitted nonterminal task for this exact advancement envelope.
 
         A deferred one is not in flight: its plan's rerun resumes it once due, and is refused
-        before then with its retry time (V601).
+        before then with its retry time.
 
         Args:
             plan: Sealed plan used to derive exact task input.
@@ -1140,7 +1139,7 @@ class DecisionAdvancementApplication:
                     raise _Cancelled
                 if result.disposition is StageDisposition.DEFERRED:
                     # The provider asked to wait: the update defers with the data stage's own
-                    # retry time, and its plan run again once due resumes it (V601).
+                    # retry time, and its plan run again once due resumes it.
                     raise _Deferred(result)
                 if result.disposition is not StageDisposition.READY:
                     if result.failure_code == "workspace_data_update.source_access_not_admitted":
@@ -1530,7 +1529,7 @@ class DecisionAdvancementApplication:
         raise ValueError("research_update.stage_unknown")
 
     def _owner_fields(self, fields: tuple[str, ...]) -> str:
-        """The manifest fields a stage's owner binds, as that owner binds them (V468, V223).
+        """The manifest fields a stage's owner binds, as that owner binds them.
 
         Each owner seals its plan with the fields it reads (OW10), not the whole manifest; the
         update verified the whole manifest against its own plan before the stage (`_require`),

@@ -551,7 +551,7 @@ def test_exact_session_retry_keeps_checkpoint_and_refuses_changed_scope(
 def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     live, tmp_path, monkeypatch, relation
 ):
-    """A Codex child's command works in its recorded parent's workspace (V568); it asks for no
+    """A Codex child's command works in its recorded parent's workspace; it asks for no
     reading, which is the bound Session's own milestone, and a foreign or OFF binding never
     adopts it."""
 
@@ -709,7 +709,7 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
 def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """requirement (privacy, FLOW-1): reading is on by default; a person's Settings switch
+    """requirement (privacy): reading is on by default; a person's Settings switch
     turns it off for every Session of the workspace, an agent can read the switch but never
     set it, and with it off a page's or a milestone's request reads no Session file."""
     from alphalattice.interface.local_application.portfolio_research import (
@@ -841,7 +841,7 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
     assert [row["message_kind"] for row in requests] == ["session_bound", "RUN"]
     assert requests[1]["agent_session"] == "fixture-lead"
     assert bound[0]["payload"]["subject"]["goal_id"] == goals[0]["goal_id"]
-    # The fact names the goal the Session holds, as its Sessions row reads it (STOPS-1).
+    # The fact names the goal the Session holds, as its Sessions row reads it.
     held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
     assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
     record_bytes = binding.record_path(root).read_bytes()
@@ -855,7 +855,7 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
 def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
     live: LocalPortfolioWebSession, monkeypatch, capsys, tmp_path
 ) -> None:
-    """regression (STOPS-1, the Tech Lead's live check of 2026-10-08): a Session bound by its
+    """regression: a Session bound by its
     first read held no goal, and when its next request opened one its Sessions row still read
     "No research question is declared". The Host now names the goal once it is held."""
     _session(monkeypatch, "claude-code", "fixture-reader")

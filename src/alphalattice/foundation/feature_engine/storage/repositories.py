@@ -277,7 +277,7 @@ def _ineligibility_facts(
 
 @dataclass
 class _FeatureWriteBatch:
-    """What a batch's listing writes share in their one transaction (V92).
+    """What a batch's listing writes share in their one transaction.
 
     The table's shape and the installed catalog, read once; the cutoff sets an earlier write
     of the batch inserted, which a later one does not offer again; the receipts, which no write
@@ -330,7 +330,7 @@ class FeatureSourceInputs:
 
     What the block is projected from (``projected_feature_rows``) and the lineage it is recorded
     under: read by a build's writer and projected where the listing is computed, so the writer
-    builds no object per bar (V92).
+    builds no object per bar.
     """
 
     listing_id: str
@@ -450,7 +450,7 @@ class FeatureStateRepository(WorkspaceRepository):
         return self._installed_catalog
 
     def _resolve_catalog_layer(self) -> FeatureCatalogLayer:
-        """The parts whose rows compose the installed catalog's (V92), derived once."""
+        """The parts whose rows compose the installed catalog's, derived once."""
         if self._catalog_layer is None:
             self._catalog_layer = FeatureCatalogLayer.over(self._resolve_installed_catalog())
         return self._catalog_layer
@@ -741,12 +741,12 @@ class FeatureStateRepository(WorkspaceRepository):
     def retire_rows_outside_layer(self, *, _connection: duckdb.DuckDBPyConnection) -> int:
         """Delete the rows and runs no part of the installed catalog computed.
 
-        Rows of two catalogs share no key, so after a catalog rotation the
-        earlier catalog's rows stay beside the new ones until the build has
-        written every part; then they answer for nothing, and would refuse every
-        publication (``assert_installed_catalog_rows``). That holds as well for
-        a listing an earlier manifest held and a manifest transition dropped
-        (V398), and for the column of a factor a person deactivated (V92).
+        Rows of two catalogs share no key, so after a catalog rotation the earlier
+        catalog's rows stay beside the new ones until the build has written every part;
+        then they answer for nothing and would refuse every publication
+        (``assert_installed_catalog_rows``). That holds as well for a listing an earlier
+        manifest held and a manifest transition dropped, and for the column of a factor
+        a person deactivated.
 
         Returns:
             The number of rows deleted.
@@ -770,7 +770,7 @@ class FeatureStateRepository(WorkspaceRepository):
     def discard_part_rows(
         self, catalog_hash: str, *, _connection: duckdb.DuckDBPyConnection
     ) -> int:
-        """Delete the rows and runs an interrupted first load wrote for a column part (V92).
+        """Delete the rows and runs an interrupted first load wrote for a column part.
 
         Its genesis head attests no row, so the part goes back to empty and its build writes it
         again. Only a column part of the installed catalog's layer is discarded, never the base.
@@ -859,7 +859,7 @@ class FeatureStateRepository(WorkspaceRepository):
         refuse. The default stays strict and no raw values are substituted.
         ``as_traded`` adds each session's prices and share volume as they traded
         and the indices that re-base them, from every recorded split, later ones
-        included (V345), for a formula reading a point-in-time leaf.
+        included, for a formula reading a point-in-time leaf.
 
         The block is ``projected_feature_rows`` over ``feature_source_inputs``.
         """
@@ -889,7 +889,7 @@ class FeatureStateRepository(WorkspaceRepository):
 
         The reads of ``projected_feature_frame``, by columns where a listing has a row per
         session: a build's writer reads them and the worker that computes the listing projects
-        them (``projected_feature_rows``), so the writer builds no object per bar (V92).
+        them (``projected_feature_rows``), so the writer builds no object per bar.
         """
         self._market_data._assert_manifest_scope(manifest, (listing_id,))
         connection = _connection or self._connect(read_only=True)
@@ -1506,7 +1506,7 @@ class FeatureStateRepository(WorkspaceRepository):
             record("row_normalize_hash", started)
             if inserts or staged_positions:
                 # A set an earlier write of the batch inserted is in this transaction's
-                # table already, so it is not offered again (V92).
+                # table already, so it is not offered again.
                 offered = _batch.offered_cutoff_sets if _batch is not None else set()
                 ordered = sorted(item for item in cutoff_sets.items() if item[0] not in offered)
                 offered.update(item[0] for item in ordered)
@@ -3010,7 +3010,7 @@ class FeatureStateRepository(WorkspaceRepository):
         """Atomically publish a complete Yahoo-current-sector revision only.
 
         A listing whose Sector changed is recorded as a reclassification in force from the
-        session its update observed it, never on a session the active Panel published (V346);
+        session its update observed it, never on a session the active Panel published;
         with no Panel published yet the new classification is the backfill.
 
         Returns:
@@ -3424,7 +3424,7 @@ class FeatureStateRepository(WorkspaceRepository):
     def sector_history(
         self, manifest: UniverseManifest, *, listing_ids: Sequence[str] = ()
     ) -> SectorHistory | None:
-        """The Sector each session reads, for a manifest's members and these listings (V346).
+        """The Sector each session reads, for a manifest's members and these listings.
 
         Args:
             manifest: The manifest whose current classification the history ends at.
@@ -3444,7 +3444,7 @@ class FeatureStateRepository(WorkspaceRepository):
         try:
             # A store sealed before the forward rule (a research input's read-only copy) lacks
             # the columns its writer adds on open; it holds no forward reclassification, as a
-            # row written before the rule does (V346, LS1's acceptance).
+            # row written before the rule does (LS1's acceptance).
             columns = {
                 str(row[0])
                 for row in connection.execute(
@@ -3544,7 +3544,7 @@ class FeatureStateRepository(WorkspaceRepository):
 def _supersede_unbound_snapshots(
     connection: duckdb.DuckDBPyConnection, *, observed_at: datetime, keeping: str | None = None
 ) -> None:
-    """When a Panel is stale, the one rule: an ACTIVE snapshot no active binding names (V176).
+    """When a Panel is stale, the one rule: an ACTIVE snapshot no active binding names.
 
     Registration runs it for the snapshots beside the one it registers (``keeping``), and a
     Feature build after Market Data's bootstrap for all of them.
@@ -3965,7 +3965,7 @@ class PanelStateRepository(WorkspaceRepository):
             connection.close()
 
     def supersede_unbound_feature_panel_snapshots(self, *, observed_at: datetime) -> None:
-        """Supersede every ACTIVE snapshot no active binding names: Feature's one rule (V176).
+        """Supersede every ACTIVE snapshot no active binding names: Feature's one rule.
 
         Args:
             observed_at: When the rule ran, recorded on each row it moves.

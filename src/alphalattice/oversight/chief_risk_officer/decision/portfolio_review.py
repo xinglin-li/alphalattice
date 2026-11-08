@@ -214,7 +214,7 @@ class PortfolioReviewAnswerRisk(BaseModel):  # type: ignore[misc]
         default="", pattern=r"^(O[0-9]{1,3})?$", exclude_if=lambda value: value == ""
     )
     """The open issue (`O1`, `O2`..) this risk states again, as the reviewer now
-    assesses it (W3); empty -- and absent -- for a new risk, so the answer's
+    assesses it; empty -- and absent -- for a new risk, so the answer's
     schema still holds no number and no null."""
 
 
@@ -261,13 +261,13 @@ MAXIMUM_REVIEWER_ISSUES = 16
 
 MAXIMUM_OPEN_ISSUES = 256
 """The issuers' register a dossier carries, and so what an assessment carries as last
-assessed beside its own issues (W3)."""
+assessed beside its own issues."""
 
 
 class PortfolioReviewOpenIssue(BaseModel):  # type: ignore[misc]
     """Keep a CRO issue open until a review resolves it with evidence.
 
-    The issue was raised on a held issuer and no review has resolved it (W3).
+    The issue was raised on a held issuer and no review has resolved it.
     It carries the CRO's last statement and does not age out with its filing.
     Every book holding the issuer reads it until resolution; a review silent
     about it counts as the last assessment of the retained issue.
@@ -404,7 +404,7 @@ class PortfolioReviewEvidenceChild(BaseModel):  # type: ignore[misc]
 
     unit_id: str = Field(pattern=r"^[uc][0-9]{2,3}$")
     """`u..`: a unit read at the dossier's cutoff; `c..`: an earlier reading
-    carried because nothing new was filed (W3)."""
+    carried because nothing new was filed."""
     ordered_entity_ids: tuple[str, ...] = Field(max_length=8)
     obligation_hash: str = Field(pattern=_HASH)
     analysis_publication_hash: str = Field(pattern=_HASH)
@@ -830,7 +830,7 @@ class PortfolioReviewMaterialIssue(BaseModel):  # type: ignore[misc]
     open_issue_handle: str | None = Field(
         default=None, pattern=OPEN_ISSUE_PATTERN, exclude_if=lambda value: value is None
     )
-    """The open issue this states again (W3); absent for a new one."""
+    """The open issue this states again; absent for a new one."""
     carried_on: date | None = Field(default=None, exclude_if=lambda value: value is None)
     """Set when the reviewer said nothing of the open issue: the Host counts it
     as last assessed, on this day."""
@@ -866,7 +866,7 @@ class PortfolioReviewAssessmentSubmission(BaseModel):  # type: ignore[misc]
         max_length=MAXIMUM_REVIEWER_ISSUES + MAXIMUM_OPEN_ISSUES
     )
     """The reviewer's own issues, at most sixteen, and every open issue the reviewer
-    neither stated again nor resolved, carried as last assessed (`carried_on`, W3). A
+    neither stated again nor resolved, carried as last assessed (`carried_on`). A
     book's register may hold more open issues than one answer can address, so the carried
     ones are outside the reviewer's bound and none is dropped (CS)."""
     overall_rationale: str = Field(min_length=1, max_length=2400)
@@ -882,7 +882,7 @@ class PortfolioReviewAssessmentSubmission(BaseModel):  # type: ignore[misc]
     resolved_issues: tuple[PortfolioReviewIssueResolution, ...] = Field(
         default=(), max_length=256, exclude_if=lambda value: value == ()
     )
-    """Open issues this review closed (W3)."""
+    """Open issues this review closed."""
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_submission(self) -> Self:
@@ -1478,7 +1478,7 @@ def _weakest(structures: tuple[EvidenceStructureState, ...]) -> EvidenceStructur
 class OpenIssueState:
     """Represent an issuer-register issue still open at an assessment date.
 
-    A review raised it and none has resolved it since (W3). It retains the
+    A review raised it and none has resolved it since. It retains the
     CRO's last statement and the findings from the analyses it rests on.
     """
 
@@ -1514,7 +1514,7 @@ class PortfolioReviewReceipt(AlternativeEvidenceContract):
         default=None, pattern=_HASH, exclude_if=lambda value: value is None
     )
     """What the assessment rests on (`review_basis`), so a later dossier on the
-    same basis finds it (W3); absent from receipts sealed before."""
+    same basis finds it; absent from receipts sealed before."""
     receipt_hash: str = Field(pattern=_HASH)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]

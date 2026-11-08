@@ -162,7 +162,7 @@ _SEVERITY: dict[CRORiskSeverity, CROSeverityIfTrue] = {
 class ScreenedReviewAnswer(ScreenedAnswer[PortfolioReviewAnswerRisk]):
     """Record screened risks, texts, and open-issue resolutions.
 
-    Each resolution is accepted on its own (W3).
+    Each resolution is accepted on its own.
     """
 
     resolved: tuple[PortfolioReviewAnswerResolution, ...] = ()
@@ -336,7 +336,7 @@ def normalize_review_answer(
         for value in answer.resolved
     )
     # An open issue the reviewer neither states again nor resolves stands as
-    # last assessed: carried, never dropped (W3).
+    # last assessed: carried, never dropped.
     addressed = {value.open_issue_handle for value in issues} | {
         value.open_issue_handle for value in resolutions
     }
@@ -399,7 +399,7 @@ def seal_portfolio_review(
     finding this dossier does not contain is refused rather than routed.
     `dropped` names what was not accepted and why. The receipt records the
     basis the assessment rests on, so a later dossier on the same basis finds
-    it (W3); `carried` is that earlier assessment when it carries
+    it; `carried` is that earlier assessment when it carries
     forward, routed on this dossier as it was sealed (in its handles).
     """
     decision_policy = CROHostPolicyBinding.model_validate(decision_policy)

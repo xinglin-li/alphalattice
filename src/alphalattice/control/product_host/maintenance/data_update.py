@@ -145,7 +145,7 @@ PROFILE = (
 PLAN_FIELDS = ("data_update",)
 """The manifest fields a plan reads: the data update binding it runs under and writes. A plan binds
 them, never the whole manifest, so a publication of fields it does not read leaves it applicable
-(V223, OW10)."""
+(OW10)."""
 
 DATA_UPDATE_TASK_KIND = "workspace_data_update"
 _STAGES = ("validate_update_request", "maintain_data_feature", "publish_update_receipt")
@@ -161,7 +161,7 @@ _RECOVERABLE_BLOCKS = {
     "workspace_maintenance.feature_source_reconciliation_failed",
     "data.full_history_audit_approval_required",
     # Its way on is the plan run again once a person opens the network: the rerun resumes the
-    # stopped Task, refused while it stays closed (V600).
+    # stopped Task, refused while it stays closed.
     "workspace_data_update.source_access_not_admitted",
     # Its way on is the backup's cause resolved and the plan run again: the stopped Task resumes,
     # its first stage retaking the backup.
@@ -532,8 +532,7 @@ class WorkspaceDataUpdateApplication:
             task_kind=DATA_UPDATE_TASK_KIND, preview="DATA_UPDATE_PLAN", admitting="DATA_UPDATE_RUN"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
     portfolio_obligations: Callable[[], BookObligations] | None = None
     recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
     data_rule: Callable[[UUID], Any] | None = None
@@ -541,7 +540,7 @@ class WorkspaceDataUpdateApplication:
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
+        """The workspace manifest, read from the one holder the Host refreshes."""
         return self._manifests.current
 
     @staticmethod
@@ -727,8 +726,8 @@ class WorkspaceDataUpdateApplication:
 
         Raw candidate retries and Feature/Sector rechecks are planned apart; planning runs no
         Factor research and grants no source access. A data update that has not ended answers
-        its own plan: its run follows it, or resumes a deferred one once due (V601); planned
-        anew, the later update queued behind the deferral (V604). First, a cancelled update's
+        its own plan: its run follows it, or resumes a deferred one once due; planned
+        anew, the later update queued behind the deferral. First, a cancelled update's
         orphaned membership is restored (`restored_membership`), or an unproved one refused.
 
         Args:
@@ -840,7 +839,7 @@ class WorkspaceDataUpdateApplication:
             candidate_data_recheck=raw_recheck,
         )
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between (V534).
+        # may have replaced in between.
         planned = WorkspaceDataUpdatePlan.seal(
             workspace_id=self.manifest.workspace_id,
             workspace_manifest_hash=manifest_fields_hash(self.manifest, PLAN_FIELDS),
@@ -852,7 +851,7 @@ class WorkspaceDataUpdateApplication:
         )
         self.last_plan = planned
         # A change plan is kept in the change store its person's confirm reads; a maintenance
-        # plan is a preview its run finds after a Host restart within its hour (V537).
+        # plan is a preview its run finds after a Host restart within its hour.
         if change is not None:
             self.changes.save_plan(planned)
         else:
@@ -901,7 +900,7 @@ class WorkspaceDataUpdateApplication:
         return True
 
     def _waiting(self) -> TaskRecord | None:
-        """The data update that has not ended, if one has not (V604)."""
+        """The data update that has not ended, if one has not."""
         return next(
             (
                 task
@@ -1066,7 +1065,7 @@ class WorkspaceDataUpdateApplication:
     def receipt_task(self, receipt: WorkspaceDataUpdateReceipt) -> UUID | None:
         """The update Task that sealed a receipt: the one whose plan the receipt names.
 
-        A reuse answers it, so a read follows the update it reused (V449).
+        A reuse answers it, so a read follows the update it reused.
 
         Args:
             receipt: A sealed update receipt.
@@ -1187,7 +1186,7 @@ class WorkspaceDataUpdateApplication:
                 )
             ]
             result["work_progress"] = self.telemetry.work_progress(task)
-            # What its stopped step saw beside the code, as Task Control keeps it (V444).
+            # What its stopped step saw beside the code, as Task Control keeps it.
             cause = next(
                 (
                     item.failure_cause
@@ -1563,7 +1562,7 @@ class WorkspaceDataUpdateApplication:
             ValueError: The plan is past its hour or was never planned in this workspace.
         """
         # A maintenance preview runs within its hour across a Host restart, and never past it
-        # from this Host's memory alone (V537, as V536).
+        # from this Host's memory alone.
         if (kept := self._previews.runnable(plan_hash)) is not None:
             return kept
         # An already admitted request remains recoverable after process loss.
@@ -1574,7 +1573,7 @@ class WorkspaceDataUpdateApplication:
                     self._require_plan(plan)
                     return plan
         # A change plan is kept until its person confirms it; one kept nowhere is planned again,
-        # never a tampered artifact (V537).
+        # never a tampered artifact.
         try:
             return self.changes.load_plan(plan_hash)
         except ContentAddressedStoreError as error:
@@ -1655,9 +1654,9 @@ class WorkspaceDataUpdateApplication:
         """The Task a rerun of its plan finds, resumed where its deferral or stop allows.
 
         The provider's deferral is reopened once its retry time has passed, and refused before
-        it (`workspace_data_update.retry_not_due`) (V601). The update's stop a person clears -- a
+        it (`workspace_data_update.retry_not_due`). The update's stop a person clears -- a
         data decision taken, the network allowed -- is reopened as owed a recovery, and refused by
-        its code while the network it names stays closed (V600). Either runs on from the stage it
+        its code while the network it names stays closed. Either runs on from the stage it
         stopped in, the stop kept in the Task's own record; any other Task is answered as it
         stands.
 

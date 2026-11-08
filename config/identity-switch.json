@@ -181,6 +181,6 @@
    "rule": "d03cac3abfecaf094e0c245467f6a9695498532d521f4152e339f940fd0c2c39"
   }
  },
- "note": "Each byte closure the rule replaced (LAWS.md ID3; V70, V231, V232 for the Feature components, W9b's sites for the rest): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
+ "note": "Each byte closure the rule replaced (LAWS.md ID3): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
  "schema": "alphalattice.playpen.identity-switch"
 }

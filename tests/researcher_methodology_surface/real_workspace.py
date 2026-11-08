@@ -35,6 +35,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -105,7 +106,10 @@ from devtools.architecture.structural import (
     discover_module_dependencies,
     discover_python_imports,
     discover_python_modules,
+    kept_fact,
+    kept_facts,
 )
+from devtools.evaluation.golden_workspaces import remove_tree
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "config" / "market-profiles" / "us-current-index-research.yaml"
@@ -442,6 +446,7 @@ def build_real_risk_workspace(
     symbols: Sequence[str] = SYMBOLS,
     fresh: bool = False,
     sector_size: int = 5,
+    factory: Any = None,
 ) -> RealRiskWorkspace:
     """Drive onboarding, features, the panel, and the return surface for real.
 
@@ -474,6 +479,11 @@ def build_real_risk_workspace(
     universe identities, so a stale copy cannot survive a source change; a
     gate that runs four processes needing the same workspace builds it once.
 
+    ``factory`` is a session fixture's own: with no test running, its copy still reads the
+    seed's market data, Parquet and arrays in place, read-only, instead of copying the golden
+    whole (20 session copies held 2.3 GB at pc1's full-run peak, 11-07); a write through them
+    fails, and seeds_changed names the seed at the session's end.
+
     ``fresh`` bypasses the cache and drives the writers into ``root`` directly.
     It is for the one suite whose claim is the build itself: a workspace the
     product wrote is only proved real by writing it, so that suite pays the
@@ -495,7 +505,8 @@ def build_real_risk_workspace(
     started = time.perf_counter()
     from tests.pytest_environment import RUNNING_TEST
 
-    linked = bool(RUNNING_TEST.get("id") and not RUNNING_TEST.get("private"))
+    session = factory is not None and RUNNING_TEST.get("id") is None
+    linked = session or bool(RUNNING_TEST.get("id") and not RUNNING_TEST.get("private"))
     with _golden_lease(golden):
         hit, sidecar = verify_golden_seal(
             golden,
@@ -513,7 +524,7 @@ def build_real_risk_workspace(
             session_workspace,
         )
 
-        factory = RUNNING_TEST.get("factory")
+        factory = factory if session else RUNNING_TEST.get("factory")
         if factory is None:
             raise GoldenWorkspaceError("test_datasets.factory_missing: restore the test invocation")
 
@@ -541,9 +552,10 @@ def build_real_risk_workspace(
                 "worker": os.environ.get("PYTEST_XDIST_WORKER", "main"),
             },
         )
-        copy_workspace(seed, workspace)
-        track_test_seed(str(RUNNING_TEST["id"]), seed, sidecar["files"])
-        RUNNING_TEST["verify"] = verify_test_seed
+        copy_workspace(seed, workspace, link_data=True if session else None)
+        if not session:
+            track_test_seed(str(RUNNING_TEST["id"]), seed, sidecar["files"])
+            RUNNING_TEST["verify"] = verify_test_seed
     line = (
         f"PLAYPEN_WORKSPACE_CACHE {'HIT' if hit else 'BUILD'} "
         f"{key} {time.perf_counter() - started:.3f}s"
@@ -720,7 +732,31 @@ def _source_files() -> tuple[Path, ...]:
     literal source-identity members are data dependencies even without imports.
     Package resources and runtime config are conservatively included. No
     production identity or source closure is changed by this test-cache key.
+    Each file's imports and literal paths come from the line's scan facts, kept
+    by its bytes, so a published golden's key costs reads, not a parse of every
+    builder file (about 5.4 s a focused session).
     """
+    with kept_facts("golden-source", sys.modules[__name__]):
+        return _scanned_source_files()
+
+
+def _literal_paths(data: bytes) -> list[str]:
+    """A file's one-line string constants that name a source or config path."""
+    return [
+        node.value
+        for node in ast.walk(ast.parse(data.decode("utf-8")))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith(("src/", "config/"))
+        and "\n" not in node.value
+    ]
+
+
+def _strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _scanned_source_files() -> tuple[Path, ...]:
     src = ROOT / "src"
     paths = tuple(sorted(src.rglob("*.py")))
     modules = {name: path for path, name in discover_python_modules(paths, source_root=src)}
@@ -766,14 +802,13 @@ def _source_files() -> tuple[Path, ...]:
     # These paths are explicitly hashed by scientific/serialization owners.
     # They need not execute to be load-bearing for the artifacts being built.
     for path in tuple(files):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                continue
-            value = node.value
-            if value.startswith(("src/", "config/")) and "\n" not in value:
-                target = ROOT / value
-                if target.is_file():
-                    files.add(target)
+        part = "literal paths " + path.relative_to(ROOT).as_posix()
+        for value in kept_fact(
+            sys.modules[__name__], part, path.read_bytes(), _literal_paths, _strings
+        ):
+            target = ROOT / value
+            if target.is_file():
+                files.add(target)
     packages = {
         ROOT / "src/alphalattice" / Path(*path.relative_to(ROOT / "src/alphalattice").parts[:2])
         for path in files
@@ -839,6 +874,41 @@ def _workspace_files(workspace: Path) -> dict[str, str]:
                         f"golden workspace contains an unsupported file: {path}"
                     )
     return hashes
+
+
+def builder_inputs(
+    root: Path, entries: tuple[str, ...], product: tuple[str, ...]
+) -> tuple[str, ...]:
+    """A golden's key inputs: the product it serves, and the builder's own modules with each tests
+    or scripts module they import, never the whole of either tree. Keyed on every file of `tests`
+    and `scripts`, any merge there rebuilt each golden under a new key (134 built on 11-04)."""
+    found: set[str] = set()
+    pending = [root / entry for entry in entries]
+    while pending:
+        path = pending.pop()
+        relative = path.relative_to(root).as_posix()
+        if relative in found or not path.is_file():
+            continue
+        found.add(relative)
+        folder = path.parent
+        while folder != root:  # the packages it is imported through
+            if (init := folder / "__init__.py").is_file():
+                pending.append(init)
+            folder = folder.parent
+        for name in discover_python_imports(path, source_root=root):
+            parts = name.split(".")
+            if parts[0] not in ("tests", "scripts"):
+                continue
+            for end in range(len(parts), 0, -1):  # a name may end in an attribute
+                module = root.joinpath(*parts[:end])
+                hit = next(
+                    (c for c in (module.with_suffix(".py"), module / "__init__.py") if c.is_file()),
+                    None,
+                )
+                if hit:
+                    pending.append(hit)
+                    break
+    return (*product, *sorted(found))
 
 
 _LINKED_RISK_SEEDS: dict[str, dict[Path, object]] = {}
@@ -1098,10 +1168,16 @@ def _materialize_golden(
 ) -> None:
     """Called under the same lease that protects copying and cache retention."""
     building = golden.with_name(golden.name + ".building")
+
+    def clear() -> None:
+        # Its sealed files are read-only: rmtree, ignoring errors, left a whole build behind.
+        if os.path.lexists(building) and (left := remove_tree(building, building.parent)):
+            print(f"test_tmp.golden_build_left: {'; '.join(left)[:500]}", file=sys.stderr)
+
     try:
         if _golden_is_complete(golden, key):
             return
-        shutil.rmtree(building, ignore_errors=True)
+        clear()
         building.mkdir()
         with _checked_build_sources():
             record = _build_workspace(
@@ -1114,7 +1190,7 @@ def _materialize_golden(
         _publish(building, golden)
         _prune_goldens(keep=golden)
     finally:
-        shutil.rmtree(building, ignore_errors=True)
+        clear()
 
 
 def verify_golden_seal(golden: Path, key: str, build: Callable[[], None]) -> tuple[bool, dict]:

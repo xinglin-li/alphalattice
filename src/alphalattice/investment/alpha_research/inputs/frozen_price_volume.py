@@ -84,7 +84,7 @@ class FrozenPriceVolumeInputs:
         """Derive the sorted classification axis: every Sector some session reads.
 
         Returns:
-            Sorted unique sector identifiers, a Sector history's included (V346).
+            Sorted unique sector identifiers, a Sector history's included.
         """
         ordered: tuple[str, ...] = sector_ids(self.sector_by_listing_id)
         return ordered
@@ -426,14 +426,14 @@ def _sector_observation_mean(returns: FloatArray) -> FloatArray:
 def _prefix_sectors(
     source: FrozenPriceVolumeInputs, size: int
 ) -> tuple[tuple[slice, dict[str, str]], ...]:
-    """The Sector map each of the first `size` sessions reads, run by run (V346)."""
+    """The Sector map each of the first `size` sessions reads, run by run."""
     return tuple((rows, dict(mapping)) for rows, mapping in _runs(source, size))
 
 
 def _runs(
     source: FrozenPriceVolumeInputs, count: int
 ) -> tuple[tuple[slice, Mapping[str, str]], ...]:
-    """The first `count` sessions' runs: a history's, or one of a plain map (V346)."""
+    """The first `count` sessions' runs: a history's, or one of a plain map."""
     if isinstance(source.sector_by_listing_id, SectorHistory):
         return sector_slices(source.sector_by_listing_id, source.formation_sessions[:count])
     return ((slice(0, count), source.sector_by_listing_id),)
@@ -442,7 +442,7 @@ def _runs(
 def _sector_recovery(source: FrozenPriceVolumeInputs, returns: FloatArray) -> FloatArray:
     sectors = source.ordered_sector_ids
     means: FloatArray = np.full((len(returns), len(sectors)), np.nan, dtype=np.float64)
-    # Each run of sessions averages the Sectors in force there (V346); one run while no
+    # Each run of sessions averages the Sectors in force there; one run while no
     # reclassification falls inside the window.
     for rows, mapping in _runs(source, len(returns)):
         first = rows.start or 0
@@ -649,7 +649,7 @@ def _prepared_rows(
         columns[name] = np.broadcast_to(
             market[:, i, None], (len(source.formation_sessions), len(source.ordered_listing_ids))
         )
-    # Each session's Sector of each listing (V346).
+    # Each session's Sector of each listing.
     trend_codes = sector_codes(
         source.sector_by_listing_id,
         source.formation_sessions,

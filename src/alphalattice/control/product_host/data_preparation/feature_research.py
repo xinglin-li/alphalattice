@@ -89,7 +89,7 @@ def implementation_role(*, preparation: bool = False) -> str:
     """Name the identity role governing exact feature build or preparation closure changes.
 
     The role a move of this closure is recorded under in `config/identity-successors.json`,
-    so a build sealed under its predecessor stays current (binding plan, B14).
+    so a build sealed under its predecessor stays current.
     """
     return "product_host.research_feature_materialization" + (".prepared" if preparation else "")
 

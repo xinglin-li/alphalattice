@@ -368,11 +368,11 @@ def _exercise_authored_review(root, selected, tmp_path):
                 status, body = service.request(
                     "/api/evidence-cro?" + urlencode({**selector, **wrong})
                 )
-                # Refused by name and worded with the way on (V546).
+                # Refused by name and worded with the way on.
                 assert (status, body["failure_code"]) == (400, refused), body
                 assert body["detail"] and body["next_action"], body
             # A result beside the study's book is refused in words, with the history to choose
-            # one from (V546).
+            # one from.
             status, body = service.request(
                 "/api/evidence-cro?" + urlencode({**selector, "result_hash": "0" * 64})
             )
@@ -808,7 +808,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
             )
         finally:
             path.write_bytes(original)
-        # V279 (AS): the listing names each admission's standing. Under the installed curation
+        # the listing names each admission's standing. Under the installed curation
         # policy it is CURRENT and offers a draft; a policy no longer installed makes it
         # HISTORICAL by name, offering only its export, and a plan on it is refused.
         from alphalattice.foundation.factor_research.research_loop import decisions
@@ -825,7 +825,7 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
         current = listed()
         assert current["standing"] == "CURRENT" and "verification" not in current, current
         assert set(current["next_requests"]) == {"alpha-draft", "export"}
-        # V633: one bad source stays local to its item; no sealed graph is inferred from a gap.
+        # one bad source stays local to its item; no sealed graph is inferred from a gap.
 
         from alphalattice.control.task_control.registry import TaskNotFoundError
 
@@ -994,7 +994,7 @@ def test_experiment_collection_keeps_readable_tasks_beside_an_invalid_saved_plan
 
 
 def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, published):
-    """V661: unreadable peers do not hide curation owned by a readable Factor study."""
+    """unreadable peers do not hide curation owned by a readable Factor study."""
 
     import duckdb
 
@@ -1045,7 +1045,7 @@ def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, 
 def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offers(
     sampled_alpha_case,
 ):
-    """V661: a real completed exploration and runnable preview need complete Task authority."""
+    """a real completed exploration and runnable preview need complete Task authority."""
 
     import duckdb
 
@@ -1779,7 +1779,7 @@ def test_bound_input_runs_reopens_and_replays_the_real_factor_owner(
 ) -> None:
     task_id, report, exported = published
     # The declaration's selection leads; the context it was screened in is its denominator
-    # (V252).
+    # .
     assert report["declared_selection"] == {
         "selected_factor_ids": report["receipt"]["input_binding"]["selected_factor_ids"],
         "screened_factor_count": len(report["result"]["program"]["factor_ids"]),
@@ -1803,7 +1803,7 @@ def test_bound_input_runs_reopens_and_replays_the_real_factor_owner(
 
 
 def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path, published) -> None:
-    """requirement (V367): each kind's controls, and a refusal that means a prerequisite result
+    """requirement: each kind's controls, and a refusal that means a prerequisite result
     is missing, name the flow's prerequisites on the input: the completed studies it holds,
     what is missing and the requests allowed next."""
 
@@ -1834,7 +1834,7 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path,
         assert book["flow"] == "BOOK"
         assert book["missing"] == ([] if book["present"]["ALPHA_STUDY"] else ["ALPHA_STUDY"])
         assert book["next_requests"], book
-        # V376: the first read is the path, every standard flow on each input, as the controls
+        # the first read is the path, every standard flow on each input, as the controls
         # and the refusal above state them.
         shown = live.operations.execute(Request(operation="WORKSPACE_SHOW"))
         (intent,) = [v for v in shown["intents"] if v.get("input_binding_hash") == factor_binding]
@@ -1848,7 +1848,7 @@ def test_controls_and_a_missing_prerequisite_name_the_flows_way_on(inputs: Path,
         ]
         assert intent["flows"]["ALPHA_STUDY"] == alpha
         assert intent["flows"]["FACTOR_STUDY"] == factor
-        # V380: a binding the workspace does not hold is refused by its field, with the held
+        # a binding the workspace does not hold is refused by its field, with the held
         # bindings and each one's feature controls (AX13: a typed binding met a bare code).
         unknown = live.operations.execute(
             Request(operation="FEATURE_CATALOG_CONTROLS", input_binding_hash="f" * 64)
@@ -1952,7 +1952,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         human = _json(session, "/api/experiments/curation", method="POST", payload=request)
         assert human["status"] == "CURATION_PUBLISHED", human
         assert human["task"] is None
-        # The decision offers its Alpha handoff filled, the receipt never copied (V391).
+        # The decision offers its Alpha handoff filled, the receipt never copied.
         assert human["next_requests"]["handoff"] == {
             "operation": "EXPERIMENT_HANDOFF_PREVIEW",
             "task_id": task_id,
@@ -1987,7 +1987,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         incomplete = _json(session, "/api/experiments/handoff", method="POST", payload=selector)
         assert incomplete["status"] == "DRAFT_INCOMPLETE", incomplete
         # Who fills the open target and model, in the answer itself: the agent, disclosed,
-        # never a stop for the person (FLOW-3; the Tech Lead's STOPS rulings, rows 32 and 44).
+        # never a stop for the person.
         assert incomplete["choice_owner"] == "AGENT_DISCLOSES"
         assert "does not stop to ask" in incomplete["detail"]
         assert (
@@ -2007,9 +2007,9 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         preview = _json(session, "/api/experiments/handoff", method="POST", payload=payload)
         assert preview["status"] == "INPUT_COMPILER_PREFLIGHT_PASSED", preview
         assert preview["task"] is None and preview["numerical_call_count"] == 0
-        # V361: the handoff offers the plan it starts, its Factor source kept, so
+        # the handoff offers the plan it starts, its Factor source kept, so
         # `experiment plan --from` plans it as it plans a draft.
-        # V438: and the input it chose beside its binding, so the plan never falls back to
+        # and the input it chose beside its binding, so the plan never falls back to
         # the Factor study's own input under another input's binding.
         assert preview["plan_request"] == {
             "operation": "EXPERIMENT_PLAN",
@@ -2669,7 +2669,7 @@ def test_small_input_reports_the_production_requirement_before_any_task(
         assert session.session.task_control_registry.tasks() == ()
 
 
-# ---- trying a feature is one request (binding plan, B18)
+# ---- trying a feature is one request
 
 _TRIAL_FIELDS = {
     "provider_adjusted_close",
@@ -2812,7 +2812,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         listed = _json(live, "/api/feature-trials")["trials"]
         assert [t["feature_trial_id"] for t in listed] == [trial_id]
 
-        # A record damaged in place is named with its way on, never skipped or read (V272):
+        # A record damaged in place is named with its way on, never skipped or read:
         # starting the trial again keeps it aside and runs the chain anew, by reuse alone.
         record = root / "runtime" / "feature-trials" / f"{trial_id}.json"
         record.write_bytes(record.read_bytes()[:40])
@@ -2897,7 +2897,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
 def test_a_formula_reading_the_sector_leaf_is_built_and_tried_but_not_activated(
     completed_alpha_case,
 ):
-    """requirement (V359): a formula reading `sector_return` is built from the day's Sector
+    """requirement: a formula reading `sector_return` is built from the day's Sector
     returns across the input's cross-section and tried like any feature; its review refuses the
     activation by name until the daily build carries the Sector child."""
     alpha_case = completed_alpha_case
@@ -3041,7 +3041,7 @@ def test_a_trial_refused_its_study_names_the_studies_it_can_run_against(complete
         readback = ops.execute(
             Request(operation="FEATURE_CATALOG_READBACK", feature_plan_hash=plan_hash)
         )
-        # V559 (the user's review at de555b07): the exported declaration is the document
+        # the exported declaration is the document
         # `feature plan --file` reads, never a whole request around it, and plans as it is.
         from alphalattice.interface.local_application.client import document_field
 
@@ -3167,7 +3167,7 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
             progress.wait(max(0.0, deadline - time.monotonic()))
         assert body["state"] == "COMPLETED", (body["stopped"], body["steps"])
         assert body["temporal_scope"]["status"] == "RECORDED"
-        # V368: the trial states what it can claim; a person activates from the packet.
+        # the trial states what it can claim; a person activates from the packet.
         alpha_side = body["comparison"].get("alpha_without_and_with")
         assert body["standing"]["comparison"] == (
             alpha_side["standing"] if alpha_side else "NOT_APPLICABLE"
@@ -3195,7 +3195,7 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
         assert packet["active_panel"]["admitted"] is True
         activate = packet["next_requests"]["activate"]
         assert activate["operation"] == "FEATURE_ACTIVATE"
-        # U56: the listing names the factor with the requests its packet offers.
+        # the listing names the factor with the requests its packet offers.
         listed = _json(live, "/api/feature-research")
         assert listed["status"] == "FEATURE_EXTENSIONS" and listed["page"] == 1
         row = next(
@@ -3254,7 +3254,7 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
             "feature controls --binding <selected-binding>" in refusals[mismatch_target]["detail"]
         )
 
-        # V509: the real completed trial under A cannot supply B's review or activation.
+        # the real completed trial under A cannot supply B's review or activation.
         for recipe, same_work in (("ROBUST_UNIVERSE_Z", False), ("ROBUST_SECTOR_NEUTRAL_Z", True)):
             changed = deepcopy(document)
             changed["reason"] = "Review the same formula under an explicit declaration."
@@ -3319,7 +3319,7 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
 
 
 def test_a_compact_prefixed_history_entry_reads_back_through_the_cli(inputs, published, capsys):
-    """V512: the printed experiment:<UUID> is accepted by history list --entry unchanged."""
+    """the printed experiment:<UUID> is accepted by history list --entry unchanged."""
     from run_alphalattice import main
 
     with _session(inputs):
@@ -3340,7 +3340,7 @@ def test_a_compact_prefixed_history_entry_reads_back_through_the_cli(inputs, pub
 
 
 def test_the_study_reads_answer_their_published_models(inputs: Path, published) -> None:
-    """contract (binding plan C2, CLI-16): beside a published study, each typed study read's
+    """contract: beside a published study, each typed study read's
     answer validates against the model `alphalattice schema show` publishes for it."""
 
     from alphalattice.interface.local_application.answers import ANSWERS
@@ -3362,7 +3362,7 @@ def test_the_study_reads_answer_their_published_models(inputs: Path, published) 
 
 
 def test_a_declaration_carries_no_identity_the_host_computes() -> None:
-    """requirement (V128, LAWS OP8): an authored ``envelope_hash`` or a foreign ``schema_id``
+    """requirement (LAWS OP8): an authored ``envelope_hash`` or a foreign ``schema_id``
     is refused at PLAN, before it can shape a managed output path or move an identity."""
 
     from alphalattice.control.product_host.composition.research_experiments import (
@@ -3379,7 +3379,7 @@ def test_a_declaration_carries_no_identity_the_host_computes() -> None:
 
 
 def test_an_object_document_is_checked_as_a_yaml_one_is() -> None:
-    """requirement (V134): the object entry of PLAN runs the YAML entry's guard, so a document
+    """requirement: the object entry of PLAN runs the YAML entry's guard, so a document
     that names a module is refused whichever way it arrives."""
 
     from alphalattice.control.research_program.authoring.document import (
@@ -3401,7 +3401,7 @@ def test_an_object_document_is_checked_as_a_yaml_one_is() -> None:
 def test_a_continuation_without_its_policy_is_told_the_field_and_the_draft(
     inputs: Path, published
 ) -> None:
-    """regression (V110): a continuation whose declaration lost `screening_policy` was refused
+    """regression: a continuation whose declaration lost `screening_policy` was refused
     as not installed with no way on, and one agent stopped there after 18 calls; the refusal
     names the field and what is installed, and offers the study's own draft."""
 
@@ -3621,7 +3621,7 @@ def test_a_portfolio_study_runs_a_catalog_policy_on_a_linked_risk_studys_covaria
 
 
 def test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies(risk_link):
-    """requirement (V338, U41, U42): the draft offers the weight rule, the completed Risk
+    """requirement: the draft offers the weight rule, the completed Risk
     studies on its research input and the catalog's families, each family's fields shown by
     `when` with the catalog's own bounds, so the Lab authors what PLAN admits without YAML."""
 
@@ -3661,7 +3661,7 @@ def test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies(r
 def test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits(
     risk_seed, tmp_path, monkeypatch
 ):
-    """regression (V616's class): a scoped or incomplete Risk read is not offered for
+    """regression (class): a scoped or incomplete Risk read is not offered for
     sizing; an integrity failure remains a named refusal, rather than disappearing."""
 
     source, metadata = risk_seed
@@ -3722,7 +3722,7 @@ def test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits(
 
 
 def test_the_kept_backups_are_read_without_making_one(tmp_path: Path):
-    """requirement (V337, U48): the Storage page reads the backup root and the kept generations
+    """requirement: the Storage page reads the backup root and the kept generations
     at GET /api/workspace/backup (`workspace backups`), and reading makes none."""
 
     root = tmp_path / "workspace"
@@ -3743,7 +3743,7 @@ def stop_child_for_cli_start_check(*, cancelled):
 def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
     alpha_case, monkeypatch, tmp_path, capsys
 ):
-    """V610/OP4/OP18: inject at OS child start, run the real CLI, read stop and legal recovery."""
+    """OP4/OP18: inject at OS child start, run the real CLI, read stop and legal recovery."""
 
     from alphalattice.control.task_control.child import ChildInterrupted, run_in_child
     from run_alphalattice import main

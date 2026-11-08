@@ -41,7 +41,7 @@ _ID = r"^[a-z][a-z0-9_-]{0,63}$"
 _HASH = r"^[0-9a-f]{64}$"
 
 FIRST_USE_HOURS: Final = 24
-"""How long a first-use goal's delegation lasts from its opening (V452)."""
+"""How long a first-use goal's delegation lasts from its opening."""
 
 DAILY_NETWORK_ASK: Final = str(person_question("network.daily_updates")["words"])
 """The one line a first use asks at its start, word for word: the person's yes, relayed by
@@ -524,7 +524,7 @@ class GoalSession(GoalContract):
 class GoalAcceptedAnswerContext(GoalContract):
     """The original Goal frozen at genuine first acceptance.
 
-    The assignment fields read contexts written before FLOW-1, when a lead's assignment
+    The assignment fields read older contexts, when a lead's assignment
     message could close at acceptance; nothing writes them now.
     """
 

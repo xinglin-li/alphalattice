@@ -3,7 +3,7 @@
 A module equal to its previous version in syntax -- the parsed tree without its docstrings
 and other bare strings, which is what every identity closure by rule hashes (R1) -- runs as
 it did and moves no such closure. It is neutral, and the gate's impact step selects no
-tests for it (V80), unless something reads its text (V95):
+tests for it, unless something reads its text:
 
 - a byte closure tracks it (a literal path of `source_file_closure_hash`,
   `source_component_hash` or `source_content_hash`); for a byte closure whose files are
@@ -22,7 +22,7 @@ tests for it (V80), unless something reads its text (V95):
 A model's docstring is prose its JSON schema shows but no hash binds: every schema hash
 takes the schema's structure alone (SH, SC3), so a docstring edit is neutral too.
 
-A move is proved the same way, definition by definition (V215): a changed file whose only
+A move is proved the same way, definition by definition: a changed file whose only
 changes are definitions moved syntax-equal to or from another changed file, and the imports
 and `__all__` entries that follow them, behaves as before; its own tests and the tests that
 name its module (patching its objects) are the ones a move can break, not every importer's.
@@ -58,7 +58,7 @@ _RULE_PRIMITIVES = frozenset(
         # The Desk helpers that hand their listed paths to `switched_source_identity`.
         "portfolio_adapter_implementation_hash",
         "implementation_content_hash",
-        # A reader that walks a module's syntax tree, as the operation table does (V356).
+        # A reader that walks a module's syntax tree, as the operation table does.
         "source_syntax_tree",
     }
 )
@@ -77,7 +77,7 @@ def source_syntax_tree(path: Path) -> ast.Module:
 
     The parsed tree without its docstrings and other bare string statements, what a rule
     closure hashes (R1): no prose edit reaches what such a reader finds, so a path handed here
-    is not a text read (V356).
+    is not a text read.
 
     Args:
         path: The module's file.
@@ -473,7 +473,7 @@ def _checkout_path(parts: tuple[str, ...] | None) -> str | None:
 
 
 def _built_paths(tree: ast.Module, relative: str, sources: Mapping[str, Path]) -> set[str]:
-    """The source files a byte closure reaches through paths it builds: joins and globs (V254)."""
+    """The source files a byte closure reaches through paths it builds: joins and globs."""
 
     bindings = _path_bindings(tree)
     found: set[str] = set()

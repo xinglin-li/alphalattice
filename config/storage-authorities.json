@@ -419,7 +419,7 @@
         "workspace_maintenance_event"
       ],
       "database": "workspace",
-      "semantic_role": "the workspace maintenance cycles, their events and the data update, audit-chain and remediation-failure receipts (V156)",
+      "semantic_role": "the workspace maintenance cycles, their events and the data update, audit-chain and remediation-failure receipts",
       "generation_model": "OPERATIONAL_PROJECTION",
       "authority_owner": "data_platform.maintenance.registry.DuckDbWorkspaceMaintenanceRegistry",
       "retention_owner": "data_platform",

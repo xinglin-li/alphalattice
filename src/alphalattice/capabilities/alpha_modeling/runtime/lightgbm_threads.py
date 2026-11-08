@@ -1,4 +1,4 @@
-"""LightGBM's threads: the operator's, behind a sealed canary (binding plan, B3).
+"""LightGBM's threads: the operator's, behind a sealed canary.
 
 With ``deterministic`` and ``force_col_wise`` LightGBM grows the same trees at any thread
 count; two things it writes still move with the count. Its model text records

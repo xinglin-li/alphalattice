@@ -17,7 +17,7 @@ const LiveReview = (() => {
   const query=(extra={})=>new URLSearchParams({...(S.selector || {}),...extra});
   /* The product's composed next requests (`view.next_requests`): each is dispatched by the
    * `operation` it names -- never by its key, which differs between projections (`packet`,
-   * `packet_<unit>`, `prepare`, `dossier`, ...) -- and carries every binding field the product
+   * `packet_<unit>`, `prepare`, `dossier`,...) -- and carries every binding field the product
    * wrote (the selector, a Task and its unit, a cutoff, a preparation binding, a review handle).
    * Three kinds: a read or a way to a page, an execution that does bounded work the person
    * asks for, and managed Provider work the product admits and the person triggers. */
@@ -43,7 +43,7 @@ const LiveReview = (() => {
   const taskSubjects=(view)=>[...new Map((Array.isArray(view?.subjects) ? view.subjects : view?.next_requests?.subject ? [view.next_requests.subject] : []).flatMap(s=>{const f=selectorForm(s);return s.operation==='EVIDENCE_CRO' && f && f!=='mixed' && SELECTOR_FORMS[f].every(k=>named(s,k)) ? [Object.fromEntries(SELECTOR_FORMS[f].map(k=>[k,s[k]]))] : [];}).map(s=>[key(s),s])).values()];
   const appliesHere=(r)=>{ const form=selectorForm(r); if(!form) return true; return form!=='mixed' && selectorForm(S.selector)===form && SELECTOR_FORMS[form].every(k=>named(r,k) && named(S.selector,k) && String(r[k])===String(S.selector[k])); };
   const bookName=()=>S.selector?.experiment_task_id || S.selector?.update_task_id || S.selector?.result_hash || S.selector?.handoff_hash || '';
-  // the object's name for the head (round G1): the book's words from History, its short handle when History has no words
+  // the object's name for the head: the book's words from History, its short handle when History has no words
   const bookTitle=()=>{ const k=S.selector ? key(S.selector) : ''; const b=k ? books().find(x=>key(x.selector)===k) : null; return b ? b.name : (S.selector ? short(bookName(),SHORT.id) : t('Evidence')); };
   const historical=()=>Boolean(S.pin);
   // a re-read of the view already shown (status `refreshing` for the same book and pin) leaves the page ready: its actions never blink disabled (the user's reading, 2026-09-22); a foreign view held painted for the hold is not ready
@@ -258,7 +258,7 @@ const LiveReview = (() => {
       const linked=hashParams().get('review_item'); if(linked && Window.inspectorMode()!=='evidence') queueMicrotask(()=>{ if(S.view && ticket===S.revision && Data.navigationCurrent(navigation)) setItemQuiet(linked); });
       // the owner's default book becomes the exact selector of this page
       if(!S.selector && view.book) { const b=view.book; S.selector=b.experiment_subject ? {experiment_task_id:b.experiment_subject.experiment_task_id,experiment_receipt_hash:b.experiment_subject.experiment_receipt_hash,portfolio_session:b.experiment_subject.portfolio_session} : b.update_subject ? {update_task_id:b.update_subject.update_task_id,update_publication_hash:b.update_subject.update_publication_hash,position_basis:b.update_subject.position_basis} : b.result_hash ? {result_hash:b.result_hash} : null; S.key=key(S.selector); loadDrafts(); if(S.selector)savePreference('reviewLastBook',S.selector); if(Data.navigationCurrent(navigation)){writeRoute(routeUpdate());navigation=Data.navigationIntent();} }
-      // after the selector's adoption (S.key moves there): the ledgers of every packet the projection names, and the issuers folded by default -- the overview is a summary, the items open on demand (round E2)
+      // after the selector's adoption (S.key moves there): the ledgers of every packet the projection names, and the issuers folded by default -- the overview is a summary, the items open on demand
       if(app.page==='evidence') void readLedgers();
       if(S.foldKey!==S.key){S.foldKey=S.key;S.folded=new Set((view.issuer_rows || []).map(r=>r.entity_id));}
       S.viewKey=S.key;S.viewPin=S.pin; // the painted view is this book's and pin's
@@ -278,7 +278,7 @@ const LiveReview = (() => {
     catch { if(S.error!=='Invalid exact review selector'){S.status='error';S.error='Invalid exact review selector';render();}return; }
     const restoreLists=()=>{let lists={};try{const value=JSON.parse(h.get('review_lists') || '{}');for(const [k,v] of Object.entries(value))if(v && typeof v==='object')lists[k]={query:String(v.query || ''),page:Math.max(0,Math.floor(Number(v.page) || 0))};}catch{}const changed=JSON.stringify(lists)!==JSON.stringify(S.collections) || (h.get('report_count') || '')!==S.reportCount || (h.get('report_conclusion') || '')!==S.reportConclusion;S.collections=lists;S.reportCount=h.get('report_count') || '';S.reportConclusion=h.get('report_conclusion') || '';return changed;};
     const pin=h.get('review_publication') || '', task=h.get('prepared_task') || '', unit=task ? h.get('prepared_unit') || '' : '', work=h.get('work') || '';
-    const vf={entity:h.get('view_entity_id') || '',topic:h.get('view_topic') || '',days:h.get('view_last_days') || ''}, viewChanged=JSON.stringify(vf)!==JSON.stringify(S.viewFilter); if(viewChanged){S.viewFilter=vf;S.reading=null;S.spanPage=0;} // the view's keys (round E3)
+    const vf={entity:h.get('view_entity_id') || '',topic:h.get('view_topic') || '',days:h.get('view_last_days') || ''}, viewChanged=JSON.stringify(vf)!==JSON.stringify(S.viewFilter); if(viewChanged){S.viewFilter=vf;S.reading=null;S.spanPage=0;} // the view's keys
     const item=h.get('review_item') || ''; if(S.status==='ready' && item!==S.item){ if(item) queueMicrotask(()=>{ if(S.status==='ready') setItemQuiet(item); }); else {S.item='';if(typeof Window!=='undefined')Window.clearDetailTrail?.();if(typeof patchMain==='function')patchMain();} } // the way back: the address without the item closes the pane
     if((selector && (key(selector)!==S.key || pin!==S.pin || S.status==='empty')) || (!selector && S.status==='empty' && !S.unresolved)) {
       const page=app.page, opened=open(selector,pin,page), gen=S.nav; // the generation this open holds
@@ -296,15 +296,15 @@ const LiveReview = (() => {
     if(restoreLists() || viewChanged) repaintMain(); // Back/Forward may change only the view keys while the same cell stays open.
     if(work && work!==(S.work?.task || '') && !S.work?.reading){void watch(work,true);}
     if(ready() && app.page==='report' && isUpdateBook() && S.deliveryAttempt!==S.key+'|'+(S.pin || workingPublication())) void assembleDelivery(true);
-    if(ready() && pages.has(app.page) && !S.preview && !S.previewPending && !historical() && !S.refusal) inspectSources(null,app.page!=='evidence-stream'); // every page's rail reads the store's state (round F1); one read at a time, or the patch -> ensure -> read chain never ends
-    if(ready() && (app.page==='report' || (app.page==='handoff' && (reviewPublished() || historical()))) && !S.error && (!S.exportDoc || S.exportDoc.hash!==(S.pin || workingPublication())) && (workingPublication() || S.pin)) readExport(null,app.page!=='report'); // a painted report of another reading stays until this one's arrives; the Review page reads the published dispositions from it (round F4)
+    if(ready() && pages.has(app.page) && !S.preview && !S.previewPending && !historical() && !S.refusal) inspectSources(null,app.page!=='evidence-stream'); // every page's rail reads the store's state; one read at a time, or the patch -> ensure -> read chain never ends
+    if(ready() && (app.page==='report' || (app.page==='handoff' && (reviewPublished() || historical()))) && !S.error && (!S.exportDoc || S.exportDoc.hash!==(S.pin || workingPublication())) && (workingPublication() || S.pin)) readExport(null,app.page!=='report'); // a painted report of another reading stays until this one's arrives; the Review page reads the published dispositions from it
   }
   /* ---- the exact book, its date, its evidence version and the review the page reads ---- */
   function books() {
     const seen=new Map();
-    // N3 (law 134): a book's name is its History name's words (the policy it declared, the package's words), the same as in Studies
+    // law 134: a book's name is its History name's words (the policy it declared, the package's words), the same as in Studies
     const named=(sel,name)=>({selector:sel,name,ref:short(sel.experiment_task_id || sel.update_task_id || sel.result_hash || sel.handoff_hash,SHORT.id)});
-    for(const row of Data.history()) if(row.raw?.book && !seen.has(key(row.raw.book))) seen.set(key(row.raw.book),named(row.raw.book,row.words || t(row.kind))); // round H1 (R4): the package and the hash; the session is the head's chip
+    for(const row of Data.history()) if(row.raw?.book && !seen.has(key(row.raw.book))) seen.set(key(row.raw.book),named(row.raw.book,row.words || t(row.kind))); // the package and the hash; the session is the head's chip
     if(S.selector && !seen.has(S.key)) seen.set(S.key,named(S.selector,isExperimentBook() ? t('authored book') : t('installed result')));
     return [...seen.values()];
   }
@@ -315,22 +315,22 @@ const LiveReview = (() => {
   const bookChoices=()=>{const all=books(),admitted=taskSubjects(S.unresolved?.view),choices=admitted.length ? admitted.map(selector=>all.find(b=>key(b.selector)===key(selector)) || {selector,name:t('Book'),ref:short(selector.experiment_task_id || selector.update_task_id || selector.result_hash || selector.handoff_hash,SHORT.id)}) : all;return [['',t('Choose a saved book')],...choices.map(v=>({value:JSON.stringify(v.selector),title:v.name,meta:v.ref}))];};
   function bookSwitch() { return picker('reviewBook',bookChoices(),{selected:S.selector ? JSON.stringify(S.selector) : '',kind:'switch',label:t('Choose the book')}); }
   function readingChooser() {
-    const pubs=publications(); // B1: the reading is the object's, the context line's last fact on every tab -- the head does not change between tabs
+    const pubs=publications(); // the reading is the object's, the context line's last fact on every tab -- the head does not change between tabs
     const note=t(pubs.length ? 'A pinned publication is an exact historical readback; preparing newer evidence never rewrites it.' : 'No review publication is recorded for this book yet.');
     return subjectChoice(t('Publication'),'reviewSavedPublication',[['',t('Current')],...pubs.map(v=>[v.hash,t('Pinned {hash} · {date}',{hash:short(v.hash, SHORT.hash),date:String(v.recorded).slice(0,10)})])],{selected:S.pin,disabled:!S.selector,attrs:html`title="${note}"`});
   }
   function selectorBar() {
     const pubs=publications(), pinnable=['evidence','report'].includes(app.page) || Boolean(S.pin);
-    // round 32: one line of words — the book and the publication are text controls (a field box
+    // one line of words — the book and the publication are text controls (a field box
     // only when hovered or focused); what a pin means is the control's title, said once on the desk
     const note=S.selector ? t(pubs.length ? 'A pinned publication is an exact historical readback; preparing newer evidence never rewrites it.' : 'No review publication is recorded for this book yet.') : t('Choose a book first; its publications are listed here.');
     const publication=pinnable ? subjectChoice(t('Publication'),'reviewSavedPublication',[['',t('Current')],...pubs.map(v=>[v.hash,t('Pinned {hash} · {date}',{hash:short(v.hash, SHORT.hash),date:String(v.recorded).slice(0,10)})])],{selected:S.pin,disabled:!S.selector,attrs:html`title="${note}"`}) : '';
-    return html`${subjectChoice(t('Book'),'reviewBook',bookChoices(),{selected:S.selector ? JSON.stringify(S.selector) : ''})}${publication}`; // round 93: the header's subject line
+    return html`${subjectChoice(t('Book'),'reviewBook',bookChoices(),{selected:S.selector ? JSON.stringify(S.selector) : ''})}${publication}`; // the header's subject line
   }
   function stateBanner(always=true) {
     if(S.refusal) return notRead(t('Evidence review is not available for this workspace'),S.refusal,explain(S.refusal));
     const v=S.view; if(!v) return '';
-    if(!always && (!v.task_id || !stateMoving(v.task_lifecycle))) return ''; // the desk's facts and layers say the state; a banner only while a Task can be followed (round E2)
+    if(!always && (!v.task_id || !stateMoving(v.task_lifecycle))) return ''; // the desk's facts and layers say the state; a banner only while a Task can be followed
     const a=stateOf(v.state), title=a.word, text=a.line || '', tone=a.tone==='good' ? 'ok' : a.tone;
     const words=v.state==='REVIEW_PUBLISHED' ? html`${t(text)} ${t('Disposition')}: <span class="review-strong">${coded(v.disposition)}</span> · ${t('completeness')}: <span class="review-strong">${coded(v.review_state)}</span>. ${t('A published review is a Host-routed recommendation, not permission to trade.')}` : t(text);
     return noteLine(t(title),html`${words}${v.explanation ? html` ${said(v.explanation)}` : ''}${v.task_id ? html` · ${t('Task')} <span class="mono">${short(v.task_id)}</span>${v.task_lifecycle ? html` · ${codeWords(v.task_lifecycle)}` : ''}` : ''}`,tone==='ok' ? 'ok' : tone==='warning' ? 'warning' : 'neutral',v.task_id && S.work?.task!==v.task_id ? btn(t('Follow this Task'),'review-watch',v.task_id,'button compact') : '');
@@ -356,7 +356,7 @@ const LiveReview = (() => {
     const dossierBound=Boolean(dossierHere) && (inThisRead(S.dossier) || (currentIdentity().analysis && currentIdentity().analysis===dossierHere.analysis_publication_hash));
     const dossierRetained=Boolean(dossierHere) && !dossierBound;
     const analysisAsOf=v?.evidence_as_of || (dossierBound ? dossierHere.evidence_as_of : '') || '';
-    const analysisCurrent=dossierBound || ['ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW','REVIEW_PUBLISHED'].includes(v?.state); // an evidence as-of alone is the packet's stamp, not an analysis (round E2)
+    const analysisCurrent=dossierBound || ['ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW','REVIEW_PUBLISHED'].includes(v?.state); // an evidence as-of alone is the packet's stamp, not an analysis
     const attribution=attributionWords(v?.review_attribution || []);
     // what an earlier version's Task is to this one (readable history), and what a Task whose
     // version no owner fact settles against this read is (open, neither current nor history)
@@ -394,21 +394,21 @@ const LiveReview = (() => {
     if(!buttons.length) return ''; // no Provider action admitted: no stage at all
     return html`<div class="flow review-actions">${buttons}</div><p class="caption">${t('The Provider buttons invoke the configured model Provider and consume its quota; they are not the native handoff and are refused when no credential is admitted.')}</p>`;
   }
-  /* The page's one primary action at the head (round 32): the desk leads to the report, Sources
+  /* The page's one primary action at the head: the desk leads to the report, Sources
    * prepares them once the preview says they can be, the report exports. */
   function headActions() {
     const v=S.view;
     if(!(S.view || S.refusal)) return '';
-    if(v?.state==='EVIDENCE_AUTHORITY_NOT_ADMITTED' && !['evidence-stream','report'].includes(app.page)) return ''; // N4 (law 130): the empty state holds the one way; the top row does not repeat it (the Report's delivery keeps its verb)
-    if(app.page==='evidence'){ const p=cycle().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary') : ''; } // the state's one next lawful action (round F1)
+    if(v?.state==='EVIDENCE_AUTHORITY_NOT_ADMITTED' && !['evidence-stream','report'].includes(app.page)) return ''; // law 130: the empty state holds the one way; the top row does not repeat it (the Report's delivery keeps its verb)
+    if(app.page==='evidence'){ const p=cycle().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary') : ''; } // the state's one next lawful action
     // the reason is the page's own words (already in the reader's language), named by the button so Controls never re-reads it as a source
-    if(app.page==='handoff'){ const p=reviewWords().primary; return p ? html`${typedBtn(p.word,p.action,p.value,'button primary',p.disabled || '','aria-describedby="reviewTopReason"')}<span class="sr-only" id="reviewTopReason">${p.disabled || ''}</span>` : ''; } // the turn's submit, or the report (round F4)
-    if(app.page==='evidence-reading'){ const p=readingWords().primary || cycle().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary',p.action==='review-continue' && !current() ? t('Read-only while pinned or busy') : '') : ''; } // `Read more` while the owner says pending (round F3)
-    if(app.page==='evidence-stream'){ const p=storeWords().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary',current() ? '' : t('Read-only while pinned or busy')) : ''; } // the store's one action (round F2)
+    if(app.page==='handoff'){ const p=reviewWords().primary; return p ? html`${typedBtn(p.word,p.action,p.value,'button primary',p.disabled || '','aria-describedby="reviewTopReason"')}<span class="sr-only" id="reviewTopReason">${p.disabled || ''}</span>` : ''; } // the turn's submit, or the report
+    if(app.page==='evidence-reading'){ const p=readingWords().primary || cycle().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary',p.action==='review-continue' && !current() ? t('Read-only while pinned or busy') : '') : ''; } // `Read more` while the owner says pending
+    if(app.page==='evidence-stream'){ const p=storeWords().primary; return p ? typedBtn(p.word,p.action,p.value,'button primary',current() ? '' : t('Read-only while pinned or busy')) : ''; } // the store's one action
     if(app.page==='report') return isUpdateBook() ? (S.delivery ? btn(t('Export delivery HTML'),'review-delivery-export','html','button primary') : '') : isExperimentBook() ? typedBtn(t('Compose the delivery'),'review-deliver','','button primary',ready() ? '' : t('Busy')) : S.exportDoc ? btn(t('Export review HTML'),'review-export','html','button primary') : '';
     return '';
   }
-  /* ---- the reading surface (round 77): one list of the owners' objects in the lane (the
+  /* ---- the reading surface: one list of the owners' objects in the lane (the
    * projection's issuers, issues and citations; the dossier's findings once read; the preview's
    * issuers and filings and the packet's spans on the sources page), one reading in the inspector. ---- */
   const KINDS={issuer:'Issuers',issue:'review|Issues',finding:'Findings',citation:'Citations',filing:'Filings'};
@@ -416,7 +416,7 @@ const LiveReview = (() => {
     const v=S.view, out=[];
     if(app.page==='evidence-stream'){
       const p=S.preview?.status==='EVIDENCE_PREPARATION_READY' ? S.preview : null, facts=packetJson();
-      // round E1: every issuer of the inventory with its holdings (its filings live in its reading), the packet's spans as citations
+      // every issuer of the inventory with its holdings (its filings live in its reading), the packet's spans as citations
       const inv=inventory(), byId=Object.fromEntries((inv?.rows || []).map(r=>[r.entity_id,r]));
       for(const i of p?.scope?.selected_issuers || []) out.push({type:'issuer',id:i.entity_id,x:{...i,tickers:i.tickers || [i.entity_id]},issuer:i.entity_id,holdings:byId[i.entity_id] || null});
       for(const r of inv?.rows || []) if(!out.some(o=>o.type==='issuer' && o.id===r.entity_id)) out.push({type:'issuer',id:r.entity_id,x:{entity_id:r.entity_id,tickers:[r.entity_id]},issuer:r.entity_id,holdings:r});
@@ -453,7 +453,7 @@ const LiveReview = (() => {
   function objectCollection(name,list){return collectionTable(name,list,[{label:t('Kind'),type:'text',cls:'col-tight'},{label:t('Object'),type:'text',absorb:true},{label:t('State'),type:'text'}],k=>{const n=evidenceName(k.type,k.x);return [t(KINDS[k.type]),btnAttrs(n.subject || k.id,'review-live-item',k.id,'text-btn','data-row-press'),n.word || ''];},{words:k=>[k.id,entityNames(k.x.affected_entities),k.x.entity_id,k.x.summary,k.x.topic,k.x.document_type].filter(Boolean).join(' ')});}
 
   const clearFilter=(name)=>setFilter(name+':');
-  function addClause(name){S.pendingFilter=name;patchMain();const trigger=$('#filter-'+name);if(trigger)Picker.open(trigger);} // round 95: `+ Filter` chose a field
+  function addClause(name){S.pendingFilter=name;patchMain();const trigger=$('#filter-'+name);if(trigger)Picker.open(trigger);} // `+ Filter` chose a field
   /* The limits, the provenance and the unmapped positions, read in the inspector's Facts. */
   /* The Overview's Facts (B1; the book plan's item 5): what the review recorded beyond the head's
    * line -- the analysis, the reviewer, the policy, its rules and reasons, the limits and the
@@ -468,7 +468,7 @@ const LiveReview = (() => {
       ...(u || x ? [{title:t('Provenance'),body:html`${u ? kv([[t('Position basis'),codeWords(u.position_basis)],[t('Observed through'),u.observed_through],[t('Entry session'),u.entry_session],[t('Update publication'),html`<span class="mono">${u.update_publication_hash}</span>`]]) : ''}${x ? kv([[t('Previous holdings session'),x.preceding_session || ''],[t('Research cutoff'),x.research_as_of_session || '']]) : ''}`}] : []),
       ...(c?.unmapped?.length ? [{title:countText(c.unmapped_positions,'{n} position without admitted issuer mapping','{n} positions without admitted issuer mapping'),body:collectionTable('unmapped-positions',c.unmapped,[{label:t('Listing'),type:'text'},{label:t('Weight'),type:'num',cls:'col-tight'},{label:t('State'),type:'text'},{label:t('Reason'),type:'text',absorb:true}],r=>[r.ticker || r.listing_id,pctText(r.ending_weight),codeWords(r.status),r.reason])}] : [])];
   }
-  /* Coverage and mapping as one bar each (round 77, the single visuals round 5 left): the words
+  /* Coverage and mapping as one bar each (a single visual): the words
    * first, the bar under them; the required minimum is the bar's mark. */
   const share=(text)=>{const m=String(text || '').match(/^(-?\d+(?:\.\d+)?)\s*%$/);return m ? Number(m[1])/100 : null;};
   /* An issue's days (contract 10.8): when its earliest cited finding was found, since when an
@@ -485,7 +485,7 @@ const LiveReview = (() => {
         <section><h3>${t('Still unknown')}</h3>${(card.unknowns || []).length ? html`<ul>${card.unknowns.map(x=>html`<li>${x}</li>`)}</ul>` : html`<p class="caption">${t('No unknown is recorded for this issue.')}</p>`}</section>
       </div>`;
   }
-  /* The object a handle names, as this page holds it (round 76): the verified span of the read
+  /* The object a handle names, as this page holds it: the verified span of the read
    * export, else the read packet's admitted span (its excerpt), else the projection's citation
    * row, else the dossier's finding; the hover card and the readings read it. */
   // the finding package the page read for a composed request, when it is this book's
@@ -526,7 +526,7 @@ const LiveReview = (() => {
     const rows=(list,type)=>list.length ? objectCollection('issuer-'+id+'-'+type,list) : '';
     if(o.type==='issue'){ const a=(S.view?.required_actions || []).find(a=>(o.x.affected_entities || []).includes(a.entity_id)), standing=a ? actionStanding(a) : null; return html`${a ? refusal({reason:said(a.reason)},standing.tone,{state:standing.state,word:standing.word,next:a.action==='NONE' ? '' : html`${codeWords(a.action)} · ${entityNames([a.entity_id])}`}) : ''}${issue(o.x)}`; }
     if(o.type==='citation') return citation(o.id);
-    // B2 (item 4): the claim -- the finding's issuers and stance, its summary once -- then its sources, then the review's words on it; its handle is the pane's caption
+    // the claim -- the finding's issuers and stance, its summary once -- then its sources, then the review's words on it; its handle is the pane's caption
     if(o.type==='finding'){ const f=o.x, sup=(f.supporting_span_handles || []), con=(f.contradicting_span_handles || []), disp=dispositionOf(f.finding_handle); return html`${evidenceRow('finding',f,{named:true,brief:true,cls:'evidence-head',why:html`${entityNames(f.affected_entities) || ''}${f.direction ? html` · ${cellWord(f.direction)}` : ''}`})}${f.summary ? html`<p class="owner-text">${f.summary}</p>` : ''}${passagesOf(sup,'support')}${passagesOf(con,'contra')}${kv([[t('Lifecycle'),codeWords(f.lifecycle)],[t('Stance'),cellWord(f.direction)],[hint(t('Support'),t('How a finding is held up by its own citations: supported, single source, contested, unsupported.')),codeWords(f.structure)],...(disp ? [[t('Disposition'),codeWords(disp.disposition)],...(disp.rationale ? [[t('CRO rationale'),html`<span class="owner-text">${disp.rationale}</span>`]] : [])] : [])])}${(f.limitations || []).length ? html`<h3>${t('Limitations')}</h3>${textCollection('finding-'+f.finding_handle+'-limits',f.limitations)}` : ''}`; }
     if(o.type==='filing') return html`${head}${kv([[t('Issuer'),o.x.entity_id],[t('Document type'),o.x.document_type],[t('Revision'),o.x.revision],[t('Available at'),when(o.x.available_at)]])}<p class="caption">${t('A candidate is a document the source package holds; it becomes admitted passages only after preparation, in the exact packet.')}</p>`;
     const r=o.x, kids=issuerObjects(o.id), of=(type)=>kids.filter(k=>k.type===type);
@@ -534,8 +534,7 @@ const LiveReview = (() => {
     const review=o.holdings && !r.conclusion ? '' : kv([[t('Conclusion'),r.conclusion ? codeWords(r.conclusion) : ''],[t('Findings'),summary || (r.selection_reason ? codeWords(r.selection_reason) : '')],[t('Weight'),weightWords(r.ending_weight) || ''],[t('Change'),changeWords(r.signed_change) || ''],[hint(t('Exposure'),t('The owner\u2019s ordinal band of a position from its weight and change: low, medium, high, critical.')),bandWords(r.exposure_band)]]);
     return html`${head}${review}${o.holdings ? holdingsReading(o) : ''}${['issue','finding','filing','citation'].map(type=>of(type).length ? html`<h3>${t(KINDS[type])} <span class="num">${count(of(type).length)}</span></h3>${rows(of(type),type)}` : '')}`;
   }
-  /* The reading pane reads the object the route names (`review_item`) beside the list (round 92:
-   * in the lane, never the side column); a repaint refreshes it. */
+  /* The reading pane reads the object the route names (`review_item`) beside the list (   * in the lane, never the side column); a repaint refreshes it. */
   function setItem(id) {
     const was=S.item; S.item=id || '';
     if(was && !S.item && typeof Window!=='undefined') Window.focusAfterPaint(['review-live-item',was]); // law 149: closing returns the focus to the row
@@ -548,7 +547,7 @@ const LiveReview = (() => {
   /* The packet request the product composed for this book: a prepared Task and, in a coverage
    * run, the unit it holds. Adopted when the page holds no prepared Task yet; a run of several
    * units offers its packets as next steps and adopts none by itself. */
-  // U79 (V547): a prepared unit under authority the Host no longer holds -- the workspace's Evidence package or source mode
+  // a prepared unit under authority the Host no longer holds -- the workspace's Evidence package or source mode
   // moved since -- carries the owner's words on its progress row; its packet is refused, so it is offered nowhere
   const staleOf=(p)=>String(p?.state || '')==='PREPARED' && Boolean(p?.detail);
   const staleUnit=(view,unit)=>(view?.coverage_progress?.units || []).some(u=>u.unit_id===unit && staleOf(u));
@@ -629,9 +628,9 @@ const LiveReview = (() => {
   const readingPaneMarkup=()=>{ if(!S.item) return ''; const id=S.item, o=objectOf(id), r=o ? evidenceName(o.type,o.x) : null, cell=String(id).startsWith('cell:') ? cellOf(id) : null, span=String(id).startsWith('span:') ? String(id).slice(5) : ''; const x=span ? spanOf(span) : null, handled=r && ['finding','issue','citation'].includes(o.type); // item 6: the words title the pane; the handle follows small in its caption
     return readingPane(span ? (x?.entity_id ? html`${issuerNames()[x.entity_id] || x.entity_id}${x.document_type ? html` · ${x.document_type}` : ''}` : html`<span class="mono">${span}</span>`) : cell ? html`${cell.entity_id} · ${codeWords(cell.topic)}` : r ? r.subject : id==='analysis' ? t('Which analysis') : id, span ? html`${t('Passage')}${x?.entity_id ? html` · <span class="mono">${span}</span>` : ''}` : cell ? t('Ledger cell') : handled ? html`${r.kind} · <span class="mono">${id}</span>` : r ? r.kind : t('Evidence'), evidenceReading(id), 'review-item-close', 'desk-reading', ['review-live-item', id]); };
   /* ---- the sources: candidates versus admitted passages ---- */
-  async function inspectSources(request=null,quiet=false) { // quiet (round E2): the desk's Sources layer reads the inventory; a failed read is its own words, not the desk's notice
+  async function inspectSources(request=null,quiet=false) { // quiet: the desk's Sources layer reads the inventory; a failed read is its own words, not the desk's notice
     if(!current())return;
-    // a quiet read (the rail's Sources stage on every page, round F1) is background: it never makes the page busy, so an editor's keystroke or a button is never swallowed by it
+    // a quiet read (the rail's Sources stage on every page) is background: it never makes the page busy, so an editor's keystroke or a button is never swallowed by it
     if(!quiet)S.busy='sources';S.previewPending=true;const ticket=S.revision;repaintMain();
     try{const value=await Data.read(Data.route('EVIDENCE_PREVIEW')+'?'+(request ? new URLSearchParams(requestFields(request)) : query()),true);if(ticket===S.revision)S.preview=value;}
     catch(e){if(ticket===S.revision){if(!quiet)S.error=e.message;S.preview={status:'READ_REFUSED',failure_code:e.message};}}
@@ -663,7 +662,7 @@ const LiveReview = (() => {
   const packetJson=()=>packetFacts(bundleOf('analyst')?.packet);
   // the evidence identity a packet carries: its analysis context and the cutoff its obligation names
   const packetIdentity=(value)=>({context:value?.analysis_context_hash || '',asOf:packetFacts(value?.packet)?.research_obligation?.evidence_as_of || ''});
-  /* ---- the sources: the book's data layer (round E1) -- what the workspace holds for each
+  /* ---- the sources: the book's data layer -- what the workspace holds for each
    * issuer, what the last check found at the source, the units of a wide book, and what a
    * preparation would do; every figure the preview's or the projection's. ---- */
   const BYTE_WORDS=(n)=>typeof bytesWords==='function' ? bytesWords(n) : String(n);
@@ -697,8 +696,8 @@ const LiveReview = (() => {
     const PAGE=LIST_PAGE, {shown,start,page,pages}=pageOf(found,S.sourcePage); S.sourcePage=page;
     const toolbar=searchBar('sourceQuery',t('Find an issuer'),t('Find an issuer…'),S.sourceQuery);
     const turns={page,pages,prev:['review-source-page','prev'],next:['review-source-page','next']}, foot=pager({total:found.length,one:'{n} entry',many:'{n} entries',...turns});
-    const columns=[{label:'',type:'text',cls:'col-tight col-fold'},{label:'#',type:'num',index:true},{label:t('Issuer'),type:'text'},...(isWide ? [{label:t('Unit'),type:'id',cls:'col-tight'}] : []),{label:t('State'),type:'status',cls:'col-tight'},{label:t('Filings'),type:'text',absorb:true},{label:t(inv.live ? 'Latest accepted' : 'Latest available'),type:'date',cls:'col-tight'},{label:t('Held'),type:'num',cls:'col-tight'},...(inv.live ? [{label:t('Deferred'),type:'num',cls:'col-tight'},{label:t('Retained'),type:'num',cls:'col-tight'}] : [])]; // W: a one-word state and the counts are tight columns (as the Overview's issuers, round H1), so the table fits beside the side column before it rolls
-    // B3 (item 5): an issuer's row opens its documents in place, under it; a held issuer the published review did not reach says the review's record beside its forms -- never a reason the owner does not record
+    const columns=[{label:'',type:'text',cls:'col-tight col-fold'},{label:'#',type:'num',index:true},{label:t('Issuer'),type:'text'},...(isWide ? [{label:t('Unit'),type:'id',cls:'col-tight'}] : []),{label:t('State'),type:'status',cls:'col-tight'},{label:t('Filings'),type:'text',absorb:true},{label:t(inv.live ? 'Latest accepted' : 'Latest available'),type:'date',cls:'col-tight'},{label:t('Held'),type:'num',cls:'col-tight'},...(inv.live ? [{label:t('Deferred'),type:'num',cls:'col-tight'},{label:t('Retained'),type:'num',cls:'col-tight'}] : [])]; // W: a one-word state and the counts are tight columns (as the Overview's issuers), so the table fits beside the side column before it rolls
+    // an issuer's row opens its documents in place, under it; a held issuer the published review did not reach says the review's record beside its forms -- never a reason the owner does not record
     // law 149: the row is one press -- its documents, the same press folds them -- its chevron leading the row; the issuer's reading is the Overview's and the Review's
     const docs=sourceDocuments(), docsOf=(id)=>docs.rows.filter(d=>d.entity===id);
     const reached=(id)=>{ const r=reviewPublished() || historical() ? (S.view?.issuer_rows || []).find(x=>x.entity_id===id) : null; if(!r || issuerReviewed(r)) return ''; const e=evidenceState(r.conclusion), why=unreviewedReason(r); return html` · ${stateLine(e.state,{word:e.word,next:''})}${why && why!==String(r.conclusion) ? html` <span class="muted">· ${codeWords(why)}</span>` : ''}`; };
@@ -739,7 +738,7 @@ const LiveReview = (() => {
     // until its analysis is published (10.9)
     const readyOf=(p)=>String(p?.state || '')==='PREPARED' && Boolean(p?.packet_task_id) && !staleOf(p), reading=units.some(u=>readyOf(unitProgress(u.unit_id)) || staleOf(unitProgress(u.unit_id)));
     const row=(u)=>{ const p=unitProgress(u.unit_id), c=u.source_check || null, stale=staleOf(p), state=stale ? 'superseded' : p ? String(p.state || '').toLowerCase() : (u.prepared_task_id || p?.packet_task_id ? 'prepared' : 'not_started'), task=p?.packet_task_id || u.prepared_task_id || '';
-      // U78 (V541): a unit's words are the owner's -- why it failed or went stale, its way on -- the state's hover card;
+      // a unit's words are the owner's -- why it failed or went stale, its way on -- the state's hover card;
       // where its sources fell short, its issuers without one by name
       const without=Array.isArray(p?.issuers_without_source) ? p.issuers_without_source : [];
       const said=html`${hint(stateLine(state,{next:''}),p?.detail ? t(p.detail) : '')}${p?.failure_code ? html` <span class="sub-cell">${coded(p.failure_code)}</span>` : ''}${without.length ? html` <span class="sub-cell">${hint(countText(without.length,'{n} without a source','{n} without a source'),without.map(id=>issuerWords(scope[id],id)).join(', '))}</span>` : ''}`;
@@ -770,7 +769,7 @@ const LiveReview = (() => {
     if(p?.status!=='EVIDENCE_PREPARATION_READY') return [];
     return [{title:t('Sources'),body:html`<p>${t(inv?.live ? 'What this workspace holds for the book\'s issuers, from the sealed commitments; a held body is reused without a download when the official inventory still selects it.' : 'What the recorded source package holds for the book\'s issuers at this cutoff; reading fetches nothing.')}</p>${inv?.live ? html`<p>${t('What the acquisition stage of the last preparation found at the source: its traffic, and every resource\'s outcome.')}</p>` : ''}${kv([[t('Source mode'),coded(p.source_mode)],[t('Families'),(p.approved_source_families || []).map(f=>codeWords(f)).join(', ')],[t('Work'),coded(p.source_work)],[t('Evidence as-of'),whenText(p.evidence_as_of)],[t('Acquisition deadline'),whenText(p.acquisition_deadline)],[t('Binding'),mono(p.preparation_binding_hash,SHORT.hash)],[t('Candidate documents'),count(p.recorded_candidate_count)],[t('Managed model required'),t(p.managed_model_required ? 'yes' : 'no')]])}${inv?.claim ? html`<p class="caption">${said(inv.claim)}</p>` : ''}<p class="caption">${said(p.claim)}</p>`}];
   }
-  /* ---- the Sources page (round F2, redesign-2 section 7): the evidence store's management in
+  /* ---- the Sources page (redesign-2 section 7): the evidence store's management in
    * the Data page's pattern -- the store's state in one sentence and four figures, then Set up
    * (the prerequisites, each met or not, with the exact step the product cannot run itself),
    * Prepare (the preview as facts, the last check), Keep current (the version, what is due,
@@ -781,14 +780,14 @@ const LiveReview = (() => {
   const modelShort=(id)=>String(id || '').split('/').pop();
   const familyWords=(p)=>(p?.approved_source_families || []).map(f=>codeWords(f)).join(' · ');
   /* The four prerequisites of the store, each met or not, with the step that meets it: the retrieval pack first, as the
-   * authority binds its recipe (V405); `setup` is the Host's steps for the row, when the preview refused for it. */
+   * authority binds its recipe; `setup` is the Host's steps for the row, when the preview refused for it. */
   function setupRows() {
     const p=S.preview, ok=previewOf(), v=S.view, st=v?.state || '', code=String(p?.failure_code || ''), setup=p?.setup || {};
     const retired=/matter_selection_policy_retired/.test(code);
     const authorityMissing=retired || st==='EVIDENCE_AUTHORITY_NOT_ADMITTED' || /NO_ADMITTED_EVIDENCE_AUTHORITY/.test(code);
     const runtimeMissing=/evidence_task_adapter_absent|NO_ADMITTED_EVIDENCE_RUNTIME/.test(code);
     const ms=ok?.matter_selection || null, allowance=ms?.per_session_allowance || null;
-    const adm=ok?.admission || null, window=adm?.acquisition_window_seconds!=null ? Math.round(adm.acquisition_window_seconds/60) : null; // U57 (A2): the admitted bounds, as the preview states them
+    const adm=ok?.admission || null, window=adm?.acquisition_window_seconds!=null ? Math.round(adm.acquisition_window_seconds/60) : null; // the admitted bounds, as the preview states them
     const policy=ok ? [ms?.method ? codeWords(ms.method) : '',allowance ? t('{r} reads · {w} windows · {b} a window',{r:count(allowance.reads),w:count(allowance.windows),b:BYTE_WORDS(allowance.window_bytes)}) : '',window!==null && Number.isFinite(window) ? t('a preparation submits within {n} min of its preview',{n:count(window)}) : '',adm?.maximum_documents_per_issuer ? t('at most {n} documents an issuer',{n:count(adm.maximum_documents_per_issuer)}) : '',adm?.maximum_document_bytes ? t('at most {b} a document',{b:BYTE_WORDS(adm.maximum_document_bytes)}) : '',v?.evidence_expires_at ? t('the current version lives until {t}',{t:dayWord(v.evidence_expires_at)}) : ''].filter(Boolean).join(' · ') : '';
     const authority=
       {id:'authority',met:!authorityMissing && (Boolean(ok) || (!runtimeMissing && Boolean(v) && st!=='EVIDENCE_AUTHORITY_NOT_ADMITTED')),name:t('Evidence authority'),why:retired ? t('installed under a retired matter selection') : authorityMissing ? t('no recorded package is bound into this workspace and no live acquisition is admitted') : ok ? t(ok.source_mode==='LIVE_OFFICIAL' ? 'live official acquisition admitted' : 'a recorded package is bound into this workspace') : t('admitted'),command:String(p?.setup_help || 'scripts/materialize_evidence_cro_authority.py --help'),shows:p?.setup_help ? 'The command the Host names' : 'Its options',sentence:t('One script writes the recorded package into the workspace and binds it into its manifest, or admits the live acquisition; the product cannot run it. Run it in a terminal, then read again.'),setup:setup.authority || null,
@@ -829,7 +828,7 @@ const LiveReview = (() => {
     const packNote=ok?.retrieval?.encoder ? modelShort(ok.retrieval.encoder.model_id)+' · '+modelShort(ok.retrieval.reranker?.model_id) : (packRow.met ? '' : packRow.why);
     return rail(html`${stat(t('Source mode'),mode,modeNote,true)}${stat(t('Documents held'),docs,docsNote,!inv)}${stat(t('Evidence version'),version,versionNote,true)}${stat(t('Retrieval pack'),pack,packNote,true)}`);
   }
-  /* U68 (V405, the user's R2-02): the Host's steps for one prerequisite, each as a person types it at the product
+  /* the Host's steps for one prerequisite, each as a person types it at the product
    * folder with what the Host knows filled in -- the environment when it is absent, Check, Set up with what is left to
    * choose and what to do before it, Read again. The Host's sentences are its English, worded through the dictionary. */
   const setupStep=(name,note,command,under='')=>html`<li><p><strong>${name}</strong>${note ? html` · ${note}` : ''}</p>${command ? html`<pre class="code-block setup-command owner-text">${command}</pre>` : ''}${under}</li>`;
@@ -863,7 +862,7 @@ const LiveReview = (() => {
       : p.source_check ? factsRef(t('The last check'),html`<p>${trafficWords(p.source_check)}</p>${checkFacts(p.source_check,inv.live)}`)
       : hint(t('none'),String(checkFacts(null,inv.live)).replace(/<[^>]+>/g,'')); // the reason a check is absent, on hover
     const facts=kv([[t('Scope'),scope],[t('Cutoff'),dayWord(p.evidence_as_of)],[hint(t('Candidates'),t('recorded locally; not yet admitted passages')),count(p.recorded_candidate_count || 0)],[t('Managed model'),t(p.managed_model_required ? 'required' : 'not required')],...(p.work_estimate ? [[t('Owner\'s estimate'),workEstimate(p)]] : []),[t('Last check'),check],...campaignRow(p.campaign)],'kv-columns');
-    return panel(t('Prepare'),sentence,facts,'','data-overview="prepare"'); // B3: a section of the column, its facts in the lane's columns, the prose its (i)
+    return panel(t('Prepare'),sentence,facts,'','data-overview="prepare"'); // a section of the column, its facts in the lane's columns, the prose its (i)
   }
   const campaignRow=(c)=>c ? [[t('Campaign'),html`<span class="mono">${c.campaign_id}</span> · ${t('{a} attempts and {b} left',{a:count(c.attempts_remaining),b:BYTE_WORDS(c.bytes_remaining)})}${c.unsettled_reservations ? html` · ${countText(c.unsettled_reservations,'{n} reservation unsettled','{n} reservations unsettled')}` : ''}`]] : [];
   /* The reuse accounting (A7): this preparation's selections and documents from its own sealed receipts and checks; the
@@ -882,7 +881,7 @@ const LiveReview = (() => {
     const standing=deferred.filter(d=>!d.recheck_after).length; // since W6 a deferral carries no recheck date (10.8)
     const dueWords=due.length ? countText(due.length,'{n} deferred document past its recheck date','{n} deferred documents past their recheck date') : standing ? countText(standing,'{n} deferred until a larger cap or an explicit scope','{n} deferred until a larger cap or an explicit scope') : deferred.length ? t('{n} deferred, none due yet',{n:count(deferred.length)}) : inv?.live ? t('nothing is due') : hint(t('none'),t('a recorded package does not age; a new package is a new setup'));
     const selection=(v?.eligible_versions || []).length>1 ? [[t('Selection'),html`${countText(v.eligible_versions.length,'{n} analysis eligible','{n} analyses eligible')} · ${btn(t('Choose the analysis'),'review-live-item','analysis','text-btn')}`]] : [];
-    const reuse=p.reuse ? reuseWords(p.reuse) : hint(t('unchanged documents are reused'),t('unchanged documents are reused, not fetched again')); // U57 (A7): the preparation's own accounting
+    const reuse=p.reuse ? reuseWords(p.reuse) : hint(t('unchanged documents are reused'),t('unchanged documents are reused, not fetched again')); // the preparation's own accounting
     const facts=kv([[t('Version'),version],[t('Due'),dueWords],[t('Reuse'),reuse],...selection],'kv-columns');
     return panel(t('Keep current'),t('An update is a new preparation under a new cutoff.'),facts,'','data-overview="update"');
   }
@@ -971,14 +970,14 @@ const LiveReview = (() => {
     if(!S.storage){ if(typeof queueMicrotask==='function') queueMicrotask(()=>void readStorage()); return ''; }
     const x=S.storage, e=x.status==='ready' ? x.value?.evidence : null;
     const code=x.code ? (String(x.code).match(/[a-z_]+\.[a-z_]+/) || [String(x.code).split(':')[0]])[0] : ''; // the owner's code, not the error's class
-    // B3: a section of the column; a category the owner does not report is not shown (law 81), a refusal is said with its code
+    // a section of the column; a category the owner does not report is not shown (law 81), a refusal is said with its code
     // the reviews (2026-09-24): a refusal is a notice with its way -- read again -- the code in its (i), never a loose paragraph
     // a refusal about the workspace itself (its manifest) leads the page and says what it leaves out (the user's phase 6 reading)
     if(!e || typeof e!=='object') return code ? workspaceWide(x) ? banner(t('The workspace manifest could not be read'),html`${explain(code) || codeWords(code)} ${t('The sections below were read from the evidence owner; only the storage figures are missing.')}${infoMark(code)}`,'warning',btn(t('Read again'),'review-storage','','button compact')) : banner(t('Evidence storage not read'),html`${explain(code) || codeWords(code)}${infoMark(code)}`,'warning',btn(t('Read again'),'review-storage','','button compact')) : '';
     const sum=e.summary && typeof e.summary==='object' ? e.summary : e;
     return panel(t('Storage'),'',html`<p>${t('originals')} ${BYTE_WORDS(sum.source_object_bytes || 0)} · ${t('canonical texts')} ${BYTE_WORDS(sum.source_blob_bytes || 0)} · ${t('vectors')} ${BYTE_WORDS(sum.vector_payload_bytes || 0)} · ${t('indexes')} ${BYTE_WORDS(sum.index_payload_bytes || 0)} · ${t('sealed records')} ${BYTE_WORDS(sum.sealed_artifact_bytes || 0)}</p>`);
   }
-  /* U78 (V541, V546): when units fell short of sources under the recorded package, the person's ways on as the Host words
+  /* when units fell short of sources under the recorded package, the person's ways on as the Host words
    * them -- official SEC acquisition, their decision, first; a package only where one covers every unit's issuers, its
    * steps as Set up shows an authority's -- and once, what a recorded package can review. */
   function waysSection() {
@@ -993,9 +992,9 @@ const LiveReview = (() => {
     // a refusal that is not a prerequisite (the transport, a typed refusal) is still said once
     const other=!p ? '' : p.status==='READ_REFUSED' && !unmet.length ? refusal({code:p.failure_code,reason:explain(p.failure_code)},'warning',{word:t('Source preview refused'),action:recoveryFor(p.failure_code)}) : p.status!=='EVIDENCE_PREPARATION_READY' && !unmet.length ? refusal({code:p.failure_code || p.status,reason:said(p.explanation) || explain(p.failure_code) || '',next:p.next_action},'warning',{word:t('Sources cannot be prepared yet'),action:recoveryFor(p.failure_code)}) : '';
     const setup=p ? setupSection(rows) : '';
-    // N4: a store that is not set up is its checklist alone -- no figure of a store that does not exist (law 81)
+    // a store that is not set up is its checklist alone -- no figure of a store that does not exist (law 81)
     if(S.view?.state==='EVIDENCE_AUTHORITY_NOT_ADMITTED' && !S.refusal) return html`${setup}${other}`;
-    // B3 (item 5): one column -- Set up one line at the top (open while a prerequisite is unmet), the store's figures, Prepare and Keep current, the issuers and their documents, the units, the preparations, the runs, the storage
+    // one column -- Set up one line at the top (open while a prerequisite is unmet), the store's figures, Prepare and Keep current, the issuers and their documents, the units, the preparations, the runs, the storage
     const holdings=inv ? holdingsTable(inv) : '', units=inv ? unitsTable() : '', documents=ok ? documentsSection() : '';
     const jumps=pageJumps([[t('Issuers'),'[data-jump="issuers"]',Boolean(String(holdings))],[t('Units'),'[data-jump="units"]',Boolean(String(units))],[t('Retained documents'),'[data-jump="documents"]',Boolean(String(documents))]]);
     return html`<div class="overview-main sources-flow">${setup}${workspaceWide(S.storage) ? storageLine() : ''}${storeRail()}${jumps}${other}${waysSection()}${workSection('evidence-stream')}${ok ? prepareSection() : ''}${ok ? updateSection() : ''}${holdings}${units}${documents}${ok ? executionSection() : ''}${workspaceWide(S.storage) ? '' : storageLine()}</div>`;
@@ -1169,14 +1168,14 @@ const LiveReview = (() => {
     const rows=[[t(role==='analyst' ? 'Findings' : 'Risks'),html`${count(preview.count)} <span class="sub-cell">${countText(preview.cited,'{n} citation','{n} citations')}</span>`],...(role==='cro' && preview.resolved ? [[t('Open issues resolved'),count(preview.resolved)]] : []),...(preview.summary ? [[t('Summary'),preview.summary]] : []),[t('Envelope'),preview.envelope ? t('the owner\'s submission template (context checked on submit)') : t('the bare response; the {what}\'s template is added on submit',{what})]];
     return html`<div class="review-answer-preview"><h3>${t(role==='analyst' ? 'Answer preview · Analyst answer' : 'Answer preview · CRO answer')}</h3>${kv(rows)}${preview.unsupported.length ? noteLine(t('Parts of this answer could not be previewed'),html`<span class="mono">${preview.unsupported.join(' · ')}</span> · ${t('The text is kept exactly as written; the owner validates the whole answer on submission.')}`,'warning') : ''}${preview.items.length ? html`<div class="card-list lines">${preview.items.map(i=>role==='cro' ? evidenceRow('issue',{issue_handle:i.handle,affected_entities:[i.entities],severity_if_true:i.severity,cro_inference:i.carries ? t('carries {o}',{o:i.carries}) : '',cited_finding_handles:Array.from({length:i.cites})}) : evidenceRow('finding',{finding_handle:i.handle,affected_entities:[i.entities],direction:i.direction,cites:i.cites}))}</div>` : ''}${verdict}</div>`;
   }
-  /* ---- the Review page (round E4, the user's reading: the page follows the book's state; a read
+  /* ---- the Review page (the user's reading: the page follows the book's state; a read
    * runs nothing, so the packet and the dossier are read when the page opens; the Analyst's part is
    * the sealed answer once an analysis is published; the CRO's part is the composed dossier and,
    * once a review is published, the published review). ---- */
   const analysisPublished=()=>['ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW','REVIEW_PUBLISHED'].includes(S.view?.state) || Boolean(dossierOf());
   const reviewPublished=()=>S.view?.state==='REVIEW_PUBLISHED';
   function autoRead() { // the page's reads, once per book and packet; a failure is the section's own words
-    if(!current() || !['handoff','evidence'].includes(app.page) || S.busy) return; // the Review page and the cycle's status page (round F1)
+    if(!current() || !['handoff','evidence'].includes(app.page) || S.busy) return; // the Review page and the cycle's status page
     const dossierRequests=Object.values(S.view?.next_requests || {}).filter(r=>r?.operation==='CRO_REVIEW_DOSSIER' && appliesHere(r));
     const dossierKey=S.key+'|'+S.readGen;
     if(analysisPublished() && !continuationRequired() && !inThisRead(S.dossier) && dossierRequests.length===1 && S.autoDossier!==dossierKey){S.autoDossier=dossierKey;void getBundle('cro',dossierRequests[0],true,true);return;}
@@ -1185,7 +1184,7 @@ const LiveReview = (() => {
     if(S.packetTask && !bundleOf('analyst') && S.autoPacket!==S.key+'|'+S.packetTask+'|'+S.packetUnit){S.autoPacket=S.key+'|'+S.packetTask+'|'+S.packetUnit;void getBundle('analyst',null,true,true);}
   }
   const croTurn=()=>Boolean(bundleOf('cro')) && !reviewPublished(); // the CRO's turn: a dossier read and no review published yet
-  /* ---- the Review page (round F4, GitHub's pull request): the two answers as a timeline in
+  /* ---- the Review page (GitHub's pull request): the two answers as a timeline in
    * recorded order -- the prepared evidence, the Analyst's answer with its checks per issuer and
    * its findings as threads on the passages (each with the CRO's disposition as its resolution),
    * the CRO's assessment with its material issues, the verdict -- and the editor in the slot of
@@ -1238,14 +1237,14 @@ const LiveReview = (() => {
     const b=bundleOf('analyst'), facts=packetJson(), o=facts?.research_obligation, v=S.view;
     if(analysisPublished()) return '';
     const composed=!S.packetTask ? packetRequests(v) : [];
-    const PAGE=LIST_PAGE, {shown:shownPackets,page,pages}=pageOf(composed,S.packetPage); S.packetPage=page; // round H4 (R3): twenty groups a page
+    const PAGE=LIST_PAGE, {shown:shownPackets,page,pages}=pageOf(composed,S.packetPage); S.packetPage=page; // twenty groups a page
     const packetFoot=composed.length>PAGE ? pager({total:composed.length,one:'{n} group',many:'{n} groups',page,pages,prev:['review-packet-page','prev'],next:['review-packet-page','next']}) : '';
     // the clip census (2026-09-24): every row said the same words and Task and at 375 the group that tells them apart was cut -- the shared words and Task are said once, a row is its group (law 143)
     const oneTask=new Set(composed.map(r=>r.task_id)).size===1;
     const packetLead=composed.length ? html`<p class="caption">${t('Choose a group to read its Analyst packet')}${oneTask ? html` · ${t('Task')} <span class="mono">${short(composed[0].task_id,SHORT.id)}</span>` : ''}</p>` : '';
     const choice=!S.packetTask ? (composed.length ? html`${packetLead}<div class="card-list lines">${shownPackets.map(r=>objectRow({name:r.evidence_unit_id ? html`${t('Group')} <span class="mono">${r.evidence_unit_id}</span>` : t('Read the Analyst packet'),to:{action:'review-use-packet',value:r.task_id+'|'+(r.evidence_unit_id || '')},cls:'evidence-row'},{key:'pk:'+(r.evidence_unit_id || r.task_id),props:oneTask ? [] : [html`${t('Task')} <span class="mono">${short(r.task_id,SHORT.id)}</span>`]}))}</div>${packetFoot}` : prepareTasks().some(x=>x.lifecycle==='SUCCEEDED') ? packetChoice() : html`<p class="caption">${t('No prepared packet is named for this book.')}</p>`) : '';
     const question=b ? html`${obligationFacts(facts)}${o?.question ? html`<p class="prose owner-text">${said(o.question)}</p>` : ''}` : '';
-    // B2 (item 5): the packet's facts and its read's state are the packet's section (the side's first entry went)
+    // the packet's facts and its read's state are the packet's section (the side's first entry went)
     const reading=S.packetTask && !b ? (S.busy==='bundle' ? skeleton('rows') : S.error ? notRead(t('The packet was not read'),S.error,explain(S.error),btn(t('Read again'),'review-packet','','button compact')) : '') : '';
     const held=b ? kv([[t('Packet'),codeWords(b.status)],[t('Prepared Task'),mono(b.prepared_task_id,SHORT.id)],[t('Evidence as-of'),dayWord(o?.evidence_as_of)],[t('Source expires'),dayWord(b.source_expires_at)],[t('Admitted material'),facts ? t('{d} documents · {s} spans',{d:(facts.document_index || []).length,s:(facts.spans || []).length}) : t('not readable here')]].filter(([,x])=>x!=null && x!==''),'kv-columns') : '';
     return choice || question || reading || held ? reviewSection(t('The packet'),null,html`${reading}${choice}${held}${question}`,html`data-review="packet"`) : '';
@@ -1361,7 +1360,7 @@ const LiveReview = (() => {
     const fold=(who,qs,key)=>qs.length ? html`<details class="reveal-details"><summary>${who} <span class="num">${count(qs.length)}</span></summary>${list(qs,key)}</details>` : '';
     return panel(t('Open questions'),t('What the Analyst and the CRO left open, as they recorded it.'),html`${fold(t('The Analyst\'s'),analyst,'analyst')}${fold(t('The CRO\'s'),cro,'cro')}`,'','data-review="questions"');
   }
-  /* The Tasks this page's submissions bound to the book (round 79), with their verified stages. */
+  /* The Tasks this page's submissions bound to the book, with their verified stages. */
   /* The last answer the Host reads keeps its acceptable items (contract 10.4): what it kept and dropped is said once,
    * beside the Task the answer made (79313812); the editor closes when the review is published, this stays. */
   function doneNotice() {
@@ -1391,7 +1390,7 @@ const LiveReview = (() => {
     if(!list.some(r=>isObject(r) && stringList(r.findings).includes(alias))) list.push({findings:[alias],why:'',severity:'',confidence:'',recommendation:''});
     reply(JSON.stringify(body,null,2)); render();
   }
-  /* The Facts panel's sections on the handoffs page (round 79): each read bundle's binding and
+  /* The Facts panel's sections on the handoffs page: each read bundle's binding and
    * envelope, and how this page works. */
   /* The exact publication's Committee and the sessions that declare this book or analysis. */
   function teamFacts() {
@@ -1403,7 +1402,7 @@ const LiveReview = (() => {
   function handoffFacts() {
     const p=bundleOf('analyst'), d=bundleOf('cro'), out=[];
     if(p) out.push({title:t('Analyst packet'),body:html`${kv([[t('Context'),mono(p.analysis_context_hash,SHORT.hash)],[t('Packet'),mono(p.packet_hash,SHORT.hash)],[t('Prepared Task'),mono(p.prepared_task_id,Infinity)],[t('Host usage'),codeWords(p.external_host_usage)],[t('Claim'),codeWords(p.claim)]])}<p class="caption">${t('The answer must be bound to exactly these; a changed packet is refused.')}</p>${codeRef(t('Read the submission template and response schema'), {submission_template:p.submission_template,response_schema:p.response_schema})}`});
-    // B2 (item 5): the preparation's and the assessment's facts, once the side's entries
+    // the preparation's and the assessment's facts, once the side's entries
     const a=dossierOf(), v=S.view;
     if(analysisPublished()) out.push({title:t('The analysis'),body:html`${kv([[t('Analysis'),mono(a?.analysis_publication_hash || currentIdentity().analysis || '',SHORT.hash)],[t('Evidence as-of'),dayWord(a?.evidence_as_of || v?.evidence_as_of) || ''],[t('Expires'),dayWord(a?.evidence_expires_at || v?.evidence_expires_at) || '']])}${(a?.evidence_children || []).length ? html`<h3>${t('Groups\' publications')} <span class="num">${count(a.evidence_children.length)}</span></h3><ul class="fact-list">${a.evidence_children.map(c=>html`<li>${t('Group')} <span class="mono">${c.unit_id}</span> · ${entityNames(c.ordered_entity_ids) || ''} · ${t('analysis')} <span class="mono">${short(c.analysis_publication_hash,SHORT.id)}</span> · ${t('as-of {d}',{d:dayWord(c.evidence_as_of)})}</li>`)}</ul>` : ''}`});
     if(d) out.push({title:t('CRO dossier'),body:html`${kv([[t('Dossier'),html`${codeWords(d.status)} · ${mono(d.dossier?.dossier_hash,SHORT.hash)}`],[t('Analysis reviewed'),mono(d.dossier?.analysis_publication_hash,SHORT.hash)],[t('Citable findings'),(citableHandles(d.dossier) || []).length ? count((citableHandles(d.dossier) || []).length) : t('none')],[t('Dossier delivery'),(d.delivery || {}).delivery_mode==='WHOLE_DOSSIER' ? t('whole') : d.delivery?.part ? t('part {p} of {n}',{p:count(d.delivery.part),n:count(d.delivery.part_count)}) : ''],[t('Routes the policy allows'),(d.dossier?.allowed_routes || []).map(codeWords).join(' · ') || ''],[t('Policy'),mono(d.decision_policy_hash,SHORT.hash)],[t('Schema'),mono(d.assessment_schema_hash,SHORT.hash)],[t('Host usage'),codeWords(d.external_host_usage)],[t('Claim'),codeWords(d.claim)]])}${[...(d.dossier?.claim_limits || []),...(d.dossier?.limitations || [])].length ? html`<h3>${t('Claim limits and limitations')}</h3><ul class="fact-list">${[...(d.dossier?.claim_limits || []),...(d.dossier?.limitations || [])].map(x=>html`<li>${said(x)}</li>`)}</ul>` : ''}${codeRef(t('Read the submission template and assessment schema'), {submission_template:d.submission_template,assessment_schema:d.assessment_schema})}`});
@@ -1411,7 +1410,7 @@ const LiveReview = (() => {
     if(bundleRequest?.operation==='AGENT_BUNDLE_PREPARE' && bundleRequest.agent_role==='CRO' && appliesHere(bundleRequest)) out.push({title:t('Prepare agent bundle'),body:codeRef(t('Read the exact request'),bundleRequest)});
     return [...out,...teamFacts(),{title:t('How this page works'),body:html`<p>${t('The product prepares, validates, seals and publishes; the answers come from outside it. A dossier is compiled only from a current published analysis. Opening, reading or downloading here starts no actor, model or fetch.')}</p>`}];
   }
-  /* The handoff's record (round 79): what the owners recorded about the Tasks this page bound. */
+  /* The handoff's record: what the owners recorded about the Tasks this page bound. */
   const boundTasks=()=>{const b=boundFor();return [...b.prepare,...b.analysis,...b.review];};
   function handoffRecord() {
     const lines=boundTasks().flatMap(id=>LiveActivity.logLines(id));
@@ -1422,15 +1421,15 @@ const LiveReview = (() => {
     const [code,word]=r.cro==='refused' || r.analyst==='refused' ? ['refused','Last submission refused'] : r.published==='done' ? ['succeeded','Answered · Analyst and CRO'] : r.cro==='running' ? ['running','Sealing the assessment'] : r.validation==='running' ? ['running','Validating the answer'] : r.analyst==='done' || r.validation==='done' ? ['review_pending','Awaiting the CRO assessment'] : r.analyst==='waiting' || S.view?.state==='ANALYST_PACKET_PREPARED' || packetRequests(S.view).length ? ['review_pending','Awaiting the Analyst answer'] : ['pending',r.sources==='done' ? 'Packet not read yet' : 'Sources not prepared yet'];
     return stateLine(code,{word:t(word),next:''});
   }
-  // the Tasks a role's submission created, bound to this book by this page (round 79)
+  // the Tasks a role's submission created, bound to this book by this page
   const boundRows=(set)=>set.size ? html`<div class="card-list lines">${[...set].map(id=>{const s=taskState(id);return objectRow({state:s.lifecycle || 'pending',name:html`${t('Task')} ${mono(id,SHORT.id)}`,why:t('{n} / {m} stages verified',{n:s.verified,m:s.total}),to:{action:'task',value:id},cls:'evidence-row'},{key:id});})}</div>` : '';
   function handoffPage() {
     S.role=continuationRequired() ? 'analyst' : S.roleChosen || (croTurn() ? 'cro' : 'analyst'); // the current owner gate precedes an earlier chosen role
     queueMicrotask(autoRead);
-    // B1: the head is the book's; where the handoff stands is the Review's first line -- the turn, then each party's day
+    // the head is the book's; where the handoff stands is the Review's first line -- the turn, then each party's day
     const days=['prepared','analysed','reviewed'].map(id=>cycle().stages.find(x=>x.id===id)).filter(st=>st && st.time).map(st=>html`${t(st.name)} ${st.time}`);
     const where=S.view ? html`<p class="review-where">${handoffState()}${days.length ? html` <span class="muted">· ${days.map((d,i)=>html`${i ? ' · ' : ''}${d}`)}</span>` : ''}</p>` : '';
-    // B2: one column in the reviewer's order; the changes since the prior review are the Report's
+    // one column in the reviewer's order; the changes since the prior review are the Report's
     const list=reviewList(), questions=openQuestions(), answer=croMain(), checks=checksSection(); // the sections, composed once: the jumps name those the page holds
     return html`${where}${workSection('handoff')}${reviewBanner()}<div class="overview-main">${preparedMain()}${analystMain()}${submittedSection()}${pageJumps([[t('Findings'),'[data-review="findings"], [data-review="issues"]',Boolean(String(list))],[t('Open questions'),'[data-review="questions"]',Boolean(String(questions))],[t('The answer'),'[data-answer-closed], .review-answer',Boolean(String(answer))],[t('Checks by issuer'),'[data-review="checks"]',Boolean(String(checks))]])}${list}${questions}${answer}${checks}</div>`;
   }
@@ -1508,7 +1507,7 @@ const LiveReview = (() => {
       // the evidence identity the answer was written against: the packet's cutoff for an
       // analysis, the dossier's analysis and cutoff for an assessment
       facts:request.kind==='submit' ? (S.role==='analyst' && bundleOf('analyst') ? packetIdentity(bundleOf('analyst')) : S.role==='cro' && dossierOf() ? {analysis:dossierOf().analysis_publication_hash || '',asOf:dossierOf().evidence_as_of || ''} : null) : null};
-    if(request.operation==='EVIDENCE_CONTINUE'){const missing=(request.declare || []).filter(k=>request.payload[k]==null); if(missing.length){S.error=t('Declare {k} before continuing: the owner names the limit and the page holds no default.',{k:missing.map(k=>codeWords(String(k).toUpperCase())).join(', ')});render();return;}} // round E3
+    if(request.operation==='EVIDENCE_CONTINUE'){const missing=(request.declare || []).filter(k=>request.payload[k]==null); if(missing.length){S.error=t('Declare {k} before continuing: the owner names the limit and the page holds no default.',{k:missing.map(k=>codeWords(String(k).toUpperCase())).join(', ')});render();return;}}
     S.pending=null;S.busy='submit';closeDialog();render();
     try{
       const body=await Data.post(request.path,request.payload);
@@ -1659,7 +1658,7 @@ const LiveReview = (() => {
     const kicker=w.kind===REVIEW_KIND ? 'CRO review · Task' : preparing(w.goal) ? 'Source preparation · Task' : managedWork(w) ? 'Analysis · Task' : 'Answer validation · Task';
     const head=html`<header class="prep-scene-head lab-work-head"><div><p class="caption">${t(kicker)}</p><h2>${t('Task')} <span class="mono" data-tip="${w.task}">${short(w.task)}</span></h2>${standing ? html`<p class="prep-liveness lab-standing" data-tone="${standing[0]}">${icon(standing[1])}<span>${standing[2]}</span></p>` : ''}${!bookOf ? html`<p class="caption">${t('Scope unresolved on this page: no owner fact binds this Task to the book shown; its stages are read without claiming the book.')}</p>` : ''}</div><div class="flow">${btn(t('Inspect task'),'task',w.task,'button compact')}${btn(t('Read again'),'review-work-refresh','','button compact')}${btn(t('Dismiss'),'review-dismiss-work','','button compact')}</div></header>`;
     if(!v) return html`<section class="prep-scene lab-work review-work" data-scene="pending">${head}${w.error ? notRead(t('Task not read'),w.error) : noteLine(t('Reading the Task'),t('Its stages and liveness come from Task Control; nothing is started by reading.'))}</section>`;
-    // N6 (laws 72, 98): a finished Task is one line -- what it published, what it was, its reader; its stages are the Task's own record
+    // laws 72, 98: a finished Task is one line -- what it published, what it was, its reader; its stages are the Task's own record
     if(v.lifecycle==='SUCCEEDED') {
       const whole=Boolean(preparing(w.goal) && coverageRun(v));
       const title=t(w.kind===REVIEW_KIND ? 'Review published' : whole ? 'Source preparation finished' : preparing(w.goal) ? 'Sources prepared' : managedWork(w) ? 'Analysis published' : 'Answer validated and published');
@@ -1726,7 +1725,7 @@ const LiveReview = (() => {
    * book; the Task stays unresolved when the owner does not bind it. */
   // the Reading picker: the reading already shown (working, or the same pin) is read again in place -- the page never shrinks and grows (the user's reading); another reading opens
   const reread=(pin)=>{ if(S.selector && (pin || '')===S.pin && (S.status==='ready' || S.status==='refreshing')){ S.nav+=1; writeRoute(routeUpdate()); return refresh(); }
-    if(S.selector && (pin || '')!==S.pin){ S.pin=pin || ''; pushRoute(routeUpdate()); } // a pin change is a pushed level: `<-` returns to the reading before it (law 86, round F6)
+    if(S.selector && (pin || '')!==S.pin){ S.pin=pin || ''; pushRoute(routeUpdate()); } // a pin change is a pushed level: `<-` returns to the reading before it (law 86)
     return open(S.selector,pin || '',app.page); };
   async function choose(value) {
     if(!value) return;
@@ -1744,7 +1743,7 @@ const LiveReview = (() => {
     return watch(pending.task,true);
   }
   /* ---- the report and the delivery ---- */
-  async function readExport(request=null,quiet=false) { // quiet (round F4): the Review page reads the published dispositions in the background; the page is never busy for it
+  async function readExport(request=null,quiet=false) { // quiet: the Review page reads the published dispositions in the background; the page is never busy for it
     if(!ready() || S.exportPending || (app.page==='report' && isUpdateBook())) return;
     // the report the page shows is the request's when one was captured for it, else the pin's
     const captured=request || (S.exportRequest && S.exportRequest.key===S.key && S.exportRequest.request.review_publication_hash===(S.pin || workingPublication()) ? S.exportRequest.request : null);
@@ -1783,22 +1782,22 @@ const LiveReview = (() => {
     }catch(e){if(current()){S.deliveryRefusal=e.body || null;S.error=String(e?.message || e)+(e?.body ? '' : ' · '+t('no owner answer arrived; nothing is assumed'));}}
     finally{if(S.deliveryMutation===mutation){S.deliveryMutation=null;if(!current())S.deliveryAttempt='';if(S.busy==='delivery')S.busy='';repaintMain();}}
   }
-  /* ---- the report as a document (round 78): Scope, one section per issuer (its issues,
+  /* ---- the report as a document: Scope, one section per issuer (its issues,
    * findings and citations as rows), Decision, Delivery -- in the object model's order, each
    * section's provenance in the Facts panel's section of the same name. ---- */
   const reportOf=()=>S.exportDoc?.value || null;
   const deliveryOf=()=>S.delivery?.value || null;
   const SECTION_WORDS={PRESENT:'present',NOT_SELECTED:'absent · not selected (not zero, not clearance)',NOT_PUBLISHED:'absent · not published',INCOMPATIBLE:'refused by the owner',HISTORICAL_REVIEW:'historical review',EXPIRED:'review present but expired'};
-  /* The Report page's headline (Stripe's object head, round F5): the verdict, its completeness, the
+  /* The Report page's headline (Stripe's object head): the verdict, its completeness, the
    * published day, the reviewer and the reviewed weight in one line; the cycle's sentence otherwise. */
   function reportWords() {
     const v=S.view, x=reportOf();
     if(!v || S.refusal) return {sentence:'',primary:null};
     if(!(reviewPublished() || historical())) return {sentence:cycle().sentence,primary:null};
-    const parts=[codeWords(v.disposition),v.review_state ? codeWords(v.review_state) : '',publishedAt() ? t('published {d}',{d:publishedAt()}) : '',attributionWords(v.review_attribution || [],{plain:true}) || ''].filter(Boolean); // round H4 (R1): the reviewed weight is Scope's figure, not the headline's sentence
+    const parts=[codeWords(v.disposition),v.review_state ? codeWords(v.review_state) : '',publishedAt() ? t('published {d}',{d:publishedAt()}) : '',attributionWords(v.review_attribution || [],{plain:true}) || ''].filter(Boolean); // the reviewed weight is Scope's figure, not the headline's sentence
     return {sentence:parts.join(' · ')+'.',primary:null};
   }
-  /* The publications of this book (round F5): every review publication history records, newest
+  /* The publications of this book: every review publication history records, newest
    * first, the current and the pinned one marked; a row pins its publication (a soft open). One
    * line a row -- the day and the state word; the hash and the Task on hover (B1: a section). */
   function publicationsSection() {
@@ -1806,14 +1805,14 @@ const LiveReview = (() => {
     const list=collectionTable('report-publications',pubs,[{label:t('Review'),type:'text',absorb:true},{label:t('State'),type:'text'},{label:t('Publication'),type:'text'},{label:t('Action'),type:'text',cls:'col-tight'}],p=>{const named=p.hash===workingPublication(),current=named && reviewPublished(),pinned=p.hash===S.pin,lapsed=p.lapsed || (named && !reviewPublished());return [html`${t(lapsed ? 'Historical review' : 'Review')} · ${dayWord(p.recorded)}`,t(pinned ? 'Pinned' : lapsed ? 'Historical' : current ? 'Current' : 'Historical'),hashCell(p.hash),pinned ? btn(t('Unpin'),'review-current','','text-btn') : btn(t('Pin'),'review-pin',p.hash,'text-btn')];});
     return panel(t('Publications'),t('Publications in the loaded History; a pinned one is read exactly as sealed.'),html`${list}${Data.hasMoreHistory?.() ? html`<p class="caption">${t('Earlier History is not read yet; it may contain earlier publications for this book.')} ${btn(t('Read earlier History'),'history-more','','text-btn')}${link(t('History'),'history','text-btn')}</p>` : ''}`,'','data-report-section="publications" data-box="table"');
   }
-  /* ---- the report's history (round E5): what changed since the prior review of this book, from
+  /* ---- the report's history: what changed since the prior review of this book, from
    * the owner's comparison -- a prior finding no longer mentioned is never "resolved"; the review's
    * times as facts; the dossier's unresolved questions carried. ---- */
   const changeRows=(c)=>{if(!c || typeof c!=='object')return [];if(Array.isArray(c.findings))return c.findings;return ['new','changed','no_longer_found','unchanged'].flatMap(kind=>(c.findings?.[kind] || []).map(r=>({...r,changeKind:kind})));};
   const changeKindWords=(kind)=>({new:t('New'),changed:t('Changed'),no_longer_found:t('not mentioned again'),unchanged:t('Unchanged')})[kind] || '';
   function changesSection() {
     const x=reportOf(), c=x?.changes_since_prior_review; if(!x || c===undefined) return '';
-    if(c===null) return ''; // N3 (law 81): no prior review, nothing to compare -- not shown
+    if(c===null) return ''; // law 81: no prior review, nothing to compare -- not shown
     const rows=changeRows(c);
     const facts=kv([[t('Comparison'),html`${codeWords(c.status)}${infoMark(said(c.reason))}`],[t('Prior review'),html`<span class="mono">${short(c.prior_publication_hash,SHORT.hash)}</span>`],[t('This review'),html`<span class="mono">${short(c.current_publication_hash,SHORT.hash)}</span>`]]);
     const list=rows.length ? collectionTable('report-changes',rows,[{label:t('Finding'),type:'text',cls:'col-tight'},{label:t('Issuers'),type:'text',cls:'col-tight'},{label:t('Topic'),type:'text',cls:'col-tight'},{label:t('Before'),type:'text',cls:'col-tight'},{label:t('Now'),type:'text',cls:'col-tight'},{label:t('Summary'),type:'text',absorb:true}],r=>[html`<span class="mono">${r.finding_handle || r.prior_finding_handle}</span>${r.changeKind ? html` <span class="sub-cell">${changeKindWords(r.changeKind)}</span>` : ''}${r.prior_finding_handle && r.finding_handle && r.prior_finding_handle!==r.finding_handle ? html` <span class="sub-cell mono">${r.prior_finding_handle}</span>` : ''}`,entityNames(r.affected_entities) || '',codeWords(r.topic),r.prior_disposition ? codeWords(r.prior_disposition) : t('not in the prior review'),r.disposition ? codeWords(r.disposition) : t('not mentioned again'),html`<span class="owner-text">${r.summary || ''}</span>${r.meaning ? html` <span class="sub-cell">${said(r.meaning)}</span>` : ''}`]) : (c.status && String(c.status).startsWith('REVIEWS_NOT') ? '' : emptyState(t('The owner compares no finding between the two reviews.')));
@@ -1826,7 +1825,7 @@ const LiveReview = (() => {
   }
   function questionsSection() {
     const q=reportOf()?.review?.dossier?.unresolved_questions || []; if(!q.length) return '';
-    // B1 (item 8): a question is a row -- its unit a small reference, the question whole at its measure -- and the way to the Review, where the Analyst's open questions are read
+    // a question is a row -- its unit a small reference, the question whole at its measure -- and the way to the Review, where the Analyst's open questions are read
     const units=new Set(q.map(x=>x.unit_id || '')).size>1; // a unit is said where the questions span more than one
     const list=collectionTable('report-questions',q,[...(units ? [{label:t('Unit'),type:'text',cls:'col-tight'}] : []),{label:t('Question'),type:'text',absorb:true}],x=>[...(units ? [x.unit_id || ''] : []),btnAttrs(x.text || '','review-questions','','text-btn','data-row-press')]);
     return panel(html`${t('Unresolved questions')} <span class="num">${count(q.length)}</span>`,t('Carried from the dossier; the review answered around them. A question opens the Review.'),list,'','data-report-section="questions" data-box="table"');
@@ -1847,7 +1846,7 @@ const LiveReview = (() => {
     const sc=v?.scope_coverage, cv=v?.coverage, reviewed=cv && cv.reviewed_ending_weight!=null ? cv.reviewed_ending_weight : sc?.whole_book_reviewed_weight;
     // The Overview owns the coverage ruler; the Report states its scope and links to it.
     const measures=[...(cv && cv.reviewed_absolute_change!=null ? [[t('Change reviewed'),pctText(cv.reviewed_absolute_change)]] : []),...(sc ? [[t('Scope'),t('{p} of {n} positions \u00b7 {i}',{p:count(sc.reviewed_positions),n:count(sc.book_positions),i:countText(sc.reviewed_issuers,'{n} issuer','{n} issuers')})]] : []),...(reviewed!=null ? [[t('Coverage'),btnAttrs(html`${t('On the Overview')}${icon('arrow')}`,'review-step','evidence','text-btn compact')]] : [])]; // figures (R1), as the publication sealed them
-    // B1 (item 8): the book and its evidence are the head's; Scope says what the review covered and how this reading holds it (the readback's exactness, its words the (i))
+    // the book and its evidence are the head's; Scope says what the review covered and how this reading holds it (the readback's exactness, its words the (i))
     const scope=panel(t('Scope'),'',html`${kv([...(x ? [[t('Readback'),html`${codeWords(x.review_status)}${infoMark(`${said(x.claim)} ${t('Exact in its sealed content; the rendering here may differ from the exported HTML.')}`)}`]] : []),...measures],'kv-columns')}`,'','data-report-section="scope"');
     const issuers=x ? reportIssuers() : '';
     // the reviews (2026-09-24): a required action is the decision's first line and the way on it names -- the issuer it reads, else its pipeline (the Overview's blocker says the same)
@@ -1856,7 +1855,7 @@ const LiveReview = (() => {
     const limits=v ? [...gapLines(v.gaps || []),...(v.claim_limits || []),...reviewLimits(v)] : [];
     const decision=!v ? '' : !decided ? panel(t('Decision'),'',html`${emptyState(t(publications().some(p=>p.lapsed) || workingPublication() ? 'No current review is published for this book; nothing is decided' : 'No review is published for this book; nothing is decided.'))}${publications().some(p=>p.lapsed) || workingPublication() ? html`<p class="caption">${t('A review sealed under an earlier binding reads back as recorded; the book can be reviewed again.')}</p>` : ''}`,'','data-report-section="decision"') : panel(t('Decision'),'',html`${actions.length ? html`<div class="card-list lines decision-actions">${actions}</div>` : ''}${kv([[t('Route'),v.disposition ? codeWords(v.disposition) : '\u2014'],[t('Completeness'),v.review_state ? codeWords(v.review_state) : '\u2014'],...(x?.review?.recommendation?.action_activation ? [[t('Activation'),codeWords(x.review.recommendation.action_activation)]] : []),[t('Reviewer'),attributionWords(v.review_attribution || [],{facts:true}) || '\u2014'],[t('Policy'),v.policy_version ? codeCell(v.policy_version) : '\u2014'],[t('Rules'),(v.rule_ids || []).length ? html`<span class="mono">${v.rule_ids.join(', ')}</span>` : '\u2014'],[t('Reasons'),(v.reasons || []).length ? html`<span class="owner-text">${v.reasons.map((r,i)=>html`${i ? ' · ' : ''}${reasonWords(r)}`)}</span>` : '\u2014']].filter(([,x])=>x!=='\u2014'),'kv-columns')}${limits.length ? html`<details class="reveal-details"><summary>${t('Limits')} <span class="num">${count(limits.length)}</span></summary>${textCollection('report-limits',limits,said)}</details>` : ''}`,'','data-report-section="decision"');
     const questions=questionsSection(), changes=changesSection();
-    // B1 (item 8): one column, the conclusion first -- the decision, then what it covered, issuer by issuer (the folds are the outline), what changed, what stays open, the delivery and the publications; the clock is the head's and Facts'
+    // one column, the conclusion first -- the decision, then what it covered, issuer by issuer (the folds are the outline), what changed, what stays open, the delivery and the publications; the clock is the head's and Facts'
     return html`${decision}${scope}${issuers}${changes}${questions}${withDelivery ? panel(t('Delivery'),'',deliverySection(),'','data-report-section="delivery"') : ''}${publicationsSection()}`;
   }
   function deliverySection() {
@@ -1868,11 +1867,11 @@ const LiveReview = (() => {
       return html`${stateLine('recorded',{word:codeWords(d.status),next:''})}${panel(date ? t('Positions for {date}',{date}) : t('Positions'),'',html`${rows}${facts}`,'','data-report-section="positions"')}${panel(t('Commentary'),'',html`${(d.commentary || []).map(c=>html`<article><h3>${c.attribution_word ? t(c.attribution_word,Object.fromEntries(Object.entries(c.attribution_words || {}).map(([k,v])=>[k,declaredCodeWord(v) ? codeWords(v) : v]))) : c.attribution}</h3><p class="owner-text">${c.question ?? (c.text_word ? t(c.text_word) : c.text)}</p>${c.question != null ? html`<p class="caption">${t(c.relay_word || '')}</p><p class="owner-text">${c.answer ?? t('Not yet given')}</p>` : ''}</article>`)}${factsRef(t('Facts'),kv([[t('Attribution'),codeWords(d.commentary_provenance?.attribution)]]))}`,'','data-report-section="commentary"')}<p class="caption">${said(d.claim)}</p>`;
     }
     if(!isExperimentBook()) return html`<p>${t('This book is an installed result; its review is exported through the review owner (the ··· menu). A joined delivery is composed for an authored Portfolio book from the Lab.')}</p>`;
-    if(!d) return emptyState(html`${t('No delivery composed yet')}${infoMark(t('No delivery composed yet; composing joins this exact book with its sources and the sections you select.'))}`,isExperimentBook() ? '' : typedBtn(t('Compose the delivery'),'review-deliver','','button primary',ready() ? '' : t('Busy'))); // round 90: the head's primary is the one action; round 93: one sentence
+    if(!d) return emptyState(html`${t('No delivery composed yet')}${infoMark(t('No delivery composed yet; composing joins this exact book with its sources and the sections you select.'))}`,isExperimentBook() ? '' : typedBtn(t('Compose the delivery'),'review-deliver','','button primary',ready() ? '' : t('Busy'))); // the head's primary is the one action; one sentence
     const sections=d.sections || {}, status=d.summary?.section_status || {};
     return html`${stateLine('recorded',{word:codeWords(d.status),next:''})}${kv([[t('Question'),html`${d.question || ''} <span class="sub-cell">${codeWords(d.question_status)}</span>`],[t('Input'),html`${d.input?.research_input_id} · ${mono(d.input?.input_binding_hash,SHORT.hash)}`],[t('Sections'),html`${Object.entries(status).map(([k,w],i)=>html`${i ? ' · ' : ''}${k}: ${t(SECTION_WORDS[w] || w || '')}`)}`],[t('Portfolio result'),html`${t('annualized return')} ${pct(d.summary?.portfolio_result?.annualized_return)} · ${t('Sharpe')} ${fmt(d.summary?.portfolio_result?.sharpe)}`],[t('Review'),d.summary?.review ? html`${mono(d.summary.review.publication_hash,SHORT.hash)} · ${codeWords(d.summary.review.route)} · ${codeWords(d.summary.review.completeness)}` : t('absent')],[t('Risk'),d.summary?.risk_reference ? html`${mono(d.summary.risk_reference.link_hash,SHORT.hash)} · ${d.summary.risk_reference.selected_session_covered ? t('covers the holdings date') : t('does not cover the holdings date')}` : t('absent')],[t('Comparison'),sections.comparison?.status==='INCOMPATIBLE' ? html`${t('refused')} · <span class="mono">${sections.comparison.failure_code}</span>` : d.summary?.comparison_tasks ? html`${mono(d.summary.comparison_tasks.left,SHORT.id)} ↔ ${mono(d.summary.comparison_tasks.right,SHORT.id)}` : t('absent')],[t('Commentary'),html`${(d.commentary || []).length} · ${codeWords(d.commentary_provenance?.attribution)}`]])}<p class="caption">${said(d.claim)}</p><div class="flow">${btn(t('Compose again'),'review-deliver','','button compact')}${btn(t('Reopen this exact delivery'),'review-delivery-reopen','','button compact')}</div>`;
   }
-  /* The composition dialog (round 78): the book's facts, the optional sections, the question. */
+  /* The composition dialog: the book's facts, the optional sections, the question. */
   function deliveryDialog() {
     if(!isExperimentBook() || !S.selector) return;
     const books=Data.history().filter(v=>v.kind==='portfolio.policy-development' && v.raw?.status==='SUCCEEDED' && v.raw?.task_id && v.raw.task_id!==S.selector.experiment_task_id);
@@ -1889,14 +1888,14 @@ const LiveReview = (() => {
     if(isUpdateBook()) return html`<div class="overview-main report-document">${deliveryOf() ? html`${deliverySection()}${reportOf() ? reportDocument(false) : ''}` : S.error ? html`${S.deliveryRefusal ? refusal(S.deliveryRefusal,'warning',{next:prerequisiteWays(S.deliveryRefusal.next_requests)}) : notRead(t('Export not read'),S.error)}${btn(t('Read again'),'review-delivery','','button compact')}` : skeleton('body')}</div>`;
     const x=reportOf(), hash=S.pin || workingPublication();
     const notice=!hash ? (S.view?.state==='REVIEW_PUBLISHED' && !historical() ? noteLine(t('Working publication not named by the owner'),html`${t('The projection reports a published review but names no publication identity; nothing is inferred from history.')}<br>${t('Pin one of the recorded publications above to read its exact export; nothing is chosen for you.')}`,'neutral') : noteLine(t('No review publication for this book'),t(isExperimentBook() ? 'The delivery below can still be composed; its review section is absent, which is not clearance.' : 'Nothing is exported until a review is published for this book.')))
-      : !x ? (S.error && S.busy!=='export' ? notRead(t('Export not read'),S.error,'',btn(t('Read again'),'review-refresh','','button compact')) : skeleton('body')) : ''; // B1: the readback's exactness is Scope's line, its words the (i)
+      : !x ? (S.error && S.busy!=='export' ? notRead(t('Export not read'),S.error,'',btn(t('Read again'),'review-refresh','','button compact')) : skeleton('body')) : ''; // the readback's exactness is Scope's line, its words the (i)
     return html`${notice}<div class="overview-main report-document">${reportDocument()}</div>`;
   }
-  /* The report's provenance per section (Facts, round 78). */
+  /* The report's provenance per section (Facts). */
   function reportFacts() {
     const v=S.view, x=reportOf(), d=deliveryOf(), out=[];
     if(x || v) out.push({title:t('Scope'),body:kv([[t('Report hash'),mono(x?.report_hash,SHORT.hash)],[t('Publication'),mono(x?.review?.publication?.publication_hash || S.pin || workingPublication(),SHORT.hash)],[t('Export hash'),mono(x?.export_hash,SHORT.hash)],[t('Book authority'),codeWords(x?.book_authority || v?.book?.authority)],[t('Evidence selection'),v?.evidence_selection ? codeWords(v.evidence_selection) : ''],[t('Verified excerpts'),count((x?.evidence?.verified_spans || []).length)]])});
-    if(x) out.push({title:t('Times'),body:reviewTimes()}); // B1: sealed clock
+    if(x) out.push({title:t('Times'),body:reviewTimes()}); // sealed clock
     if(v) out.push({title:t('Decision'),body:kv([[t('Reviewer'),attributionWords(v.review_attribution || [],{facts:true}) || ''],[t('Policy'),v.policy_version ? codeCell(v.policy_version) : ''],[t('Rules'),(v.rule_ids || []).join(', ') || ''],[t('Reasons'),(v.reasons || []).length ? html`${v.reasons.map((r,i)=>html`${i ? ' · ' : ''}${reasonWords(r)}`)}` : '']])});
     if(d) out.push({title:t('Delivery'),body:html`${kv([[t('Input binding'),mono(d.input?.input_binding_hash,SHORT.hash)],[t('Export hash'),mono(d.export_hash,SHORT.hash)],...(d.question_status ? [[t('Question provenance'),codeWords(d.question_status)]] : [])])}${codeRef(t('Read the exact reopen request'), d.next_requests?.reopen ?? null)}`});
     return [...out,...teamFacts()];
@@ -1904,13 +1903,13 @@ const LiveReview = (() => {
   /* ---- the page ---- */
   /* No book chosen and none resolved by the owner: the way in, not the empty desk. The owner's
    * own sentence stays readable; the workbench names its own routes to a book. */
-  /* ---- the spine (round F1, redesign-2 sections 4-5): the book's evidence cycle as five stages,
+  /* ---- the spine (redesign-2 sections 4-5): the book's evidence cycle as five stages,
    * one sentence of state and one next lawful action, derived once from what the page holds --
    * the projection, the preview, the packets named, the dossier read, the bound Tasks -- and read
    * by every page's head, rail and checks. Nothing here composes a request: the primary is the
    * owner's `next_requests` entry consumed whole, or a page. ---- */
   const STAGES=[['sources','Sources','evidence-stream'],['prepared','Prepared','evidence-reading'],['analysed','Analysed','handoff'],['reviewed','Reviewed','handoff'],['reported','Reported','report']];
-  const dayWord=(x)=>{ const s=String(x || ''); return /\d[T ]\d/.test(s) ? dayOf(s) : s.slice(0,10); }; // N3 (law 133): the day of an instant is the reader's day; a date stays a date
+  const dayWord=(x)=>{ const s=String(x || ''); return /\d[T ]\d/.test(s) ? dayOf(s) : s.slice(0,10); }; // law 133: the day of an instant is the reader's day; a date stays a date
   /* A book's next step by its state (N4): the word and the page it is taken on -- the Overview's
    * primary and the Books row say the same (law 58: the way on, named once, the same everywhere). */
   const BOOK_NEXT={EVIDENCE_AUTHORITY_NOT_ADMITTED:['Set up evidence','evidence-stream'],AWAITING_ALTERNATIVE_EVIDENCE:['Prepare sources','evidence-stream'],EVIDENCE_REFRESH_IN_PROGRESS:['Follow the run','evidence'],ANALYST_PACKET_PREPARED:['Answer as the Analyst','handoff'],ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW:['Assess as the CRO','handoff'],REVIEW_PUBLISHED:['Read the report','report'],ALTERNATIVE_EVIDENCE_EXPIRED:['Prepare again','evidence-stream'],ALTERNATIVE_EVIDENCE_SUPERSEDED:['Prepare again','evidence-stream'],EVIDENCE_SELECTION_AMBIGUOUS:['Choose the analysis','evidence']};
@@ -2008,7 +2007,7 @@ const LiveReview = (() => {
    * a stage is a link to its page (none while the authority is not admitted). */
   /* The checks: the five stages with their lines, then the policy's requirements; every row
    * read from its owner (law 17), none merged into one green word. */
-  /* The measures (round H1; Mercury's cards, GitHub's run summary): the cycle's figures as stat
+  /* The measures: the cycle's figures as stat
    * tiles, never as sentences -- once a review is published the reviewed weight against the
    * route's floor (a meter with the mark), the mapping, the issuers, the findings, the issues,
    * the publications; before it the preparation's own figures. Words stay in the labels. */
@@ -2024,7 +2023,7 @@ const LiveReview = (() => {
   // a running stage that has not yet learned its denominator has no count to show: its word alone (ST7)
   const workOf=(w)=>w.running && !(Number(w.total)>0) ? {count:'',bar:null} : workCount(w.completed,w.total,t(PREPARING_UNITS[w.unit_name] || w.unit_name));
   function overviewStrip() {
-    const v=S.view; if(!v || S.refusal || blockedState() || reviewPublished() || historical()) return ''; // B1: once a review is published the coverage figure is the one drawing (its words carry the mapping)
+    const v=S.view; if(!v || S.refusal || blockedState() || reviewPublished() || historical()) return ''; // once a review is published the coverage figure is the one drawing (its words carry the mapping)
     const cp=v.coverage_progress, pubs=publications(), inv=inventory();
     if(!cp) return '';
     const pw=share(cp.prepared_weight), tiles=[];
@@ -2102,10 +2101,10 @@ const LiveReview = (() => {
     const actions=v?.required_actions || [], blocking=requiredActions().find(a=>a.blocking);
     const human=c.checks.find(k=>k.id==='human');
     const checks=c.stages.map(st=>{ const asked=st.id==='reviewed' && Boolean(human), tone=asked ? 'warning' : STAGE_TONE[st.word] || 'neutral'; return {tone,name:t(st.name),why:asked ? t('human review required') : tone==='good' ? '' : t(stateOf(st.word).word),time:st.time || '',action:st.page===null ? '' : 'review-step',value:st.page || '',tip:st.line || ''}; }); // W (R4): a mark, a word, a day -- a done stage's name is its word; law 149: the row goes to the stage's page, the owner's line is its tip
-    const tone=published && v.disposition ? stateOf(evidenceState(v.disposition).state).tone : blocking ? TONE.attention : published ? (requiredActions().length ? 'warning' : 'good') : ({accent:'accent',warning:'warning',good:'good'})[c.tone] || 'neutral'; // B1 (item 7): the route's standing, the head's
+    const tone=published && v.disposition ? stateOf(evidenceState(v.disposition).state).tone : blocking ? TONE.attention : published ? (requiredActions().length ? 'warning' : 'good') : ({accent:'accent',warning:'warning',good:'good'})[c.tone] || 'neutral'; // the route's standing, the head's
     const notReached=published ? (v.issuer_rows || []).filter(r=>!issuerReviewed(r)).sort(byWeight).map(issuerName) : [];
     const foot=actions.map(a=>{ const way=actionWay(a), standing=actionStanding(a); return {tone:standing.tone,word:standing.word,why:html`${a.action==='NONE' ? '' : codeWords(a.action)}${a.reason ? html`${a.action==='NONE' ? '' : ' \u00b7 '}<span class="owner-text">${said(a.reason)}</span>` : ''}${a.action==='REFRESH_EVIDENCE' && notReached.length ? html` <span class="status-names">${t('Not reviewed: {names}.',{names:notReached.join(', ')})}</span>` : ''}`,action:way?.action || '',value:way?.value || '',label:way?.word || ''}; }); // the owner pipeline is visible before publication; only a published review has a Report decision
-    // B1 (item 7): the route is the head's state; the box says why -- the owner's first reason, the rest under it
+    // the route is the head's state; the box says why -- the owner's first reason, the rest under it
     // the third review (2026-09-24; the user: 各管一件事): the Overview is the live standing -- the stages, the blocker and its way; the decision and its reasons are the Report's
     return statusBox({tone,title:c.sentence,reasons:[],checks,foot,label:t('Status'),attrs:'data-overview="status"'});
   }
@@ -2120,15 +2119,15 @@ const LiveReview = (() => {
     const PAGE=LIST_PAGE, {shown,start,page,pages}=pageOf(found,S.issuerPage); S.issuerPage=page;
     const toolbar=searchBar('issuerQuery',t('Find an issuer'),t('Find an issuer…'),S.issuerQuery);
     const foot=pager({total:found.length,one:'{n} entry',many:'{n} entries',page,pages,prev:['review-issuer-page','prev'],next:['review-issuer-page','next']});
-    const columns=[{label:'#',type:'num',index:true},{label:t('Issuer'),type:'text'},{label:t('Evidence'),type:'status',absorb:true},{label:t('Weight'),type:'num',cls:'col-tight'},{label:t('Change'),type:'num',cls:'col-tight'},{label:t('Transition'),type:'status',cls:'col-tight'},{label:t('Exposure'),type:'status',cls:'col-tight'}]; // round H1: a short figure is a tight column
-    // B1 (items 1 and 7): a row leads with what the review reached -- reviewed, or the owner's word and recorded reason for what it did not -- then the figures; the conclusion and the findings are the report's
+    const columns=[{label:'#',type:'num',index:true},{label:t('Issuer'),type:'text'},{label:t('Evidence'),type:'status',absorb:true},{label:t('Weight'),type:'num',cls:'col-tight'},{label:t('Change'),type:'num',cls:'col-tight'},{label:t('Transition'),type:'status',cls:'col-tight'},{label:t('Exposure'),type:'status',cls:'col-tight'}]; // a short figure is a tight column
+    // a row leads with what the review reached -- reviewed, or the owner's word and recorded reason for what it did not -- then the figures; the conclusion and the findings are the report's
     const reached=(r)=>{ if(issuerReviewed(r)) return stateLine('evidence_reviewed',{next:''}); const e=evidenceState(r.conclusion), why=unreviewedReason(r); return html`${stateLine(e.state,{word:e.word,next:''})}${why && why!==String(r.conclusion) ? html` <span class="muted">· ${codeWords(why)}</span>` : ''}`; };
     const trs=shown.map((r,i)=>tr([count(start+i+1),btnAttrs(issuerName(r),'review-live-item',r.entity_id,'text-btn','data-row-press'),reached(r),weightWords(r.ending_weight),changeWords(r.signed_change),codeWords(r.transition),bandWords(r.exposure_band)]));
     const report=reviewPublished() || historical() ? btnAttrs(html`${t('Conclusions in the report')}${icon('arrow')}`,'review-step','report','text-btn compact') : '';
     const shownOf=S.issuerState ? html`<p class="caption issuers-filter">${t(S.issuerState==='reviewed' ? 'Reviewed' : 'Not reviewed')} · ${t('{n} of {total}',{n:count(grouped.length),total:count(rows.length)})} ${btn(t('Show all'),'review-issuer-state','','text-btn compact')}</p>` : '';
     return panel(t('Issuers'),t('What the review reached, issuer by issuer; what it concluded of each is the report\'s.'),html`${shownOf}${rows.length>PAGE ? toolbar : ''}${!found.length ? emptyState(t('No issuer matches this search.'),'','','nomatch') : table(columns,trs,'',{report:true,countLine:false,classes:'issuers-table'})}${found.length>PAGE ? foot : ''}`,report,'data-overview="issuers" data-box="table"');
   }
-  /* A page of runs (round H4, R3): the latest twenty of a list, grouped by day, then the foot with
+  /* A page of runs (R3): the latest twenty of a list, grouped by day, then the foot with
    * Previous / Next; one page state for the evidence pages' Runs lists. */
   function pagedRuns(list) {
     const PAGE=LIST_PAGE, {shown,page,pages}=pageOf(list,S.runPage); S.runPage=page;
@@ -2151,9 +2150,9 @@ const LiveReview = (() => {
     const v=S.view; if(!v && !S.refusal) return '';
     const route=v && (reviewPublished() || historical()) && v.disposition ? evidenceState(v.disposition) : null;
     const line=route ? stateLine(route.state,{word:route.word,next:''}) : v?.state ? (v.state==='EVIDENCE_AUTHORITY_NOT_ADMITTED' ? stateLine('metadata',{word:t('Not set up'),next:''}) : stateLine(v.state,{next:''})) : '';
-    return line && v?.explanation ? html`<span class="hint" data-tip="${said(v.explanation)}" tabindex="0">${line}</span>` : line; // round H1: the owner's paragraph is the state's hover card, not a lede
+    return line && v?.explanation ? html`<span class="hint" data-tip="${said(v.explanation)}" tabindex="0">${line}</span>` : line; // the owner's paragraph is the state's hover card, not a lede
   }
-  /* A book whose evidence is not set up (N4, law 130): one empty state with its one way -- on the
+  /* A book whose evidence is not set up (law 130): one empty state with its one way -- on the
    * Overview, the Reading and the Review, and the Report of an installed result; an authored
    * book's Report still composes its delivery (its review section absent, never clearance), and
    * Sources is the way (its setup checklist). */
@@ -2161,19 +2160,19 @@ const LiveReview = (() => {
     return emptyState(t('Evidence is not set up for this workspace.'),link(t('Set up evidence'),'evidence-stream','button primary',S.selector ? {review_selector:JSON.stringify(S.selector)} : {}),'review-state page-empty');
   }
   function noBook() {
-    return emptyState(t('No book to review'),link(t('Choose a book'),'books','button primary'),'review-state page-empty'); // round 93 (rule 3): one sentence, one action; N3: the way is the Evidence Home
+    return emptyState(t('No book to review'),link(t('Choose a book'),'books','button primary'),'review-state page-empty'); // (rule 3): one sentence, one action; N3: the way is the Evidence Home
   }
   function entry() {
     const v=S.view;
-    if(v && !S.refusal && current()) queueMicrotask(()=>void readLedgers()); // the packets named now: the route's Task arrives after the open (round E2)
-    if(v && !S.refusal && current()) queueMicrotask(autoRead); // the dossier once per book: the Analyst's checks are counted on the status page (round F1)
+    if(v && !S.refusal && current()) queueMicrotask(()=>void readLedgers()); // the packets named now: the route's Task arrives after the open
+    if(v && !S.refusal && current()) queueMicrotask(autoRead); // the dossier once per book: the Analyst's checks are counted on the status page
     if(v && v.state==='NO_BOOK_TO_REVIEW' && !S.selector) return noBook();
     if(v && !S.refusal && v.state==='EVIDENCE_AUTHORITY_NOT_ADMITTED') return notSetUp();
     const withBook=Boolean(v) && !S.refusal && v.state!=='NO_BOOK_TO_REVIEW';
-    // the cycle's status page (round F1; B1, one column): the verdict with its way, why the book is held drawn, the Provider actions where admitted, the run, the issuers by what the review reached, the runs; its properties are the head's line and Facts
+    // the cycle's status page (B1, one column): the verdict with its way, why the book is held drawn, the Provider actions where admitted, the run, the issuers by what the review reached, the runs; its properties are the head's line and Facts
     return html`${stateBanner(false)}<div class="overview-main">${withBook ? html`${overviewStatus()}${coverageFigure()}${overviewStrip()}${stageActions()}` : S.refusal ? overviewStatus() : ''}${workSection('evidence')}${withBook ? html`${issuersTable()}${activityList()}` : ''}</div>`;
   }
-  /* ---- the overview (round E2): the ledger of every packet the projection names, the topic
+  /* ---- the overview: the ledger of every packet the projection names, the topic
    * strip, the issuer x topic matrix, the cell reading and the four layers of progress. ---- */
   const TOPICS=['LIQUIDITY_GOING_CONCERN','CAPITAL_DILUTION','LEGAL_REGULATORY','OPERATIONS_SUPPLY','PRODUCT_SAFETY_CYBER','GOVERNANCE_CONTROLS','COMMERCIAL_COUNTERPARTY','CORPORATE_ACTION_LISTING'];
   const CELL_STATE={COMPLETE:'complete',PARTIAL:'partial',PENDING:'pending_delivery',NO_ROUTE:'no_route',NO_SOURCE:'no_source'};
@@ -2303,7 +2302,7 @@ const LiveReview = (() => {
     const passages=btnAttrs(t('Read the passages of this cell'),'review-read-cell',c.entity_id+':'+c.topic,'button compact');
     return html`${facts}<p class="flow">${passages}</p>${reasons}${gaps}${remainders}${rule}`;
   }
-  /* ---- the reading workbench (round E3): one prepared packet's passages as the owner's time
+  /* ---- the reading workbench: one prepared packet's passages as the owner's time
    * view (whole), filtered by issuer, topic and an interval ending at the run's cutoff with the
    * unfiltered coverage beside it; a passage read as its source facts and its derived
    * annotations, apart; the excerpts from every packet part read; three actions, each its own
@@ -2384,7 +2383,7 @@ const LiveReview = (() => {
     const v=viewOf(); if(!v) return ''; const scope=v.continuation_scope || {}, r=v.continuation_request, d=S.packetDelivery, ns=scope.next_session;
     const facts=kv([[t('Continuation'),html`${contWords(scope.state)}${ns ? html` <span class="sub-cell">${t('{w} windows · {r} reads · {b} · {p} table pages · {c} candidates',{w:count(ns.windows),r:count(ns.reads),b:bytesWords(ns.source_bytes),p:count(ns.table_pages),c:count(ns.candidates)})}</span>` : ''}`],
       ...(scope.remainders && Object.keys(scope.remainders).length ? [[t('Beyond the plan'),Object.entries(scope.remainders).map(([k,n])=>`${codeWords(String(k).toUpperCase())} ${count(n)}`).join(' · ')]] : [])]);
-    const buttons=d?.next_request ? html`<div class="flow review-actions">${typedBtn(t('Read the next part'),'review-read-part','','button',current() ? '' : t('Read-only while pinned or busy'))}</div>` : ''; // `Read more` is the head's primary (round F3)
+    const buttons=d?.next_request ? html`<div class="flow review-actions">${typedBtn(t('Read the next part'),'review-read-part','','button',current() ? '' : t('Read-only while pinned or busy'))}</div>` : ''; // `Read more` is the head's primary
     return panel(t('Read more'),t('One bounded reading session; the owner names its scope, the reader declares the limits.'),html`${facts}${buttons}`,'','data-overview="reading-actions"');
   }
   const sameBook=(r)=>Boolean(S.selector) && Object.entries(S.selector).every(([k,v])=>r?.[k]===v);
@@ -2420,7 +2419,7 @@ const LiveReview = (() => {
     const quals=(b.qualifications || []).length ? html`<h3>${t('Qualifications')}</h3><ul class="fact-list">${b.qualifications.map(q=>html`<li>${q}</li>`)}</ul>` : '';
     return html`<h3>${t('Source')}</h3>${source}${excerpt}<h3>${t('Derived')}</h3>${derived}${quals}`;
   }
-  /* ---- the Reading page (round F3, Linear's view): the prepared evidence as a view -- the head
+  /* ---- the Reading page (Linear's view): the prepared evidence as a view -- the head
    * names it and its count, the chips are its filters (a filter is a view, never the scope), the
    * map (the topic strip and the issuer x topic ledger) and the passages sit under them, the facts
    * and the distributions read in the Facts panel, `Read more` is the one lever. No chooser: the
@@ -2436,7 +2435,7 @@ const LiveReview = (() => {
       if(named.length) return {sentence:t('{n} prepared groups; the first is read.',{n:count(named.length)}),primary:null};
       if(exportSpans().length) return {sentence:t('The published review\'s citations; the preparation\'s own reading is not offered for this cutoff.'),primary:null};
       if(reviewPublished() || historical()) return {sentence:t('Reading the published review\'s citations.'),primary:null};
-      const holds=ledgerHolds(); // U55: the ledger's groups, whatever the view names
+      const holds=ledgerHolds(); // the ledger's groups, whatever the view names
       if(holds==='groups') return {sentence:t('{n} prepared groups, as the book\'s ledger lists them.',{n:count(ledgersHere().length)}),primary:null};
       if(holds==='reading') return {sentence:t('Reading the book\'s ledger.'),primary:null};
       return {sentence:t('No evidence is prepared for this book.'),primary:cycle().primary};
@@ -2479,7 +2478,7 @@ const LiveReview = (() => {
     const toolbar=searchBar('spanQuery',t('Find a passage'),t('Find a passage…'),S.spanQuery);
     const foot=pager({total:found.length,one:'{n} entry',many:'{n} entries',page,pages,prev:['review-span-page','prev'],next:['review-span-page','next']});
     // E3: a passage is its document over its words (two lines; whole in the pane), the issuer, the day and the state one word each
-    // B2 (item 4): a passage names the findings that cite it, each the way to it (read beside the list)
+    // a passage names the findings that cite it, each the way to it (read beside the list)
     const findings=dossierOf()?.findings || reportOf()?.review?.dossier?.findings || [];
     const citing=(h)=>findings.filter(f=>[...(f.supporting_span_handles || []),...(f.contradicting_span_handles || [])].includes(h));
     const cited=(h)=>{ const list=citing(h); return list.length ? html`${list.map((f)=>btnAttrs(codeWords(f.topic),'review-live-item',f.finding_handle,'text-btn inline-link',html`data-tip="${f.summary || ''}"`))}` : html`<span class="muted">${t('none')}</span>`; }; // one topic a line (the cell's links are blocks)
@@ -2507,7 +2506,7 @@ const LiveReview = (() => {
         return html`<div data-overview="reading">${map}${list}</div>`;
       }
       if(S.busy==='export' || (published && !S.exportDoc && !S.error)) return html`<div data-overview="reading">${map}${skeleton('rows')}</div>`;
-      const holds=ledgerHolds(); // U55: the map is the page while the ledger holds a group
+      const holds=ledgerHolds(); // the map is the page while the ledger holds a group
       if(holds==='groups' || holds==='failed') return html`<div data-overview="reading">${map}</div>`;
       if(holds==='reading') return html`<div data-overview="reading">${map}${skeleton('rows')}</div>`;
       const p=cycle().primary;
@@ -2520,7 +2519,7 @@ const LiveReview = (() => {
     const body=!rd || rd.status==='reading' ? html`${map}${skeleton('rows')}` : rd.status==='refused' ? html`${map}${notRead(t('The view was not read'),rd.code,explain(rd.code) || rd.message)}` : html`${map}<section class="panel" data-overview="passages" data-box="table"><header class="panel-head"><div><h2>${t('Passages')} <span class="num">${count((evOf()?.bundles || []).length)}</span></h2><p class="caption">${t('One row a passage; a chip is a view of them, the map above stays whole.')}</p></div></header><div class="panel-body">${viewChips()}${passagesTable()}${viewGroups()}</div></section>${readingActions()}`; // the map is its own read: it stands whatever the view's state; the chips filter the passages, so they sit with them
     return html`<div data-overview="reading">${groups}${body}</div>`;
   }
-  /* ---- the composition for the CRO (round E4): the dossier as the tables the CRO reads -- the
+  /* ---- the composition for the CRO: the dossier as the tables the CRO reads -- the
    * issuers with their review state, the findings with their support and the held answer's
    * disposition, the coverage's missing evidence by issuer and topic, the unresolved questions,
    * the units' publications, the routes the policy allows. Every row its owner's words. ---- */
@@ -2534,8 +2533,8 @@ const LiveReview = (() => {
   // inside its entry: only the next named unreviewed unit/issuer starts a new one.
   const reviewLimitWords=(s)=>{const words=String(s || ''),more=/^([\s\S]+); and (\d[\d,]*) more\.$/.exec(words),base=more ? more[1] : words,separator=I18N.zh ? '；' : '; ',read=base.split(/; (?=(?:unit [^();\n]+ \([^();\n]+\)|[^;\n]+) is not reviewed: )/).map(ownerWords).join(separator);return read+(more ? separator+t('and {n} more.',{n:more[2]}) : '');};
   const gapWords=(why)=>String(why || '').split(/;\s*/).map(part=>{const m=/^([A-Z][A-Z_]+)$/.exec(part.trim()); return m ? codeWords(m[1]) : ownerWords(part.trim());}).filter(Boolean).join(' · ');
-  // the owner's gap lines as words (round E5): `<issuer> <TOPIC>: <what>` and `<issuer> is not reviewed: <CODE>`; an issuer whose every listed topic misses the same thing is one line
-  // the owner's gap lines, grouped by issuer; a book of several groups prefixes each with its group (u21: ...)
+  // the owner's gap lines as words: `<issuer> <TOPIC>: <what>` and `<issuer> is not reviewed: <CODE>`; an issuer whose every listed topic misses the same thing is one line
+  // the owner's gap lines, grouped by issuer; a book of several groups prefixes each with its group (u21:...)
   function gapLines(lines) {
     const names=issuerNames(), name=(id)=>names[id] || id, byIssuer=new Map(), out=[];
     for(const line of lines || []){ const m=/^(?:u\d+:\s*)?([A-Z0-9.\-]+)\s+([A-Z_]+):\s*(.*)$/.exec(String(line)); if(m){ if(!byIssuer.has(m[1])) byIssuer.set(m[1],[]); byIssuer.get(m[1]).push([m[2],m[3]]); continue; } const n=/^(?:u\d+:\s*)?([A-Z0-9.\-]+) is not reviewed:\s*([A-Z_]+)$/.exec(String(line)); out.push(n ? html`${name(n[1])} ${t('is not reviewed')} · ${codeWords(n[2])}` : String(line)); }
@@ -2556,10 +2555,10 @@ const LiveReview = (() => {
     handoff:'The Analyst\'s answer and the CRO\'s assessment over what the product composed for this book.',
     report:'The research report for this exact book and evidence version, with its limits and the delivery record. A delivered report is a readback, not permission to trade.'};
   const transport=(message)=>/^local_web\.service_(unreachable|answer_unreadable)/.test(String(message || ''));
-  /* Books (N2, law 123): the Evidence Home -- every saved book the desk can read, one row each,
+  /* Books (law 123): the Evidence Home -- every saved book the desk can read, one row each,
    * opening its overview; the fact that tells two alike apart is the book's reference (law 134). */
   // Discovery reads the Evidence owner's metadata summary in History; opening verifies it.
-  /* Books (N2, law 123; F1, law 136): the Evidence Home as a lobby -- every saved book one row,
+  /* Books (law 123; F1, law 136): the Evidence Home as a lobby -- every saved book one row,
    * grouped by its state (the books at work open, the published folded) or by its time; one line:
    * its reference (what tells two alike apart), its name (law 134), its facts, its day; the row
    * opens its overview (the next step is the book's page's). A book whose state is not read yet groups apart; grouped by state a row keeps its mark and the head says the word (not twice). */
@@ -2589,7 +2588,7 @@ const LiveReview = (() => {
     const withBook=(S.view && (S.view.state!=='NO_BOOK_TO_REVIEW' || S.selector)) || S.refusal;
     const v=S.view, b=v?.book || S.preview?.book || null, id=withBook ? bookName() : '';
     const study=isExperimentBook() && S.selector?.experiment_task_id ? [[t('Study'),link(t('Portfolio study'),'portfolio','inline-link',{book:S.selector.experiment_task_id})]] : []; // F3 (law 135): the book's other home, its study
-    // B1 (the book plan's items 5 and 7): the book's identity and its evidence's days on every tab -- as-of, expiry and, once a review is published, its completeness and day; the publication is the chooser at the line's end
+    // the book's identity and its evidence's days on every tab -- as-of, expiry and, once a review is published, its completeness and day; the publication is the chooser at the line's end
     const reviewed=withBook && Boolean(v) && (reviewPublished() || historical());
     const update=b?.update_subject;
     const headFacts=withBook ? [[t(update ? 'Formation session' : 'trading|Session'),session()],[t('Book'),b?.authority ? codeWords(b.authority) : ''],...(update ? [[t('Observed through'),update.observed_through],[t('Entry session'),update.entry_session]] : []),...study,[t('Book holdings'),b?.held_count==null? '' :count(b.held_count)],[t('As-of'),v?.evidence_as_of ? dayWord(v.evidence_as_of) : ''],[t('Expires'),v?.evidence_expires_at ? dayWord(v.evidence_expires_at) : ''],...(reviewed ? [[t('Completeness'),v.review_state ? codeWords(v.review_state) : ''],[t('Published'),publishedAt() || '']] : [])] : [];
@@ -2597,9 +2596,9 @@ const LiveReview = (() => {
     // the lane in transition (the same book's next reading, or its report, is on its way and what is painted is the previous one): dimmed after 300 ms and not interactive, never collapsed
     const transition=(S.status==='refreshing' && !viewShown()) || (app.page==='report' && Boolean(S.exportDoc) && S.exportDoc.hash!==(S.pin || workingPublication()));
     // E1: with a book the head has no lede (the Overview's status box, each view's own summary say the state); the page's description stands only while no book is read
-    const c=withBook && S.view ? (app.page==='evidence-stream' ? storeWords() : app.page==='evidence-reading' ? readingWords() : app.page==='report' ? reportWords() : cycle()) : null; // the Sources page says the store's state, the Reading page its view, the others the book's (rounds F2, F3)
+    const c=withBook && S.view ? (app.page==='evidence-stream' ? storeWords() : app.page==='evidence-reading' ? readingWords() : app.page==='report' ? reportWords() : cycle()) : null; // the Sources page says the store's state, the Reading page its view, the others the book's
     const lede=html`<p class="lede">${c && c.sentence ? html`${c.sentence}${S.view?.explanation && c.tone==='warning' && !historical() ? html` <span class="muted">${said(S.view.explanation)}</span>` : ''}` : t(LEDES[app.page] || LEDES.evidence)}</p>`;
-    // N3 (law 119): a book page's sentence is the path's (i) -- its state is the top row's, the Overview's its status box
+    // law 119: a book page's sentence is the path's (i) -- its state is the top row's, the Overview's its status box
     const viewInfo=withBook && c && c.sentence && !['evidence','handoff'].includes(app.page) ? lede : '';
     return html`<div class="es-page rc-desk work-cro">${objectHead(withBook ? bookTitle() : title,withBook ? viewInfo : lede,headActions(),!withBook ? '' : headState(),tools,{object:withBook,scope:withBook ? {name:bookTitle(),href:routeUrl('evidence',S.selector ? {review_selector:JSON.stringify(S.selector)} : {}),self:app.page==='evidence'} : null,id,facts:headFacts,top:withBook ? '' : selectorBar(),subject:withBook ? readingChooser() : '',switcher:withBook ? bookSwitch() : ''})}${LiveTasks.currentGroup?.() || ''}${unresolved}${notice}${app.page==='report' ? body : html`<div class="lane-split${S.item ? ' has-reading' : ''}"><div class="lane-main"${transition ? ' aria-busy="true"' : ''}>${body}</div>${readingPaneMarkup()}</div>`}</div>`;
   }
@@ -2655,7 +2654,7 @@ const LiveReview = (() => {
     proof:()=>html`${kv([[t('Book'),bookName()],[t('Holdings date'),session()],[t('Review publication'),S.pin || workingPublication() || '']])}<p>${said(S.view?.explanation || S.refusal || '')}</p>${S.view ? kv([[t('Evidence as-of'),S.view.evidence_as_of || ''],[t('Evidence expiry'),S.view.evidence_expires_at || ''],[t('Reviewer provenance'),attributionWords(S.view.review_attribution || [],{facts:true}) || '']]) : ''}`,
     context:()=>({selector:S.selector,review_publication_hash:S.pin || workingPublication() || null,pinned:historical(),prepared_task:S.packetTask,prepared_unit:S.packetUnit,work:S.work?.task || null}),
     facts:()=>({reading:S.reading ? {status:S.reading.status,code:S.reading.code || '',selected:evOf()?.selected ?? null} : null,excerpts:S.excerpts.size,packetPart:S.packetDelivery?.part ?? null,pending:S.pending ? {operation:S.pending.operation,payload:{...S.pending.payload}} : null,ledgers:[...S.ledgers.entries()].map(([k,l])=>[k,l.status,l.code || '',l.coverage ? (l.coverage.cells || []).length : 0]),state:S.view?.state || null,refusal:S.refusal,error:S.error,busy:S.busy,pinned:historical(),publication:S.pin || workingPublication() || '',nav:S.nav,readGen:S.readGen,dossierRead:S.dossier ? S.dossier.readGen : null,taskFacts:Object.fromEntries(S.taskFacts),packetTask:S.packetTask,packetUnit:S.packetUnit,packet:S.packet ? {key:S.packet.key,task:S.packet.task,unit:S.packet.unit || ''} : null,pending:S.pending ? {path:S.pending.path,kind:S.pending.kind,operation:S.pending.operation || '',payload:S.pending.payload,task:S.pending.task,unit:S.pending.unit ?? ''} : null,finding:S.finding ? {key:S.finding.key,handle:S.finding.handle} : null,exportRequest:S.exportRequest ? S.exportRequest.request : null,unitless:S.unitless ? {id:S.unitless.id,analyst:S.unitless.analyst,cro:S.unitless.cro} : null,dossier:S.dossier ? {key:S.dossier.key} : null,role:S.role,drafts:{...S.drafts},draftsPersisted:S.draftsPersisted,draftsNote:S.draftsNote,editorNote:S.editorNote,held:Object.fromEntries([...S.held].map(([k,h])=>[k,{analyst:h.analyst,cro:h.cro}])),legacy:S.legacy ? {key:S.legacy.key,analyst:S.legacy.analyst,cro:S.legacy.cro} : null,refusalKept:S.lastRefusal ? {role:S.lastRefusal.role,kind:S.lastRefusal.kind,code:S.lastRefusal.code,fields:S.lastRefusal.fields.length} : null,work:S.work ? {task:S.work.task,kind:S.work.kind,lifecycle:S.work.view?.lifecycle || null,done:S.work.done,book:S.taskBooks.get(S.work.task) || null,parallel:workView()?.parallel || null,current_scope:S.work.view?.current_scope || null} : null,unresolved:S.unresolved,bound:Object.fromEntries([...S.bound].map(([k,b])=>[k,{prepare:[...b.prepare],analysis:[...b.analysis],review:[...b.review],imported:[...b.imported]}]))}),
-    // B1: the book's tabs count their objects where the owner records them -- the documents the inventory holds, the published review's citations, the findings
+    // the book's tabs count their objects where the owner records them -- the documents the inventory holds, the published review's citations, the findings
     counts:()=>{ const v=S.view, inv=inventory(), d=dossierOf(), published=Boolean(v) && (reviewPublished() || historical());
       return {documents:inv ? inv.rows.reduce((a,r)=>a+r.held,0) : undefined,citations:published && Array.isArray(v.citations) ? v.citations.length : undefined,findings:Array.isArray(d?.findings) ? d.findings.length : published && Array.isArray(v.issuer_rows) ? v.issuer_rows.reduce((a,r)=>a+(Number(r.finding_count) || 0),0) : undefined}; },
     overviewFacts,pctText,pct};

@@ -171,11 +171,20 @@ def stopped_change(tmp_path_factory, golden_cache) -> SimpleNamespace:  # type: 
     stopped on the Panel's coverage floor after its cycle made its own Sector-reduced membership
     active, with every step's answer kept. The Host run (about 40 s) happens once per session
     across workers; each worker gets its own copy, the same binding, provider and source."""
-    from devtools.evaluation.golden_workspaces import golden_inputs
-    from tests.researcher_methodology_surface.real_workspace import _environment_digest
 
-    snapshot = golden_inputs(
-        ROOT, ("src", "tests", "scripts", "config", "pyproject.toml", "uv.lock")
+    from devtools.evaluation.golden_workspaces import golden_inputs
+    from tests.researcher_methodology_surface.real_workspace import (
+        _environment_digest,
+        builder_inputs,
+    )
+
+    snapshot = golden_inputs(  # this module's own closure, never the whole tests tree
+        ROOT,
+        builder_inputs(
+            ROOT,
+            ("tests/integration/product_host/test_membership_change_recovery.py",),
+            ("src", "config", "pyproject.toml", "uv.lock"),
+        ),
     )
     if snapshot is None:
         raise RuntimeError("session workspace golden controller is unavailable")

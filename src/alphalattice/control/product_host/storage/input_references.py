@@ -99,7 +99,7 @@ def bytes_by_root(files: tuple[tuple[str, int, str], ...]) -> dict[str, dict[str
     Physical (each filesystem object once) and logical (each reference) bytes and the
     file count under every managed role, from one inventory walk. An object shared by two
     roots is counted physically under the first root that names it, so the roles sum to
-    the managed total; a role's roots are summed (V208).
+    the managed total; a role's roots are summed.
     """
     seen: set[str] = set()
     values: dict[str, dict[str, int]] = {}
@@ -423,7 +423,7 @@ class ResearchInputStorage:
         A generation no research input captured is kept while it is the current one or the
         previous one; past the previous it is superseded, and the chunks no kept generation
         names are released under the confirmed plan, a composition's that no generation
-        published among them (V207).
+        published among them.
         """
         artifacts = self.workspace / "artifacts"
         panel_root = artifacts / "feature-panel"
@@ -500,7 +500,7 @@ class ResearchInputStorage:
                     targets[name] = digest
         if not busy:
             # The chunks no kept generation names: a superseded generation's own, and those a
-            # composition wrote that no generation published (V207; 11 of `dh-append`'s 24).
+            # composition wrote that no generation published (11 of `dh-append`'s 24).
             captured = {name for h, b in bundles.items() if roots[h] for name, _ in b.files}
             for path in sorted((panel_root / "chunks").glob("*.parquet")):
                 name = path.relative_to(self.workspace).as_posix()
@@ -590,7 +590,7 @@ class ResearchInputStorage:
     def _index_actions(
         self, row: dict[str, object], references: EvidenceStorageReferences, pending: object
     ) -> list[str]:
-        """The actions the owner would take on one evidence index now (V199).
+        """The actions the owner would take on one evidence index now.
 
         Nothing while an approved cleanup waits to be recovered, which the owner
         requires first; a rebuild only of an evicted index, when the evidence runtime
@@ -768,7 +768,7 @@ class ResearchInputStorage:
 
     def _model_relinks(self) -> dict[str, int]:
         """The retained retrieval recipe's own model copy, when the machine's store holds its
-        verified packs: offered to be linked to them, never deleted (V208). Its bytes, which
+        verified packs: offered to be linked to them, never deleted. Its bytes, which
         the capability hash binds, stay what sealed indexes read."""
         try:
             binding = read_research_workspace_manifest(self.workspace).evidence_review
@@ -854,7 +854,7 @@ class ResearchInputStorage:
                     resolver=ArtifactResolver(self.workspace / "artifacts"),
                 ).reconcile_physical_availability()
             # The confirmed plan's relinks, through the model's owner: it proves the copy holds
-            # the packs' bytes before it swaps, and finishes an interrupted swap (V208).
+            # the packs' bytes before it swaps, and finishes an interrupted swap.
             relinked: dict[str, int] = {}
             for relative in self.owner.input_plan(plan_hash).get("relinks") or {}:
                 try:
@@ -894,7 +894,7 @@ class ResearchInputStorage:
             return int(self.evidence.evict(knowledge_relative, plan_hash, self.clock()))
         except OSError as error:
             # The file system would not release a file: the cleanup stops where it is,
-            # journalled, and resumes on the same plan (V449: it reached the caller as a
+            # journalled, and resumes on the same plan (it reached the caller as a
             # bare fingerprint).
             raise StorageRetentionError(
                 "storage.cleanup_interrupted",

@@ -1,4 +1,4 @@
-"""A workspace's held state, backed up outside it and restored onto a new directory (V209, ST).
+"""A workspace's held state, backed up outside it and restored onto a new directory (ST).
 
 The held set is what the storage map says nothing else rebuilds. The market store's revision
 journals, universe history, provider attempts, audit receipts and admission table, and the Task
@@ -458,7 +458,7 @@ class WorkspaceBackups:
         return generation
 
     def _writable_root(self) -> None:
-        """Make the root and show it takes a file before anything is exported into it (V539).
+        """Make the root and show it takes a file before anything is exported into it.
 
         A root this Host cannot create or write -- an application-data directory a sandbox
         denies -- is refused by name, its way on a root named by `ALPHALATTICE_BACKUP_ROOT`.
@@ -585,7 +585,7 @@ class WorkspaceBackups:
                 path.unlink()
 
     def _generation(self, generation_hash: str | None) -> BackupGeneration:
-        """The kept generation a hash names, whole or by its beginning (V476).
+        """The kept generation a hash names, whole or by its beginning.
 
         `backup list` shows each hash's beginning, so a restore takes it as shown: the one
         kept generation it begins, an exact hash first; two that share it are refused by name.
@@ -748,7 +748,7 @@ def restore_from_root(
     generation_hash: str | None = None,
     root: Path | None = None,
 ) -> dict[str, object]:
-    """Restore a generation from the backup root alone, with no Host (V328).
+    """Restore a generation from the backup root alone, with no Host.
 
     The workspace may be lost or unservable, as a restored one usually is: its identity is
     ``workspace_id`` when given, else its manifest's, and the generations restored from are the

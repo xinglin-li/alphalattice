@@ -3732,7 +3732,7 @@ window.ALPHA_ZH = {
   "The request names no review publication.": "该请求没有指明审查发布。",
   "The {roles} text you already typed here was kept; the unit-less text for it stays until you clear this draft or discard it.": "你已在此输入的 {roles} 文本被保留；对应的无单元文本会保留到你清空此草稿或丢弃它为止。",
   "This request names another book; open that book to run it.": "该请求指向另一个账本；打开那个账本再运行它。",
-  // round E2: the Evidence overview -- the topic strip, the ledger, the cell reading, the layers
+  // the Evidence overview -- the topic strip, the ledger, the cell reading, the layers
   "Topics": "主题",
   "Ledger": "台账",
   "Ledger cell": "台账格",
@@ -3826,7 +3826,7 @@ window.ALPHA_ZH = {
   "Pending in every topic": "所有主题都待定",
   "No route in every topic": "所有主题都无路由",
   "No source in every topic": "所有主题都无来源",
-  // round E3: the reading workbench
+  // the reading workbench
   "Every passage one prepared packet delivered, one row each; a filter is a view and the coverage stays beside it.": "一个已准备包交付的每一段落各占一行；筛选只是视图，覆盖率始终在旁。",
   "Passage": "段落",
   "Passages": "段落",
@@ -3962,7 +3962,7 @@ window.ALPHA_ZH = {
   "{k} question": "{k}问题",
   "covered candidate": "已覆盖候选",
   "Unknown time": "时间未知",
-  // round E4: the Review page
+  // the Review page
   "Transition": "变动方向",
   "Reviewed weight": "已审阅权重",
   "Unresolved questions": "未解决问题",
@@ -4023,7 +4023,7 @@ window.ALPHA_ZH = {
   "Refresh evidence": "刷新证据",
   "Resolve the issuer mapping": "解决发行人映射",
   "Do not activate": "不要激活",
-  // round E5: the report's history, the storage page's Evidence category, the Sources runs
+  // the report's history, the storage page's Evidence category, the Sources runs
   "Changes since the prior review": "自上次评审以来的变化",
   "Prior review": "上次评审",
   "Before": "之前",
@@ -5303,12 +5303,12 @@ window.ALPHA_ZH = {
   "Its tree state is incomplete": "其树状态不完整",
   "An import outside the lock": "锁定之外的导入",
   "An import not installed": "未安装的导入",
-  // U19 (CLI-17): the client's refusal words and the Host's static plain refusal words, for the CLI's `--lang zh`
-  // V603: the first actionable session is the first planned entry strictly after activation or the clock
+  // the client's refusal words and the Host's static plain refusal words, for the CLI's `--lang zh`
+  // the first actionable session is the first planned entry strictly after activation or the clock
   "Hold positions only from the first planned entry strictly after activation. Earlier forward decisions are a causal replay.": "只从激活之后的首个计划入场时点起持有头寸。更早的向前决定是因果回放。",
   "If activated now, hold positions only from the first planned entry strictly after the current clock. Earlier forward decisions would be a causal replay.": "如果现在激活，只从当前时钟之后的首个计划入场时点起持有头寸。更早的向前决定将是因果回放。",
   "The first actionable session is unknown without the activation time or current clock and the installed planned-entry calendar.": "没有激活时间或当前时钟以及已安装的计划入场日历，就无法知道首个可执行交易日。",
-  // V599: a research update stopped for the closed network, and each provider need it names
+  // a research update stopped for the closed network, and each provider need it names
   "The research update needs {subject}. This workspace's closed network does not allow data-provider access; a person allows it (`network set`), then run the saved plan again.": "研究更新需要{subject}。此工作区已关闭的网络不允许访问数据提供方；请由人允许访问（`network set`），然后再次运行已保存的计划。",
   "missing market data through session {subject}": "截至交易日 {subject} 缺失的市场数据",
   "the membership source check for session {subject}": "交易日 {subject} 的成员来源检查",
@@ -5316,7 +5316,7 @@ window.ALPHA_ZH = {
   "the admitted full-history acquisition": "已准入的完整历史获取",
   "the SPY market reference through session {subject}": "截至交易日 {subject} 的 SPY 市场基准",
   "the candidate Sector source check for session {subject}": "交易日 {subject} 的候选行业来源检查",
-  // V594, V597 (batch CE): the trading start held from, the forward book's in-sample replay, the next refit
+  // the trading start held from, the forward book's in-sample replay, the next refit
   "{first} to {last}": "{first} 至 {last}",
   "In-sample replay not determined": "无法确定样本内回放",
   "{n} session replayed in-sample": "{n} 个交易日为样本内回放",
@@ -5347,10 +5347,10 @@ window.ALPHA_ZH = {
   "Remaining admitted fit vintages for this component's forward sessions through its grant's horizon.": "此组件在其授权期限内向前交易日剩余的已准入拟合批次。",
   "No admitted fit vintage remains for this component's forward sessions through its grant's horizon.": "此组件在其授权期限内的向前交易日已没有剩余的已准入拟合批次。",
   "The component's sealed grant or model metadata cannot be read; its next fit vintage is unknown.": "无法读取该组件已封存的授权或模型元数据；其下一个拟合批次未知。",
-  // V610: a Task whose child process could not start; a session close without a timezone (REV's codex/v610-child-start)
+  // A Task child that could not start and a session close without a timezone.
   "The operating system could not start the Task's child process. Free system resources (including commit memory on Windows), then inspect this Task's recovery view and resume it there; its verified stages are kept.": "操作系统无法启动该任务的子进程。请释放系统资源（包括 Windows 上的承诺内存），然后查看该任务的恢复视图并在那里恢复它；其已验证的阶段会保留。",
   "The session close has no timezone, so its daily source ready time cannot be determined. Supply the close as a timezone-aware instant and try again.": "交易时段的收盘时间没有时区，因此无法确定其每日来源就绪时间。请以带时区的时间点提供收盘时间，然后重试。",
-  // V595: a strategy's latest work read by its package, never another strategy's
+  // a strategy's latest work read by its package, never another strategy's
   "This workspace holds research updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.": "这个工作区保有不止一个策略的研究更新，因此其最新一项只能靠猜测是其中之一：请用 --package <strategy-package-id> 读取某个策略自己的最新一项（`next_requests` 提供每个策略的读取，`strategy_package_ids` 列出它们），或用 --task 读取某一次更新。",
   "Research update Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.": "研究更新任务 {subject} 属于另一个策略，而不是 --package 所指的那个，因此不会作为该策略的任务读取：请不带 --package 读取该任务，或只带 --package 读取该策略自己的最新一项。",
   "This workspace holds Portfolio updates of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one update with --task.": "这个工作区保有不止一个策略的投资组合更新，因此其最新一项只能靠猜测是其中之一：请用 --package <strategy-package-id> 读取某个策略自己的最新一项（`next_requests` 提供每个策略的读取，`strategy_package_ids` 列出它们），或用 --task 读取某一次更新。",
@@ -5359,7 +5359,7 @@ window.ALPHA_ZH = {
   "Scoring Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.": "评分任务 {subject} 属于另一个策略，而不是 --package 所指的那个，因此不会作为该策略的任务读取：请不带 --package 读取该任务，或只带 --package 读取该策略自己的最新一项。",
   "This workspace holds calibration Tasks of more than one strategy, so its latest would be one of them by guess: read a strategy's own latest with --package <strategy-package-id> (`next_requests` offers each strategy's, and `strategy_package_ids` names them), or one Task with --task.": "这个工作区保有不止一个策略的校准任务，因此其最新一项只能靠猜测是其中之一：请用 --package <strategy-package-id> 读取某个策略自己的最新一项（`next_requests` 提供每个策略的读取，`strategy_package_ids` 列出它们），或用 --task 读取某一个任务。",
   "Calibration Task {subject} is another strategy's than the one --package names, so it is not read as that strategy's: read the Task without --package, or the strategy's own latest with --package alone.": "校准任务 {subject} 属于另一个策略，而不是 --package 所指的那个，因此不会作为该策略的任务读取：请不带 --package 读取该任务，或只带 --package 读取该策略自己的最新一项。",
-  // V593 (U81): Home's Running forward and the Activation panel's dates; V589's strategy-date sentences
+  // Home's Running forward and the Activation panel's dates; strategy-date sentences
   "Running forward": "向前运行",
   "Information cutoff": "信息截止日",
   "Trading start": "交易起点",
@@ -5378,11 +5378,11 @@ window.ALPHA_ZH = {
   "The {subject} record does not provide its information date.": "{subject} 记录没有提供其信息日期。",
   "Sessions strictly after the information cutoff.": "严格晚于信息截止日的交易日。",
   "The book's sessions cannot be compared until every required information date is known.": "在每个必需的信息日期都已知之前，无法比较账本的交易日。",
-  // V591, V592: what each Evidence setup option must hold, as the setup offer states it (SETUP_OPTIONS)
+  // what each Evidence setup option must hold, as the setup offer states it (SETUP_OPTIONS)
   "--entities names the issuers to acquire or import, by ticker, at most eight, each in the workspace's universe and, for an import, in the source's request.": "--entities 指定要获取或导入的发行人，按代码给出，最多八家，每家都须在工作区的研究总体中；若是导入，还须在来源的请求中。",
   "In place of --acquire-sec and --network-consent, SEC artifacts already captured, read offline: --source-artifact-root names the alternative-evidence artifact store of the workspace that acquired the source, runtime/artifacts/alternative-evidence under that workspace, which holds source-document-sets/, snapshots/, registries/ and requests/; --source-set-hash names the 64-character lowercase hexadecimal identity of a source set under that store, as the acquisition's answer names it.": "代替 --acquire-sec 和 --network-consent，读取已捕获的 SEC 文件（离线）：--source-artifact-root 指定获取该来源的工作区的另类证据工件存储，即该工作区下的 runtime/artifacts/alternative-evidence，其中存有 source-document-sets/、snapshots/、registries/ 和 requests/；--source-set-hash 指定该存储下某个来源集的 64 位小写十六进制标识，与获取答复所给的一致。",
   "--research-input-id names the admitted research input the book's study was built on, as `alphalattice study show <id>` names it; --research-input-hash names that input's exact sealed binding, also named by `alphalattice study show <id>`, never inferred from the latest data.": "--research-input-id 指定账本的研究所基于的、已准入的研究输入，与 `alphalattice study show <id>` 所给的一致；--research-input-hash 指定该输入确切的已封存绑定，同样由 `alphalattice study show <id>` 给出，绝不从最新数据推断。",
-  // V590 (with V587's two): setup and Evidence refusals that claim only `causes` and `next_commands`; the bridge's files
+  // setup and Evidence refusals that claim only `causes` and `next_commands`; the bridge's files
   "A setup step exited {subject}, so setup did not complete; `causes` holds the exit status, never the step's output or command credentials. Resolve the failed step, run what `next_commands` offers, then run the setup again.": "某个安装配置步骤以 {subject} 退出，因此安装配置没有完成；`causes` 只保存退出状态，绝不包含该步骤的输出或命令凭据。请解决失败的步骤，运行 `next_commands` 所提供的内容，然后重新运行安装配置。",
   "Setup could not read or write a file it needs ({subject}); `causes` holds the sanitized OS cause, never the file's path. Restore the file or choose a location this process can write, run what `next_commands` offers, then run the setup again.": "安装配置无法读取或写入所需的文件（{subject}）；`causes` 保存已脱敏的操作系统原因，绝不包含该文件的路径。请恢复该文件，或选择一个此进程可写的位置，运行 `next_commands` 所提供的内容，然后重新运行安装配置。",
   "The source answered HTTP {subject}, so setup did not complete; `causes` holds the status, never the response or either side's headers. Check the source's status and the admitted scope, run what `next_commands` offers, then retry within the same permissions.": "来源答复了 HTTP {subject}，因此安装配置没有完成；`causes` 保存该状态，绝不包含响应内容或任一方的标头。请检查来源的状态和准入范围，运行 `next_commands` 所提供的内容，然后在同样的权限内重试。",
@@ -5394,24 +5394,24 @@ window.ALPHA_ZH = {
   "Too few of the package's issuers hold a document at its cutoff for its coverage floor: {subject}. An issuer whose filing index at the cutoff shows nothing filed in the window holds nothing to count and is left out of the share; one whose acquisition failed or left its filings unread counts against it. `next_commands` holds the way on: after an official acquisition, the same acquisition at that one cutoff, which fetches again what failed and leaves the quiet ones uncounted, and its check; after a recorded import, the import's own check. The floor stays the package's.": "证据包在其截止日持有文档的发行人太少，达不到其覆盖下限：{subject}。截止日的申报索引显示窗口内没有任何申报的发行人没有可计入的内容，不计入比例；获取失败或其申报未被读取的发行人则计为不足。`next_commands` 给出后续途径：官方获取之后，在同一截止日再次进行同样的获取（会重新抓取失败的内容，没有申报的发行人仍不计入）及其检查；已记录导入之后，运行导入自身的检查。下限仍是证据包自己的。",
   "The recorded import could not read a source file under its {subject} option: `location` names that option, the file relative to it and what the option should hold, and `causes` the sanitized OS cause. Correct the option, then run the import's own check in `next_commands`, which installs nothing; where one directory below the given root holds the named source set, the check is offered there.": "已记录的导入无法读取其 {subject} 选项下的某个来源文件：`location` 会指出该选项、相对于它的文件以及该选项应持有的内容，`causes` 会给出已脱敏的操作系统原因。请更正该选项，然后运行 `next_commands` 中导入自身的检查，它不会安装任何内容；若所给根目录下的某个目录持有所指的来源集，检查会在那里提供。",
   "A preflight checks a source before it is installed -- an official acquisition's setup, or a recorded import's records -- and a rebind reads no source, so it has none. Run the rebind without --preflight: it seals a package beside the installed one and binds it only with --install.": "预检会在来源安装之前检查它（官方获取的安装配置，或已记录导入的记录），而重新绑定不读取任何来源，因此没有可预检的来源。请不带 --preflight 运行重新绑定：它会在已安装的证据包旁封存一个证据包，并且只有带上 --install 时才会绑定它。",
-  // V586: a bound session's binding removed by the session it names (`alphalattice session unbind`), or refused
-  // V568: a bound agent session's workspace, and its binding refused
+  // a bound session's binding removed by the session it names (`alphalattice session unbind`), or refused
+  // a bound agent session's workspace, and its binding refused
   "No workspace is named on the line, and no binding up from this folder gives this agent session one, so nothing was sent. Name it, as in alphalattice --workspace <dir> <object> <action> ...; or, inside an agent session, bind it once with `alphalattice --workspace <dir> session bind`, and its commands and its own specialists' may leave it out. A Session bound in the workspace's own folder (an agent sandbox protects the project's `.codex`) names it on every line.": "命令行上没有指定工作区，从这个文件夹向上也没有任何绑定为这个智能体会话给出工作区，因此没有发送任何内容。请指定它，例如 alphalattice --workspace <dir> <object> <action> ...；或者在智能体会话内用 `alphalattice --workspace <dir> session bind` 绑定一次，之后它的命令及其自己的专家的命令都可以省略它。绑定在工作区自己文件夹中的会话（智能体沙箱保护了项目的 `.codex`）需要在每一行都指定它。",
   "No workspace is named on the line, and the nearest binding up from this folder names another agent session, whose workspace is not this session's to assume, so nothing was sent. Name it on the line, as in alphalattice --workspace <dir> <object> <action>.": "命令行上没有指定工作区，而从这个文件夹向上最近的绑定指向另一个智能体会话，其工作区不能由本会话沿用，因此没有发送任何内容。请在命令行上指定它，例如 alphalattice --workspace <dir> <object> <action>。",
   "This shell names no single agent session, neither CLAUDE_CODE_SESSION_ID nor CODEX_THREAD_ID or both at once, so there is no session to bind and nothing was written. Bind from inside the agent's own session, or name the workspace on each line, as in alphalattice --workspace <dir> <object> <action>.": "这个终端没有指定唯一的智能体会话：既没有 CLAUDE_CODE_SESSION_ID 也没有 CODEX_THREAD_ID，或两者同时存在，因此没有可绑定的会话，也没有写入任何内容。请在智能体自己的会话内绑定，或在每一行上指定工作区，例如 alphalattice --workspace <dir> <object> <action>。",
-  // V573's direct re-plan; V564's missing artifact with no subject; the client's editable-checkout refusal
+  // direct re-plan; missing artifact with no subject; the client's editable-checkout refusal
   "A new Task through {admitting}. This Task stays exactly as recorded: nothing here is changed, cancelled or deleted.": "通过 {admitting} 新建一个任务。此任务原样保留：这里没有任何内容被更改、取消或删除。",
   "Starts a new Task through {admitting}; it does not resume or change this Task.": "通过 {admitting} 启动一个新的任务；它不会恢复或更改此任务。",
   "The owner admits this Task kind directly through {admitting}, without a plan preview.": "所有者直接通过 {admitting} 接纳此类任务，无需计划预览。",
   "The requested artifact named by this request is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.": "此工作区没有保存这个请求所指的制品。请读取 workspace show，查找已保存的输入或结果。如果某条已完成的记录指向这个缺失的文件，请把保有它的备份恢复到一个新文件夹，并在那里工作。",
   "Model scaffolding writes source and its contract test, so it needs an editable checkout. Run uv sync --locked there, then model scaffold --file <declaration>; the installed package can check and run the activated model but cannot edit itself.": "模型脚手架会写入源代码及其契约测试，因此需要一个可编辑的检出副本。请在那里运行 uv sync --locked，然后运行 model scaffold --file <declaration>；已安装的包可以检查并运行已激活的模型，但无法编辑自身。",
-  // V565: the coverage unit's words shortened to read whole in a Task stop (the fork's claude/v565-stop-words)
+  // the coverage unit's words shortened to read whole in a Task stop (the fork's claude/v565-stop-words)
   "None of this unit's issuers holds a source document at its cutoff, so it had nothing to read. Under the recorded package, preparing again finds nothing again: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched.": "这个单元的发行人在其截止日都没有持有来源文档，因此没有可读的内容。在已记录的证据包下，再次准备仍然一无所获：由此人决定的官方 SEC 获取会在同一截止日读取每个持仓（`source_ways`），在官方获取下，再次准备会重试那些未能获取的内容。",
   "Too few of this unit's issuers hold a source document at its cutoff for the installed package's floor; its code names the coverage reached and needed. Under the recorded package, preparing again fails the same way: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched.": "这个单元在其截止日持有来源文档的发行人太少，达不到已安装证据包的下限；其代码会说明达到的和所需的覆盖。在已记录的证据包下，再次准备会以同样的方式失败：由此人决定的官方 SEC 获取会在同一截止日读取每个持仓（`source_ways`），在官方获取下，再次准备会重试那些未能获取的内容。",
   "This coverage unit was not prepared. None of this unit's issuers holds a source document at its cutoff, so it had nothing to read. Under the recorded package, preparing again finds nothing again: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched. The book's coverage (`next_requests.coverage`) lists each unit's state.": "这个覆盖单元没有准备。这个单元的发行人在其截止日都没有持有来源文档，因此没有可读的内容。在已记录的证据包下，再次准备仍然一无所获：由此人决定的官方 SEC 获取会在同一截止日读取每个持仓（`source_ways`），在官方获取下，再次准备会重试那些未能获取的内容。账本的覆盖（`next_requests.coverage`）会列出每个单元的状态。",
   "This coverage unit was not prepared. Too few of this unit's issuers hold a source document at its cutoff for the installed package's floor; its code names the coverage reached and needed. Under the recorded package, preparing again fails the same way: official SEC acquisition, the person's decision, reads every holding at one cutoff (`source_ways`), and under it preparing again retries what could not be fetched. The book's coverage (`next_requests.coverage`) lists each unit's state.": "这个覆盖单元没有准备。这个单元在其截止日持有来源文档的发行人太少，达不到已安装证据包的下限；其代码会说明达到的和所需的覆盖。在已记录的证据包下，再次准备会以同样的方式失败：由此人决定的官方 SEC 获取会在同一截止日读取每个持仓（`source_ways`），在官方获取下，再次准备会重试那些未能获取的内容。账本的覆盖（`next_requests.coverage`）会列出每个单元的状态。",
   "This coverage unit was not prepared. This unit stopped with `{subject}`, a refusal of the preparation's own records or work rather than of its sources. Preparing the book again retries it and keeps every unit that completed; if it stops with the same code again, report the code. The book's coverage (`next_requests.coverage`) lists each unit's state.": "这个覆盖单元没有准备。这个单元以 `{subject}` 停止，这是对准备工作自身记录或工作的拒绝，而不是对其来源的拒绝。重新准备账本会重试它，并保留每个已完成的单元；如果它再次以同一代码停止，请报告该代码。账本的覆盖（`next_requests.coverage`）会列出每个单元的状态。",
-  // U78-U80: a unit's words and the ways on (V541, V546, V547); a legacy index's rebuild limit (V560)
+  // U78-U80: a unit's words and the ways on; a legacy index's rebuild limit
   "Ways on": "后续途径",
   "Official SEC acquisition": "官方 SEC 获取",
   "A recorded package for this book": "为这个账本准备的已记录证据包",
@@ -5422,7 +5422,7 @@ window.ALPHA_ZH = {
   "This legacy index has no committed vector payload and cannot be rebuilt. Start a new Evidence preparation.": "这个旧版索引没有已保存的向量载荷，无法重建。请开始一次新的证据准备。",
   "This legacy index has no committed vector payload and cannot be rebuilt.": "这个旧版索引没有已保存的向量载荷，无法重建。",
   "Start a new Evidence preparation.": "请开始一次新的证据准备。",
-  // V541, V546, V547 (the Evidence and CRO review route): the door's, the Host's and a stale packet's words
+  // the door's, the Host's and a stale packet's words
   "This directory already holds another bundle, and one directory holds one bundle, so nothing was prepared. Name a new, empty directory.": "这个目录已存有另一个文档包，而一个目录只存放一个文档包，因此没有准备任何内容。请指定一个新的空目录。",
   "A bundle's directory is named by its absolute path, so the Host and the agent read the same place; nothing was prepared.": "文档包的目录以绝对路径指定，这样 Host 和代理读取的是同一个位置；没有准备任何内容。",
   "This unit's official acquisition ran past the window its request was admitted for, so it stopped; the filings it fetched are kept for the next attempt. Preview and prepare again, which opens a new window.": "这个单元的官方获取超出了其请求准入的时间窗口，因此停止了；已抓取的申报文件会保留给下一次尝试。请重新预览并准备，这会开启一个新窗口。",
@@ -5472,7 +5472,7 @@ window.ALPHA_ZH = {
   "The Task named is a `{subject}` Task, not a study, so a study's selector does not name its book. `alphalattice task show` reads it, with the requests its owner offers.": "所指定的任务是 `{subject}` 任务，而不是研究，因此研究的选择器无法指向它的账本。`alphalattice task show` 会读取它，并给出其所有者提供的请求。",
   "This packet was prepared under the workspace's earlier Evidence package, which has changed since, so nothing prepared under it can be read or answered: an install replaces the package, and every packet prepared under the one before goes stale. Nothing was submitted. Prepare the unit again (the book's preview, then prepare) and give the Analyst its new packet; units prepared under different packages cannot be reviewed together.": "这个数据包是在工作区先前的证据包下准备的，而它此后已经改变，因此在其下准备的任何内容都无法读取或答复：安装会替换证据包，之前证据包下准备的每个数据包都会过期。没有提交任何内容。请重新准备该单元（先预览账本，再准备），并把新的数据包交给分析师；在不同证据包下准备的单元不能一起复核。",
   "This packet was prepared under the workspace's earlier Evidence source, which has changed since, so nothing prepared under it can be read or answered: an install replaces the package, and every packet prepared under the one before goes stale. Nothing was submitted. Prepare the unit again (the book's preview, then prepare) and give the Analyst its new packet; units prepared under different packages cannot be reviewed together.": "这个数据包是在工作区先前的证据来源下准备的，而它此后已经改变，因此在其下准备的任何内容都无法读取或答复：安装会替换证据包，之前证据包下准备的每个数据包都会过期。没有提交任何内容。请重新准备该单元（先预览账本，再准备），并把新的数据包交给分析师；在不同证据包下准备的单元不能一起复核。",
-  // V539, V548 (INV): SEC acquisition, setup and the backup root, worded at the door; `{subject}` as it fills
+  // SEC acquisition, setup and the backup root, worded at the door; `{subject}` as it fills
   "An issuer in the declared scope is absent from the official SEC registry. Check the issuer scope against the admitted input and official registry, then run preflight with the corrected scope.": "声明范围中的某个发行人不在官方 SEC 登记册中。请对照已准入的输入和官方登记册检查发行人范围，然后用更正后的范围运行预检。",
   "The bounded SEC acquisition did not complete. Its sanitized cause chain names the connection failure or HTTP status; resolve that cause and run preflight before retrying with the same admitted scope.": "有界的 SEC 获取没有完成。其已脱敏的原因链会指出连接失败或 HTTP 状态；请先解决该原因并运行预检，再以同一准入范围重试。",
   "The official SEC source answered an inadmissible HTTP status ({subject}). Check source availability and the admitted scope before retrying; no source body or headers are shown.": "官方 SEC 来源答复了不可接受的 HTTP 状态（{subject}）。重试前请检查来源是否可用以及准入范围；不会显示任何来源正文或标头。",
@@ -5481,7 +5481,7 @@ window.ALPHA_ZH = {
   "This build carries no SEC contact, so it cannot name itself to the SEC as fair access requires. That is the build's configuration, for its maintainer to complete; the person is never asked for a name or an address. The Evidence review stays on its recorded package.": "此构建未携带 SEC 联系方式，因此无法按公平访问要求向 SEC 表明身份。这是该构建的配置问题，应由其维护者补全；不会向此人索要姓名或地址。证据审阅保持使用其已记录的包。",
   "The command gave SEC consent, but effective workspace network access is closed. Read the network decision and resolve its named hold or set the workspace control under the person's authority; command consent alone does not open it.": "命令给出了 SEC 同意，但工作区实际生效的网络访问是关闭的。请读取网络决定并解决其指出的限制，或在此人的授权下设置工作区控制；仅凭命令的同意无法打开它。",
   "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.": "Host 无法创建或写入备份根目录，因此没有生成任何备份代；除非 ALPHALATTICE_BACKUP_ROOT 指定了其他目录，否则根目录就是应用数据目录。请以 ALPHALATTICE_BACKUP_ROOT 指向一个 Host 可写、位于工作区之外的目录来启动 Host，然后再次备份。",
-  // V538: a book's strategy package, as the door, the Host (none installed, or `{subject}` the installed list) and the client word it
+  // a book's strategy package, as the door, the Host (none installed, or `{subject}` the installed list) and the client word it
   "The selected strategy package `{subject}` is not installed in this workspace; select an installed package and read its controls.": "所选策略包 `{subject}` 未安装在此工作区中；请选择一个已安装的策略包并读取其控制项。",
   "This workspace has no installed strategy package; prepare and install a research strategy before previewing or running its book. Research studies do not need an installed strategy.": "此工作区没有已安装的策略包；在预览或运行其账本之前，请先准备并安装一个研究策略。研究本身不需要已安装的策略。",
   "The book document did not select a strategy: give `strategy_package_id` from the installed packages and save its controls declaration before previewing it.": "账本文档没有选择策略：请从已安装的策略包中给出 `strategy_package_id`，并在预览之前保存其控制项声明。",
@@ -5492,13 +5492,13 @@ window.ALPHA_ZH = {
   "The selected strategy package `{subject}` is not installed in this workspace. Installed packages: {subject}. Read a package's controls and save its flat declaration, then preview that file.": "所选策略包 `{subject}` 未安装在此工作区中。已安装的策略包：{subject}。请读取某个策略包的控制项并保存其扁平声明，然后预览该文件。",
   "The selected operation named after the colon reads execution results, not an editable declaration; use study export or the retained study preview, or feature controls or the Feature catalog readback, to save its declaration.": "冒号后指出的所选操作读取的是执行结果，而不是可编辑的声明；请使用 study export 或保留的研究预览，或 feature controls 或特征目录读回，来保存其声明。",
   "The selected operation named after the colon takes no declaration file; keep --from and --action, and give its open request fields with --choices.": "冒号后指出的所选操作不接受声明文件；请保留 --from 和 --action，并用 --choices 给出其待填的请求字段。",
-  // V543: a Foundation's preview past its hour, or never previewed here
+  // a Foundation's preview past its hour, or never previewed here
   "A Foundation is sealed from the exact preview its answer named, which stays sealable for 60 minutes, across a Host restart; this one is past that or was never previewed in this workspace, so nothing was sealed. Preview it again (`foundation preview`) from the curated Factor study, then seal the admission hash the new answer names.": "Foundation 依据其答复所指的那份确切预览封存，该预览在 60 分钟内可供封存，Host 重启后依然如此；这一个已超过该时限，或从未在此工作区中预览过，因此没有封存任何内容。请从已做筛选决定的因子研究重新预览（`foundation preview`），再封存新答复所指的准入哈希。",
-  // V537's data update plan past its hour; V519's short pool, `{subject}` its session
+  // data update plan past its hour; short pool, `{subject}` its session
   "A data update's plan stays runnable for 60 minutes after its answer, across a Host restart, and a change plan until its person confirms it; this one is past that or was never planned in this workspace, so nothing ran. Plan the update again (`alphalattice data-update plan`), then run the plan hash the new answer names.": "数据更新的计划在其答复后的 60 分钟内保持可运行，Host 重启后依然如此，变更计划则保持到由人确认为止；这个计划已超过该时限，或从未在此工作区中规划过，因此没有运行任何内容。请重新规划更新（`alphalattice data-update plan`），再运行新答复所指的计划哈希。",
   "On {subject} fewer listings are both tradable and scored than the strategy book selects per rebalance, so the run stopped before writing any of its book. Read that session's data issues (`alphalattice issue list`) and the strategy's scoring (`alphalattice score show`); a book whose controls admit it runs again with fewer names per rebalance (`top_k`).": "在 {subject}，既可交易又有评分的标的少于策略账本每次再平衡所选的数量，因此运行在写入账本的任何部分之前就停止了。请读取该交易日的数据问题（`alphalattice issue list`）和策略的评分（`alphalattice score show`）；控制项允许的账本可以用每次再平衡更少的标的数（`top_k`）再次运行。",
   "On {subject} fewer listings are both tradable and scored than the active book selects per rebalance, so the update stopped before proposing its positions. Read that session's data issues (`alphalattice issue list`) and its scoring (`alphalattice score show`), and plan the update again once they cover enough names, or a person activates a book run with fewer names.": "在 {subject}，既可交易又有评分的标的少于已激活账本每次再平衡所选的数量，因此更新在提出其持仓之前就停止了。请读取该交易日的数据问题（`alphalattice issue list`）及其评分（`alphalattice score show`），待它们覆盖足够的标的后再重新规划更新，或由人激活一个以更少标的数运行的账本。",
-  // V533: every code a strategy's declaration or readback meets; a study Task its release reads wrongly
+  // every code a strategy's declaration or readback meets; a study Task its release reads wrongly
   "A stored study Task no longer matches the contract this release rebuilds for it, so nothing was planned or run. The study is unchanged; the release reads it wrongly. Report it with the Task list (`alphalattice task list`).": "已存储的研究任务与本版本为其重建的契约不再一致，因此没有规划或运行任何内容。该研究本身没有改变，是本版本读错了它。请附上任务列表（`alphalattice task list`）报告此问题。",
   "Every study a strategy names, its Alpha lifecycle studies and its Risk study, must have completed, and one has not, so nothing was planned. Wait for it, or name a completed one.": "策略所指的每项研究（其 Alpha 生命周期研究和风险研究）都必须已完成，而其中一项尚未完成，因此没有规划任何内容。请等待它完成，或指定一项已完成的研究。",
   "The strategy's preparation has not completed, so it cannot be installed. Wait for its Task, or recover it from its recovery view.": "策略的准备尚未完成，因此无法安装。请等待其任务完成，或从其恢复视图恢复它。",
@@ -5512,39 +5512,39 @@ window.ALPHA_ZH = {
   "A strategy needs one Alpha lifecycle study for each component its controls require (`required_components`) and one Risk covariance study, and the studies named do not match. Read the strategy's controls (`alphalattice strategy controls`) for what each component needs.": "策略需要为其控制项所要求的每个组件（`required_components`）各提供一项 Alpha 生命周期研究，并提供一项风险协方差研究，而所指定的研究与此不符。请读取策略的控制项（`alphalattice strategy controls`），了解每个组件需要什么。",
   "A strategy's Risk study must cover every formation its calibrated Alpha study matured ({subject}), and the one named does not, so nothing was planned. Study Risk over the needed window on the same input, its start leaving the lookback before it, then plan the strategy again with that Risk study.": "策略的风险研究必须覆盖其已校准 Alpha 研究中每个已成熟的形成日（{subject}），而所指定的风险研究没有覆盖，因此没有规划任何内容。请在同一输入上对所需窗口进行风险研究，并在其起点之前留出回看窗口，然后用该风险研究重新规划策略。",
   "The Task named is not a strategy preparation; read it with `alphalattice task show` and name the strategy's own preparation Task.": "所指定的任务不是策略准备；请用 `alphalattice task show` 读取它，并指定该策略自己的准备任务。",
-  // S3 (V525): a plan past its 60 minutes, or never planned here, refused by its owner's code
+  // S3: a plan past its 60 minutes, or never planned here, refused by its owner's code
   "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. {subject}": "计划在其答复后的 60 分钟内保持可运行，Host 重启后依然如此；这个计划已超过该时限，或从未在此工作区中规划过，因此没有运行任何内容。{subject}",
   "Plan the training inputs again (`training plan`) from the same input and component, then run the plan hash the new answer names.": "请从同一输入和组件重新规划训练输入（`training plan`），再运行新答复所指的计划哈希。",
   "Plan the strategy's preparation again (`alphalattice strategy plan`) from the same declaration, then run the plan hash the new answer names.": "请从同一声明重新规划策略的准备（`alphalattice strategy plan`），再运行新答复所指的计划哈希。",
   "Plan the input's capture again (`alphalattice input plan`), then confirm the plan hash the new answer names.": "请重新规划输入的捕获（`alphalattice input plan`），再确认新答复所指的计划哈希。",
   "Plan the score again (`alphalattice score plan`) for the same package, then run the plan hash the new answer names.": "请为同一策略包重新规划评分（`alphalattice score plan`），再运行新答复所指的计划哈希。",
   "Plan the calibration again (`alphalattice calibration plan`) for the same package and score, then run the plan hash the new answer names.": "请为同一策略包和评分重新规划校准（`alphalattice calibration plan`），再运行新答复所指的计划哈希。",
-  // V527: a goal revised by another session
+  // a goal revised by another session
   "This goal changed after the revision this request started from, so nothing was changed. Read its latest revision by the goal's id (`next_requests.show`), then make the change on that revision.": "这个目标在本请求所依据的修订之后发生了变更，因此没有进行任何改动。请按目标的标识读取其最新修订（`next_requests.show`），然后在那个修订上进行改动。",
   "Submitted; the Host found the record complete.": "已提交；Host 检查确认记录完整。",
   "The current Panel does not match the data binding required for this update. Read the data update's current record and the input state it reports; resolve that condition before planning the update again.": "当前面板与本次更新所要求的数据绑定不一致。请读取数据更新的当前记录及其报告的输入状态；解决所报告的问题后，再重新规划更新。",
-  // V500, V484, V511 and the goal's fitted sentence (03d52768f); `{subject}` where the owner fills one
+  // The goal's fitted sentence; `{subject}` where the owner fills one
   "A file this work writes stayed open in another program (a virus scanner, a backup or a sync client) through every retry, so it was not replaced, and what was written before it stands; once that program lets the workspace's files go, continue the same work from its readback, which offers its resume (for a stopped preparation, `preparation confirm --from <its readback>`).": "这项工作写入的某个文件在每次重试期间都被另一个程序（病毒扫描程序、备份或同步客户端）占用，因此没有被替换，之前写入的内容保持不变；待该程序释放工作区的文件后，请从其读回继续同一项工作，读回会提供其继续操作（对于已停止的准备，使用 `preparation confirm --from <its readback>`）。",
   "A reference id names one result in a goal. The goal already holds the ids in `expected.attached_reference_ids`: cite them by id in `criteria`, `deliverables` and `findings`, and declare only new ones in `references` or `files`, each once. `fields` names each entry that reused an id. `next_requests.submit`, when present, is this submission without the entries that only declared again a held reference, its citations kept; another result needs an id of its own.": "引用标识指向目标中的一项结果。目标已在 `expected.attached_reference_ids` 中保有这些标识：请在 `criteria`、`deliverables` 和 `findings` 中按标识引用它们，只在 `references` 或 `files` 中声明新的标识，每个只声明一次。`fields` 会列出每个重复使用标识的条目。`next_requests.submit`（如有）是去掉那些只是重复声明已保有引用的条目后的这次提交，其引用保持不变；另一项结果需要自己的标识。",
   "On {subject} fewer listings are both tradable and scored than the book selects, so the run stopped before writing any of the book; draft it with fewer names per rebalance.": "在 {subject}，既可交易又有评分的标的少于账本所选的数量，因此运行在写入账本的任何部分之前就停止了；请以每次再平衡更少的标的数起草账本。",
   "The Alpha candidate scores fewer names than the book selects on its first or last formation ({subject}), and a book starts and ends on a formation its candidate scores; draft it with fewer names per rebalance, or from a candidate whose features cover that session.": "Alpha 候选在账本的第一个或最后一个形成日（{subject}）打分的标的少于账本所选的数量，而账本的起止都必须落在其候选打分的形成日上；请以每次再平衡更少的标的数起草账本，或从特征覆盖该交易日的候选起草。",
   "The book's walk met eligible names without their realized return ({subject}), which `require_complete` refuses. The draft's declared `unavailable_return_policy: quarantine_listings` excludes those names, keeps the original inputs and reports the effective population; it needs the person's authorization, which a first-use goal's delegation gives. Plan the draft again with it, or choose another research input.": "账本的推进遇到了没有已实现收益的合格标的（{subject}），而 `require_complete` 会拒绝这种情况。草稿声明的 `unavailable_return_policy: quarantine_listings` 会排除这些标的，保留原始输入并报告实际的有效总体；它需要人的授权，首次使用目标的委托会给出这个授权。请带上它重新规划草稿，或选择另一个研究输入。",
   "The book's walk met formation sessions with no eligible name ({subject}): no listing was both tradable and a member of the universe there, so the book holds nothing to value against its benchmark, under either unavailable-return policy. A book's sessions are its Alpha study's support: draft that study again with a window that starts after those sessions and run it, then draft the book from it, or choose another research input.": "账本的推进遇到了没有合格标的的形成日（{subject}）：那里没有任何标的既可交易又属于研究总体，因此无论采用哪种不可用收益策略，账本都没有可与其基准比较估值的持仓。账本的交易日就是其 Alpha 研究的支撑区间：请用从这些交易日之后开始的窗口重新起草并运行该研究，然后从它起草账本，或选择另一个研究输入。",
-  // V504's check: owner sentences that fill a subject, as templates (the page and the CLI read the filled sentence)
+  // check: owner sentences that fill a subject, as templates (the page and the CLI read the filled sentence)
   "A Factor handoff fixes `{subject}` of the Alpha study it opens: its kind, data, workspaces and publication intent come from the Factor study, and its universe is that study's or a declared sample of it. Leave the field out, or write the value `expected` gives, and plan again.": "因子交接会固定它所开启的 Alpha 研究的 `{subject}`：其类型、数据、工作区和发布意图来自因子研究，其研究总体是该研究的或其声明的样本。请不填写该字段，或写入 `expected` 给出的值，然后重新规划。",
-  // V504: a book stopped on its benchmark support
+  // a book stopped on its benchmark support
   "The book's walk met a formation session with no eligible name, or an eligible name without its realized return there, which `require_complete` refuses. The draft's declared `unavailable_return_policy: quarantine_listings` excludes those names, keeps the original inputs and reports the effective population; it needs the person's authorization, which a first-use goal's delegation gives. Plan the draft again with it, or choose another research input.": "账本的推进遇到了一个没有合格标的的形成日，或某个合格标的在该日没有已实现收益，而 `require_complete` 会拒绝这种情况。草稿声明的 `unavailable_return_policy: quarantine_listings` 会排除这些标的，保留原始输入并报告实际的有效总体；它需要人的授权，首次使用目标的委托会给出这个授权。请带上它重新规划草稿，或选择另一个研究输入。",
-  // V501, V502: a book's Risk window and its bound experiment section
+  // a book's Risk window and its bound experiment section
   "The Risk study does not cover every formation session the Portfolio study weighs: those are the Alpha study's scored formations, whose first and last `alphalattice study show` of the Alpha study names. Run a Risk study over exactly them, not over the Alpha study's whole data window, whose first sessions lack the Risk estimator's lookback.": "风险研究没有覆盖投资组合研究所加权的每个形成日：这些是 Alpha 研究打分的形成日，其首尾由 Alpha 研究的 `alphalattice study show` 列出。请恰好在这些形成日上运行风险研究，而不是在 Alpha 研究的整个数据窗口上运行，因为窗口最初的那些交易日缺少风险估计器所需的回看期。",
   "The Risk study asks for formation sessions its estimator cannot form: each needs its lookback of earlier sessions in the research input. Start the window where that history exists; for a book's Risk study, the Alpha study's scored formations, whose first and last `alphalattice study show` of the Alpha study names.": "风险研究请求了其估计器无法形成的形成日：每个形成日都需要研究输入中足够的更早交易日作为回看期。请从具备这段历史的地方开始窗口；对于账本的风险研究，就是 Alpha 研究打分的形成日，其首尾由 Alpha 研究的 `alphalattice study show` 列出。",
   "A book's `experiment` section is bound to its draft: its input, sessions and window are the Alpha study's support, and a changed field is refused. Keep the draft's `experiment` section as written and change the `portfolio` section; a different window needs an Alpha study over that window.": "账本的 `experiment` 部分与其草稿绑定：它的输入、交易日和窗口就是 Alpha 研究的支撑区间，任何改动的字段都会被拒绝。请保留草稿中原样的 `experiment` 部分，只修改 `portfolio` 部分；不同的窗口需要一个覆盖该窗口的 Alpha 研究。",
-  // V482: the client refusals that fell to the generic sentence, each with its own words
+  // the client refusals that fell to the generic sentence, each with its own words
   "The Host answered with the HTTP status after the colon and no owner's answer, so whether the request ran is unknown. Inspect the same Task before sending work again.": "Host 以冒号后的 HTTP 状态作答，没有所有者的回答，因此无法得知请求是否已运行。请先查看同一个任务，再重新发送工作。",
   "The answer's requests name more than one book, so this command cannot tell which one it continues: continue from that book's own answer (`alphalattice study show <task-id> --output <output>`), or send a request file that names it.": "该回答的请求指向多个账本，因此这个命令无法判断要继续哪一个：请从那个账本自己的回答继续（`alphalattice study show <task-id> --output <output>`），或发送一个指明它的请求文件。",
   "The comparison's answer does not name both studies and both candidates, so no link reopens it; the answer stands as returned, and the Alpha page chooses the pair.": "比较的回答没有指明两项研究和两个候选，因此没有链接可以重新打开它；该回答保持返回时的样子，由 Alpha 页面选择这一对。",
   "This workspace's connection record names another workspace's Host, so this Host does not replace it: stop that Host, or, when none runs, remove `runtime/local-research-connection.json` and start again.": "这个工作区的连接记录指向另一个工作区的 Host，因此这个 Host 不会替换它：请停止那个 Host；如果它没有在运行，请删除 `runtime/local-research-connection.json` 后重新启动。",
   "`request` sends a request file (`--file`) or continues a saved answer (`--from`, with `--action` naming one of its next requests); `--action` needs `--from`.": "`request` 发送一个请求文件（`--file`），或继续一个保存的回答（`--from`，并用 `--action` 指定其某个下一步请求）；`--action` 需要配合 `--from`。",
-  // a Task's stop, as Task Control words it (task_recovery.stop_detail; V475's raised stage and its recovery reason), and the backup refusals V476 reworded
+  // a Task's stop, as Task Control words it (task_recovery.stop_detail; raised stage and its recovery reason), and the backup refusals
   "The worker stopped before the current stage was verified. Verified stages and their artifacts are kept; resuming this same Task re-verifies them from their evidence and runs only the unverified stage again.": "工作进程在当前阶段完成验证前停止了。已验证的阶段及其产物会保留；继续这个任务时会依据其证据重新验证它们，只重新运行未验证的阶段。",
   "Cancelled before any stage ran. Nothing was computed or published.": "在任何阶段运行之前已取消。没有计算或发布任何内容。",
   "The cancellation was acknowledged at a safe checkpoint. Stages verified before it are kept as recorded; the Task will not continue.": "取消已在一个安全检查点得到确认。在它之前已验证的阶段按记录保留；该任务不会继续。",
@@ -5558,7 +5558,7 @@ window.ALPHA_ZH = {
   "The stage raised the same unnamed error on three attempts in a row; its type and message are beside the code. Once its cause is fixed, RECOVER with this version reopens the same Task: its verified stages are kept and the stage runs again.": "该阶段连续三次尝试都抛出了同一个未命名的错误；其类型和消息在代码旁。原因修复后，用这个版本执行 RECOVER 会重新打开同一个任务：已验证的阶段会保留，该阶段会再次运行。",
   "No generation kept for this workspace directory has a hash beginning so, or none is kept there; `alphalattice backup list` lists the kept generations, and a restore takes a hash as it shows it.": "为此工作区目录保留的代中没有以该值开头的哈希，或该目录下没有保留任何代；`alphalattice backup list` 会列出保留的代，恢复时按其显示的哈希给出即可。",
   "Two or more kept generations begin with that value; give more of the hash, as `alphalattice backup list --view full` shows it whole.": "有两个或更多保留的代以该值开头；请给出更长的哈希，`alphalattice backup list --view full` 会显示完整的哈希。",
-  // U76: the door's refusal words (refusal_words.json, OP4), each by its sentence; `{subject}` is the code's suffix the door fills
+  // the door's refusal words (refusal_words.json, OP4), each by its sentence; `{subject}` is the code's suffix the door fills
   "This Task is not a study, so the study reads do not take it; `alphalattice task show` reads any Task, with the requests its owner offers.": "这个任务不是研究，因此研究的读取不接受它；`alphalattice task show` 可读取任何任务，并附带其所有者提供的请求。",
   "This workspace was prepared before the 2026-10-02 renames, which this release does not read: it holds `{subject}`, a spelling the renames retired. Nothing in it is changed; start a new workspace, as the guide says, and prepare its data and research there.": "这个工作区是在 2026-10-02 的重命名之前准备的，而本版本不读取那种工作区：它含有 `{subject}`，这是重命名已停用的写法。其中的任何内容都不会被改动；请按指南新建一个工作区，并在那里准备数据和研究。",
   "A book is drafted from an Alpha development study's candidate, and the study named is a model lifecycle replay, which holds models but no candidates; the prerequisites name the development studies on this input, or the way to one.": "账本从 Alpha 开发研究的候选起草，而所指的研究是一次模型生命周期重放，它保有模型但没有候选；前提条件会列出这个输入上的开发研究，或得到一个开发研究的途径。",
@@ -5690,7 +5690,7 @@ window.ALPHA_ZH = {
   "The workspace's data changed since this update was planned; plan it again and run the new plan.": "自规划这次更新以来，工作区的数据已经改变；请重新规划并运行新的计划。",
   "A preparation starts from the exact preview it was planned from, and this plan has none the Host holds; plan it (`preparation plan`) and confirm the plan hash that preview names.": "准备从它所规划的那份预览开始，而 Host 没有保存这个计划的预览；请先规划（`preparation plan`），再确认该预览所指的计划哈希。",
   "Preparing the workspace reads the market data provider over the network, which this workspace does not allow or has no source for; a person allows network access (`network set`), then confirm again.": "准备工作区要通过网络读取行情数据提供方，而这个工作区不允许联网或没有数据来源；由人允许联网（`network set`）后，再次确认。",
-  // U73 (LS1, V459): a strategy's activation, its refusals as the CLI's list generates them
+  // a strategy's activation, its refusals as the CLI's list generates them
   "The activation could not read what this book's installation recorded, so nothing was bound: prepare and install the strategy again from current studies, run its book over its whole support and activate that run.": "激活无法读取这个账本安装时记录的内容，因此没有绑定任何东西：请用当前的研究重新准备并安装该策略，在完整区间上运行其账本，并激活那次运行。",
   "Only a strategy that runs forward updates daily, after one of its reviewed books is activated. `automation show` lists the strategies that run forward.": "只有向前运行的策略才会每日更新，前提是它的某个已复核账本已激活。`automation show` 会列出向前运行的策略。",
   "A book's opening state names a person's activation only with its time and its book: activate the book again.": "账本的初始状态只有带上激活时间及其账本，才算指明一次人的激活：请重新激活该账本。",
@@ -5714,7 +5714,7 @@ window.ALPHA_ZH = {
   "This strategy does not run forward, so nothing binds its score inputs, its calibration or its Portfolio update. A research installation is historical until a person activates one of its reviewed books, which runs its strategy forward: then the score, the calibration and the Portfolio update read that activation.": "这个策略没有在向前运行，因此没有任何东西绑定它的评分输入、校准或投资组合更新。研究安装在有人激活其某个已复核的账本之前都只是历史性的；激活会让策略向前运行，之后评分、校准和投资组合更新都会读取这次激活。",
   "This strategy already runs forward, and its daily update continues it. To start it from another book, stop it first.": "这个策略已在向前运行，其每日更新会继续它。若要从另一个账本开始，请先停止它。",
   "This strategy does not run forward; there is nothing to stop.": "这个策略没有在向前运行；没有可停止的。",
-  // with U70: the sentences develop reworded since U67 (V449, V454, FU1's review)
+  // with U70: the sentences develop reworded since U67 (FU1's review)
   "--each-stage returns as one Task verifies each stage; name the Task with --task.": "--each-stage 会在一个任务每验证完一个阶段时返回；请用 --task 指定该任务。",
   "--next-from N pages the listing --list-next prints, from its Nth entry (0 or more); give both, or neither.": "--next-from N 从第 N 项（0 或更大）起分页 --list-next 打印的列表；两者同时给出，或都不给。",
   "The declaration is not a model's: the code names the fields to correct after its colon; `alphalattice model scaffold --save-declaration <file>` writes one to edit.": "该声明不是模型的声明：代码在冒号后指出要更正的字段；`alphalattice model scaffold --save-declaration <file>` 会写出一份可编辑的声明。",
@@ -5723,7 +5723,7 @@ window.ALPHA_ZH = {
   "The request document, YAML or JSON, does not fit this operation; `schema show <command>` shows its fields.": "请求文档（YAML 或 JSON）与此操作不符；`schema show <command>` 会显示其字段。",
   "The study names no model to put this one in place of (a lifecycle study declares a component's recipe); give an Alpha model-development study with --file, or none for the latest published one.": "该研究没有指定要被此模型替换的模型（生命周期研究声明的是组件的配方）；请用 --file 给出一个 Alpha 模型开发研究，或不给以使用最新发布的研究。",
   "The workspace holds no published Alpha study to declare anew with the model; give an Alpha study's declaration with --file <study.yaml>.": "工作区中没有已发布的 Alpha 研究可用此模型重新声明；请用 --file <study.yaml> 给出一个 Alpha 研究的声明。",
-  // V619 (UX07): a Task's recovery actions as Task Control words them (task_recovery.py)
+  // a Task's recovery actions as Task Control words them (task_recovery.py)
   "An attempt: the Task returns to RUNNING under a new execution if the confirmed version still holds. If it completes it publishes once, and an identical declaration afterwards is reused exactly; it may stop again, and Task Control records why.": "一次尝试：若已确认的版本仍然成立，该任务以新的执行回到运行中。若完成，它只发布一次，此后相同的声明被精确复用；它也可能再次停止，Task Control 会记录原因。",
   "An attempt: the Task starts under its first execution if the confirmed version still holds. If it completes it publishes once, and an identical declaration afterwards is reused exactly; it may stop again, and Task Control records why.": "一次尝试：若已确认的版本仍然成立，该任务以其第一次执行启动。若完成，它只发布一次，此后相同的声明被精确复用；它也可能再次停止，Task Control 会记录原因。",
   "Cancellation is requested; the worker acknowledges it at its next safe checkpoint, and until then the Task keeps running. Requested is not acknowledged.": "已请求取消；工作进程会在下一个安全检查点确认，在此之前该任务继续运行。已请求不等于已确认。",
@@ -5738,7 +5738,7 @@ window.ALPHA_ZH = {
   "Preserve drifted sleeve notional": "保留漂移后的分层名义金额",
   "Bound source metadata": "已绑定的来源元数据",
   "Command returned": "命令已返回",
-  // V619: each Task kind, re-PLAN operation and stage as its code reads (codeWords), and each Task's goal summary
+  // each Task kind, re-PLAN operation and stage as its code reads (codeWords), and each Task's goal summary
   "Portfolio calibration preparation": "投资组合校准准备",
   "Portfolio decision update": "投资组合决策更新",
   "Portfolio public protected finalization": "投资组合公开受保护定稿",
@@ -5803,7 +5803,7 @@ window.ALPHA_ZH = {
   "Update captured inputs, catch up in order, publish one complete QA branch.": "更新已捕获的输入，按顺序补齐，发布一个完整的 QA 分支。",
   "Verify every saved study's sealed evidence in full; compute nothing.": "完整验证每个已保存研究的封存证据；不做任何计算。",
   "Verify local lifecycle results and prepare frozen Portfolio inputs; no fit, book or current activation.": "验证本地生命周期结果并准备冻结的投资组合输入；不拟合、不建账本，也不做当前激活。",
-  // V618 (UX06): Settings -- an installed strategy's score sources, the CPU budget's owner guidance, the queue's reasons
+  // Settings -- an installed strategy's score sources, the CPU budget's owner guidance, the queue's reasons
   "Historical array replay": "历史评分数组回放",
   "Current model scoring": "当前模型评分",
   "auto takes the processors not in use when a preparation or a Task starts. Before a heavy Task the agent keeps auto unless the machine is busy with other work or small; then it sets a number of cores itself, without asking, and says in one line what it set and how to change it. A budget changes how fast work runs, never what it computes: a book's model sessions prove the retrieval canary when they load, a Task's DuckDB and Arrow reads give the same values at any count, and an Alpha study's LightGBM fits prove their canary at the count they run on. The agent never changes a study's model, window or bounds to save time. tasks_waiting sets how many Tasks may wait behind the running one (auto: one place per four processors); a request past the last place is refused before its planning work, and a Task waiting for its recovery holds no running place. tasks_running sets how many Risk and Factor studies and Evidence installs run at once (auto: two from eight processors); they share the budget's cores and compute the same results.": "auto 在准备或任务开始时使用未被占用的处理器。繁重任务开始前，代理保持 auto，除非机器正忙于其他工作或配置较小；此时代理自行设置核心数，无需询问，并用一句话说明设了多少、如何更改。预算只改变工作运行的快慢，从不改变计算结果：账本的模型会话在加载时证明检索金丝雀，任务的 DuckDB 与 Arrow 读取在任何数量下给出相同的值，Alpha 研究的 LightGBM 拟合在其运行的数量下证明其金丝雀。代理从不为节省时间而改变研究的模型、窗口或边界。tasks_waiting 设置可在运行中的任务之后排队的任务数（auto：每四个处理器一个位置）；超过最后一个位置的请求在规划之前即被拒绝，等待恢复的任务不占用运行位置。tasks_running 设置同时运行多少项风险与因子研究及证据安装（auto：八个及以上处理器时为两个）；它们共享预算的核心，计算结果相同。",
@@ -5812,7 +5812,7 @@ window.ALPHA_ZH = {
   "How many Risk and Factor studies and Evidence installs run at once; they share the CPU budget and compute the same results.": "同时运行多少项风险与因子研究及证据安装；它们共享 CPU 预算，计算结果相同。",
   "auto: one waiting place per {k} of the {n} processors": "auto：{n} 个处理器中每 {k} 个对应一个排队位置",
   "set to {n}": "设为 {n}",
-  // V614 (UX02): the activation's review standing, where the book's answer states none
+  // the activation's review standing, where the book's answer states none
   "Positions are held only from the trading start; its daily research update continues the forward book.": "仅从交易起点开始持有仓位；其每日研究更新会延续向前账本。",
   // CJ (UX2-01, UX2-02): the ledger's plan rule, the CRO's generated words and materiality, the packet's static gaps
   "The states name the sealed reading plan -- the inventoried units, the routed tables and the returned candidates the plan holds -- never the sources: passages no question returned, text outside the routed regions and tables without a retained original were never in the plan, and a COMPLETE plan or an exhausted budget does not say every source was read.": "这些状态说的是封存的阅读计划——计划所含的已盘点单元、已路由的表格与返回的候选——而不是来源本身：没有问题返回的段落、路由区域之外的文本以及没有保留原件的表格从未进入计划；计划为 COMPLETE 或预算用尽，都不表示每个来源都已读过。",
@@ -5850,7 +5850,7 @@ window.ALPHA_ZH = {
   "Forward research not trading advice": "向前研究，不是交易建议",
   "External findings are not a CRO review or trade authority": "外部发现不是 CRO 审查，也不是交易权限",
   "External assessment is not a route or protected validation": "外部评估不是路由，也不是受保护验证",
-  // CK (V615, V616): INV's door sentences; a Task's re-PLAN previewed and confirmed; Risk's admitted report subject
+  // Risk report references and evidence Task planning require their retained inputs.
   "Risk report references require a completed Portfolio study with its sealed receipt and captured input. An installed strategy book does not carry that study contract.": "风险报告引用需要一个已完成的投资组合研究，及其封存回执与捕获的输入。已安装的策略账本不具备这种研究契约。",
   "This evidence Task retains its issuer scope, not the book selector needed to plan again. Choose the book from history, then preview its evidence preparation.": "这个证据任务只保留了其发行人范围，没有重新规划所需的账本选择器。请在历史中选择账本，然后预览其证据准备。",
   "The saved Risk covariance chunk does not match its sealed identity. Do not use it for sizing; choose a verified completed Risk study on the same captured input.": "已保存的风险协方差分块与其封存身份不符。不要将其用于仓位规模；请在同一捕获输入上选择一个已验证且已完成的风险研究。",
@@ -5862,7 +5862,7 @@ window.ALPHA_ZH = {
   "Work admitted": "工作已接纳",
   "Declare it again: preview its plan here, then confirm the work it admits.": "重新声明：先在这里预览其计划，再确认它要接纳的工作。",
   "Choose a completed Portfolio study": "选择一个已完成的投资组合研究",
-  // U93, U94 (FIX2's V620, V617): the effective network owner's words and ways; a saved report's unrecorded metric
+  // the effective network owner's words and ways; a saved report's unrecorded metric
   "Tell the person in one line that the operator's ALPHALATTICE_NETWORK_DISABLED=1 setting keeps network off and blocks network-dependent work.": "请用一句话告知用户：操作方的 ALPHALATTICE_NETWORK_DISABLED=1 设置让网络保持关闭，阻止了需要联网的工作。",
   "ALPHALATTICE_NETWORK_DISABLED=1 keeps this process offline. Network-dependent steps refuse; steps with already admitted recorded or captured sources may proceed. Follow the plan's next action; workspace settings cannot lift the switch.": "ALPHALATTICE_NETWORK_DISABLED=1 让这个进程保持离线。需要联网的步骤会被拒绝；已接纳记录或捕获来源的步骤可以继续。请遵循计划给出的下一步；工作区设置无法解除该开关。",
   "A research run holds its reads offline while it runs. Wait for that run to finish; changing the workspace control cannot lift its hold.": "一个研究运行在运行期间让其读取保持离线。请等待该运行结束；更改工作区控制无法解除它的保持。",
@@ -5898,7 +5898,7 @@ window.ALPHA_ZH = {
   "No workspace control is set, so the network stays off.": "未设置工作区控制，因此网络保持关闭。",
   "The saved installed-strategy report does not record this metric for its selected window; this read does not estimate it.": "已保存的已安装策略报告没有记录此指标在所选窗口内的值；本次读取不会估算它。",
   "Not recorded in the saved report": "已保存的报告中未记录",
-  // CL (V614, U84): the book's review standing at the activation decision, as FIX1's owner states it
+  // The book's review standing at the activation decision.
   "This book has a published Evidence and CRO review.": "这个账本已有发布的证据与 CRO 复核。",
   "This book has not been reviewed.": "这个账本尚未复核。",
   "No sealed book is named for this review standing.": "这个复核状态没有指定封存的账本。",
@@ -5908,18 +5908,18 @@ window.ALPHA_ZH = {
   "Evidence was read through {subject}, after these positions were decided (the {subject} close); filings after that close may inform this review but never the positions.": "证据读取至 {subject}，晚于这些仓位的决定时点（{subject} 收盘）；该收盘之后的申报可以影响本次审查，但从不影响仓位。",
   "Evidence as of {date}.": "证据截至 {date}。",
   "{a} of {n} analysis-linked packets carry a preparation receipt.": "{n} 个与分析关联的材料包中有 {a} 个带有准备回执。",
-  // CM (V627, U96): a re-PLAN's filled admission, a press each; an answer that admits nothing names why
+  // CM: a re-PLAN's filled admission, a press each; an answer that admits nothing names why
   "Answered": "已答复",
   "Nothing runs yet; its work is admitted as a new Task only when you confirm the next step.": "尚未运行任何内容；只有在你确认下一步后，其工作才会作为新的任务被接纳。",
   "The preview recorded a plan and admitted nothing.": "预览记录了一个计划，没有接纳任何内容。",
   "Answered without a Task": "已答复，未产生任务",
-  // V635/V638: supported comparison routes and truthful reload recovery.
+  // supported comparison routes and truthful reload recovery.
   "This study has no verified candidate-fold evaluation for comparison. Open its ordinary study readback.": "此研究没有可供比较的已验证候选折评估。请打开其常规研究结果。",
   "No completed candidate study to compare.": "暂无可供比较的已完成候选研究。",
   "Open ordinary study": "打开常规研究结果",
   "Open Alpha study": "打开 Alpha 研究",
   "Reload retries this page. You can also open Home.": "重新加载会重试此页面。你也可以打开首页。",
-  // V629 / U97: Task Control's rebuilt ledger and the whole stop-reason class
+  // U97: Task Control's rebuilt ledger and the whole stop-reason class
   "{n} Tasks: {reason}": "{n} 个任务：{reason}",
   "The newest fetch disagrees with history this workspace holds for some listings (a restated price or a back-adjusted action), which only a full-history audit of those listings settles; nothing older was fetched. The data update's plan now proposes that audit for them alone: confirm it, then resume this update.": "最新获取的数据与本工作区为部分标的保存的历史不一致（价格被重述或按公司行为回溯调整），只有对这些标的做全历史审计才能解决；更早的数据没有被获取。数据更新的计划现在只为这些标的提出该审计：请确认它，然后恢复本次更新。",
   "One or more listing refresh units exhausted their bounded attempts.": "一个或多个证券刷新单元已用完允许的有限次尝试。",
@@ -5957,9 +5957,9 @@ window.ALPHA_ZH = {
   "A recovery continuation must keep both the stopped Task id and its exact record hash. Read its recovery view again and use the complete offered request.": "恢复后继续执行必须同时保留停止任务的标识和确切记录哈希。请再次读取其恢复视图，并使用所提供的完整请求。",
   "The recovery continuation's source Task id must be a UUID. Read the stopped Task's recovery view and use the id in its offered request.": "恢复后继续执行所引用的来源任务标识必须为 UUID。请读取停止任务的恢复视图，并使用其所提供请求中的标识。",
   "This request is not the stopped Task's offered recovery continuation. Read its recovery view, preview the offered plan, and use that preview's filled admission request.": "此请求不是停止任务所提供的恢复后继续执行请求。请读取其恢复视图，预览所提供的计划，并使用该预览已填写的受理请求。",
-  // V407: automation set is a person's
+  // automation set is a person's
   "Turning the daily research update on or off is the person's decision: ask the person in one line and, on a clear yes, send this again with --person-said and --asked; `automation show` reads its state.": "开启或关闭每日研究更新由用户决定：请用一句话询问用户，得到明确同意后，用 --person-said 和 --asked 再次发送此请求；`automation show` 读取它的状态。",
-  // U67: the sentences the CLI grammar (V401) and V404 reworded, and the standing's (R2-04)
+  // the sentences supplied by the CLI grammar, and the standing's (R2-04)
   "A backup root inside the workspace would be lost with it; name one outside with --root.": "放在工作区内的备份根目录会随工作区一起丢失；请用 --root 指定一个工作区之外的目录。",
   "A field was given twice, by a flag, --file or --choices (the code names it): give each field once; --choices only fills what the saved answer's request leaves open.": "同一字段被给出了两次，来自某个选项、--file 或 --choices（代码说明了是哪个）：每个字段只给一次；--choices 只填写保存的回答中请求留空的部分。",
   "A restore writes onto a new or empty directory, outside the backup root and the workspace; name another --dir.": "恢复会写入一个新的或空的目录，且须在备份根目录和工作区之外；请用 --dir 指定另一个目录。",
@@ -5977,7 +5977,7 @@ window.ALPHA_ZH = {
   "`alphalattice study controls` writes a new Factor, Alpha or Risk study's declaration (`factor.screening-development`, `alpha.model-development`, `risk.covariance-development`). A Portfolio study starts from an Alpha development study: its Portfolio draft (`EXPERIMENT_PORTFOLIO_DRAFT` with that study's Task) writes the declaration PLAN takes.": "`alphalattice study controls` 会写出新的因子、Alpha 或风险研究的声明（`factor.screening-development`、`alpha.model-development`、`risk.covariance-development`）。投资组合研究从 Alpha 开发研究开始：其投资组合草稿（以该研究的任务发出 `EXPERIMENT_PORTFOLIO_DRAFT`）会写出 PLAN 所需的声明。",
   "`alphalattice study plan --from <that answer>` takes a `alphalattice study controls` answer, a `alphalattice study draft` answer, a preview's answer or one offering a plan request; the answer given is none of these (its status is after the colon). Or plan directly with --binding and the declaration in --file.": "`alphalattice study plan --from <that answer>` 接受 `alphalattice study controls` 的回答、`alphalattice study draft` 的回答、预览的回答，或给出计划请求的回答；所给的回答都不是（其状态在冒号之后）。也可以直接用 --binding 和 --file 中的声明制定计划。",
   "No comparison with a baseline result (the study without the change) is part of it.": "它不包含与基线结果（不含该改动的研究）的比较。",
-  // the CLI's sentences develop added or changed since U19 (V362-V376, the closing pass)
+  // the CLI's sentences develop added or changed since U19 (earlier changes, the closing pass)
   "No file is at the path `document_location.file` names: send the path an answer named or your own --output wrote, as written (a relative path resolves from the shell's directory), then send it again.": "`document_location.file` 所指的路径上没有文件：发送某个回答给出的路径或你自己用 --output 写出的路径，原样发送（相对路径从终端的当前目录解析），然后再次发送。",
   "The `input_binding_hash` names no research input this workspace holds, so nothing was planned or built. `expected` lists the bindings it holds; each `next_requests.controls:<binding>` opens that input's feature controls, whose template carries its binding exactly.": "`input_binding_hash` 没有指向此工作区持有的研究输入，因此没有规划或构建任何内容。`expected` 列出它持有的绑定；每个 `next_requests.controls:<binding>` 打开该输入的特征表单，其模板原样携带该绑定。",
   "The document is larger than one request carries: `document_size` gives its bytes and the bound. Cite exact reads by their requests (a goal submission's `references`) instead of pasting whole answers into it, then send it again.": "文档超出了一次请求能携带的大小：`document_size` 给出其字节数和上限。用请求引用精确的读取（目标提交的 `references`），不要把整个回答粘贴进来，然后再次发送。",
@@ -5986,7 +5986,7 @@ window.ALPHA_ZH = {
   "The short reference in `short_reference.field` begins several values the Host has answered with; `short_reference.candidates` names them: send the whole value.": "`short_reference.field` 中的短引用是 Host 回答过的多个值的开头；`short_reference.candidates` 列出了它们：发送完整值。",
   "The two Alpha studies scored different sessions, names or available rows, so their results are not compared: a difference between them would mix what the feature adds with what each scored. Each study's saved metrics stand on their own.": "两项 Alpha 研究打分的交易日、名称或可用行不同，因此不比较它们的结果：二者之间的差异会把特征增加的部分与各自的打分混在一起。每项研究保存的指标各自独立成立。",
   "This preparation, or this unit of it, has not finished: wait for its Task (`alphalattice activity wait`), then read the book's coverage (`next_requests.coverage`), which offers each prepared unit's packet and bundle.": "这次准备或它的这个单元尚未完成：等待其任务（`alphalattice activity wait`），然后读取账本的覆盖情况（`next_requests.coverage`），其中提供每个已准备单元的数据包和材料包。",
-  // V375 (U63): a provider's deferral, the owner's words
+  // a provider's deferral, the owner's words
   "The market data provider did not answer in time, after its retries. A listing that timed out is recorded as failed in this run while the others go on; if the universe source itself timed out, the step stopped. No retry time is set: send the same plan again once the provider answers.": "市场数据提供方在重试后仍未及时响应。超时的标的在本次运行中记为失败，其余标的继续进行；若研究总体来源本身超时，该步骤已停止。没有设定重试时间：待提供方恢复响应后再次发送同一计划。",
   "The market data provider limited the requests or did not answer, which is the provider's state, not the workspace's. Every listing already fetched is kept and the work resumes from them: send the same plan again once `retry_after_at` has passed.": "市场数据提供方限制了请求或没有响应，这是提供方的状态，而不是工作区的状态。已抓取的每个标的都会保留，工作将从它们继续：在 `retry_after_at` 之后再次发送同一计划。",
   "The provider's answer could not be read for some listings: a changed provider interface, or a symbol it no longer serves. Every listing already fetched is kept, and `alphalattice issue list` names each failed one with the decisions a person may take. When every listing fails so, the provider's interface changed, and an updated product is needed.": "部分标的的提供方响应无法读取：提供方接口已变化，或它不再提供某个代码。已抓取的每个标的都会保留，`alphalattice issue list` 会列出每个失败的标的以及人可以做出的决定。若所有标的都这样失败，说明提供方接口已变化，需要更新产品。",
@@ -6448,13 +6448,13 @@ window.ALPHA_ZH = {
   "{n} record": "{n} 条记录",
   "{n} records": "{n} 条记录",
   "Operations and their answers attributed to this session or naming its exact references, with Task Control facts and verified artifacts; the session's own work first, a person's reads on the Local Web in one line.": "归属于此会话或指向其确切引用的操作及回应，以及任务控制事实和已验证产出物；本会话自己的工作在前，人在 Local Web 上的读取合为一行。",
-  // V564: a missing artifact told from a tampered one (DOC's codex/v564-artifact-missing, merged 96060966)
+  // Distinguish a missing artifact from a tampered one.
   "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.": "此工作区没有保存所请求的制品 {subject}。请读取 workspace show，查找已保存的输入或结果。如果某条已完成的记录指向这个缺失的文件，请把保有它的备份恢复到一个新文件夹，并在那里工作。",
-  // V574: a message field the Host's activity record cannot hold (the fork's claude/v570-v574-attribution)
-  // V587: the installer's floor leaves quiet holdings out (the fork's claude/v587-quiet-holdings-floor),
-  // V596: a strategy plan refuses a Risk study short of the history its materialization needs
+  // a message field the Host's activity record cannot hold (the fork's claude/v570-v574-attribution)
+  // the installer's floor leaves quiet holdings out (the fork's claude/v587-quiet-holdings-floor),
+  // a strategy plan refuses a Risk study short of the history its materialization needs
   "Each formation of a strategy's book needs its Risk study's returns to hold the installed decomposition's initialization and factor-fit history before it ({subject}), and the Risk study named does not, so nothing was planned. Study Risk on the same input from the start named, then plan the strategy again with that Risk study.": "策略之书的每个形成日之前，其风险研究的收益都需要具备已安装分解的初始化和因子拟合历史（{subject}），所指的风险研究不满足，因此没有生成计划。请在同一输入上从所给的起点研究风险，然后用该风险研究重新规划策略。",
-  // V604: an update planned on bindings that changed since; a score held by the workspace's data (the fork's claude/v604-deferral-holds-the-place)
+  // an update planned on bindings that changed since; a score held by the workspace's data (the fork's claude/v604-deferral-holds-the-place)
   "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`alphalattice research-update show --package <package>` names it), then plan the update again.": "这次更新所依据的绑定此后已经改变（策略的激活或模型、其目录或工作区的声明），因此它不再运行或恢复，并且在它等待期间不会规划该策略的后续更新；请取消其任务（`alphalattice research-update show --package <package>` 会给出它），然后重新规划更新。",
   "The workspace's data is not ready to score on ({subject}): a provider's deferral or a data case holds it, an update of it has not finished, or its features are being built. The Task that holds it goes on by its own way, a deferral once its retry time has passed; with none, a data update settles it (`alphalattice data-update plan`, then run its plan) and its read names any data case. Then plan again.": "工作区的数据尚未就绪，无法据此评分（{subject}）：提供方的延迟或某个数据案例使其暂停、其更新尚未完成，或其特征正在构建。暂停它的任务会按其自身的方式继续，延迟则在其重试时间过后继续；若没有这样的任务，数据更新会解决它（`alphalattice data-update plan`，然后运行其计划），其读取会指出任何数据案例。然后重新规划。",
   "Performance source": "绩效来源",
@@ -6633,7 +6633,7 @@ window.ALPHA_ZH = {
   "The request was sent and refused before dispatch: its session token was not accepted and nothing was admitted. The session was renewed; confirm again to send it.": "请求已发送，但在派发前被拒绝：其会话令牌未被接受，没有准入任何操作。会话已更新；请再次确认以发送请求。",
   "The request was sent and refused before dispatch: its session token was not accepted and nothing was admitted. Renewing the session failed; reload the page for a new session, then confirm again.": "请求已发送，但在派发前被拒绝：其会话令牌未被接受，没有准入任何操作。会话更新失败；请重新加载页面以获取新会话，然后再次确认。",
 
-  // U117: explicit owner words and an honest absent-word state.
+  // explicit owner words and an honest absent-word state.
   "Word not declared": "尚未声明用词",
   "Task heartbeat not recent": "任务心跳未及时更新",
   "Task runner heartbeat not observed": "未观测到任务执行器心跳",
@@ -7044,7 +7044,7 @@ window.ALPHA_ZH = {
   "From": "起始日期",
   "To": "结束日期",
 
-  // V674 / U130: collection owners compose these complete refusal explanations.
+  // U130: collection owners compose these complete refusal explanations.
   "Goal {subject}'s current revision cannot be read. Read workspace show and the kept backups; use goal schema before deliberately authoring a new goal. No prior revision is inferred.": "目标 {subject} 的当前修订无法读取。请读取 workspace show 和保留的备份；在主动编写新目标前使用 goal schema。不推断任何既有修订。",
   "Goal {subject}'s saved session attribution cannot be read. Read workspace show and the kept backups; use goal list to find other readable records. No session association is inferred.": "目标 {subject} 已保存的会话归属记录无法读取。请读取 workspace show 和保留的备份；使用 goal list 查找其他可读记录。不推断任何会话关联。",
   "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there. Read workspace show and the kept backups; use goal schema before deliberately authoring a new goal. No prior revision is inferred.": "此工作区没有保存所请求的制品 {subject}。请读取 workspace show，查找已保存的输入或结果。如果某条已完成的记录指向这个缺失的文件，请把保有它的备份恢复到一个新文件夹，并在那里工作。 请读取 workspace show 和保留的备份；在主动编写新目标前使用 goal schema。不推断任何既有修订。",

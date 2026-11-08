@@ -44,7 +44,7 @@ def _admission(*, risk: float, turnover: float, cost: float = 0.001) -> AlphaUti
 def test_the_solver_binding_holds_no_thread_variable_of_the_shell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Binding plan B1c: the same solve gives the same bytes at any BLAS thread count, and a
+    """the same solve gives the same bytes at any BLAS thread count, and a
     thread variable read into the Program's binding made it a different identity per shell."""
 
     before = optimizer_module.solver_numerical_environment()

@@ -13,6 +13,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding, canonical_hash
 from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelCompositionBinding,
@@ -417,6 +418,17 @@ def test_closure_source_scope_skips_unavailable_historical_manifests(
         resolver=resolver,
         snapshot_hashes=frozenset({snapshot_hash}),
     )
+
+    # A Host's retained writer and this read must share the workspace database owner.
+    writer = open_workspace_database(database, read_only=False)
+    try:
+        try:
+            counts = source.sector_revision_ledger_counts()
+        except duckdb.ConnectionException as exc:
+            pytest.fail(f"closure source did not share the workspace database: {exc}")
+        assert counts == (10, 0)
+    finally:
+        writer.close()
 
     inventory = source.inventory_snapshots()
 

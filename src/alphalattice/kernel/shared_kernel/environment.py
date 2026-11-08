@@ -27,7 +27,7 @@ _HELD_OFFLINE: ContextVar[bool] = ContextVar("alphalattice_held_offline", defaul
 
 
 def offline(environment: Mapping[str, str] | None = None) -> bool:
-    """Whether the operator's offline switch holds, or a run holds its reads offline (OP5, V250).
+    """Whether the operator's offline switch holds, or a run holds its reads offline (OP5).
 
     The one reader of `ALPHALATTICE_NETWORK_DISABLED`: the workspace's network control and every
     source guard ask it, so the rule cannot differ between them. Only ``1`` holds it.
@@ -50,7 +50,7 @@ def running_held_offline() -> bool:
 
 @contextmanager
 def held_offline() -> Iterator[None]:
-    """Hold this context's reads offline for one run, whatever its workspace allows (OP5, V116).
+    """Hold this context's reads offline for one run, whatever its workspace allows (OP5).
 
     A research run declares the network off and reads only sealed inputs; inside this block the
     network control and every source guard read closed, so the declaration holds by

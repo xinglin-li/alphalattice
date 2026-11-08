@@ -362,7 +362,7 @@ def test_a_tampered_governance_field_fails_the_development_identity_check() -> N
 def test_a_code_closure_no_longer_moves_the_binding_and_an_earlier_one_reads_as_historical() -> (
     None
 ):
-    """A Program binds meaning only (binding plan, P): the code that runs a study is bound by
+    """A Program binds meaning only: the code that runs a study is bound by
     its plan's implementation hash, so the binding carries no closure. A binding sealed before
     P carries both closures, still parses with its own identity, and says it is historical."""
 

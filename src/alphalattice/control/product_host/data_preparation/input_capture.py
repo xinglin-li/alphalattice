@@ -71,7 +71,7 @@ PLAN_FIELDS = ("data_update", "experiment_inputs")
 inputs it adds a version to. A publication of other fields (a model's training inputs,
 a strategy installation) leaves the plan applicable."""
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation() -> str:

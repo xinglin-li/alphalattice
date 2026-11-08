@@ -1,4 +1,4 @@
-"""The threads DuckDB and Arrow read with: the operator's, from the CPU budget (binding plan, B7).
+"""The threads DuckDB and Arrow read with: the operator's, from the CPU budget.
 
 Both engines keep one setting per process. DuckDB keeps it per database instance, and every
 connection to the instance shares it (`SET threads`); Arrow keeps its CPU pool. The Host applies

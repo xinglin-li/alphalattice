@@ -714,6 +714,55 @@ def _decided(exception: Any, kinds: list[str]) -> bool:
     return isinstance(why, str) and bool(why.strip()) and bool(dated)
 
 
+ABOVE_UNIT = {"integration": 1, "e2e": 2, "native": 3}
+"""The layers a new test reaches only with a stated reason; unit is the default, and a contract
+suite is its port's own form. The pyramid ratchet (the person, 11-06): integration held 77.6% of
+tests and 90.6% of their time, unit 4.4% and 0.1%."""
+
+
+def lower_layer(key: str, row: Mapping[str, Any], prior: Mapping[str, Any] | None) -> list[str]:
+    """A row added above unit, or raised to a higher layer, says in one sentence why a lower layer
+    cannot prove it; the reviewer reads that sentence beside the test."""
+    rank = ABOVE_UNIT.get(row["layer"], 0)
+    if not rank or (prior is not None and rank <= ABOVE_UNIT.get(str(prior.get("layer")), 0)):
+        return []
+    why = row.get("lower_layer")
+    if isinstance(why, str) and 5 <= len(why.split()) <= 40 and why != row.get("description"):
+        return []
+    return [
+        f"TEST-REGISTRY {key} sits at {row['layer']}, above unit, where a new test starts: record "
+        '"lower_layer": "<one 5-40 word sentence on why a lower layer cannot prove it>", '
+        "or register it as unit."
+    ]
+
+
+def _area_layers(tests: Iterable[Holder]) -> dict[str, Counter[str]]:
+    """Each area's test functions by layer, read from tests/<layer>/<area>/... placement."""
+    areas: dict[str, Counter[str]] = {}
+    for test in tests:
+        parts = test.node.partition("::")[0].split("/")
+        if len(parts) > 3 and parts[0] == "tests" and parts[1] in LAYERS:
+            areas.setdefault(parts[2], Counter())[parts[1]] += 1
+    return areas
+
+
+def pyramid(after: Iterable[Holder], before: Iterable[Holder] | None) -> list[str]:
+    """An area's integration share of its test functions may only fall: a change that raises it
+    is refused by name. A new area has no share to keep; its rows still say why they sit high."""
+    now, then = _area_layers(after), _area_layers(before or ())  # no base tree: nothing to keep
+    found = []
+    for area, counts in sorted(now.items()):
+        was = then.get(area, Counter())
+        total, prior = sum(counts.values()), sum(was.values())
+        if prior and counts["integration"] * prior > was["integration"] * total:
+            found.append(
+                f"Test pyramid risk for {area}: its integration share would rise from "
+                f"{was['integration']}/{prior} to {counts['integration']}/{total} test functions; "
+                "prove the new behaviour with unit tests, or move an integration test down a layer."
+            )
+    return found
+
+
 def admission(
     root: Path,
     rows: dict[str, dict[str, Any]],
@@ -737,6 +786,7 @@ def admission(
     for key in changed:
         row, mine = rows[key], at.entries[f"R {key}"]
         found += [f"TEST-REGISTRY {key} is refused: {why}." for why in _checks(key, row, owners)]
+        found += lower_layer(key, row, before.get(key))
         twins = [
             other.partition(" ")[2]
             for other, entry in at.entries.items()
@@ -759,6 +809,24 @@ def admission(
                 f'{json.dumps(kinds)}, "why": "<why>", "decided": "<date>: <the decision>"}}.'
             )
     return found
+
+
+def _fresh_lower_layers(
+    new: Iterable[Holder], rows: Mapping[str, dict[str, Any]], before: Mapping[str, dict[str, Any]]
+) -> list[str]:
+    # A new function on an old above-unit requirement is new work too. Rows newly
+    # added or raised are already checked by admission, so do not report them twice.
+    old_rows_for_new = {
+        key
+        for test in new
+        for key in test.ids
+        if key in rows
+        and key in before
+        and ABOVE_UNIT.get(rows[key]["layer"], 0) <= ABOVE_UNIT.get(before[key]["layer"], 0)
+    }
+    return [
+        issue for key in sorted(old_rows_for_new) for issue in lower_layer(key, rows[key], None)
+    ]
 
 
 def guard(
@@ -801,6 +869,9 @@ def guard(
             candidates[test.node] = test._replace(
                 ids=tuple(dict.fromkeys((*(previous.ids if previous else ()), *ids)))
             )
-    return registration(root, candidates.values(), rows, at=at, prior=prior) + admission(
-        root, rows, before, at=at
+    return (
+        registration(root, candidates.values(), rows, at=at, prior=prior)
+        + admission(root, rows, before, at=at)
+        + _fresh_lower_layers(new, rows, before)
+        + pyramid(at.tests, before_tests)
     )

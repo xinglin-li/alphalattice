@@ -2,7 +2,7 @@
 
 A refusal code is exact and stable; it is not an explanation. The Host's operations answered
 many refusals with the code alone, or with raw exception text, so a person who met one after
-an upgrade had to know the code base to act (binding plan, B9). ``explain`` gives each code
+an upgrade had to know the code base to act. ``explain`` gives each code
 the user can meet on the study, report and recovery paths a sentence in plain words and the
 lawful next requests, built from what the caller already knows. The code itself is unchanged,
 so an Agent and a test read exactly what they read before.
@@ -149,7 +149,7 @@ _PROVIDER_WAIT = frozenset(
     }
 )
 """A provider that limited the requests or whose session failed: the owners defer the work, which
-resumes after `retry_after_at` (V375). A timeout is not among them (V396)."""
+resumes after `retry_after_at`. A timeout is not among them."""
 _PROVIDER_UNREADABLE = frozenset(
     {
         "data.provider_fetch_failed",
@@ -157,7 +157,7 @@ _PROVIDER_UNREADABLE = frozenset(
     }
 )
 """Listings whose provider answer could not be read: a changed interface or a symbol it no
-longer serves (V375). `data.listing_updates_incomplete` is not one: the coordinator records it
+longer serves. `data.listing_updates_incomplete` is not one: the coordinator records it
 for any listing whose refresh failed, and the maintenance guardian words it."""
 
 
@@ -168,7 +168,7 @@ _UNREAD_KEYS = {
         "prints each section's keys under `declaration_sections`.",
     ),
 }
-"""A key a Desk's section contract does not name (V134, V249): where it was written, and where
+"""A key a Desk's section contract does not name: where it was written, and where
 each section's keys are printed."""
 
 _RISK_LINK_WORDS = {
@@ -204,7 +204,7 @@ _RISK_LINK_WORDS = {
         "The Risk study does not cover every listing the Portfolio study weighs."
     ),
 }
-"""A Portfolio study's linked Risk study (V310): what is wrong with it and what may be named."""
+"""A Portfolio study's linked Risk study: what is wrong with it and what may be named."""
 
 
 _PORTFOLIO_POLICY_WORDS = {
@@ -219,7 +219,7 @@ _PORTFOLIO_POLICY_WORDS = {
         "The policy cannot invest fully: `top_k` times `maximum_weight` must be at least 1."
     ),
 }
-"""A Portfolio study's catalog policy (V310): what is wrong with it."""
+"""A Portfolio study's catalog policy: what is wrong with it."""
 
 
 _NOT_RUNNING_FORWARD = frozenset(
@@ -321,7 +321,7 @@ _FACTOR_POLICIES = {
         INSTALLED_REDUNDANCY_POLICIES,
     ),
 }
-"""A Factor policy field and what is installed for it (V110)."""
+"""A Factor policy field and what is installed for it."""
 
 
 def kind_words(kind: str) -> str:
@@ -502,7 +502,7 @@ def explain(
         }
     if base == "data.provider_timeout":
         # The owners record a timed-out listing as failed and go on; a timed-out universe source
-        # stops the step; neither sets a retry time (V396).
+        # stops the step; neither sets a retry time.
         return {
             "detail": (
                 "The market data provider did not answer in time, after its retries. A listing "
@@ -513,7 +513,7 @@ def explain(
         }
     if base == "alternative_evidence.unit_not_prepared":
         # A Task that stops on a unit reads these words whole in its recovery view, so they fit
-        # its bound: the coverage's pointer only where it fits after the unit's own (V565).
+        # its bound: the coverage's pointer only where it fits after the unit's own.
         unit = "This coverage unit was not prepared. " + unit_failure_words(subject)["detail"]
         pointer = " The book's coverage (`next_requests.coverage`) lists each unit's state."
         return {"detail": unit + pointer if len(unit + pointer) <= STOP_WORDS_BOUND else unit}
@@ -540,7 +540,7 @@ def explain(
             ),
         }
     if base == "goal.revision_conflict_read_latest":
-        # V527: the refusal kept nothing to go on with, and the session's own goal may be another.
+        # the refusal kept nothing to go on with, and the session's own goal may be another.
         return {
             "detail": (
                 "This goal changed after the revision this request started "
@@ -643,7 +643,7 @@ def explain(
             "next_requests": {"automation": {"operation": "RESEARCH_UPDATE_AUTOMATION_READBACK"}},
         }
     if base == "research_update.automation_package_not_installed":
-        # The daily update accepts only the strategies that run forward (U73).
+        # The daily update accepts only the strategies that run forward.
         return {
             "detail": (
                 "Only a strategy that runs forward updates daily, after one of its reviewed "
@@ -754,7 +754,7 @@ def explain(
         }
     if base == "research_experiment.task_kind_mismatch":
         # A study's read named another owner's Task, an installed strategy's book among them:
-        # its kind, and the read that takes any Task (V490).
+        # its kind, and the read that takes any Task.
         return {
             "detail": "This Task is not a study, so the study reads do not take it; `task show` "
             "reads any Task, with the requests its owner offers.",
@@ -791,7 +791,7 @@ def explain(
         }
     if base in _RISK_LINK_WORDS or base in _PORTFOLIO_POLICY_WORDS:
         # A Portfolio declaration is rewritten from its Alpha study's Portfolio draft,
-        # never from `study controls`, which writes no Portfolio study (V322).
+        # never from `study controls`, which writes no Portfolio study.
         source = portfolio or {}
         return {
             "detail": _RISK_LINK_WORDS.get(base) or _PORTFOLIO_POLICY_WORDS[base],
@@ -802,7 +802,7 @@ def explain(
                     "task_id": source.get("task_id"),
                     "candidate_id": source.get("candidate_id"),
                 },
-                # The Alpha study names the formations a Risk study must cover (V501).
+                # The Alpha study names the formations a Risk study must cover.
                 **(
                     {"alpha": {"operation": "EXPERIMENT_READBACK", "task_id": source["task_id"]}}
                     if base == "portfolio_research.risk_session_axis_incomplete"
@@ -812,7 +812,7 @@ def explain(
             },
         }
     if base == "portfolio_research.benchmark_support_absent":
-        # Two causes under one code, its subject naming which and where (V504, V511, RR5): a
+        # Two causes under one code, its subject naming which and where (RR5): a
         # session with no eligible name, or an eligible name without its realized return.
         source = portfolio or {}
         cause, _sep, facts = subject.partition(":")
@@ -858,7 +858,7 @@ def explain(
             },
         }
     if base == "portfolio_research.authority_field_mismatch":
-        # A book's experiment section is its draft's: the Alpha study's support (V502).
+        # A book's experiment section is its draft's: the Alpha study's support.
         source = portfolio or {}
         return {
             "detail": (
@@ -1068,7 +1068,7 @@ def explain(
             "next_requests": {},
         }
     if base == "product_host.evidence_review_experiment_selector_invalid" and subject:
-        # A study's parts beside another book (V546), as a position basis is (V290).
+        # A study's parts beside another book, as a position basis is.
         parts = subject.split(",")
         one = len(parts) == 1
         return {
@@ -1116,7 +1116,7 @@ def explain(
             "next_requests": {"history": {"operation": "RESEARCH_HISTORY"}},
         }
     if base == "product_host.evidence_review_study_selector_not_a_study":
-        # A study's selector that named another owner's Task, a replay among them (V546).
+        # A study's selector that named another owner's Task, a replay among them.
         return {
             "detail": (
                 f"{f'Task {task_id}' if task_id else 'The Task named'} is a `{subject}` Task, "
@@ -1150,7 +1150,7 @@ def explain(
 
 
 def _trial_way_on(trial: Mapping[str, Any] | None) -> dict[str, Any]:
-    """A refused trial baseline's words and its way on (V354)."""
+    """A refused trial baseline's words and its way on."""
     why = (
         "A feature is tried against an Alpha study handed off from a Factor study, or the "
         "Portfolio study built on one: its factors are what the feature joins."
@@ -1228,7 +1228,7 @@ _PLAN_FIELD_REFUSALS = {
     "alpha_research.qualification_nomination_invalid": _nomination,
     "alpha_research.qualification_unexpected_parent": _qualification_parent,
 }
-"""Plan refusals that name the declaration field and its requirement (V292): the subject after
+"""Plan refusals that name the declaration field and its requirement: the subject after
 the code's colon is the field or the rule, and `expected` beside the code what may be written."""
 
 
@@ -1242,7 +1242,7 @@ def deferral(
 ) -> dict[str, Any]:
     """A deferred Task's answer with its words, its retry time and the request that resumes it.
 
-    A preparation or a data update the provider deferred (V375) resumes when its owner is sent
+    A preparation or a data update the provider deferred resumes when its owner is sent
     the same plan again once `retry_after_at` has passed; before then the owner refuses it
     (`retry_not_due`, worded). The answer says what the provider did, keeps what was fetched,
     and, where the workspace holds published research inputs (`held`), that they stand.
@@ -1308,7 +1308,7 @@ EVIDENCE_UNIT_CODES = frozenset(
         "alternative_evidence.coverage_unit_unknown",
     }
 )
-"""A coverage unit's state refusing its packet or bundle (V388)."""
+"""A coverage unit's state refusing its packet or bundle."""
 
 SELECTOR_CODES = frozenset(
     {
@@ -1320,13 +1320,13 @@ SELECTOR_CODES = frozenset(
 """A review request's book selector refused for its parts, worded with which parts name a book."""
 
 STALE_PACKET = "alternative_evidence.task_resource_authority_mismatch"
-"""A packet prepared under authority the Host no longer holds (V547)."""
+"""A packet prepared under authority the Host no longer holds."""
 
 
 def stale_packet_refusal(
     code: str, *, role: str, book: Mapping[str, Any], unit_id: object
 ) -> dict[str, Any]:
-    """An answer to a packet that went stale, refused with what moved and the way on (V547).
+    """An answer to a packet that went stale, refused with what moved and the way on.
 
     Args:
         code: The refusal, `alternative_evidence.task_resource_authority_mismatch:<what moved>`.
@@ -1349,7 +1349,7 @@ def stale_packet_refusal(
 
 STOP_WORDS_BOUND = 500
 """The most a Task's stop is worded with in its recovery view: an owner's words for a
-code a Task stops on fit it whole, never cut (V504, V565)."""
+code a Task stops on fit it whole, never cut."""
 
 SOURCE_SHORT_CODES = frozenset(
     {
@@ -1357,11 +1357,11 @@ SOURCE_SHORT_CODES = frozenset(
         "alternative_evidence.document_set_empty",
     }
 )
-"""A unit's refusals for too few sources: their way on is sources, never a retry (V541)."""
+"""A unit's refusals for too few sources: their way on is sources, never a retry."""
 
 
 def unit_failure_words(code: str, *, recorded: bool = True) -> dict[str, str]:
-    """A failed coverage unit's words and way on, whatever its code (V541).
+    """A failed coverage unit's words and way on, whatever its code.
 
     Its code's own words where the door table words it, else the owner's code a task failure
     carries where that one is worded, else the words of a refusal of the preparation's own
@@ -1390,7 +1390,7 @@ def unit_refusal(code: str, book: Mapping[str, str] | None) -> dict[str, Any] | 
     """A unit's packet or bundle refused for the unit's state, with its words and way on.
 
     The way on is the book's coverage read, which names every unit's state and offers each
-    prepared unit's packet and Analyst bundle (V388).
+    prepared unit's packet and Analyst bundle.
 
     Args:
         code: The refusal's code, its subject after the first colon.

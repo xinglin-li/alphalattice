@@ -148,7 +148,7 @@ class AlternativeEvidenceSourcePolicy(AlternativeEvidenceContract):
     """
 
     sec_recent_8k_days: Literal[30, 90] = 30
-    """The filing window, in days before the cutoff. 30 since W1 (2026-09-24):
+    """The filing window, in days before the cutoff. 30 since 2026-09-24:
     what each issuer filed recently, and nothing older is kept as a baseline.
     90, with the latest 10-K and 10-Q as fixed baselines, is the retired
     policy: a request sealed under it still reads back, and is prepared again
@@ -186,7 +186,7 @@ class AlternativeEvidenceSourcePolicy(AlternativeEvidenceContract):
 
     @property
     def retired(self) -> bool:
-        """The 90-day policy with fixed baselines, retired by W1."""
+        """The 90-day policy with fixed baselines, retired."""
         return self.sec_recent_8k_days == 90
 
 

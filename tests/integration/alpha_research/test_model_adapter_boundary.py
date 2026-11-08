@@ -914,7 +914,7 @@ def test_goal_current_refit_uses_same_adapter_without_numerical_drift() -> None:
 
 
 class _AgentDeclaredModel:
-    """An agent's model whose state is a kind the installed families do not seal (V342)."""
+    """An agent's model whose state is a kind the installed families do not seal."""
 
     adapter_id = "agent_declared_mean"
     content_format_id = "alpha-model.agent-declared-mean.estimator"

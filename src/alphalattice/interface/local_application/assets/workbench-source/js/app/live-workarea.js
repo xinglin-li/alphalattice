@@ -93,7 +93,7 @@ const LiveWorkArea = (() => {
   function logRail(latest, state, reading=true) {
     return html`<section class="ui-log-rail prep-log-rail" aria-label="${t('Latest unit and reading state')}"><div><span>${latest.label}</span><strong class="${state.stale ? 'is-stale' : ''}">${latest.value}</strong></div>${reading ? html`<div data-reading><span>${t('Reading')}</span><strong>${A.follow ? t('Following latest') : t('Reading held')}</strong></div>` : ''}</section>`;
   }
-  /* The scene's log is the one log (round 72): the shell from `runLog`, the follow control as its
+  /* The scene's log is the one log: the shell from `runLog`, the follow control as its
    * tool, the scene's own rows as its lines. */
   function logShell(spec, {label, title, caption, history, moving, rows, empty, status, rail, controls=moving}) {
     const control=controls ? html`<button type="button" class="text-btn" data-action="workspace-follow" aria-pressed="${!A.follow}" aria-label="${A.follow ? t('Hold the current reading position') : t('Resume following new units')}">${A.follow ? t('Hold reading') : t('Resume following')}</button>` : '';
@@ -134,7 +134,7 @@ const LiveWorkArea = (() => {
       quantity=html`<div class="prep-activity-count"><span class="tp-denom">${retained}</span></div>`;
     } else {
       const bar=w.bar ? meter({kind:'progress',now:w.bar[0],max:w.bar[1],id:'prepMeterFill',label:t(step ? step[1] : 'Stage'),cls:'prep-meter'}) : meter({kind:'progress',indeterminate:true,label:t(step ? step[1] : 'Stage'),cls:'prep-meter'}); // one meter (law 89); an unknown extent is the dashed track
-      const wait=w.wait ? html`<p class="prep-wait">${icon('clock')}<span>${t('Waiting until {time} before the next attempt (the owner\'s retry time).',{time:when(w.wait)})}</span></p>` : ''; // N6 (law 133): the reader's clock, never the owner's raw instant
+      const wait=w.wait ? html`<p class="prep-wait">${icon('clock')}<span>${t('Waiting until {time} before the next attempt (the owner\'s retry time).',{time:when(w.wait)})}</span></p>` : ''; // law 133: the reader's clock, never the owner's raw instant
       quantity=html`<div class="prep-activity-count">${w.count}</div>${bar}<p class="tp-caption">${w.detail}</p>${wait}`;
     }
     // Elapsed is the owner's recorded span. Only the ages of the heartbeat and this page's read tick; neither changes Task progress.
@@ -255,7 +255,7 @@ const LiveWorkArea = (() => {
       if(A.follow) moveLog(log,log.scrollHeight);
     }
     A.arrived.clear();
-    if(A.accent) { const done=document.querySelector('.lab-work-done > .note-line, .data-update-row > .list-row'); if(done){done.classList.add('done-accent');A.accent=false;} } // N6: the one line a finished Task became, lit once
+    if(A.accent) { const done=document.querySelector('.lab-work-done > .note-line, .data-update-row > .list-row'); if(done){done.classList.add('done-accent');A.accent=false;} } // the one line a finished Task became, lit once
   }
   /* Only reading ages tick between owner answers. The Task's elapsed span never extrapolates. */
   function tick() {

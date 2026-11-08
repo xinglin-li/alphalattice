@@ -457,7 +457,7 @@ class DynamicPanelLightGBMAdapter(ChronologicalLightGBMAdapter):
             dataset_params=self._dataset_params(parameters),
         )
         booster = lightgbm.train(native, dataset, num_boost_round=iterations)
-        # The training error only a caller that reads one asks for (PERF-1): a lifecycle
+        # The training error only a caller that reads one asks for: a lifecycle
         # child's evidence stores none, so its fit takes no prediction over the panel.
         predictions = (
             None

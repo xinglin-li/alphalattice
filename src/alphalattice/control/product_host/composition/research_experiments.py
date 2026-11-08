@@ -346,7 +346,7 @@ LEDGER_READ_OPERATIONS = frozenset(
         "EXPERIMENT_HANDOFF_PREVIEW",
     }
 )
-"""The reads that may answer from a study's earlier full verification (binding plan, L1).
+"""The reads that may answer from a study's earlier full verification.
 
 Fail-closed: every other operation that reads a study (export, publication, admission,
 comparison, replay, a run, a stage's verification) verifies it in full.
@@ -366,7 +366,7 @@ hash, about 2 s on the real workspace; the other kinds read in 0.1-0.5 s)."""
 def _sealed_admission(workspace: Path, admission_hash: str) -> ResearchFoundationAdmission:
     """A sealed Foundation admission as its store reads it. A stored record that no longer
     matches its name (the store says so in a sentence, inside the Alpha study's closure) is
-    refused by the admission's own code, never the sentence (V449, OP4)."""
+    refused by the admission's own code, never the sentence (OP4)."""
 
     try:
         return read_foundation_admission(workspace / "artifacts", admission_hash)
@@ -399,7 +399,7 @@ def verified_study_evidence(*, reuse_verified: bool = False) -> Iterator[None]:
 
     A study page or a research case reads several studies, and a comparison inside
     it reads two of them again; each read walked the whole sealed graph and
-    re-derived every chunk's content hash (binding plan, B16: a case gathering
+    re-derived every chunk's content hash (a case gathering
     studies verified the same two Alpha studies twice in one request). Inside this
     scope a Task's evidence is verified once per (Task, record version, readback
     mode) and the verified result reused for the rest of the operation. An
@@ -409,9 +409,9 @@ def verified_study_evidence(*, reuse_verified: bool = False) -> Iterator[None]:
     Across requests, a read in ``LEDGER_READ_OPERATIONS`` (``reuse_verified``) may
     answer from the owner's ledger: the last full verification of the same Task
     record, while no file under the study's output or input bundle changed its
-    path, size, modification time or file identity (binding plan, L1). A change that
+    path, size, modification time or file identity. A change that
     keeps all four is caught by every export, publication and admission, which
-    verify in full, and by the sweep (V89). Its answer says so (``verification_basis``).
+    verify in full, and by the sweep. Its answer says so (``verification_basis``).
     """
     if _VERIFIED_EVIDENCE.get() is not None:
         yield
@@ -432,8 +432,8 @@ def implementation_role(kind: str, *, lifecycle: bool = False) -> str:
     """The role a study kind's implementation is recorded under in the identity successors.
 
     A lifecycle Alpha study has a role of its own: its Program bound the implementation
-    until the binding plan's P, so a lifecycle study sealed before P is historical while
-    every other Alpha study stays current across the same move.
+    until the Program-binding change, so a lifecycle study sealed before that change is
+    historical while every other Alpha study stays current across the same move.
     """
     return f"research_experiment.{kind}{'.lifecycle' if lifecycle else ''}.implementation"
 
@@ -479,7 +479,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
     This composition file is not in it. What it composes -- the workflow, the
     executor and the inputs -- is re-derived at run time and must equal the sealed
     Program, execution preview and input authority (``_current``), so a change here
-    that moved a number would be refused through them (binding plan, B5).
+    that moved a number would be refused through them.
     """
     if kind == RISK_EXPERIMENT_KIND:
         root = resolve_playpen_root(Path(__file__))
@@ -488,7 +488,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
                 {
                     "risk_development": risk_development_source_closure_hash(root),
                     # The numerical code the run executes, which its Program no longer
-                    # seals, and which its authority no longer names (binding plan, P).
+                    # seals, and which its authority no longer names.
                     "risk_numerics": risk_numerical_source_closure_hash(root),
                     "host": source_rule_closure_hash(
                         root=root,
@@ -560,7 +560,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
     )
     if kind == ALPHA_EXPERIMENT_KIND:
         # A lifecycle Program binds its method only; the code that runs it is bound here,
-        # with the rest of the kind's implementation (binding plan, P).
+        # with the rest of the kind's implementation.
         return str(canonical_hash({"alpha": closure, "lifecycle": lifecycle_implementation_hash()}))
     return closure
 
@@ -578,7 +578,7 @@ def refuse_authored_identity(section: Mapping[str, object]) -> None:
     The Host computes ``envelope_hash``: carried in a document, it would shape the managed
     output path before the envelope recomputes it, and so move the Program and the Plan for
     no change of selection. ``schema_id`` must name the installed envelope schema, since any
-    other well-formed string would move them the same way (V128).
+    other well-formed string would move them the same way.
 
     Args:
         section: The authored document's ``experiment`` section.
@@ -599,12 +599,11 @@ class ResearchExperimentApplication:
     replans = (
         TaskReplan(task_kind=TASK_KIND, preview="EXPERIMENT_PLAN", admitting="EXPERIMENT_RUN"),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
+        """The workspace manifest, read from the one holder the Host refreshes."""
         return self._manifests.current
 
     def __init__(
@@ -637,7 +636,7 @@ class ResearchExperimentApplication:
         )
         self._curation_lock = Lock()
         # A Foundation's preview is kept by its admission hash until it expires, sealed on
-        # disk, so its seal finds it beside a later preview and after a Host restart (V543).
+        # disk, so its seal finds it beside a later preview and after a Host restart.
         self._foundation_previews: PreviewRegistry[ResearchFoundationAdmission] = PreviewRegistry(
             model=ResearchFoundationAdmission,
             clock=clock,
@@ -761,7 +760,7 @@ class ResearchExperimentApplication:
         return admission
 
     def _foundation_listed(self, admission_hash: str) -> dict[str, object]:
-        """One sealed admission with its standing (V279). Verified under the installed curation
+        """One sealed admission with its standing. Verified under the installed curation
         policy it is `CURRENT`, and new work may start on it; otherwise it reads by its recorded
         graph, `HISTORICAL` with the code that refuses a draft or a plan on it."""
 
@@ -834,7 +833,7 @@ class ResearchExperimentApplication:
 
     def _development_routes(self, input_binding_hash: str) -> dict[str, object]:
         """With no prepared component source, an Alpha study begins at a sealed Foundation of the
-        input (V303): each current one's draft, or the list that says how one is sealed."""
+        input: each current one's draft, or the list that says how one is sealed."""
 
         root = (
             self.session.workspace / "artifacts/factor-research/research-desk/foundation-admissions"
@@ -866,7 +865,7 @@ class ResearchExperimentApplication:
 
     def _foundation_replan(self, admission_hash: str) -> dict[str, object]:
         """A seal whose preview is past its hour or was never kept here: preview it again, the
-        request bound to the kept preview's study, decision and input where one verifies (V543)."""
+        request bound to the kept preview's study, decision and input where one verifies."""
         kept = self._foundation_previews.get(admission_hash)
         return {
             "status": "REFUSED",
@@ -1133,7 +1132,7 @@ class ResearchExperimentApplication:
             raise AuthoringError("research_experiment.prepared_features_begin_with_factor")
         if kind not in FLOW_OF_KIND:
             raise AuthoringError("research_experiment.standalone_kind_not_installed")
-        # What the flow needs on this input, what the workspace holds of it, what next (V367).
+        # What the flow needs on this input, what the workspace holds of it, what next.
         needed = {"prerequisites": self._prerequisites(FLOW_OF_KIND[kind], binding)}
         if kind == ALPHA_EXPERIMENT_KIND:
             answer = lifecycle_controls(
@@ -1146,7 +1145,7 @@ class ResearchExperimentApplication:
                 return {**answer, **self._development_routes(binding.binding_hash), **needed}
             if answer["status"] == "DRAFT_READY":
                 # A lifecycle study plans from its prepared component source: the development
-                # path's curated-Factor prerequisite would contradict its ready draft (FLOW-3).
+                # path's curated-Factor prerequisite would contradict its ready draft.
                 return answer
             return {**answer, **needed}
         if kind == RISK_EXPERIMENT_KIND:
@@ -1253,7 +1252,7 @@ class ResearchExperimentApplication:
     def _prerequisites(
         self, flow: Flow, binding: ResearchWorkspaceExperimentInput
     ) -> dict[str, Any]:
-        """A flow's prerequisites on one input, from one read of the Tasks (V367)."""
+        """A flow's prerequisites on one input, from one read of the Tasks."""
         succeeded = [
             task
             for task in self.session.task_control_registry.tasks()
@@ -1270,7 +1269,7 @@ class ResearchExperimentApplication:
         )
 
     def intents(self) -> list[dict[str, object]]:
-        """Each research input's standard flows, what each needs, holds and asks next (V376).
+        """Each research input's standard flows, what each needs, holds and asks next.
 
         An agent's first read (`workspace show`) is its path: on each input, every flow's
         prerequisite results, the completed studies the workspace holds, what is missing and the
@@ -1355,7 +1354,7 @@ class ResearchExperimentApplication:
         return {"prerequisites": self._prerequisites(flow, binding)}
 
     def refusal_prerequisites(self, code: str, request: Any) -> dict[str, object]:
-        """A refusal meaning a prerequisite result is missing names the flow's (V367)."""
+        """A refusal meaning a prerequisite result is missing names the flow's."""
         flow = FLOW_OF_REFUSAL.get(code)
         if flow is None:
             return {}
@@ -1507,7 +1506,7 @@ class ResearchExperimentApplication:
             fields = alpha_question_fields(preparation.development_program)
             if fields != question_fields:
                 # A study of the goal the family leaves out, and the fields that split it off
-                # (V293): the family is one question's, and this study asked another.
+                #: the family is one question's, and this study asked another.
                 excluded.append(
                     {
                         "task_id": str(task.task_id),
@@ -1623,7 +1622,7 @@ class ResearchExperimentApplication:
             raise AuthoringError("portfolio_research.alpha_parent_required")
         if parent.alpha_source is None:
             # A model lifecycle replay holds models, not candidates: a book is drafted from a
-            # development study's candidate, which the refusal's prerequisites name (V486).
+            # development study's candidate, which the refusal's prerequisites name.
             raise AuthoringError("portfolio_research.alpha_development_required")
         body = self.readback(alpha_task_id)
         if body["status"] != "EXPERIMENT_PUBLISHED":
@@ -1745,7 +1744,7 @@ class ResearchExperimentApplication:
         """
         if (document is None) == (yaml_text is None):
             raise AuthoringError("research_experiment.one_document_required")
-        # One check for both entries, the YAML text and the object (V134).
+        # One check for both entries, the YAML text and the object.
         selected = (
             load_authoring_document(yaml_text)
             if yaml_text is not None
@@ -1919,7 +1918,7 @@ class ResearchExperimentApplication:
             "document": normalized,
             "numerical_call_count": 0,
             "execution_preview": preview,
-            # The goal's studies the qualification's family leaves out, and why (V293).
+            # The goal's studies the qualification's family leaves out, and why.
             **({"family_excluded_studies": list(excluded)} if excluded else {}),
             "task_id": None,
             "timing": self._timing(plan),
@@ -2252,7 +2251,7 @@ class ResearchExperimentApplication:
                     "again under the current binding."
                 ),
                 # The same request an ordinary re-PLAN offers, the upstream selection kept
-                # (V140).
+                # .
                 "next_requests": {"plan": self._replan_request(plan)},
             }
         finally:
@@ -2390,8 +2389,8 @@ class ResearchExperimentApplication:
                 ),
             )
             sealed = workflow.prepare(normalized, actor_kind=ActorKind.HUMAN, actor_id="preview")
-            # A replay reads sealed evidence, so the estimators' recorded moves carry its Program
-            # (V314); a run stays exact, since its executor seals what it computes.
+            # A replay reads sealed evidence, so the estimators' recorded moves carry its Program;
+            # a run stays exact, since its executor seals what it computes.
             if preview != plan.execution_preview or not (
                 sealed.program == plan.program
                 or (
@@ -2471,7 +2470,7 @@ class ResearchExperimentApplication:
         return workflow
 
     def book_source(self, task_id: UUID) -> dict[str, str | None] | None:
-        """The Alpha study and candidate a Portfolio study's plan names (V511).
+        """The Alpha study and candidate a Portfolio study's plan names.
 
         The way on from its stopped Task is bound to them: its draft request named neither.
 
@@ -2506,7 +2505,7 @@ class ResearchExperimentApplication:
         try:
             task = self.session.task_control_registry.task(task_id)
             if task.task_kind != TASK_KIND:
-                # Another owner's Task: its own kind, which the refusal names (V490).
+                # Another owner's Task: its own kind, which the refusal names.
                 return {"task_id": str(task_id), "kind": task.task_kind}
             plan = ExperimentPlan.model_validate(task.input.payload["plan"])
         except (KeyError, ValueError):
@@ -2588,12 +2587,13 @@ class ResearchExperimentApplication:
         if prior.portfolio_source is not None and binding != prior.binding:
             raise AuthoringError("portfolio_research.input_not_alpha_source")
         # An Alpha draft's handoff below verifies this bundle's files; its own read only
-        # names the Panel (binding plan, L2: the bundle is digested once per draft).
+        # names the Panel (the bundle is digested once per draft).
         bundle = read_factor_bundle(
             self.session.workspace, binding.binding_hash, verify=prior.alpha_source is None
         )
         document = json.loads(json.dumps(prior.document))
-        # A document authored before V128 may carry the Host's own identity; a draft never does.
+        # A document authored under an earlier Host may carry the Host's own identity;
+        # a draft never does.
         document["experiment"].pop("envelope_hash", None)
         document["experiment"].update(
             data_snapshot_handle=bundle.panel_snapshot_hash,
@@ -2678,7 +2678,7 @@ class ResearchExperimentApplication:
         """Run an explored declaration on its exact input's whole universe.
 
         Run an explored study's declaration on its input's whole universe: the one step
-        from the exploration lane to the promotion lane (binding plan, B17).
+        from the exploration lane to the promotion lane.
 
         An Alpha study is planned again with its universe widened and run, in this one
         request; a Portfolio study builds on its Alpha study's promotion, which this
@@ -2733,7 +2733,7 @@ class ResearchExperimentApplication:
                 return {
                     "status": "UPSTREAM_PROMOTION_ADMITTED",
                     "task_id": str(promoted_alpha),
-                    # The admitted or joined upstream Task a wait follows (V137).
+                    # The admitted or joined upstream Task a wait follows.
                     "follow_task_id": str(promoted_alpha),
                     "alpha_promotion": alpha,
                     "detail": (
@@ -2743,7 +2743,7 @@ class ResearchExperimentApplication:
                     ),
                     "next_requests": {
                         # The upstream Task a saved answer's wait follows
-                        # as `--wait` does (V137, V446).
+                        # as `--wait` does.
                         "task": {"operation": "STATUS", "task_id": str(promoted_alpha)},
                         "alpha": {
                             "operation": "EXPERIMENT_READBACK",
@@ -3085,7 +3085,7 @@ class ResearchExperimentApplication:
             return None
 
     def _keep_on_disk(self, key: tuple[UUID, bool], study: _VerifiedStudy) -> None:
-        """Keep an Alpha study's full verification as its read shows it (V89)."""
+        """Keep an Alpha study's full verification as its read shows it."""
         try:
             text = json.dumps(
                 {
@@ -3110,7 +3110,7 @@ class ResearchExperimentApplication:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Each writer stages its own file; a read another request holds open on Windows may
         # still keep the entry from being replaced, and then this read stands verified and
-        # the next one verifies again: keeping is a cache, never a reason to refuse (V477).
+        # the next one verifies again: keeping is a cache, never a reason to refuse.
         staged = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.partial")
         try:
             staged.write_text(text, encoding="utf-8")
@@ -3133,7 +3133,7 @@ class ResearchExperimentApplication:
         Answers with the basis: ``FULL``, or ``FILES_UNCHANGED ...`` when a ledger read
         answered from an earlier full verification of the same Task record under the same
         installed implementation, whose files all kept their path, size, modification time
-        and file identity: what was checked, and no more (V265). A caller that takes the
+        and file identity: what was checked, and no more. A caller that takes the
         Alpha graph itself (``graph_sink``, a comparison) always verifies in full.
         """
 
@@ -3247,7 +3247,7 @@ class ResearchExperimentApplication:
 
         Saved studies that wait on a person (N5): Factor studies nobody has curated and
         explored studies nobody has promoted. Read from the plans and the curation folders
-        alone, among the request's one reading of the Tasks (V119): nothing is verified.
+        alone, among the request's one reading of the Tasks: nothing is verified.
         """
         succeeded: list[tuple[TaskRecord, ExperimentPlan]] = []
         promoted: set[str] = set()
@@ -3277,7 +3277,7 @@ class ResearchExperimentApplication:
         return {"curation": curation, "promotion": promotion, "admitted": admitted}
 
     def waiting_previews(self, admitted: Iterable[str]) -> list[dict[str, object]]:
-        """Each PLAN previewed and not run while it is still runnable (V45).
+        """Each PLAN previewed and not run while it is still runnable.
 
         Args:
             admitted: The plans the one read of the Tasks found admitted (`awaiting`).
@@ -3431,7 +3431,7 @@ class ResearchExperimentApplication:
 
         Returns:
             Task state or verified study publication and report projection, with the study's
-            `standing` (V368).
+            `standing`.
         """
         body = self._readback(
             task_id,
@@ -3439,7 +3439,7 @@ class ResearchExperimentApplication:
             current_policy=current_policy,
             include_alpha_projection=include_alpha_projection,
         )
-        # What the study can claim, one standing from its marks (V368).
+        # What the study can claim, one standing from its marks.
         return {**body, "standing": study_standing(body).model_dump(mode="json")}
 
     def _verified_alpha_side(
@@ -3663,7 +3663,7 @@ class ResearchExperimentApplication:
                 "data_quality": data_quality,
                 "execution_preview": plan.execution_preview,
                 "position": position,
-                # Each metric's unit by its path, which a scoped read names (V343).
+                # Each metric's unit by its path, which a scoped read names.
                 "metric_units": {f"position.{k}": unit for k, unit in POSITION_UNITS.items()},
                 "preceding_position": rows[selected_index - 1] if selected_index else None,
                 "review_selector": review_selector,
@@ -3730,7 +3730,7 @@ class ResearchExperimentApplication:
                 **shared,
                 "next_requests": {
                     **next_requests,
-                    # The candidate is the reader's choice, named as one (V136).
+                    # The candidate is the reader's choice, named as one.
                     "portfolio-draft": {
                         "operation": "EXPERIMENT_PORTFOLIO_DRAFT",
                         "task_id": str(task_id),
@@ -3752,7 +3752,7 @@ class ResearchExperimentApplication:
         return {
             **shared,
             # The declaration's selection before the context it was screened in, which is
-            # its multiple-testing denominator, not the choice (V252, SC3).
+            # its multiple-testing denominator, not the choice (SC3).
             "declared_selection": {
                 "selected_factor_ids": list(receipt.selected_factor_ids),
                 "screened_factor_count": len(child.program.factor_ids),
@@ -3881,7 +3881,7 @@ class ResearchExperimentApplication:
         The fits run one at a time, so the run takes the budget's cores; LightGBM proves
         its sealed canary at that count first and refuses by name when it differs. What
         the fits used is appended to the workspace's execution log, beside the result and
-        never in it (binding plan, B3), with the thread counts of the numerical libraries the
+        never in it, with the thread counts of the numerical libraries the
         fits and the fold metrics run at, which can move a metric's last bits (PA3, V68).
         """
 
@@ -4114,7 +4114,7 @@ class ResearchExperimentApplication:
             )
             return {
                 **portfolio_draft(prepared_portfolio, self._risk_studies(binding.binding_hash)),
-                # What the catalog holds and a study may not declare yet, and why (V313).
+                # What the catalog holds and a study may not declare yet, and why.
                 "not_available": list(NOT_AVAILABLE),
                 "research_input_id": binding.input_id,
                 "origin_task_id": str(request.task_id),
@@ -4225,7 +4225,7 @@ class ResearchExperimentApplication:
                     "decision": result.decision.model_dump(mode="json"),
                     "next_requests": {
                         # The Alpha handoff on this decision, filled, so the receipt travels
-                        # by --from and is never copied (V391).
+                        # by --from and is never copied.
                         "handoff": {
                             "operation": "EXPERIMENT_HANDOFF_PREVIEW",
                             "task_id": str(request.task_id),
@@ -4279,11 +4279,11 @@ class ResearchExperimentApplication:
                 ),
             )
             # The plan this handoff starts, as a Foundation draft offers its own, so
-            # `study plan --from` plans it with its Factor source kept (V361).
+            # `study plan --from` plans it with its Factor source kept.
             preview["plan_request"] = {
                 "operation": "EXPERIMENT_PLAN",
                 # The input the handoff chose, beside its binding: the plan never falls back to
-                # the Factor study's own input under another input's binding (V438).
+                # the Factor study's own input under another input's binding.
                 "research_input_id": selected_binding.input_id
                 if selected_binding is not None
                 else request.research_input_id or plan.binding.input_id,
@@ -4313,7 +4313,7 @@ class ResearchExperimentApplication:
 def draft_revision(
     prior: tuple[str, str], input_id: str | None, binding_hash: str | None
 ) -> tuple[str, str | None]:
-    """The input and revision a draft copies its study onto (V498).
+    """The input and revision a draft copies its study onto.
 
     The origin's exact revision while its input stays; another input named without a revision
     takes that input's declared anchor (none, which its revisions resolve); a revision named
@@ -4339,11 +4339,11 @@ def review_requests(selector: Mapping[str, str]) -> dict[str, dict[str, str]]:
 
     Every answer that names a book for its review offers them -- a study book's readback, an
     update's positions, a recorded choice of analysis -- so the agent continues the book it
-    read, never the workspace's default (V473, V483, V487).
+    read, never the workspace's default.
     """
     return {
         "review": {"operation": "EVIDENCE_CRO", **selector},
-        # The book's Evidence begins at its preview (V473).
+        # The book's Evidence begins at its preview.
         "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
         # Read the current Evidence state before it offers CRO work: a generic
         # book read cannot know whether its bounded continuation is settled (P1).

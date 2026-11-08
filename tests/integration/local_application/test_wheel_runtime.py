@@ -1,4 +1,4 @@
-"""The installed leg keeps the checkout's entry, resources, and declared exceptions (V429)."""
+"""The installed leg keeps the checkout's entry, resources, and declared exceptions."""
 
 from __future__ import annotations
 

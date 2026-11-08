@@ -35,7 +35,7 @@ def test_historical_budget_receipts_keep_their_exact_derivation() -> None:
 def test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity(
     tmp_path: Path,
 ) -> None:
-    """V680: legacy content integrity survives without carrying capacity into a new plan."""
+    """legacy content integrity survives without carrying capacity into a new plan."""
     fields = dict(
         kind="StorageEvictionPlan",
         operation_id="cleanup",
@@ -73,7 +73,7 @@ def test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_ca
 def test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator(
     tmp_path: Path,
 ) -> None:
-    """V680: live execution capacity covers physical files, including linked inputs once."""
+    """live execution capacity covers physical files, including linked inputs once."""
     contents = {
         "market-data.duckdb": b"data",
         "artifacts/feature-panel/panel.parquet": b"feature panel",

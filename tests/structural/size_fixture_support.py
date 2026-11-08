@@ -651,6 +651,8 @@ ADMISSION_CASES = (
         ("product_host.port_reuse", {"layer": "e2e", "exception": "decided"}, ""),
         ("product_host.port_reuse", {"layer": "e2e", "exception": {"decided": True}}, "decision"),
         ("product_host.port_reuse", {"layer": "e2e", "exception": {"kinds": 1}}, "decision"),
+        ("product_host.port_reuse", {"lower_layer": ""}, "above unit"),
+        ("product_host.port_reuse", {"layer": "unit", "seconds": 1, "lower_layer": ""}, ""),
         (HELD, None, "was removed"),
         ("schema-unreadable-directory", {}, ""),
         ("schema-unreadable-entry", {}, ""),

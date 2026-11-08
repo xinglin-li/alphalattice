@@ -51,7 +51,7 @@ TASK_CONTROL_DIRECTORY = "runtime"
 LEDGER_REBUILT_DETAIL = (
     "The ledger rebuild could not recover this Task's execution or verified progress."
 )
-"""What rebuilding a missing Task row preserves and cannot recover (V629)."""
+"""What rebuilding a missing Task row preserves and cannot recover."""
 LEDGER_REBUILT_NEXT = (
     "Re-PLAN keeps the request for a new plan or Task; its owner chooses reusable sealed "
     "evidence and work to redo."
@@ -73,7 +73,7 @@ _NORMAL_ENDS = frozenset(
     {"work_item.ready_for_verification", "work_item.verified", "work_item.blocked"}
 )
 """The events that end a stage's attempt normally: ready, verified, or blocked and deferred
-alike (`block_work_item`), so a deferral ends a run of interrupted attempts (V475)."""
+alike (`block_work_item`), so a deferral ends a run of interrupted attempts."""
 
 _WAKE_STATES = {
     "task.wake_registered": "PENDING",
@@ -96,7 +96,7 @@ _ACTIVE_TASKS = frozenset(
     }
 )
 _RUNNING_PLACE = _ACTIVE_TASKS - {TaskLifecycle.RECOVERY_REQUIRED}
-"""The Tasks that hold a running place. A Task waiting for its recovery holds none (V100): it
+"""The Tasks that hold a running place. A Task waiting for its recovery holds none: it
 waited for a person or a changed install while every Task behind it waited too. More than one
 holds a place only when each may run beside others (`overlapping`)."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
@@ -230,7 +230,7 @@ def resolve_task_control_database(workspace: Path) -> Path:
     ``WorkspaceRuntime`` -- passed the market-data database instead, which is
     how the same workspace ended up with two task schemas. Resolving through one
     function is what makes that a single fact rather than seventeen agreeing
-    strings. The place is this function's too (V206): its callers passed either
+    strings. The place is this function's too: its callers passed either
     the root or `runtime/`, and the workspaces grew a second, empty store at the
     root, so a caller passes the root and a `runtime/` directory is refused.
     """
@@ -311,7 +311,7 @@ class DuckDbTaskControlRegistry:
                 Control store.
         """
         self.database_path = database_path.resolve()
-        # Who submits a Task, as the Host's boundary read its request (U33): provenance only.
+        # Who submits a Task, as the Host's boundary read its request: provenance only.
         self._submitted_by = submitted_by or (lambda: None)
         # Which Tasks may hold a running place beside others, as the Host composes it: none by
         # default, so one Task runs at a time; `started` is told each start, so a waiting Task
@@ -394,7 +394,7 @@ class DuckDbTaskControlRegistry:
                 connection.execute(
                     "ALTER TABLE workspace_task ADD COLUMN IF NOT EXISTS admission_sequence BIGINT"
                 )
-                # The agent session that submitted a Task (U33); never part of its record hash.
+                # The agent session that submitted a Task; never part of its record hash.
                 connection.execute(
                     "ALTER TABLE workspace_task ADD COLUMN IF NOT EXISTS submitted_by_json VARCHAR"
                 )
@@ -681,7 +681,7 @@ class DuckDbTaskControlRegistry:
         if evidence is not None:
             identity["evidence"] = evidence
         if failure_code is not ...:
-            # A cause is kept only with the code it was recorded beside (V444).
+            # A cause is kept only with the code it was recorded beside.
             identity["failure_code"] = failure_code
             identity["failure_cause"] = failure_cause
         if started_at is not ...:
@@ -811,7 +811,7 @@ class DuckDbTaskControlRegistry:
             ).fetchone()[0]
             submitted_by = self._submitted_by()
             # The frozen request is written before its row, so the rows can be listed again from
-            # the requests if the store is lost (V181, DA2).
+            # the requests if the store is lost (DA2).
             written.append(
                 write_request(
                     self.database_path.parent,
@@ -896,7 +896,7 @@ class DuckDbTaskControlRegistry:
     def check_capacity(self) -> None:
         """Refuse as admission would when every waiting place is taken.
 
-        Asked before a request does its planning work (V100): Portfolio's RUN resolved its
+        Asked before a request does its planning work: Portfolio's RUN resolved its
         sources and caches first.
         """
         queued = self._read(
@@ -1062,7 +1062,7 @@ class DuckDbTaskControlRegistry:
         """Start a fresh compatible execution from the verified work-board prefix.
 
         A stage that stored its evidence before its receipt keeps it: the runner verifies it
-        first and runs again only a stage whose evidence fails (V101, EV1); a stage caught in
+        first and runs again only a stage whose evidence fails (EV1); a stage caught in
         progress or blocked starts over.
 
         `expected_task_hash` is the record version a person or Agent confirmed
@@ -1078,7 +1078,7 @@ class DuckDbTaskControlRegistry:
                 raise TaskVersionStale("task_control.recovery_version_stale")
             if current.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
                 raise TaskTransitionRejected("task does not require recovery")
-            # It held no running place while it waited (V100), so another Task may hold it now.
+            # It held no running place while it waited, so another Task may hold it now.
             if not self._beside(connection, current):
                 raise TaskTransitionRejected("task_control.recovery_waits_for_the_running_task")
             if current.plan.workflow_definition_hash != compatibility.workflow_definition_hash:
@@ -1282,7 +1282,7 @@ class DuckDbTaskControlRegistry:
     def return_to_pending(
         self, *, task_id: UUID, stage_id: str, observed_at: datetime
     ) -> WorkItemState:
-        """Send back to run a stage whose stored evidence did not verify at recovery (V101)."""
+        """Send back to run a stage whose stored evidence did not verify at recovery."""
         self._db_time(observed_at)
 
         def operation(connection):
@@ -1436,7 +1436,7 @@ class DuckDbTaskControlRegistry:
             observed_at: Aware operational clock supplied by the caller.
             deferred: Whether to retain a deferred task rather than a terminal block.
             failure_cause: What the owner saw beside the code, kept on the work item and its
-                event (V444).
+                event.
 
         Returns:
             The updated task with its stable failure code.
@@ -2231,7 +2231,7 @@ class DuckDbTaskControlRegistry:
         return self._write(operation, control_only=True)
 
     def submitted_by(self, task_id: UUID) -> SubmittingAgent | None:
-        """The agent session that submitted a Task, where its request named one (U33)."""
+        """The agent session that submitted a Task, where its request named one."""
 
         def read() -> SubmittingAgent | None:
             row = self._read(
@@ -2249,7 +2249,7 @@ class DuckDbTaskControlRegistry:
     def submitted_by_session(self, session: str) -> tuple[tuple[UUID, SubmittingAgent], ...]:
         """The Tasks one agent session submitted, newest admitted first, each with its submitter.
 
-        One read of the submitters' column (U54); no Task record is read or validated here.
+        One read of the submitters' column; no Task record is read or validated here.
         """
 
         def read() -> tuple[tuple[UUID, SubmittingAgent], ...]:
@@ -2268,7 +2268,7 @@ class DuckDbTaskControlRegistry:
         return self._answered(("submitted_by_session", session), read)
 
     def rebuild_from_requests(self, *, observed_at: datetime) -> tuple[TaskRecord, ...]:
-        """List again, from their frozen requests, the Tasks this store no longer holds (V181).
+        """List again, from their frozen requests, the Tasks this store no longer holds.
 
         A Task whose row was lost is written `BLOCKED` with `task_control.ledger_rebuilt`: what
         it was admitted to do reads again, its progress is not claimed, and the same request
@@ -2378,7 +2378,7 @@ class DuckDbTaskControlRegistry:
         return self._read(lambda connection: self._work_items_from(connection, task_id))
 
     def consecutive_interruptions(self, task_id: UUID, stage_id: str) -> int:
-        """Count consecutive interruptions (V475), excluding the open attempt.
+        """Count consecutive interruptions, excluding the open attempt.
 
         Normal ends reset the count; an intentional Host stop does not spend it.
         """
@@ -2528,8 +2528,7 @@ class DuckDbTaskControlRegistry:
     def running_place_holder(self) -> TaskRecord | None:
         """The first Task holding a running place, if one does.
 
-        A deferred one holds it too, which no command drives while it waits for its retry time
-        (V604).
+        A deferred one holds it too, which no command drives while it waits for its retry time.
         """
         active = self.active_task()
         return active if active is not None and active.lifecycle in _RUNNING_PLACE else None

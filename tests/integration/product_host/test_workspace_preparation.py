@@ -62,7 +62,7 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
         assert planned["status"] == "ALREADY_PREPARED"
         # With no research strategy installed, the first use goes on at its controls, the
         # shortest way to a book that runs forward; a study on the input stays offered for
-        # exploration (FLOW-3).
+        # exploration.
         assert planned["next_action"] == view["next_action"] == "RESEARCH_STRATEGY_CONTROLS"
         assert planned["next_requests"]["strategy_controls"] == {
             "operation": "RESEARCH_STRATEGY_CONTROLS"
@@ -158,7 +158,7 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
     tmp_path: Path,
     budget_defect: str,
 ) -> None:
-    """V680: legacy outer/inner seals and derivation hold; admission reads the live cap."""
+    """legacy outer/inner seals and derivation hold; admission reads the live cap."""
 
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
     from alphalattice.control.task_control.runner import StageDisposition
@@ -1347,7 +1347,7 @@ def test_a_preview_past_its_hour_is_refused_by_the_host_that_planned_it(tmp_path
 
 
 def test_a_preview_past_its_hour_offers_the_preparation_again(tmp_path: Path):
-    """regression (V543, the sweep of S1): a confirm past the preview's hour was refused
+    """regression (the sweep of S1): a confirm past the preview's hour was refused
     `workspace_preparation.preview_required` with its words and no request; it offers planning
     the preparation again."""
 
@@ -2037,7 +2037,7 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     sent: list[object] = []
 
     def submit(command: WorkspacePreparationCommand) -> CommandSubmission:
-        """The owner refuses the plan before its retry time, as V375 has it."""
+        """The owner refuses the plan before its retry time."""
         sent.append(command)
         return CommandSubmission(
             command_kind=command.command_kind,

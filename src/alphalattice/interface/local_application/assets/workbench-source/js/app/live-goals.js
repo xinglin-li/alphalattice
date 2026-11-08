@@ -10,7 +10,7 @@ const LiveGoals = (() => {
   const pages = new Set(['goals', 'goal', 'goal-conversation', 'goal-results', 'cases']); // `cases`: the research case page's old addresses
   const S = {hash: '', key: '', body: null, rows: null, error: '', loading: false, ticket: 0, verifying: false, verifyError: '', dirty: false, activity: null, draft: null, references: [], dialogHash: ''};
   const KINDS = [['RESEARCH', 'Research'], ['DATA', 'Data'], ['OPERATIONS', 'Operations'], ['REVIEW', 'Review']];
-  // a first use is opened from the person's sentence, never in the composer (V452, OP19): its word beside the composer's kinds
+  // a first use is opened from the person's sentence, never in the composer (OP19): its word beside the composer's kinds
   const KIND_WORDS = [...KINDS, ['FIRST_USE', 'First use']];
   const kindWord = (kind) => t((KIND_WORDS.find(([k]) => k === kind) || [])[1] || '') || codeWords(kind);
   const PURPOSES = [['NEW_RESEARCH', 'New research'], ['EXISTING_RESULTS', 'Interpret existing results'], ['CONTINUATION', 'Continue prior research']];
@@ -98,12 +98,12 @@ const LiveGoals = (() => {
   const GOAL_STATES = {OPEN: ['pending', 'state|Open'], COMPLETE: ['succeeded', 'Record complete'], ABANDONED: ['cancelled', 'Abandoned']};
   const OUTCOMES = {ACHIEVED: 'Achieved', PARTLY_ACHIEVED: 'Partly achieved', NOT_ACHIEVED: 'Not achieved'};
   const outcomeWord = (outcome) => (outcome ? t(OUTCOMES[outcome] || '') || codeWords(outcome) : '');
-  // U54: a listed goal's check, as the Team's outputs show it -- the Host's state, Complete once it found the record complete
+  // a listed goal's check, as the Team's outputs show it -- the Host's state, Complete once it found the record complete
   const checkLine = (g) => { const [s, w] = GOAL_STATES[g.state] || ['metadata', '']; return stateLine(s, {word: html`${t(w) || codeWords(g.state)}${g.state === 'COMPLETE' && g.outcome ? html` · ${outcomeWord(g.outcome)}` : ''}`, next: ''}); };
   /* Goals as a lobby (F2, law 136): grouped by state -- the open ones open, the closed folded -- or by kind; one
    * line a row: the title, its kind, revision and references, the day. The owner's older pages are read from the foot. */
   const RANK = {OPEN: 0, COMPLETE: 1, ABANDONED: 2};
-  /* U23: a goal by the agent sessions its row names (the Host's `sessions`, the list its record computes); a goal
+  /* a goal by the agent sessions its row names (the Host's `sessions`, the list its record computes); a goal
    * several sessions worked on is one group of them all, one no session took yet a group of its own. */
   const sessionWords = (x) => `${codeWords(x.vendor)} ${short(x.session_id)}`;
   const sessionGroup = (g) => { const all = g.sessions || []; return all.length ? {key: all.map((x) => x.vendor + ':' + x.session_id).join(','), label: all.map(sessionWords).join(' · '), rank: all.length, open: true} : {key: '', label: t('No session yet'), rank: Infinity, open: false}; };
@@ -153,7 +153,7 @@ const LiveGoals = (() => {
     const folder = app.page === 'goal-conversation' ? conversation(b) : app.page === 'goal-results' ? results(b) : timeline(b);
     return html`${top}${head(b)}${firstUse(b)}${folder}`;
   }
-  /* U70 (V452, OP19): a first use is the person's, run by their agent from their sentence (the lede): each step it took
+  /* a first use is the person's, run by their agent from their sentence (the lede): each step it took
    * as theirs (`record.delegated_steps`, the goal's ledger), the hours its delegation has left (`record.delegation`),
    * and one Stop that ends it -- the goal abandoned, the network it opened closed by the Host. */
   const STEP_WORDS = {WORKSPACE_PREPARE_CONFIRM: 'Confirmed the preparation', DATA_ISSUE_CONFIRM: 'Decided a data issue'};
@@ -176,10 +176,10 @@ const LiveGoals = (() => {
     return panel(html`${t('Your first use')}${hours ? html` · ${hours}` : ''}`, t('Opened from your sentence: the agent running it takes the first steps as yours, for its hours; Stop ends them.'),
       steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), writable(b) ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
   }
-  // FLOW-1 request summaries are owner status codes; authored and accepted-answer text stays exact.
+  // request summaries are owner status codes; authored and accepted-answer text stays exact.
   const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : m.input_channel === 'PRODUCT_REVIEW' ? said(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
   /* The timeline: the Host's facts (registration, the revision, the Tasks and sessions it recorded), the agents'
-   * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage (U32). */
+   * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage. */
   function timeline(b) {
     const g = b.goal, r = b.record || {}, by = actorWords(g.submitted_by);
     const said = (m) => [m.agent_id, LiveTeam.roleName(m.role)].filter(Boolean).join(' · ') || t('Agent');
@@ -194,7 +194,7 @@ const LiveGoals = (() => {
     const notes = panel(html`${t('Decision notes')} <span class="num">${count(g.statements.length)}</span>`, t('An attributed decision or conclusion with its evidence standing; a note is not product validation or scientific approval.'), g.statements.length ? html`<div class="case-thread">${g.statements.map((s) => statement(s, b.statement_context?.[s.statement_id]))}</div>` : emptyState(t('No decision note yet.'), writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : ''), g.statements.length && writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button compact') : '');
     return html`${notes}${facts}${usage(r.session_usage || [])}${runLog({id: 'goalTimeline', title: t('Timeline'), lines, count: lines.length})}`;
   }
-  /* U32: each session's models and tokens under this goal -- its totals by model, each participant's latest
+  /* each session's models and tokens under this goal -- its totals by model, each participant's latest
    * reading by model, a mark where a reading differs from the agent's pinned card. A session's totals are its
    * own so far, whatever else it worked on; the Host says so. */
   function usage(sessions) {
@@ -394,7 +394,7 @@ const LiveGoals = (() => {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: $('#goalAbandonReason').value || 'Abandoned by a person'});
     closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
-  /* U70: Stop ends the first use -- its goal abandoned (the Host closes the network its delegation opened) -- confirmed once. */
+  /* Stop ends the first use -- its goal abandoned (the Host closes the network its delegation opened) -- confirmed once. */
   function stopFirstUse() {
     S.dialogHash = S.body.goal.goal_id;
     openDialog(t('First use · explicit confirmation'), t('Stop the first use?'), html`<p>${t('The agent takes no more steps for you, and a network it opened is closed; the goal closes as abandoned, its record readable.')}</p>`, html`${btn(t('Stop'), 'goal-first-use-stop-commit', '', 'button primary', true)}`);
@@ -403,7 +403,7 @@ const LiveGoals = (() => {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: 'Stopped by the person in the Workbench'});
     closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
-  /* V668 / PG2: all owner-declared reference kinds use the same sealed reference
+  /* PG2: all owner-declared reference kinds use the same sealed reference
    * reader. GOAL_REFERENCE reopens the exact request and checks its recorded identity;
    * its summary is the owner's projection, never the Goal's Facts or a latest object. */
   const REPORT_READOUTS = [

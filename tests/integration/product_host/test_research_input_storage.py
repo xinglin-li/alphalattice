@@ -44,7 +44,7 @@ if sys.platform == "win32":
 def test_observation_capacity_takes_a_fresh_sample_when_the_workspace_reopens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """V680: a retained sample from another session cannot set this session's allowance."""
+    """a retained sample from another session cannot set this session's allowance."""
 
     from alphalattice.control.workspace_runtime.storage import capacity
 

@@ -236,7 +236,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         models.add(card["model"])
         efforts.add(card["model_reasoning_effort"])
         # Every specialist writes: a stage card runs its path and saves the answers it
-        # continues from (V384), the two evidence specialists their answer file.
+        # continues from, the two evidence specialists their answer file.
         assert (card["sandbox_mode"], card["approval_policy"]) == ("workspace-write", "never")
     assert len(models) == 1, f"the specialists' cards name different models: {sorted(models)}"
     assert len(efforts) == 1, f"the specialists' cards name different efforts: {sorted(efforts)}"
@@ -276,7 +276,7 @@ def _hook_group(event: str, matcher: str) -> dict[str, object]:
 
 
 def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monkeypatch, capsys):
-    """FLOW-1: an earlier configure's product hooks called a command that no longer exists and
+    """an earlier configure's product hooks called a command that no longer exists and
     kept the host's trust prompts; configuring again removes exactly those groups, keeping every
     other hook and setting as written."""
     claude = tmp_path / "claude-project"
@@ -1076,7 +1076,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             ">=",
             2,
             "the rollouts a Codex specialist's spawn chain reads, a first record each: its "
-            "lead's own and a specialist's specialist's (V568)",
+            "lead's own and a specialist's specialist's",
         ),
         "USAGE_READ_BYTES": (
             bridge.USAGE_READ_BYTES,

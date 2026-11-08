@@ -146,7 +146,7 @@ const Data = (() => {
   // A repaint replaces only the sections that changed; a page not yet painted, or a page that
   // changed, is rendered whole (patchMain falls back to render for those).
   const refresh = () => { if (!document.body.dataset.page) return; (typeof patchMain === 'function' ? patchMain : render)(); };
-  // V676: activation changes outside this page need the book owner's current Standing.
+  // activation changes outside this page need the book owner's current Standing.
   // Read the exact selection; keep its sealed result, paging, comparison and route.
   async function refreshStanding() {
     const shown = source, ticket = generation;
@@ -258,10 +258,10 @@ const Data = (() => {
     return {renewed: true};
   }
   const read = async (path, allowUnavailable = false, signal = undefined) => (await request(path, undefined, allowUnavailable, 'json', signal)).value;
-  /* U13 (OW10): an operation's route as the session names it -- the Host's one table (`local_web_session`); a page keeps
+  /* an operation's route as the session names it -- the Host's one table (`local_web_session`); a page keeps
    * no map of its own. An operation the session does not name is refused by name, never guessed. */
   const offers = (operation) => Boolean(workspace?.routes?.[operation]?.path);
-  // V615: a request that writes (a preview's admission among them) is a POST in the session's routes; a read is not
+  // a request that writes (a preview's admission among them) is a POST in the session's routes; a read is not
   const posts = (operation) => workspace?.routes?.[operation]?.method === 'POST';
   function route(operation) {
     if (!offers(operation)) throw Error('local_web.operation_route_absent: ' + operation);
@@ -360,7 +360,7 @@ const Data = (() => {
    * turns green where it is listed, a new one joins its lists. One read at a time; a move reported
    * meanwhile reads once more after it; a failed read keeps what is painted. */
   let resyncing = false, resyncAgain = false;
-  /* V613/V621 (UX01, UX09): a page's read that a Task's move can change (the daily update's outcome and next run) is
+  /* a page's read that a Task's move can change (the daily update's outcome and next run) is
    * registered here and read again with the lists, so every page showing it is current without a reload. */
   const taskReaders = new Set();
   const followTasks = (reader) => { taskReaders.add(reader); };
@@ -435,7 +435,7 @@ const Data = (() => {
   // The input version an entry or study was bound to. Its recorded cutoff is absent (null) when the
   // owner recorded none; `available` is local source-file presence, never integrity verification.
   const inputVersion = (bindingHash) => (bindingHash ? inputVersions.find((v) => v.binding_hash === bindingHash) || null : null);
-  const dateOf = (iso) => (iso ? dayOf(iso) || String(iso).slice(0, 10) : null); // N3 (law 133): the reader's day
+  const dateOf = (iso) => (iso ? dayOf(iso) || String(iso).slice(0, 10) : null); // law 133: the reader's day
   // Declared parameters come from the existing experiment listing, joined by task id: one
   // request for the whole collection, never a readback per row, and absent when it was refused.
   const declaredOf = (taskId) => (taskId && experiments ? experiments.find((v) => v.task_id === taskId) || null : null);
@@ -452,12 +452,11 @@ const Data = (() => {
     };
   });
   const portfolioEntries = () => histories.filter((x) => ['portfolio.policy-development','INSTALLED_RESULT'].includes(x.kind) && x.status === 'SUCCEEDED');
-  /* Runs (round 73): everything that ran or runs as one shape -- {id, kind, name, state, starter,
+  /* Runs: everything that ran or runs as one shape -- {id, kind, name, state, starter,
    * started, finished, running_seconds, current, verified, object} -- from the owners' projections: the Tasks
    * ('task'), the data updates and preparations among them ('update'), the Team's retained
    * sessions ('session', the Team's own reading). `groupByDay` orders runs newest first under
-   * the date, by the owner's instant -- the date itself, never a relative day word (round 96:
-   * a recorded instant is a fact; a word about the present is a claim the replay must not make). */
+   * the date, by the owner's instant -- the date itself, never a relative day word (   * a recorded instant is a fact; a word about the present is a claim the replay must not make). */
   const RUN_KINDS = {update: new Set(['workspace_data_update', 'workspace_preparation'])};
   // A Task stopped for a data decision is waiting for it (A2A's input-required), not broken.
   const decisionOwed = (v) => v.lifecycle === 'BLOCKED' && (v.latest_failure_code || v.failure_code) === 'data.truth_review_required';
@@ -468,7 +467,7 @@ const Data = (() => {
   }
   const runAt = (r) => String(r.finished || r.started || '');
   function groupByDay(runs) {
-    const dayKey = (r) => { const d = dayOf(runAt(r)); return !d ? t('Undated') : when(d); }; // N3 (law 133): the reader's day
+    const dayKey = (r) => { const d = dayOf(runAt(r)); return !d ? t('Undated') : when(d); }; // law 133: the reader's day
     const groups = new Map();
     for (const r of [...runs].sort((a, b) => runAt(b).localeCompare(runAt(a)))) { const k = dayKey(r); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
     return groups;
@@ -554,7 +553,7 @@ const Data = (() => {
     if (!again) { workspaceStatus = 'loading'; refresh(); }
     workspaceError = ''; workspaceReopen = false;
     try {
-      // round 94 (the latency table): the history and experiments reads need nothing from the
+      // (the latency table): the history and experiments reads need nothing from the
       // session and start beside it; the object's own read waits for it (the page's admission)
       const [session] = await Promise.all([read('/api/session?context=1'), refreshHistory(), refreshDecisions()]);
       if (ticket !== connectionGeneration) return;
@@ -571,7 +570,7 @@ const Data = (() => {
       app.tasks = activeTasks;
       workspaceStatus = 'ready';
       // the chrome names the workspace as soon as it is known: a page that patches its sections
-      // (the Team console) never re-renders the shell by itself (round 31)
+      // (the Team console) never re-renders the shell by itself
       if (typeof Window !== 'undefined') Window.render();
       // Connection populates the shared workspace, but its launch link belongs to the
       // initial navigation. A page chosen while these reads waited owns every way on.
@@ -782,7 +781,7 @@ const Data = (() => {
    * first makes the one history entry for the place being left (`objectEntry`); the metadata
    * dialog of a record without a connected view changes no route and makes none. */
   // `push`: a reader's own choice makes one history entry (objectEntry); a step between the
-  // records of a list (round 53) makes none, so Back returns to the list, not to the last record
+  // records of a list makes none, so Back returns to the list, not to the last record
   async function openEntry(id, push = true, portfolioSession = null, navigation = null) {
     if (navigation === null) { beginNavigation(); navigation = navigationIntent(); }
     const study = id.startsWith('experiment:') ? experiments?.find(v=>v.task_id===id.slice('experiment:'.length)) : null;
@@ -913,7 +912,7 @@ const Data = (() => {
     // Reloading a book repeats the same open: book, shown date, page and comparison member.
     load, reload: () => workspaceStatus === 'error' ? connect() : opened ? openPortfolio(opened.task, source?.subject?.task_id === opened.task ? source.subject.session : opened.session, app.page, app.compareOther || null, null, opened.performanceMode || 'historical') : (loader ? load(loader) : undefined),
     workspace: () => workspace?.workspace_id || '',
-    /* Round 65: the objects the viewer opened last (the router keeps their keys), then the newest
+    /* the objects the viewer opened last (the router keeps their keys), then the newest
      * recorded ones — the Home's third group and the command menu's Recent. Local, not a record. */
     recent: (n = 8) => { const opened = readPreference('objects.recent'), ids = Array.isArray(opened) ? opened.map((k) => String(k).split(':').slice(1).join(':')) : []; const rows = historyRows(); const first = ids.map((id) => rows.find((r) => r.task_id === id || r.id.endsWith(':' + id))).filter(Boolean); return groupTaskSuccessors([...new Set([...first, ...rows])]).slice(0, n); },
     workspaceFacts: () => workspace, history: historyRows, historyRefusals: () => historyRefusals, historyError: () => historyError, portfolioEntries, hasMoreHistory: () => Boolean(historyCursor), get historyLoading() { return Boolean(historyPaging); },

@@ -89,7 +89,7 @@ from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemL
 def superseded_preparations(
     registry: DuckDbTaskControlRegistry, tasks: Iterable[TaskRecord]
 ) -> frozenset[str]:
-    """The preparation Tasks a successor supersedes, by id (V510).
+    """The preparation Tasks a successor supersedes, by id.
 
     A successor supersedes its source while it can resume: still on its way, stopped, or
     cancelled after it verified a stage to resume from. One cancelled before any stage verified
@@ -333,7 +333,7 @@ class WorkspaceDataIssueApplication:
     ) -> tuple[
         tuple[FeatureInputAgentCase, ...], tuple[FeatureInputAgentCase, ...], dict[str, object]
     ]:
-        """Every current case named in a line, beside the page of whole ones (V236, V172).
+        """Every current case named in a line, beside the page of whole ones.
 
         A whole page of cases is longer than an agent's tool return (AX1d cut it five times),
         so the answer names every case and its count first; ``--section case_index`` reads just
@@ -1118,13 +1118,13 @@ class WorkspaceDataIssueApplication:
                 )
         following = cases[-1].case_token if len(selected) > limit else None
         if following is not None:
-            # The next page, offered as the request that reads it (V172).
+            # The next page, offered as the request that reads it.
             next_requests["next_page"] = {
                 "operation": "DATA_ISSUES",
                 "history_cursor": following,
                 "history_limit": limit,
             }
-        # What waits on a person, all owners' in one read, before the pages (V237).
+        # What waits on a person, all owners' in one read, before the pages.
         next_requests["pending"] = {"operation": "PENDING_DECISIONS"}
         grants = self.delegation.active_grants(now=now)
         for grant in grants:

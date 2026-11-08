@@ -209,7 +209,7 @@ def test_serve_forwards_its_own_options_to_the_launcher(tmp_path: Path) -> None:
 def test_storage_cap_is_one_operator_setting_through_the_real_cli(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """V680: changing execution capacity preserves the workspace's sealed manifest and Tasks."""
+    """changing execution capacity preserves the workspace's sealed manifest and Tasks."""
     before = live.workspace_manifest.model_dump_json()
     tasks = _json(live, "/api/tasks")["tasks"]
     code, shown, _ = _cli(live.workspace, "storage", "cap")
@@ -432,7 +432,7 @@ def test_no_answer_carries_a_failure_field_that_is_not_a_code(
 
 
 def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path: Path) -> None:
-    """requirement (V364): an agent reported 35 launches against a budget of 40 after 41,
+    """requirement: an agent reported 35 launches against a budget of 40 after 41,
     its help launches miscounted; every answer carries `session_launches`, the session's
     launches with help counted, and an answer outside an agent session carries none."""
 
@@ -853,7 +853,7 @@ def test_a_deprecated_command_still_answers_and_names_its_replacement(
 def test_every_field_schema_prints_is_described() -> None:
     """requirement (SC3): a field's meaning is written once, in its contract, and `schema show`
     prints it: every request field of every operation, every field of a typed answer and every
-    key of a Desk's declaration section (V249) carries its description."""
+    key of a Desk's declaration section carries its description."""
 
     from alphalattice.interface.local_application import cli
     from alphalattice.interface.local_application.operations import OPERATIONS
@@ -881,9 +881,9 @@ def test_every_field_schema_prints_is_described() -> None:
         "portfolio",
         "risk",
     }
-    # A Portfolio study sized by a linked Risk study is found from the CLI alone (V310).
+    # A Portfolio study sized by a linked Risk study is found from the CLI alone.
     assert {"risk_task_id", "policy", "weight_rule"} <= set(sections["portfolio"]["properties"])
-    # What the catalog holds and a study may not declare yet, each with its reason (V313).
+    # What the catalog holds and a study may not declare yet, each with its reason.
     # Each says its field, its values and why, in words; the row that tracks it stays in the
     # plans (NM1b).
     assert all(
@@ -1152,7 +1152,7 @@ def test_the_global_options_are_read_anywhere_on_the_line(
     assert answer["data"] == {"status": "OK", "task_id": task, "read_request": read}, answer
     assert seen == [tmp_path]
     # Outside a bound session, wherever this runs, a line naming none is refused by name and
-    # nothing is sent (V568).
+    # nothing is sent.
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     assert cli.main(["task", "list"], serve=lambda _: 99) == 1
@@ -1204,7 +1204,7 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         if page["next_left"] is None:
             break
         start = page["next_left"]["list"].rsplit(" ", 1)[1]
-    # Each listed once; a full view's command carries --view full and whole ids (V406, V393).
+    # Each listed once; a full view's command carries --view full and whole ids.
     assert set(paged) == set(listed)
     # Each page holds to the read whatever length the workspace path adds: next_left's
     # key was left out of a page's room, a page one byte over at one temporary path's length.

@@ -1871,7 +1871,10 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
             r.legacy(tmp_path)
         return
     base, entries = json.dumps(registry), registry["entries"]
-    row = entries[HELD] | {"description": "A restarted Host reuses its last free port."}
+    row = entries[HELD] | {
+        "description": "A restarted Host reuses its last free port.",
+        "lower_layer": "Only a served Host on a real loopback port shows the reuse.",
+    }
     decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
     if edit is None:
         del entries[case]

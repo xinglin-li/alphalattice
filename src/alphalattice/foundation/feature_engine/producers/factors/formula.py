@@ -242,26 +242,25 @@ def formula_controls() -> dict[str, object]:
         "research_leaves": {
             "sector_return": (
                 "the day's equal-weight log return of the listing's Sector, with the Sector in "
-                "force at each session (V346); point in time from T0 and the first recorded "
+                "force at each session; point in time from T0 and the first recorded "
                 "classification backfilled before it, as the study's statement says; a factor "
                 "reading it is tried and reviewed, and is activated once the daily build carries "
-                "its Sector child (V359); the plan keeps it under factor.formula.sector"
+                "its Sector child; the plan keeps it under factor.formula.sector"
             ),
             **{
                 leaf: (
                     f"the session's {leaf.removesuffix('_pit')} as it traded, re-based to the "
                     "session the value is for, so no later split moves it and a level form (a "
-                    "price floor, a dollar threshold) reads the price as it stood (V345); "
+                    "price floor, a dollar threshold) reads the price as it stood; "
                     + (
                         "the share volume re-based by share splits alone: a fractional split "
                         "ratio is a price adjustment, and the provider's share volume before one "
-                        "is assumed scaled by it as by a split, which cannot be checked offline "
-                        "(V348); "
+                        "is assumed scaled by it as by a split, which cannot be checked offline; "
                         if leaf == "volume_pit"
                         else ""
                     )
-                    + "the daily build carries the as-traded fields for a catalog that reads them "
-                    "(V395), so a factor reading it is tried, reviewed and activated as any "
+                    + "the daily build carries the as-traded fields for a catalog that reads them, "
+                    "so a factor reading it is tried, reviewed and activated as any "
                     "formula is; the plan keeps it under factor.formula.point_in_time"
                 )
                 for leaf in FORMULA_POINT_IN_TIME_INDEX

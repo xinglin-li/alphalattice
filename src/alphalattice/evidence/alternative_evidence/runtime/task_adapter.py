@@ -784,7 +784,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     fetched=count.advance,
                 )
                 count.finish(len(source_set.documents))
-                # Retain coverage (V541); exclude quiet indexes (V587).
+                # Retain coverage; exclude quiet indexes.
                 short = sources_short(
                     request.ordered_entity_ids,
                     {value.entity_id for value in snapshot.citations},
@@ -1091,8 +1091,8 @@ class AlternativeEvidenceDocumentTaskAdapter:
         issuer's filing index read at this cutoff (`read_inventory`) when there is one:
         exact, and an empty plan is an issuer that filed nothing. What a current analysis at
         or before the cutoff read in the window is not counted: it is named as
-        read earlier, and an issuer with nothing else in the window is carried
-        (W3). Else its latest sealed selection plan at or before the cutoff, or
+        read earlier, and an issuer with nothing else in the window is carried. Else its latest
+        sealed selection plan at or before the cutoff, or
         the policy budget named as the reservation of an issuer never read --
         no request is made here.
         """
@@ -1319,7 +1319,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         )
 
     def stale_authority(self, task: TaskRecord) -> str | None:
-        """The refusal a coverage run's packets meet once their authority moved (V547).
+        """The refusal a coverage run's packets meet once their authority moved.
 
         The Host no longer holds the authority they were prepared under -- an install replaced
         the package, or official acquisition was served or withdrawn -- so none of them can be
@@ -2281,7 +2281,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         """Validate a submitted answer through the neutral sealer.
 
         Use this before admission and again at execution. ``packet`` is the one the
-        admitting request already verified (V117); at execution it is opened
+        admitting request already verified; at execution it is opened
         and verified again.
         """
         answer = require_answer_format(submitted.answer)
@@ -2684,7 +2684,7 @@ def coverage_unit(
 
     The unit's preparation intent binds its request, obligation, resource binding and the
     admission's three consent flags; the intent excludes the admission's clock, so the
-    request's own cutoff stands in for it (W1: Evidence seals its admission, never its
+    request's own cutoff stands in for it (Evidence seals its admission, never its
     caller).
 
     Args:
@@ -2796,7 +2796,7 @@ def _authority_moved(
     resources: AlternativeEvidenceDocumentTaskResources, mode: AlternativeEvidenceMode
 ) -> str:
     """The refusal of work prepared under authority the Host no longer holds, naming what
-    moved (V547): the source mode -- official acquisition served or withdrawn -- else the
+    moved: the source mode -- official acquisition served or withdrawn -- else the
     installed package, which an install replaces with every packet prepared under it."""
     live = mode is AlternativeEvidenceMode.LIVE_OFFICIAL
     moved = "source" if live != (resources.live_source is not None) else "package"

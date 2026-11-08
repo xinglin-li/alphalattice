@@ -9392,12 +9392,12 @@
 "native_bridge.assignment_ambiguous": {
 "owner": "native_bridge",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A retained pre-FLOW-1 context has no unique assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
+"classification_note": "A retained legacy context has no unique assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
 },
 "native_bridge.assignment_not_observed": {
 "owner": "native_bridge",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A retained pre-FLOW-1 context has no observed assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
+"classification_note": "A retained legacy context has no observed assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
 },
 "native_bridge.binding_ambiguous": {
 "owner": "native_bridge",

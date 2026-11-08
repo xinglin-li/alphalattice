@@ -163,7 +163,7 @@ PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 
 
 class SourceCoverageRefused(ValueError):
-    """A package whose issuers hold too few documents, or none, at its cutoff (V587).
+    """A package whose issuers hold too few documents, or none, at its cutoff.
 
     Its code names the issuers that hold a document, the count the floor needs, those that
     filed nothing and those that failed; the cutoff and the issuers ride beside it, so while
@@ -188,7 +188,7 @@ class SourceCoverageRefused(ValueError):
 
 
 class OptionRefused(ValueError):
-    """A setup refusal on what one option holds, which names that option (V591, V592).
+    """A setup refusal on what one option holds, which names that option.
 
     Its code is the owner's; the option rides beside it, and the setup's answer says what the
     option must hold from the one table its offer states (`SETUP_OPTIONS`).
@@ -206,11 +206,11 @@ class OptionRefused(ValueError):
 
 
 class SourceFileUnavailable(OptionRefused):
-    """A recorded import's file that cannot be read under the option naming its root (V590).
+    """A recorded import's file that cannot be read under the option naming its root.
 
     Its code names the option; the file relative to that root rides beside it, never an
     absolute path, and the OS error is its cause: one the read met, or the object a source set
-    names and its knowledge root lacks (V592).
+    names and its knowledge root lacks.
     """
 
     def __init__(self, option: str, root: Path, error: OSError) -> None:
@@ -251,7 +251,7 @@ def _read_source(root: Path, category: str, identity: str, model: type, field: s
 
 @contextmanager
 def _reading(option: str | None, root: Path) -> Iterator[None]:
-    """Refuse a file a recorded import cannot read under `option`'s root by that option (V590).
+    """Refuse a file a recorded import cannot read under `option`'s root by that option.
 
     An acquisition's own reads, under the workspace it has just written, keep the setup's file
     refusal (`option` None).
@@ -265,7 +265,7 @@ def _reading(option: str | None, root: Path) -> Iterator[None]:
 
 
 def _holding_root(given: Path, source_set_hash: str) -> Path | None:
-    """The one directory below `given` that holds the named source set, where one does (V590).
+    """The one directory below `given` that holds the named source set, where one does.
 
     A root named one level or more above the artifact store -- the workspace, its runtime or
     its artifacts -- is the mistake a recorded import meets; the set's own file decides.
@@ -313,7 +313,7 @@ def _source_documents(
 
     A recorded import names its knowledge root (`option`): a root that is not there, or an object
     the set names that the root lacks, is refused by that option with the object's place under
-    it (V592), before the store's owner is opened there and creates its folders.
+    it, before the store's owner is opened there and creates its folders.
     """
     if isinstance(source_set, AcquiredEvidenceDocumentSet):
         return tuple(source_set.documents)
@@ -822,7 +822,7 @@ class _Setup:
         input_id, input_hash = self.research_input
         requested: tuple[str, ...] = ()
         # A recorded import names its roots, and a file it cannot read under one is refused naming
-        # the option, the file under it and what the option should hold (V590).
+        # the option, the file under it and what the option should hold.
         imported = acquisition["mode"] == "RECORDED_IMPORT"
         with _reading("source_artifact_root" if imported else None, source_root):
             source_set = _read_source(
@@ -881,7 +881,7 @@ class _Setup:
         admitted, rejected = canonicalize_source_documents(
             tuple(value for value in documents if value.entity_id in requested)
         )
-        # The floor as the coverage run judges it (V541, V587): an issuer whose filing index at
+        # The floor as the coverage run judges it: an issuer whose filing index at
         # the source's cutoff shows nothing filed in the window holds nothing to count and leaves
         # the share; a failed or unread acquisition stays in it. Said whether it installs or not.
         covered = {value.entity_id for value in admitted}
@@ -970,7 +970,7 @@ class _Setup:
             "failed": list(failed),
         }
         if getattr(arguments, "preflight", False):
-            # The recorded import's own check (V590): its records, scope, documents and floor read
+            # The recorded import's own check: its records, scope, documents and floor read
             # and judged as the install reads them, with no package sealed and no binding moved.
             return {
                 "status": "EVIDENCE_SOURCE_PREFLIGHT",
@@ -1185,7 +1185,7 @@ def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: st
     of links pointing at the store's verified packs, so one physical copy serves
     every workspace and a pack not installed is a refusal naming it. The retained
     recipe keeps its own layout under `evidence-cro-authority/semantic-model`
-    (the encoder at the root, V208), or an explicit `--semantic-model` directory;
+    (the encoder at the root), or an explicit `--semantic-model` directory;
     a later recipe's is `semantic-model-<recipe>`. Packs are installed with
     scripts/install_retrieval_pack.py, never here.
     """
@@ -1671,7 +1671,7 @@ def _parser(
         "--semantic-model",
         type=Path,
         help="The retained recipe's pack directory inside the workspace; without it the "
-        "recipe is bound from the application model store (V208).",
+        "recipe is bound from the application model store.",
     )
     parser.add_argument(
         "--recipe",
@@ -1740,7 +1740,7 @@ def _acquisition_command(
     """The official acquisition of these issuers at this cutoff, as the person types it.
 
     Bound to the workspace, the research input and the scope given: its read-only check, or
-    the acquisition itself with what shapes the package and its installation as asked (V587).
+    the acquisition itself with what shapes the package and its installation as asked.
     The person's consent is carried only where they gave it.
     """
     parts = ["--acquire-sec"]
@@ -1786,7 +1786,7 @@ def _acquisition_command(
 
 
 def _import_command(arguments: argparse.Namespace, root: Path, host: bool = False) -> str:
-    """The recorded import's own check at this root, as the person types it (V590).
+    """The recorded import's own check at this root, as the person types it.
 
     Bound to the workspace, the research input, the source set and the issuers given: it reads
     and judges what the install would read, offline, and installs nothing.
@@ -1857,8 +1857,8 @@ def setup_refusal(
         payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
     payload["next_commands"] = _ways_on(arguments, error, host)
     if isinstance(error, OptionRefused):
-        # The option it refused on and what that option must hold, as the offer states it
-        # (V591, V592); a file under a root option, by its place there (V590).
+        # The option it refused on and what that option must hold, as the offer states it;
+        # a file under a root option, by its place there.
         payload["location"] = {
             "option": error.option,
             **({"file": error.file} if isinstance(error, SourceFileUnavailable) else {}),
@@ -1872,7 +1872,7 @@ def setup_refusal(
     ):
         # The way on: the same official acquisition of the package's issuers at the one
         # cutoff they were counted at -- what failed is fetched again and a quiet issuer
-        # stays uncounted -- checked first (V587).
+        # stays uncounted -- checked first.
         cutoff, entities = error.evidence_as_of.isoformat(), error.entities
         payload["next_commands"] = {
             "preflight": _acquisition_command(
@@ -1900,7 +1900,7 @@ def setup_refusal(
 
 def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dict[str, str]:
     """A refusal's commands: what fills a retrieval runtime that is not ready, else the mode's
-    check (V590). An acquisition's read-only preflight keeps its exact binding, scope and
+    check. An acquisition's read-only preflight keeps its exact binding, scope and
     explicit consent; a recorded import's way on is its own check, offline."""
     if str(error) in _RUNTIME_REFUSALS:
         # Never the same check again: the runtime's fill and the packs' status come first.

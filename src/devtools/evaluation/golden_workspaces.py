@@ -328,11 +328,26 @@ def payload_path(path: Path) -> Path:
 
 
 def seal_payload(
-    workspace: Path, *, closed: Callable[[Path], AbstractContextManager[None]]
+    workspace: Path,
+    *,
+    closed: Callable[[Path], AbstractContextManager[None]],
+    parent: Path | None = None,
 ) -> None:
-    """Seal only a closed, regular-file payload; immutable bytes never include outward links."""
+    """Seal only a closed, regular-file payload; immutable bytes never include outward links.
+
+    A derived golden's `parent` is the sealed payload it was built from: the files it links from
+    there are that payload's own sealed files, so they must already be read-only and are left as
+    they are (a derived build copied its parent's 3.6 GB whole, mac1 11-07). Every other file keeps
+    the rule, so tests linking from the parent meanwhile change nothing here."""
     workspace = payload_path(workspace)
     try:
+        inherited: set[tuple[int, int]] = set()
+        if parent is not None:
+            for folder, _, names in os.walk(payload_path(parent)):
+                for name in names:
+                    info = os.lstat(os.path.join(folder, name))
+                    if stat.S_ISREG(info.st_mode):
+                        inherited.add((info.st_dev, info.st_ino))
         with closed(workspace):
             contents = _manifest(workspace, (".",), filtered=False)
             files = [
@@ -340,6 +355,11 @@ def seal_payload(
                 for name in contents
                 if not name.endswith("/")
             ]
+            if any(
+                info.st_mode & 0o222 for _, info in files if (info.st_dev, info.st_ino) in inherited
+            ):
+                raise RuntimeError("payload links a writable file of its parent")
+            files = [(p, info) for p, info in files if (info.st_dev, info.st_ino) not in inherited]
             counts = Counter((info.st_dev, info.st_ino) for _, info in files)
             if any(info.st_nlink > counts[info.st_dev, info.st_ino] for _, info in files):
                 raise RuntimeError("payload has a hard link outside its root")
@@ -462,7 +482,7 @@ def remove_tree(path: Path, root: Path) -> list[str]:
     A link (symlink or junction) is removed itself, never followed; a sealed read-only file, or a
     hard link to one, is deleted without touching the attribute every link of it shares. On Windows
     pytest's own cleanup (rmtree, ignoring errors) cannot delete such a file, so each passed
-    journey's whole scratch stayed to the run's end (11-03: 11.5 GB unique in four on pc1).
+    journey's whole scratch stayed to the run's end (11.5 GB unique in four runs).
     Returns each entry it could not remove with its error, for the caller to name; never raises.
     """
     try:

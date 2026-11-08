@@ -948,7 +948,7 @@ class PanelFeatureSourceArrays:
     ordered_sector_ids: tuple[str, ...]
     sector_by_listing_id: Mapping[str, str]
     """Each listing's Sector: a map every session reads, or the Panel's Sector history, whose
-    sessions each read the map in force there (V346)."""
+    sessions each read the map in force there."""
     raw_formula_values: FloatArray
     total_return_target_z: FloatArray
     raw_log_execution_returns: FloatArray
@@ -1230,7 +1230,7 @@ def assemble_panel_context_arrays(
         if eligible.size:
             latest[position] = int(eligible[-1])
 
-    # Each run of formations reads the Sectors in force there (V346); one run while no
+    # Each run of formations reads the Sectors in force there; one run while no
     # reclassification falls inside the window.
     sector_runs: tuple[tuple[slice, dict[str, IntArray]], ...] = tuple(
         (

@@ -14813,6 +14813,97 @@
    "successor": "d2c15cf18691bd8c34e7b2de937b030687b3c822f21bc4a66f3a16605e4678b9",
    "change": "Repair long Windows paths and malformed evidence headings",
    "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "7a49e3479c2be95ff0728f5f4fba841faa3fb17df07094a14cadff7f1a20a77b",
+   "successor": "a7dc823689a8285df306facc16a6c1733dfe280e84b81e5596898a7b863a6969",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fbfebae4b1dedb2a5bd6950fad662f3fd64dee4ec81a0d172f26756d66c5b07d",
+   "successor": "546f318487efedae32bce5167cd32c8f408787c9bf88988119b76644fb74fb61",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "40dde8db88c35adb37200c58f7f0448f3c287954b67be9e4662255c4e523aaf2",
+   "successor": "7187ccd3545d7355810f25b556fe8754ae216ef247ecc0251e86d7546a638528",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "06801f1347fcec989208d03e3e978f26e47024472853550fa7b4e9926ea5cdd1",
+   "successor": "b46ec3a84123b33e0b57ada0cd01af74eeebdfc13fb13816b22a1e38376a528d",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "ec20dbf8650a06acc1c4f6c1eba65afd939d2d43af3f0875ae20ad6ce99ff018",
+   "successor": "0c6da0886096fdb32d1314cf714342d89a1acc8d20327b97ff75df476a67d46c",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "21c185d8a31aca1124c600210f0a6352c2e766bedb1a0dd069d075d3612fe744",
+   "successor": "c830dee393ca0cd35126245da20ddb3335b1d985aa129b76aa11aacabf833b79",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "7fb0433764693644f41d217113920c5d5d8ea8c473108880a911f821d3db3f82",
+   "successor": "ac5778064c6d5c7d82b87e74c4aa635c74bf8d0e5a5d4302e675518944fb9311",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "96dce38dd03f5abd8992b7537983dd3329cfde365e8a9cc6f3b9e9922994530e",
+   "successor": "671f350b47e268fa1b7a000162de503add561440ac8c94554bc6c505830e87e2",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "dc59b788c73a42d838443e26955b8802490516e5f9d2830d4f493e9be7b5b53d",
+   "successor": "a153ebd9c93279eb123772fa97447d9edf7cf744ac7a3da714f75a82b2918339",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "1718e7ab0f5dd57057baf8cc199cb1555489e13b1f3f2873e3a40be8abfba926",
+   "successor": "fabe1e346498002b56c88f9388a1ab8251eec5d0f58a1867f51cc7817fb04900",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c230a2bcd9f5f7622a7f661ceb78b5151ff46ff77aa308d06aca554e74b48f13",
+   "successor": "762c7c4e414435f7a68afd54cda106a4807d87a83b61b74f783a394c3b46c241",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "successor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "change": "Share workspace database access for panel readers",
+   "reason": "Model development's implementation identity changes because six file-backed readers now open the workspace database through its owner, read-only; their queries, ordering and returned values are unchanged, and no data or result identity moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "successor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "change": "Share workspace database access for panel readers",
+   "reason": "Model development's implementation identity changes because six file-backed readers now open the workspace database through its owner, read-only; their queries, ordering and returned values are unchanged, and no data or result identity moves."
   }
  ]
 }

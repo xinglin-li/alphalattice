@@ -1367,7 +1367,7 @@ def test_rate_limit_stops_before_submitting_the_next_chunk(tmp_path) -> None:
 
 
 def test_a_market_profile_is_read_by_its_typed_contract(tmp_path: Path) -> None:
-    """regression (V275, V276): the profile reader took any mapping, so an unknown key or a
+    """regression: the profile reader took any mapping, so an unknown key or a
     provider written as a callable path built a manifest with its identity; the profile is a
     typed contract read by the one declaration loader, which refuses both and a key twice."""
 

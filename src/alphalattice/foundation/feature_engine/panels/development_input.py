@@ -188,7 +188,7 @@ class CompositeDevelopmentFeatureReader:
     def listing_ids(self, manifest_ref: str | None = None) -> tuple[str, ...]:
         """The base Panel's listing axis, which this surface covers row for row.
 
-        What an exploration sample is drawn from (binding plan, B17).
+        What an exploration sample is drawn from.
         """
         del manifest_ref
         if self._listing_ids is None:

@@ -8,7 +8,7 @@ flags and the record version, and hands all of them over under one lock
 dispatcher owns whether this Host's command has returned and why a worker
 stopped outside Task Control, and those two facts are kept apart from Task
 Control's state rather than masked over it; the service owns which Task kinds
-it can resume; the owner that admits each Task kind declares its re-PLAN (V188),
+it can resume; the owner that admits each Task kind declares its re-PLAN,
 and the service hands those declarations over. Nothing here
 repairs, retries, kills a process, restarts a native Agent or changes a
 scientific policy -- `active_remediation_attempt_count` is 0 by contract, a
@@ -143,7 +143,7 @@ class StopFact(_Contract):
     The typed reason Task Control recorded for a stop, with a bounded user-safe
     explanation. `recoverable` is Task Control's own RECOVERY_REQUIRED, never a guess
     from the code. `cause` is what the stopped stage's owner saw beside the code, as its
-    work item keeps it (V444).
+    work item keeps it.
     """
 
     code: str = Field(min_length=1, max_length=240)
@@ -365,7 +365,7 @@ def _owner_words(code: str) -> str | None:
 
     The door's words for a data or Feature code, then the Host's (`explain`), which name the way
     on, then the maintenance guardian's, which name the stop: a stop reads its owner's words
-    wherever it stopped, never words for one kind and the governed fallback for another (V504:
+    wherever it stopped, never words for one kind and the governed fallback for another (
     RR5's book read the bare code).
     """
     worded = (

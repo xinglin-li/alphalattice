@@ -20,12 +20,12 @@
 
   if (!initial.has('page')) app.page = Data.entryPage(initial) || (ROUTES[entry.page] ? entry.page : 'overview');
   readRoute();
-  // A zh reader's first paint waits for the dictionary the prelude asked for (round 96); an
+  // A zh reader's first paint waits for the dictionary the prelude asked for; an
   // English reader's does not wait for anything.
   const dictionary = I18N.ensure(lang);
   const start = () => { render(); Data.connect(); };
   if (dictionary) dictionary.then(start); else start();
-  // An error nobody caught (round 96): the card when the page is blank, the toast when it is drawn.
+  // An error nobody caught: the card when the page is blank, the toast when it is drawn.
   const uncaught = (error) => {
     const main = $('#main');
     if (!main || !main.childElementCount) return renderFailure(error, 'uncaught');

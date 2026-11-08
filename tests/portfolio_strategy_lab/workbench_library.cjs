@@ -46,7 +46,7 @@ function library(appDir) {
   const text = fs.readFileSync(path.join(appDir, 'components.js'), 'utf8');
   const from = text.indexOf("/* ---- the library's constants"), to = text.indexOf("/* ---- end of the library's constants ---- */");
   if (from < 0 || to < 0) throw Error("components.js: the library's constants are not marked");
-  // the label table the build embeds (U72), read from its one source
+  // the label table the build embeds, read from its one source
   const table = JSON.parse(fs.readFileSync(path.join(appDir, '..', '..', '..', '..', 'labels.json'), 'utf8'));
   const LABELS = Object.fromEntries(table.labels.map((l) => [l.id, {kind: l.kind, title: l.title, title_zh: l.title_zh, summary: l.summary, summary_zh: l.summary_zh}]));
   const context = {String, BREAKPOINTS, PARAMETER_VALUES};
@@ -55,7 +55,7 @@ function library(appDir) {
   // Formal overlays on pre-bridge source retain the legacy-only context; retire with that base.
   return {...context.out, BREAKPOINTS, PARAMETER_VALUES, LABELS, MESSAGE_WORDS: fs.existsSync(path.join(__dirname,'../../src/alphalattice/interface/local_application/message_catalog.cjs')) ? require('../../src/alphalattice/interface/local_application/message_catalog.cjs')() : {}};
 }
-// the Evidence library's builders (C1): the marked section of components.js evaluated inside the
+// the Evidence library's builders: the marked section of components.js evaluated inside the
 // harness's own context, so each builder composes that harness's stubs (html, btnAttrs, panel ...)
 // and a builder moved into the library needs no copy in any harness
 function builders(c, appDir) {
@@ -75,7 +75,7 @@ const chrome = {
   setDisplay: (name, patch) => ({...patch}),
   chipValues: (v) => (v ? String(v).split(',').filter(Boolean) : []),
 };
-// The Host's routes (U13), from its own two tables in local_web_session.py: the session answer names them, and a
+// The Host's routes, from its own two tables in local_web_session.py: the session answer names them, and a
 // page's `Data.route` turns an operation into its path by them -- a harness's Data stub gains the same
 function hostRoutes() {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'alphalattice', 'control', 'product_host', 'composition', 'local_web_session.py'), 'utf8');
@@ -136,7 +136,7 @@ library.into = (c, appDir) => {
 library.readingSource = (appDir) => {
   const text = fs.readFileSync(path.join(appDir, 'components.js'), 'utf8');
   const from = text.indexOf('/* ---- percentages for reading');
-  const tooltip = text.indexOf('/* One tooltip (round 93');
+  const tooltip = text.indexOf('/* One tooltip (');
   const grammar = text.indexOf('/* One number grammar.', tooltip);
   const fraction = text.indexOf('const pctFraction', grammar);
   const end = text.indexOf('\n', fraction);
@@ -183,7 +183,7 @@ library.refusal = (c, appDir) => {
   return c.refusal;
 };
 // A harness proves it finished. An async harness whose await never settles exits 0 with its later
-// assertions unrun (handoffs: this hid 13 flows from round 21 to round 77), so a harness takes
+// assertions unrun (handoffs: this hid 13 flows in earlier revisions), so a harness takes
 // `finish` from here at its start and calls it at its end; an exit without it is a failure.
 library.guard = (name) => {
   let complete = false;

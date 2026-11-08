@@ -517,7 +517,7 @@ class PortfolioRunCommand:
 
 
 def _read_at(request: PortfolioResearchOperationRequest) -> datetime | None:
-    """When a review's dossier was read, as its bundle or first part sealed it (V255)."""
+    """When a review's dossier was read, as its bundle or first part sealed it."""
     return (
         None if request.review_read_at is None else datetime.fromisoformat(request.review_read_at)
     )
@@ -538,7 +538,7 @@ class PortfolioResearchOperations:
     what it reads never raises past its boundary and never changes what Task Control says."""
     data_update: WorkspaceDataUpdateApplication | None = None
     manifests: ResearchWorkspaceManifestHolder | None = None
-    """The one holder of the workspace manifest the applications read (V182); made from
+    """The one holder of the workspace manifest the applications read; made from
     `workspace_manifest` when the composition passes none."""
     recover_task: Callable[..., tuple[UUID, ...]] | None = None
     """`(task_id, *, expected_task_hash=None)`: the service's own resume. A confirmed
@@ -565,11 +565,11 @@ class PortfolioResearchOperations:
     """The served Host's own stop (`host stop`), set by its launcher; None without one."""
     native_projects: set[Path] = field(default_factory=set)
     """Agent projects this Host admitted a Session binding from, for a workspace kept outside
-    them; found again after a restart by the next bind or milestone (FLOW-1)."""
+    them; found again after a restart by the next bind or milestone."""
     autobound: set[tuple[str, str]] = field(default_factory=set)
     """The Sessions this Host checked for a binding, once each per run (AUTOBIND)."""
     goals_named: set[tuple[str, str, str]] = field(default_factory=set)
-    """Each Session and goal whose holding this Host filed, once per run (STOPS-1)."""
+    """Each Session and goal whose holding this Host filed, once per run."""
 
     observer_failures: int = field(default=0, init=False)
     last_observer_failure: str | None = field(default=None, init=False)
@@ -585,7 +585,7 @@ class PortfolioResearchOperations:
     activations: StrategyActivation | None = field(init=False, default=None)
     experiments: ResearchExperimentApplication = field(init=False)
     model_contracts: dict[str, dict[str, Any]] = field(init=False, default_factory=dict)
-    """Each Alpha model's contract answer by its identity, for the Host's life (V353)."""
+    """Each Alpha model's contract answer by its identity, for the Host's life."""
     goals: GoalApplication = field(init=False)
     preparation: WorkspacePreparationApplication = field(init=False)
     data_issues: WorkspaceDataIssueApplication = field(init=False)
@@ -788,17 +788,17 @@ class PortfolioResearchOperations:
         )
 
     def sweep_if_due(self) -> None:
-        """Admit the verification sweep when it is due and nothing else waits (V89).
+        """Admit the verification sweep when it is due and nothing else waits.
 
         The workspace's lowest priority, it runs only in time the Tasks leave idle: never while
-        a deferral holds the running place, which it would only queue behind (V604).
+        a deferral holds the running place, which it would only queue behind.
         """
         with self.sweep.admission:
             if self.sweep.due() and not self._tasks_wait():
                 self.dispatcher.submit(StudyVerificationSweepCommand(self.sweep, "DUE"))
 
     def verify_all(self) -> dict[str, object]:
-        """Admit a whole sweep at once: every saved study verified in full (V89)."""
+        """Admit a whole sweep at once: every saved study verified in full."""
         studies = len(self.sweep.saved_studies())
         sent = self.dispatcher.submit(StudyVerificationSweepCommand(self.sweep, "ALL"))
         if sent.task_id is None:
@@ -899,7 +899,7 @@ class PortfolioResearchOperations:
                 **self._network(),
             )
         if goal is None:
-            # Every refusal leaves with its words and a way on (OP4, V449).
+            # Every refusal leaves with its words and a way on (OP4).
             answered = worded_refusal(
                 _carried(
                     self._execute_observed(request, caller=caller, agent_execution=agent_execution),
@@ -948,7 +948,7 @@ class PortfolioResearchOperations:
         body = self.goals.resume_decided(
             goal, request, body, lambda r: self.execute(r, caller=caller)
         )
-        # The goal the request counted toward, which the answer's context names (V401).
+        # The goal the request counted toward, which the answer's context names.
         return worded_refusal(
             _carried({**body, "attributed_goal_id": str(goal.goal_id)}, request),
             **self._network(),
@@ -1028,7 +1028,7 @@ class PortfolioResearchOperations:
             threading.Thread(target=self.read_native_usage, daemon=True).start()
 
     def _name_goal(self, provenance: RequestProvenance | None, goal: Goal | None) -> None:
-        """File, once, the goal a bound Session holds, so its Sessions row reads it (STOPS-1).
+        """File, once, the goal a bound Session holds, so its Sessions row reads it.
 
         A goal the Host opened for the Session, or one it opened or took itself, is named by
         the same product fact as its binding; the Session never has to declare it. Any
@@ -1107,7 +1107,7 @@ class PortfolioResearchOperations:
         return {"workspace": self.workspace_session.workspace, "now": self.dispatcher.clock()}
 
     def _delegating_goal(self) -> Goal | None:
-        """The first-use goal whose delegation this request runs under, if any (V452)."""
+        """The first-use goal whose delegation this request runs under, if any."""
         provenance = REQUEST_PROVENANCE.get()
         if provenance is None or provenance.delegation is None or provenance.goal_id is None:
             return None
@@ -1116,7 +1116,7 @@ class PortfolioResearchOperations:
     def _settle_first_use(self, goal: Goal | None) -> None:
         """Close the network a first-use goal's delegation opened, once the goal is over.
 
-        The goal grants nothing after it (V452): its end, by submission, abandonment or its
+        The goal grants nothing after it: its end, by submission, abandonment or its
         hours passing, closes what its delegation opened, recorded in its ledger, and the source
         consent it gave goes back to none.
         """
@@ -1128,7 +1128,7 @@ class PortfolioResearchOperations:
         if not self.goals.network_left_open(goal):
             return
         # Only a setting the delegation still holds is undone: a person who set the network
-        # since keeps theirs (V460).
+        # since keeps theirs.
         held = network_access(**self._network()).set_by
         if held is None or held.get("delegation") != f"first-use-goal:{goal.goal_id}":
             return
@@ -1442,7 +1442,7 @@ class PortfolioResearchOperations:
             if caller != "HUMAN":
                 return refused("local_application.network_access_human_only")
             assert request.network_enabled is not None
-            # A first-use goal's step holds only until its delegation ends (OP19, V452).
+            # A first-use goal's step holds only until its delegation ends (OP19).
             delegated = self._delegating_goal()
             return set_workspace_network(
                 **self._network(),
@@ -1616,15 +1616,15 @@ class PortfolioResearchOperations:
                             moved=code == "research_experiment.execution_binding_changed",
                         ),
                     ),
-                    # Where a declaration sent as text stopped parsing (V145).
+                    # Where a declaration sent as text stopped parsing.
                     **({"document_location": located} if located else {}),
-                    # What the refusing owner knows each field may hold (V292).
+                    # What the refusing owner knows each field may hold.
                     **(
                         {"expected": error.expected}
                         if isinstance(error, AuthoringError) and error.expected
                         else {}
                     ),
-                    # A missing prerequisite result names the flow's and the way on (V367).
+                    # A missing prerequisite result names the flow's and the way on.
                     **self.experiments.refusal_prerequisites(code, request),
                 }
         try:
@@ -1654,7 +1654,7 @@ class PortfolioResearchOperations:
             case "RESEARCH_UPDATE_AUTOMATION_CONFIGURE":
                 assert caller != "SERVICE_AUTOMATION"
                 if caller == "EXTERNAL_AUTOMATION":
-                    # A person turns it on or off (PERSON_ONLY, V407).
+                    # A person turns it on or off (PERSON_ONLY).
                     raise ValueError("research_update.human_confirmation_required")
                 if (
                     type(request.automation_enabled) is not bool
@@ -1881,7 +1881,7 @@ class PortfolioResearchOperations:
                         }
                     failure = (
                         # The Alpha store says it in a sentence, inside the study's closure: a
-                        # stored artifact missing, stale or tampered (V449).
+                        # stored artifact missing, stale or tampered.
                         {"failure_code": "strategy_score.alpha_artifact_unreadable"}
                         if type(error).__name__ == "AlphaDevelopmentArtifactReadbackError"
                         and safe_failure_code(str(error)) is None
@@ -1950,7 +1950,7 @@ class PortfolioResearchOperations:
         raise ValueError("portfolio_research.operation_unknown")
 
     def _agent_run(self) -> AgentRun | None:
-        """The Session that submitted an answer, recorded beside it (V300, AU3, LAWS.md ID7).
+        """The Session that submitted an answer, recorded beside it (AU3, LAWS.md ID7).
 
         A review member's own answer is named on its bundle's thread; otherwise which child
         wrote it is not observed, so the record names the host and Session alone. None for a
@@ -1971,7 +1971,7 @@ class PortfolioResearchOperations:
         *,
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object] | None:
-        """Wire one sealed answer to the shared native observation owner (V691)."""
+        """Wire one sealed answer to the shared native observation owner."""
         view = body.get("answer")
         delivery = view.get("accepted_delivery") if isinstance(view, dict) else None
         if body.get("disposition") not in {"ADMITTED", "REUSED_EXACT"}:
@@ -2161,7 +2161,7 @@ class PortfolioResearchOperations:
     ) -> dict[str, object] | None:
         """A bundle selector names its missing fields; an unavailable unit names its read."""
         code = public_failure(error, "agent_bundle.refused")
-        # A packet named without its Task or unit is told how to name it (V242).
+        # A packet named without its Task or unit is told how to name it.
         if str(error).partition(":")[0] in PACKET_SELECTOR_CODES | {
             "agent_bundle.specialist_task_required",
             "agent_bundle.reference_bound_exceeded",
@@ -2277,7 +2277,7 @@ class PortfolioResearchOperations:
                         request.review_publication_hash,
                         prior_publication_hash=request.prior_review_publication_hash,
                     )
-                # A page slices the export sealed for this book and review (V94).
+                # A page slices the export sealed for this book and review.
                 exported, basis = delivery.export_page_source(
                     selector,
                     request.review_publication_hash,
@@ -2374,7 +2374,7 @@ class PortfolioResearchOperations:
                         view_to=request.view_to,
                     )
                 except (PortfolioEvidenceReviewError, ValueError) as error:
-                    # An unprepared unit says why and where prepared ones are (V388).
+                    # An unprepared unit says why and where prepared ones are.
                     unit = unit_refusal(
                         public_failure(error, "alternative_evidence.refused"),
                         None if selector is None else selector.request_fields(),
@@ -2543,7 +2543,7 @@ class PortfolioResearchOperations:
         """Refresh the one workspace manifest holder every application reads.
 
         The applications read `manifests.current`, so none keeps a stale copy and refuses its
-        next plan as `workspace_manifest_changed` on unmoved inputs (V182). The update
+        next plan as `workspace_manifest_changed` on unmoved inputs. The update
         automation keeps only the hash its settings are approved under, so a new manifest asks
         for their approval again, as on restart.
 
@@ -2647,7 +2647,7 @@ class PortfolioResearchOperations:
         """Hold the manifest a person's activation or deactivation published (LS1).
 
         The Host wrote it itself, under its gate, so it is held as published; the daily update
-        offers the packages it now binds, and asks the person again (V182).
+        offers the packages it now binds, and asks the person again.
         """
         self._hold(current)
         self._manifest_stamp = _file_stamp(
@@ -2659,7 +2659,7 @@ class PortfolioResearchOperations:
             )
 
     def _book_review_standing(self, task_id: UUID) -> dict[str, object]:
-        """Compose the Task publication and the review owner's exact-result standing (V614)."""
+        """Compose the Task publication and the review owner's exact-result standing."""
         assert self.activations is not None and self.review is not None
         result_hash = self.activations.book_result_hash(task_id)
         return EvidenceReviewDelivery(self.review).review_standing(
@@ -2974,7 +2974,7 @@ class PortfolioResearchOperations:
             return refused(
                 code,
                 task_id=str(request.task_id or "") or None,
-                # A study the trial cannot run against names the way on (V354).
+                # A study the trial cannot run against names the way on.
                 trial=self.trials.way_on(request.feature_plan_hash)
                 if code == "feature_trial.study_not_from_factor_evidence"
                 and request.feature_plan_hash is not None
@@ -2992,7 +2992,7 @@ class PortfolioResearchOperations:
                 "input_binding_hash"
             ]
         )
-        # What the build's source can claim about time, from its input's Panel (V347).
+        # What the build's source can claim about time, from its input's Panel.
         return {
             **build,
             "temporal_scope": binding_temporal_scope(
@@ -3014,7 +3014,7 @@ class PortfolioResearchOperations:
                 assert request.input_binding_hash is not None
                 return {
                     **definitions.controls(request.input_binding_hash, request.feature_plan_hash),
-                    # V367, V354: trial controls precede the factor build.
+                    # trial controls precede the factor build.
                     **self.experiments.prerequisites_of(
                         "FEATURE_TRIAL", binding_hash=request.input_binding_hash
                     ),
@@ -3040,7 +3040,7 @@ class PortfolioResearchOperations:
             )
             held = [v.binding_hash for v in self.experiments.manifest.experiment_inputs or ()]
             if isinstance(error, FileNotFoundError) and named and named not in held:
-                # V380: refused bindings offer their field and admitted controls.
+                # refused bindings offer their field and admitted controls.
                 return {
                     "status": "REFUSED",
                     "failure_code": "feature_research.input_binding_unresolved",
@@ -3234,7 +3234,7 @@ class PortfolioResearchOperations:
             plan = self.data_update.prepare(request.update_plan_hash)
             reused = self.data_update.reusable(plan)
             if reused is not None:
-                # V449: follow the Task that sealed the reused update.
+                # follow the Task that sealed the reused update.
                 sealed = self.data_update.receipt_task(reused)
                 return {
                     "status": "REUSED_EXACT",
@@ -3259,13 +3259,13 @@ class PortfolioResearchOperations:
             answer = self._run_answer(submitted, plan)
             return {
                 **answer,
-                # A refused admission's words, a provider's wait among them (V375).
+                # A refused admission's words, a provider's wait among them.
                 **(
                     explain(submitted.refusal_detail, **self._network())
                     if submitted.refusal_detail
                     else {}
                 ),
-                # The update it started, read by its Task (V418).
+                # The update it started, read by its Task.
                 **(
                     {
                         "next_requests": {
@@ -3291,7 +3291,7 @@ class PortfolioResearchOperations:
                 **located_failure(error, "workspace_data_update.refused"),
             }
             if update_refusal["failure_code"] == "workspace_data_update.plan_required":
-                # A plan past its hour or never kept here: plan the update again (V543).
+                # A plan past its hour or never kept here: plan the update again.
                 update_refusal["next_requests"] = {"replan": {"operation": "DATA_UPDATE_PLAN"}}
             return update_refusal
 
@@ -3317,7 +3317,7 @@ class PortfolioResearchOperations:
                     "failure_code": "local_application.expected_task_hash_required",
                     "task_id": before["task_id"],
                     "task_record_hash": before["task_record_hash"],
-                    # The view that offers it bound to this version (V443).
+                    # The view that offers it bound to this version.
                     "next_requests": {
                         "recovery": {
                             "operation": "TASK_RECOVERY",
@@ -3672,7 +3672,7 @@ class PortfolioResearchOperations:
         """The Task a readback of work planned per strategy reads, or its answer without one.
 
         Its Task, or its strategy's latest, never another strategy's; unselected, refused where two
-        strategies hold Tasks (V595). The owner then reads the Task it is handed.
+        strategies hold Tasks. The owner then reads the Task it is handed.
         """
         registry = self.workspace_session.task_control_registry
         return strategy_task(
@@ -3686,11 +3686,11 @@ class PortfolioResearchOperations:
 
     def _automation_answer(self, body: dict[str, object]) -> dict[str, object]:
         """The daily update with the strategies it runs forward, and a person's two requests
-        on it: on for exactly those strategies, or off (U73). It offers no other package, and
+        on it: on for exactly those strategies, or off. It offers no other package, and
         refuses one by name (`research_update.automation_package_not_installed`)."""
         assert self.automation is not None
         ids = sorted(self.automation.installed)
-        # Each strategy owns its latest update and its read (V595).
+        # Each strategy owns its latest update and its read.
         read = _STRATEGY_READS["RESEARCH_UPDATE_READBACK"]
         latest = latest_by_strategy(
             (
@@ -3746,7 +3746,7 @@ class PortfolioResearchOperations:
         return {**body, "runs_forward": rows, "next_requests": requests}
 
     def _forward_intents(self) -> list[dict[str, object]]:
-        """Each installed research strategy's way forward, beside the inputs' flows (V471).
+        """Each installed research strategy's way forward, beside the inputs' flows.
 
         A strategy that runs forward offers its daily update's plan; one that does not names its
         activation, a person's, with the book it would activate or the book it holds. A default
@@ -3757,7 +3757,7 @@ class PortfolioResearchOperations:
         )
         if not self.installed():
             # No strategy installed: the way begins at the research strategy's controls, which
-            # name each missing component's first step (V505, RR5): the first intent, the
+            # name each missing component's first step (RR5): the first intent, the
             # shortest way to positions, ahead of the inputs' Lab flows.
             return [
                 {
@@ -3779,7 +3779,7 @@ class PortfolioResearchOperations:
                 and "next_requests" not in offer
                 and "held" not in offer
             ):
-                # Installed with no book yet: its whole-support book comes next (FLOW-3).
+                # Installed with no book yet: its whole-support book comes next.
                 intents.append(
                     {
                         "flow": "RUN_FORWARD",
@@ -3810,7 +3810,7 @@ class PortfolioResearchOperations:
         return intents
 
     def _reopen_runner_block(self, record: TaskRecord, confirmed: str) -> dict[str, object]:
-        """Reopen a Task the runner itself blocked, as its RECOVER confirms (V475, PERF-1).
+        """Reopen a Task the runner itself blocked, as its RECOVER confirms.
 
         The block is Task Control's own (`TASK_STAGE_RAISED`, or the memory check before a
         stage), so any Task kind reopens: the cause is fixed or memory is free, the confirmed
@@ -3841,7 +3841,7 @@ class PortfolioResearchOperations:
         }
 
     def _activation_offer(self, package_id: str) -> dict[str, object]:
-        """The activation's offer, a held book with its refusal's words (U73)."""
+        """The activation's offer, a held book with its refusal's words."""
         assert self.activations is not None
         offer: dict[str, object] = self.activations.offer(package_id)
         held = offer.get("held")
@@ -3955,7 +3955,7 @@ class PortfolioResearchOperations:
         """
         assert self.application is not None
         spec = self._spec(document)
-        # A full queue answers before the plan resolves sources, scope and caches (V100); a
+        # A full queue answers before the plan resolves sources, scope and caches; a
         # preview of a run's reuse takes no place.
         try:
             self.workspace_session.task_control_registry.check_capacity()
@@ -3972,7 +3972,7 @@ class PortfolioResearchOperations:
         # Revalidate through the existing read-only owner once per RUN; pass the
         # resulting authorities to admission rather than resolving them again.
         planned = self.application.plan(spec)
-        # The one reuse rule, which the standalone script's run keeps too (V195).
+        # The one reuse rule, which the standalone script's run keeps too.
         reused = self.application.reused(spec, planned)
         if reused is not None:
             return {
@@ -4040,11 +4040,11 @@ class PortfolioResearchOperations:
         fact = self.supervisor.attention((record,))[task_id]
         body["attention"] = fact.model_dump(mode="json")
         resolved_read(body, fact)
-        # What the stopped stage's owner saw beside its code (V444).
+        # What the stopped stage's owner saw beside its code.
         cause = next((item.failure_cause for item in items if item.failure_cause), None)
         if cause is not None:
             body["failure_cause"] = cause.model_dump(mode="json")
-        # The agent session that submitted it, where its request named one (U33).
+        # The agent session that submitted it, where its request named one.
         agent = registry.submitted_by(task_id)
         body["submitted_by"] = None if agent is None else agent.model_dump(mode="json")
         # Its open incident, as the Supervisor last found it (GY2, WK).
@@ -4064,7 +4064,7 @@ class PortfolioResearchOperations:
         return body
 
     def _preparation_readback(self, task_id: UUID | None) -> dict[str, Any]:
-        """Read recovery and timed provider deferrals on the same plan (V375)."""
+        """Read recovery and timed provider deferrals on the same plan."""
         prepared = self.preparation.readback(task_id)
         if prepared.get("status") != "DEFERRED":
             return self.goals.preparation_recovery(prepared, REQUEST_PROVENANCE.get())
@@ -4083,12 +4083,12 @@ class PortfolioResearchOperations:
 
     def _data_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A data update's readback; one the provider deferred says why, when, and how it
-        resumes, and that the published inputs stand meanwhile (V375)."""
+        resumes, and that the published inputs stand meanwhile."""
         if self.data_update is None:
             raise ValueError("workspace_data_update.not_configured")
         updated = self.data_update.readback(task_id)
         if updated.get("task_lifecycle") == "BLOCKED" and updated.get("task_id"):
-            # A stop its plan's rerun resumes offers that rerun (V600).
+            # A stop its plan's rerun resumes offers that rerun.
             offer = self._resume_offer(UUID(str(updated["task_id"])))
             offered = cast(dict[str, Any], updated.get("next_requests") or {})
             task = self.workspace_session.task_control_registry.task(UUID(str(updated["task_id"])))
@@ -4230,14 +4230,14 @@ class PortfolioResearchOperations:
 
     def _deferred_way(self, task_kind: str, task_id: UUID) -> dict[str, object]:
         """A deferred Task's way on: its owner's words, its retry time, the request that resumes
-        it and the readback that says so (V507). A kind without a deferral readback goes on by
+        it and the readback that says so. A kind without a deferral readback goes on by
         its recovery view; a readback that refuses leaves its read, which says why."""
         if task_kind == PREPARATION_TASK_KIND:
             operation, reader = "WORKSPACE_PREPARE_READBACK", self._preparation_readback
         elif task_kind == DATA_UPDATE_TASK_KIND:
             operation, reader = "DATA_UPDATE_READBACK", self._data_update_readback
         elif task_kind == DecisionAdvancementApplication.task_kind:
-            # A research update the provider deferred in its data stage (V601).
+            # A research update the provider deferred in its data stage.
             operation, reader = "RESEARCH_UPDATE_READBACK", self._research_update_readback
         else:
             recovery = {"operation": "TASK_RECOVERY", "task_id": str(task_id)}
@@ -4259,7 +4259,7 @@ class PortfolioResearchOperations:
     ) -> TaskSafeProjection:
         """The Task's status once it moves on from ``seen`` (its lifecycle or a verified
         stage), or after ``wait_seconds``: a follow learns of a change when it happens
-        instead of at its next poll (binding plan N8). Read every tenth of a second, and
+        instead of at its next poll. Read every tenth of a second, and
         nothing is held between reads, so the Task's own writes never wait on a follower."""
 
         deadline = monotonic() + wait_seconds
@@ -4278,7 +4278,7 @@ class PortfolioResearchOperations:
     def pending_decisions(self, *, caller: OperationCaller = "HUMAN") -> dict[str, object]:
         """What waits on a person, each with the request that takes it (N5)."""
         # One reading of the Tasks serves the whole page: the studies waiting, the
-        # stopped Tasks and the upgrade overview answer at one moment (V119).
+        # stopped Tasks and the upgrade overview answer at one moment.
         batch = self.workspace_session.task_control_registry.record_collection()
         tasks = batch.records
         task_refusals = [task_record_refusal(task_id) for task_id in batch.refused_task_ids]
@@ -4291,7 +4291,7 @@ class PortfolioResearchOperations:
                     goal_ids
                 )
         # The workspace's own state is its owners' answers, read in one boundary; a store a
-        # writer holds leaves its part unread rather than read as empty (V45).
+        # writer holds leaves its part unread rather than read as empty.
         owners: dict[str, dict[str, object]] = {}
         with self.workspace_session.reads(timeout_seconds=0.05) as batched:
             for name, request in (
@@ -4344,7 +4344,7 @@ class PortfolioResearchOperations:
         )
         if task_refusals:
             cast(list[dict[str, Any]], answer["decisions"]).extend(
-                # An unreadable record is a defect the agent reads and repairs (STOPS-1).
+                # An unreadable record is a defect the agent reads and repairs.
                 {
                     "kind": "TASK_RECORD_UNREADABLE",
                     **item,
@@ -4437,7 +4437,7 @@ class PortfolioResearchOperations:
         }
 
     def replans(self) -> dict[str, TaskReplan]:
-        """Each Task kind's re-PLAN, as the owner that admits it declares it (V188).
+        """Each Task kind's re-PLAN, as the owner that admits it declares it.
 
         Returns:
             The declarations of every owner this service composes, by Task kind.
@@ -4498,7 +4498,7 @@ class PortfolioResearchOperations:
         status["resume_refusal"] = resume_refusal
         body: dict[str, object] = {**view.model_dump(mode="json"), "status": status}
         # Each permitted versioned action, bound to the Task and version this view read, so
-        # `recovery run --from` sends what was seen; one moved since is refused, unapplied (V443).
+        # `recovery run --from` sends what was seen; one moved since is refused, unapplied.
         versioned = {"RECOVER", "CANCEL"}
         available = [a for a in cast(list[Any], body.get("actions") or []) if a.get("available")]
         offered = {
@@ -4778,9 +4778,9 @@ class PortfolioResearchOperations:
         self, sent: CommandSubmission, data_plan: WorkspaceDataUpdatePlan | None = None
     ) -> dict[str, Any]:
         """A run's answer by its Task as its status reads it, not the state it was admitted
-        in (V600): a stopped one with its stop's code, words and way on, an update resumed on its
+        in: a stopped one with its stop's code, words and way on, an update resumed on its
         own move's checkpoint saying so. A refused admission names its code; a deferral refused
-        before its retry time, that time, read for `data_plan` (V601).
+        before its retry time, that time, read for `data_plan`.
         """
         if sent.task_id is None:
             refused: dict[str, Any] = sent.answer()
@@ -4831,7 +4831,7 @@ class PortfolioResearchOperations:
 
     def _resume_offer(self, task_id: UUID) -> dict[str, object]:
         """A stopped update's resume: its own plan run again, where its stop is one a rerun
-        resumes (V600).
+        resumes.
 
         A data update and a research update stop in the data update's stages, whose owner says
         which stops a rerun resumes; each is offered through the door that reruns its kind.
@@ -4871,7 +4871,7 @@ class PortfolioResearchOperations:
             **self._network(),
         )
         # A code the door's table words reads in those words when its owner adds none, as a
-        # refusal does at the door (OP4): a walk refused before it opens says why (V519).
+        # refusal does at the door (OP4): a walk refused before it opens says why.
         way = way or dict(refusal_words(code) or {})
         way = self.review.next_install(way, task_id, code) if self.review else way
         request = self._task_replan(self.workspace_session.task_control_registry.task(task_id))
@@ -4960,7 +4960,7 @@ class PortfolioResearchOperations:
         limit: int = 50,
         cursor: str | None = None,
     ) -> dict[str, object]:
-        """The workspace's Tasks; or one agent session's, a page at a time (U54).
+        """The workspace's Tasks; or one agent session's, a page at a time.
 
         A session's page names each Task's submitter, final lifecycle and the artifact its owner
         reads back now: the activity feed's own readback, never the feed.
@@ -5106,7 +5106,7 @@ class PortfolioResearchOperations:
         return EvidenceCroProjector(self.review).completed_preparation(task)
 
     def _read_back(self, projection: TaskSafeProjection) -> dict[str, object] | None:
-        """The artifact a succeeded Task's owner opens now; unavailable when it cannot (U54)."""
+        """The artifact a succeeded Task's owner opens now; unavailable when it cannot."""
         published = _PUBLISHED_ARTIFACTS.get(projection.task_kind)
         if published is None:
             return None
@@ -5138,7 +5138,7 @@ class PortfolioResearchOperations:
         artifact's own identity: the Portfolio result is read through REPORT's owner readback, so
         an index entry alone never counts; an experiment's evidence is what its Task's last stage
         verified and sealed in a VERIFIED receipt, so the Host runs no second readback (W10). The
-        activity feed and a session's Task listing read through this one (U54).
+        activity feed and a session's Task listing read through this one.
 
         Args:
             command_kind: The command's kind, which is its Task's kind.
@@ -5371,7 +5371,7 @@ class PortfolioResearchOperations:
             ),
             "report_hash": report.report_hash,
             "originating_task_id": None if task is None else str(task),
-            # Every Task that published this result, the first included (V189).
+            # Every Task that published this result, the first included.
             "used_by_task_ids": (
                 []
                 if self.application is None
@@ -5433,7 +5433,7 @@ class PortfolioResearchOperations:
             "limitations": list(report.limitations),
             "unit_rows": [list(row) for row in report.window_unit_rows],
             "report_unit": report.report_unit,
-            # The book this report read goes on to its own review, never the default's (V598).
+            # The book this report read goes on to its own review, never the default's.
             "review_selector": selector,
             "next_requests": review_requests(selector),
         }
@@ -5640,7 +5640,7 @@ class PortfolioResearchOperations:
             "evidence_as_of": selection.evidence_as_of.isoformat(),
             "chosen_at": selection.chosen_at.isoformat(),
             "chosen_by": selection.chosen_by,
-            # The book the choice was recorded for, and its review read against it (V487).
+            # The book the choice was recorded for, and its review read against it.
             "review_selector": book.request_fields(),
             "next_requests": {
                 **review_requests(book.request_fields()),
@@ -5680,7 +5680,7 @@ class PortfolioResearchOperations:
         The budget as set, the machine as found (processors, load, memory, book preparations
         running), what the budget gives a book now and the last preparation's receipt: what an
         operator or agent reads to choose a budget. An execution setting (`cpu-budget show` and
-        `set`, V266): how fast, never what (F1).
+        `set`): how fast, never what (F1).
         """
         store = CpuBudgetStore(self.workspace_session.workspace / "runtime")
         budget = store.read()
@@ -5773,7 +5773,7 @@ class PortfolioResearchOperations:
         """Set how many Tasks may wait, or run at once: `auto` or a whole number.
 
         The next admission or start counts with it; the Tasks already waiting or running keep
-        their places (V100).
+        their places.
         """
         try:
             write_queue_setting(
@@ -5800,7 +5800,7 @@ class PortfolioResearchOperations:
         """The Alpha models this workspace admits beyond the installed ones (EX).
 
         Anyone reads the review packets; a person activates or deactivates a model, as a
-        person sets network access (V143).
+        person sets network access.
         """
 
         models = ModelExtensions(
@@ -5911,10 +5911,10 @@ class PortfolioResearchOperations:
     def _backup_operation(
         self, request: PortfolioResearchOperationRequest, *, make: bool = True
     ) -> dict[str, object]:
-        """Back up the held state outside the workspace (V209), or read what is kept.
+        """Back up the held state outside the workspace, or read what is kept.
 
         `WORKSPACE_BACKUPS` reads the root and the kept generations and makes none, so the
-        Storage page can show them before a person chooses "back up now" (V337, U48).
+        Storage page can show them before a person chooses "back up now".
         """
         workspace = self.workspace_session.workspace
         try:
@@ -5938,7 +5938,7 @@ class PortfolioResearchOperations:
     def _client_operation(
         self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
     ) -> dict[str, object] | None:
-        """Answer client, activity and capacity operations; otherwise None (V266, OP1)."""
+        """Answer client, activity and capacity operations; otherwise None (OP1)."""
         operation = request.operation
         if operation in {"WORKSPACE_SHOW", "OPERATION_LIST"}:
             return self.client_session(request, caller=caller)
@@ -5966,7 +5966,7 @@ class PortfolioResearchOperations:
             chosen_by: Literal["HUMAN", "EXTERNAL_AUTOMATION"] = (
                 "HUMAN" if caller == "HUMAN" else "EXTERNAL_AUTOMATION"
             )
-            # One setting a request (V100): the budget, or the Tasks that wait or run at once.
+            # One setting a request: the budget, or the Tasks that wait or run at once.
             given = [request.cpu_budget, request.tasks_waiting, request.tasks_running]
             if sum(value is not None for value in given) != 1:
                 return refused("execution.cpu_budget_invalid")
@@ -6277,9 +6277,9 @@ def reused_read(
 ) -> dict[str, object]:
     """An exact reuse's Task and its read: the succeeded Task that ran the plan reused.
 
-    So a read continued from the reuse reads what it reused, never another latest Task (V491,
-    as the data update's reuse does since V449); nothing when no retained Task ran the plan, as
-    for a score an admitted publication supplied.
+    So a read continued from the reuse reads what it reused, never another latest Task,
+    as the data update's reuse does. It returns nothing when no retained Task ran the plan,
+    as for a score an admitted publication supplied.
     """
     for task in reversed(registry.tasks()):
         stored = task.input.payload.get("plan")
@@ -6322,7 +6322,7 @@ _STRATEGY_READS: Final[dict[str, StrategyRead]] = {
     ),
 }
 """Each readback of work planned per strategy, read by its Task or by a strategy's latest, never
-another strategy's (V595): the one place a reader of "the latest" of such work picks it."""
+another strategy's: the one place a reader of "the latest" of such work picks it."""
 
 
 def _latest_update(task: TaskRecord | None) -> dict[str, object] | None:
@@ -6349,7 +6349,7 @@ def _file_stamp(path: Path) -> tuple[int, int] | None:
 
 
 def _request_fields(request: PortfolioResearchOperationRequest, *left: str) -> dict[str, str]:
-    """A request's plain fields as its document writes them, `left` left out (V290)."""
+    """A request's plain fields as its document writes them, `left` left out."""
     return {
         item.name: str(value)
         for item in fields(request)
@@ -6360,7 +6360,7 @@ def _request_fields(request: PortfolioResearchOperationRequest, *left: str) -> d
 
 
 def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:
-    """The Alpha study and candidate a refused Portfolio declaration named (V322)."""
+    """The Alpha study and candidate a refused Portfolio declaration named."""
     try:
         document = (
             load_authoring_document(request.experiment_yaml)
@@ -6383,7 +6383,7 @@ def _text(value: object) -> str | None:
 
 
 def _runner_retry_reason(task: TaskRecord) -> str | None:
-    """Why a Task the runner itself blocked may be reopened, or nothing (V475, PERF-1)."""
+    """Why a Task the runner itself blocked may be reopened, or nothing."""
     if task.lifecycle is not TaskLifecycle.BLOCKED:
         return None
     if task.failure_code == MEMORY_INSUFFICIENT:
@@ -6418,7 +6418,7 @@ _CARRIED_BOOK: Final = (
 def _carried(
     body: dict[str, object], request: PortfolioResearchOperationRequest
 ) -> dict[str, object]:
-    """A refusal's way on carries the target its request named (V474).
+    """A refusal's way on carries the target its request named.
 
     The refusal knows what was asked for: a package, a book. A next request it offers that
     takes the same target and names none is bound to it, so a client following it reads that
@@ -6541,7 +6541,7 @@ def _citation_page(
 
 
 def _with_trial(readback: dict[str, Any]) -> dict[str, Any]:
-    """A planned feature's readback with its trial offered, the study left to choose (V354).
+    """A planned feature's readback with its trial offered, the study left to choose.
 
     What a trial runs against is stated before any build, so an agent holding only Factor
     studies learns it before it builds rather than at the trial's refusal.
@@ -6603,7 +6603,7 @@ _FOLLOW_READ_SECONDS = 0.1
 """How often a waiting status reads the Task again."""
 
 _TASK_PAGE_ROWS = 50
-"""How many Tasks one page of an agent session's listing holds at most, and by default (U54)."""
+"""How many Tasks one page of an agent session's listing holds at most, and by default."""
 
 _LIVE_LIFECYCLES = frozenset(
     {
@@ -6622,9 +6622,9 @@ _PREPARATION_IN_FLIGHT = frozenset(
     }
 )
 """A preparation Task still on its way, a resumed one among them: its plan confirmed again
-answers it, never another (V430: the check named `IN_PROGRESS`, which no Task holds). A
+answers it, never another (the check named `IN_PROGRESS`, which no Task holds). A
 deferred one is not on its way: its plan confirmed again goes to its owner, which refuses it
-before the retry time and resumes the same Task after (V375; answered here as in flight,
+before the retry time and resumes the same Task after (answered here as in flight,
 the offered `resume` never reached the owner)."""
 _FINISHED_LIFECYCLES = frozenset({TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED})
 _RECOVERY_SOURCES = frozenset(

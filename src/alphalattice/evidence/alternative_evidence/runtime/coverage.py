@@ -69,7 +69,7 @@ under its own budget, defers by name what the unit cannot take, and the
 next run packs from the sealed plans it left."""
 
 UNIT_PACKING_RULES_ID = "alternative-evidence.coverage-unit-packing.v2"
-"""v2 (2026-09-24, W1): units are packed by portfolio weight from each
+"""v2 (2026-09-24): units are packed by portfolio weight from each
 issuer's logical source count. The issuers are taken heaviest first (weight
 rank, ties by entity id); an issuer joins the open unit while the unit stays
 within `UNIT_LIMIT` issuers and `ADMITTED_DOCUMENT_CAPACITY` selected
@@ -325,7 +325,7 @@ class AlternativeEvidenceCoverageRun(AlternativeEvidenceContract):
     """The issuers whose every filing in the window an earlier current
     analysis read, sorted: not packed -- nothing new is there to read -- and
     reviewed by the findings of those readings, which carry while their
-    filings stay in the window (W3). Absent from the identity when empty."""
+    filings stay in the window. Absent from the identity when empty."""
     read_filings: tuple[AlternativeEvidenceReadFiling, ...] = Field(
         default=(), max_length=4096, exclude_if=lambda value: value == ()
     )
@@ -422,10 +422,10 @@ def seal_coverage_run(**values: object) -> AlternativeEvidenceCoverageRun:
 
 
 class UnitSourcesShort(ValueError):
-    """A unit whose issuers hold too few source documents for the installed floor (V541).
+    """A unit whose issuers hold too few source documents for the installed floor.
 
     Its code names the coverage the unit reached, the count the floor needed and, when any
-    were left out of the share, the issuers that filed nothing (V587). The issuers without a
+    were left out of the share, the issuers that filed nothing. The issuers without a
     source ride beside the code, on `uncovered`, and the unit's sealed failure keeps them: an
     entity id may be 32 characters and a recorded code is cut at 120.
     """
@@ -457,11 +457,11 @@ def index_quiet(
     evidence_as_of: datetime,
     window_days: int,
 ) -> frozenset[str]:
-    """The issuers an index read at this cutoff found filing nothing in the window (V587).
+    """The issuers an index read at this cutoff found filing nothing in the window.
 
     What `sources_short` leaves out of a share, wherever the floor is judged: an issuer is
     quiet only by a plan of its own filing index read at exactly this cutoff under this
-    window that selected and deferred nothing (`SecFilingSelectionPlan.nothing_filed`, V541's
+    window that selected and deferred nothing (`SecFilingSelectionPlan.nothing_filed`'s
     NOTHING_FILED). An index read at another cutoff, a failed read or none is no such plan,
     and that issuer counts against the floor.
 
@@ -496,8 +496,8 @@ def sources_short(
 
     The share of the issuers holding a source against the installed floor, as the
     acquisition always measured it, and the fewest such issuers that share admits: one rule
-    for the unit's refusal, the preview that predicts it (V541) and the package the installer
-    seals (V587). An issuer whose filing index at the cutoff shows nothing filed in the window
+    for the unit's refusal, the preview that predicts it and the package the installer
+    seals. An issuer whose filing index at the cutoff shows nothing filed in the window
     holds nothing to count: `quiet` names those among the issuers without a source, asked only
     when the share falls short, and they leave it; a failed or unread acquisition stays in it.
 
@@ -573,7 +573,7 @@ class AlternativeEvidenceUnitFailure(AlternativeEvidenceContract):
         default=(), max_length=UNIT_LIMIT, exclude_if=lambda value: not value
     )
     """The unit's issuers without a source document, when its sources fell short of the floor
-    (V541): sealed with that refusal, and empty, absent from the identity, for every other
+: sealed with that refusal, and empty, absent from the identity, for every other
     refusal and every failure sealed before, which keep their hashes."""
     failure_hash: str = Field(pattern=_HASH)
 

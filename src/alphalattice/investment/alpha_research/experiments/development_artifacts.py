@@ -323,7 +323,7 @@ class AlphaDevelopmentArtifactStore:
         self.root = artifact_root.resolve() / "alpha-research"
         self._packed_capacity = packed_capacity
         # A fold's listing positions and a score's values are numerical lanes: Parquet named by
-        # the digest of their packed bytes; a store written before V294 reads its `.bin` files.
+        # the digest of their packed bytes; a store in a legacy format reads its `.bin` files.
         self._lanes = ContentAddressedStore(
             self.root, uri_prefix=self._PREFIX, capacity=packed_capacity
         )

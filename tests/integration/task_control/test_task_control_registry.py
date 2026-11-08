@@ -251,7 +251,7 @@ def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_re
 def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
     tmp_path: Path, damage: str
 ) -> None:
-    """V661: damaged canonical authority is named, never discarded as an absent Task."""
+    """damaged canonical authority is named, never discarded as an absent Task."""
     import duckdb
 
     now = datetime(2026, 10, 4, 6, tzinfo=UTC)
@@ -326,7 +326,7 @@ def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
 def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation(
     tmp_path: Path, damage: str
 ) -> None:
-    """V661: filtered SQL consumers keep the same stored-identity authority boundary."""
+    """filtered SQL consumers keep the same stored-identity authority boundary."""
     import duckdb
 
     now = datetime(2026, 10, 4, 6, tzinfo=UTC)
@@ -423,7 +423,7 @@ def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation
 def test_canonical_task_collection_does_not_turn_a_store_failure_into_empty_rows(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """V661: row isolation does not make an unreadable whole store look empty."""
+    """row isolation does not make an unreadable whole store look empty."""
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
@@ -636,7 +636,7 @@ def test_board_snapshot_keeps_many_references_and_a_confirmed_version_binds_at_t
 def test_the_queue_keeps_the_operators_places_and_a_recovery_holds_no_running_place(
     tmp_path: Path,
 ) -> None:
-    """requirement (V100, LAWS PA2): how many Tasks wait is the operator's setting, a full queue
+    """requirement (LAWS PA2): how many Tasks wait is the operator's setting, a full queue
     is refused before a request's planning work, and a Task waiting for its recovery lets the
     queue's head run while a recovery asked for meanwhile is refused by name."""
 
@@ -704,7 +704,7 @@ def test_the_queue_keeps_the_operators_places_and_a_recovery_holds_no_running_pl
 
 @pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
 def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path: Path) -> None:
-    """requirement (V181, U33, LAWS DA2): each admission's request, with the session that
+    """requirement (U33, LAWS DA2): each admission's request, with the session that
     submitted it, is written before its row; a store lost and made again lists the Task from it,
     blocked and not claimed done, and the same request is admitted anew."""
 
@@ -1074,7 +1074,7 @@ def test_registry_rejects_missing_required_evidence_and_stale_heartbeat(
 
 
 class _InterruptedBeforeReceiptAdapter(_FixtureTaskAdapter):
-    """The process stops between a stage's stored evidence and its receipt (V101)."""
+    """The process stops between a stage's stored evidence and its receipt."""
 
     def __init__(self, *, accepts_at_recovery: bool) -> None:
         super().__init__()
@@ -1388,7 +1388,7 @@ def test_a_stage_raising_on_every_attempt_is_blocked_with_its_type_not_resumed_a
     assert stopped.lifecycle is TaskLifecycle.BLOCKED
     assert stopped.failure_code == "TASK_STAGE_RAISED:KeyError"
     assert adapter.executed == ["resolve_inputs"] * REPEATED_STAGE_RAISES
-    # What was raised rides beside the code, as an owner's cause does (V444).
+    # What was raised rides beside the code, as an owner's cause does.
     (item,) = [
         state
         for state in registry.work_items(task.task_id)
@@ -1480,7 +1480,7 @@ def test_deferrals_spend_none_of_a_stages_raises_and_a_raised_block_reopens(
 def test_recovery_seals_stored_evidence_its_verifier_accepts_and_reruns_the_rest(
     tmp_path: Path, accepts: bool
 ) -> None:
-    """regression (V101, EV1): a stage that stored its evidence and was interrupted before its
+    """regression (EV1): a stage that stored its evidence and was interrupted before its
     receipt ran again on recovery; its verifier now decides, and only evidence it refuses runs
     again."""
 
@@ -2307,7 +2307,7 @@ def end_child_for_start_check(*, cancelled):
 def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     task_kind, tmp_path, monkeypatch
 ):
-    """V610/TE12: the shared runner holds the stop for the complete registered Task-kind class."""
+    """TE12: the shared runner holds the stop for the complete registered Task-kind class."""
 
     from alphalattice.control.task_control.child import ChildInterrupted, run_in_child
 
@@ -2379,7 +2379,7 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
 
 @pytest.mark.parametrize("phase", ["verify", "stored_recovery", "verified_prefix"])
 def test_a_child_start_stop_preserves_verification_evidence(phase, tmp_path):
-    """V610: unavailable verification is never evidence invalidation on either recovery path."""
+    """unavailable verification is never evidence invalidation on either recovery path."""
     from alphalattice.control.task_control.child import ChildStartFailed
 
     now = datetime(2026, 10, 3, 12, tzinfo=UTC)

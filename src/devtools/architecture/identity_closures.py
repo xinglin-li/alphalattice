@@ -2,12 +2,11 @@
 
 The product binds numerical implementations to source through the primitives in
 ``kernel/shared_kernel/source_identity.py``. This reads their call sites from the syntax
-tree, importing nothing but the rule closure's own primitive, and answers two questions
-(binding plan, B5, B14 and R1):
+tree, importing nothing but the rule closure's own primitive, and answers two questions:
 
 - for a closure, which files it tracks, each classed by what kind of code it is; a
   platform file (composition, storage, telemetry, task control, the build files) is a
-  candidate to leave under B5's rule, and is reported, never refused;
+  candidate to leave under the closure rule, and is reported, never refused;
 - for a file, which identities an edit to it rotates.
 
 ``source_rule_closure_hash`` call sites whose tracked paths are literal (a tuple of strings, a
@@ -339,12 +338,12 @@ def _mapped(
 
 
 def installed_family_value_identity(method_family: str) -> str:
-    """One installed Factor method family's value identity, as the readout reads it (V360).
+    """One installed Factor method family's value identity, as the readout reads it.
 
     The owner's own functions, composed: the family's installed owners and the measured closure
-    of its values, before recorded moves hold the value a Panel binds (V345). A role per family
+    of its values, before recorded moves hold the value a Panel binds. A role per family
     names each family an edit to a shared owner moves, where the Host's roles alone showed none
-    (V359's first cut, which U0 caught by four refused reads). It lives here, not beside those
+    (first cut, which U0 caught by four refused reads). It lives here, not beside those
     functions, because an edit to ``arithmetic_identity.py`` rotates thirteen Host roles and an
     edit to this file rotates none.
     """
@@ -354,7 +353,7 @@ def installed_family_value_identity(method_family: str) -> str:
 
 
 def installed_control_value_identity() -> str:
-    """The controls' value identity, as the readout reads it: before recorded moves hold it (V345).
+    """The controls' value identity, as the readout reads it: before recorded moves hold it.
 
     Every installed core Factor binds it through the catalog's implementation identity, so an
     edit to a module the shared materializer imports (the availability catalog's among them)

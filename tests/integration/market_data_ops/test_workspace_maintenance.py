@@ -124,7 +124,7 @@ def _request(*, cutoff: datetime = NOW) -> WorkspaceMaintenanceRequest:
 
 
 def test_a_sealed_request_changes_with_its_candidate_scopes_kept() -> None:
-    """regression (V466): a research update rebuilt the data update's request through
+    """regression: a research update rebuilt the data update's request through
     `asdict`, which turned its recheck scopes into dicts its seal could not read, so no
     update planned while a recheck was due; the request's owner changes it, scopes kept."""
 
@@ -1208,7 +1208,7 @@ def test_partial_sector_result_quarantines_missing_listing_and_activates_safe_su
         mutation_gate=mutation_gate,
         gateway=FeatureInputGateway(),
     )
-    # The partial exclusion activates through the Foundation's coordinator (V346).
+    # The partial exclusion activates through the Foundation's coordinator.
     feature_foundation = SimpleNamespace(
         catalog=FeatureCatalog.load(),
         manifest=manifest,

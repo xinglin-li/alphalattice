@@ -215,7 +215,7 @@ def _study(
     plan = ExperimentPlan.model_validate(task.input.payload["plan"])
     kind = plan.program.kind
     installed = identities.get(f"study:{kind}") or _implementation_hash(kind)
-    # The same comparison a replay makes first (binding plan): the plan's role, the
+    # The same comparison a replay makes first: the plan's role, the
     # recorded moves consulted.
     current = is_current(plan_implementation_role(plan), plan.implementation_hash, installed)
     calls = plan.execution_preview.get("expected_numerical_calls")

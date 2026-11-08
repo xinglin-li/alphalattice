@@ -144,7 +144,7 @@ def case_record(goal: Mapping[str, Any]) -> dict[str, Any]:
         "document": case_document(goal["declaration"]),
         "references": goal["references"],
         "statements": goal["statements"],
-        # Assignments are Team's now, in the goal's conversation; the UI pass shows them.
+        # Assignments are Team's now, in the goal's conversation; the interface shows them.
         "assignments": [],
         "case_hash": goal["goal_hash"],
     }

@@ -197,7 +197,7 @@ metadata, never a turn after it."""
 
 @dataclass(frozen=True, slots=True)
 class ThreadSpawn:
-    """A child's recorded direct parent and role (V568)."""
+    """A child's recorded direct parent and role."""
 
     parent_thread_id: str
     agent_role: str | None
@@ -257,7 +257,7 @@ def session_file(
 ) -> Path | None:
     """A session's file, or one of its subagents', found by their ids where no hook names it.
 
-    A command run inside a session knows the session and nothing else (V301), so the file is
+    A command run inside a session knows the session and nothing else, so the file is
     looked up under the host's session root by the name the ids give it and admitted as a
     hook's would be: Claude Code keeps ``<project>/<session>.jsonl`` and
     ``<project>/<session>/subagents/agent-<id>.jsonl``, Codex one rollout per thread.

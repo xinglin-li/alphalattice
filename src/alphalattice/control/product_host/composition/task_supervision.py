@@ -410,7 +410,7 @@ class TaskSupervisor:
         self.store.put(record)
         # A recovery or a cancellation acted on the Task: the receipt's outcome is the Task's
         # and its owner's, so `--wait` follows a resumed Task and a refused remedy is refused,
-        # never read off the nested answer (V508). A re-plan leaves the Task as it was.
+        # never read off the nested answer. A re-plan leaves the Task as it was.
         acted = chosen.action != "REPLAN"
         code = answer.get("failure_code") if acted else None
         return {

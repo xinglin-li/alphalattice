@@ -1164,7 +1164,7 @@ def _read_workspace_component_inputs(
                             extension[name],
                             rebuilt,
                         )
-    # The Sector each session reads, the store's history over these names (V346).
+    # The Sector each session reads, the store's history over these names.
     sector_history = feature.sector_history(manifest, listing_ids=listings)
     if sector_history is None or set(listings) - set(sector_history):
         raise ValueError("strategy_score.sector_coverage_incomplete")

@@ -161,7 +161,7 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     hash_a, hash_b = plan_a["plan_hash"], plan_b["plan_hash"]
     assert hash_a != hash_b
     assert plan_a["preview"] == {"retention": "ON_DISK_UNTIL_EXPIRY", "expires_after_minutes": 60}
-    # Sealed by its hash (V105): a restart or an eviction finds it, a changed file does not.
+    # Sealed by its hash: a restart or an eviction finds it, a changed file does not.
     sealed_root = host.workspace / "runtime" / PREVIEWS_DIRECTORY
     restarted = PreviewRegistry(
         model=ExperimentPlan, clock=lambda: datetime.now(UTC), root=sealed_root
@@ -273,7 +273,7 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     assert admitted["existing_task"]["task_id"] == task_id  # ...and its Task is named beside it
     assert admitted["existing_task"]["lifecycle"] == "SUCCEEDED"
 
-    # A restart finds the sealed preview beside its durable Task (V105); nothing resolves to
+    # A restart finds the sealed preview beside its durable Task; nothing resolves to
     # the latest.
     count = len(host.session.task_control_registry.tasks())  # type: ignore[union-attr]
     host.stop()

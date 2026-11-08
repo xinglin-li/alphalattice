@@ -70,7 +70,7 @@ def lifecycle_method_binding(component_recipe_hash: str, lifecycle_hash: str) ->
     """What a lifecycle Program binds: the component recipe and the lifecycle rule.
 
     The code that runs them is bound by the study plan's implementation hash, whose moves
-    are recorded (binding plan, P), so an edit that leaves the numbers alone moves no
+    are recorded, so an edit that leaves the numbers alone moves no
     Program.
     """
 
@@ -259,7 +259,7 @@ class AlphaLifecycleExperiment:
             catalog_hash=canonical_hash([self.admission.content_hash, METHOD]),
             method_binding_hash=method,
             # The seeds the rule draws, not the installed seeds or the rule's schema: a
-            # contract docstring or an installed seed decides none of its numbers (V91).
+            # contract docstring or an installed seed decides none of its numbers.
             parameter_domain_hash=canonical_hash({"seeds": list(rule.seeds)}),
         )
 

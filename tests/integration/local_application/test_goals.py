@@ -314,7 +314,7 @@ def test_the_goal_schema_offers_a_declaration_to_edit(goal_app):
 
 
 def test_a_formula_factors_trial_and_packet_are_goal_evidence(goal_app):
-    """regression (V371): a goal could not cite a formula factor's trial or review packet, so
+    """regression: a goal could not cite a formula factor's trial or review packet, so
     AX11 marked its review criterion MET on a text file listing its exports; both are exact
     reads a goal attaches under DATA_FEATURES, and another stage is refused."""
 
@@ -671,7 +671,7 @@ def _reading(sequence: int, kind: str = "NATIVE_AGENT_USAGE", **subject: str) ->
 
 
 def test_a_goal_record_gives_its_sessions_models_and_tokens(goal_app):
-    """requirement (AU, V300; LAWS ID7): a goal's record gives each participant's latest
+    """requirement (AU; LAWS ID7): a goal's record gives each participant's latest
     reading by model, the bridge's mark where a reading differs from the role card, and each
     session's totals by model; an older reading of the same agent and model is replaced."""
 
@@ -1094,7 +1094,7 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
 def test_goal_reference_verifies_only_selected_owner_and_preserves_full_readback(
     goal_app, monkeypatch
 ):
-    """regression (V683): opening one saved reference read every reference's owner."""
+    """regression: opening one saved reference read every reference's owner."""
     app, opened, calls, _body, _tasks = goal_app
     original_read = app.read
     comparison = {
@@ -1325,7 +1325,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
     assert shown["record"]["sessions"] == [{"vendor": "claude-code", "session_id": SESSION.session}]
     listed = app.operate(Request(operation="GOAL_LIST"), "HUMAN")["goals"]
     assert listed[0]["sessions"] == shown["record"]["sessions"], "U23: a row names its sessions"
-    # U54: an open goal has no deliverables and no check yet; a session lists its own goals.
+    # an open goal has no deliverables and no check yet; a session lists its own goals.
     assert listed[0]["deliverables"] is None and listed[0]["completion"] is None
     mine = app.operate(Request(operation="GOAL_LIST", agent_session=SESSION.session), "HUMAN")
     assert [row["goal_id"] for row in mine["goals"]] == [str(UUID(int=1))]
@@ -1395,7 +1395,7 @@ def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(go
         (resent, done),
     }
     assert closed.completion.sessions[0].session_id == SESSION.session
-    # U54: a complete goal's row names its deliverables and when the Host checked it.
+    # a complete goal's row names its deliverables and when the Host checked it.
     (row,) = app.operate(Request(operation="GOAL_LIST", agent_session=SESSION.session), "HUMAN")[
         "goals"
     ]
@@ -1649,7 +1649,7 @@ def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
 def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (OP13, V282): a goal opened in an agent session binds it, so each request
+    """requirement (OP13): a goal opened in an agent session binds it, so each request
     the session sends is the goal's record with no agent effort; a closed goal takes none."""
 
     declaration = tmp_path / "goal.json"
@@ -1665,7 +1665,7 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     continuing.write_text(json.dumps({**DECLARATION, "research": research}), encoding="utf-8")
     code, refused = _cli(live, "goal", "open", "--file", str(continuing))
     assert refused["data"]["failure_code"] == "goal.continuation_requires_parent_goal"
-    # V320: the refusal names the field and the way on.
+    # the refusal names the field and the way on.
     assert refused["data"]["fields"] == [["research", "purpose"], ["parent_goal_id"]]
     assert refused["data"]["next_requests"]["goals"]["operation"] == "GOAL_LIST"
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION.session)
@@ -1680,7 +1680,7 @@ def test_a_session_takes_a_goal_and_its_requests_are_recorded_under_it(
     assert opened["data"]["goal_prompt"].startswith("/goal ")
     assert len(opened["data"]["goal_prompt"]) <= 4000
     # The handoff's first command runs as written: it names the workspace every command needs,
-    # quoted as the CLI quotes its commands (V492, the user's review).
+    # quoted as the CLI quotes its commands.
 
     take = opened["data"]["goal_prompt"].split("First run `", 1)[1].split("`", 1)[0]
     assert shlex.split(take) == [
@@ -1812,7 +1812,7 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
 
 
 def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
-    """The research case page keeps working over goals until the UI pass (U23)."""
+    """The research case page continues to work over goals."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
     from tests.portfolio_strategy_lab.local_web_support import _json, _request

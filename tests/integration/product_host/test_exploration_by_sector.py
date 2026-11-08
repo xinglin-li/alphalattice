@@ -1,4 +1,4 @@
-"""Exploration, completed (binding plan N7): samples keep each Sector's share, a Factor study
+"""Exploration, completed: samples keep each Sector's share, a Factor study
 reads a sample without moving a whole-Panel identity, a study sampled before that reads back as
 not current, and a feature trial's Alpha comparison is the Alpha owner's.
 

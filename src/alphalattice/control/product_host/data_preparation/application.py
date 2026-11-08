@@ -150,7 +150,7 @@ ListingUnitState = Literal[
 
 
 def research_next(manifest: ResearchWorkspaceManifest) -> tuple[str, dict[str, dict[str, str]]]:
-    """A prepared workspace's next research step, as its first use takes it (FLOW-3).
+    """A prepared workspace's next research step, as its first use takes it.
 
     With no research strategy installed, `strategy controls` names the strategy's required
     Alpha and Risk studies, the shortest way to a book that runs forward; once one is
@@ -408,7 +408,7 @@ class _ListingActivityDelivery:
 
 IMPLEMENTATION_ROLE = "product_host.workspace_preparation"
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation() -> str:
@@ -509,8 +509,7 @@ class WorkspacePreparationApplication:
             admitting="WORKSPACE_PREPARE_CONFIRM",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(
         self,
@@ -538,7 +537,7 @@ class WorkspacePreparationApplication:
         self.data_rule = data_rule or (lambda _task_id: None)
         self.last_plan: WorkspacePreparationPlan | None = None
         # The newest plan, sealed on disk: a confirm after a restart finds it, and a newer
-        # plan removes it, one preparation running at a time (V525).
+        # plan removes it, one preparation running at a time.
         self._previews: PreviewRegistry[WorkspacePreparationPlan] = PreviewRegistry(
             model=WorkspacePreparationPlan,
             clock=clock,
@@ -989,7 +988,7 @@ class WorkspacePreparationApplication:
             else candidate_plan
         )
         # One assignment publishes the newest plan for the next plan's comparison; the
-        # answer is built from this plan and resume alone (V534).
+        # answer is built from this plan and resume alone.
         self.last_plan = plan
         captured_source = None
         recovery_work = None
@@ -1203,7 +1202,7 @@ class WorkspacePreparationApplication:
         if caller == "EXTERNAL_AUTOMATION" and grant_hash is None:
             # The plan's own Task keeps the grant a person admitted it under: its resume needs no
             # second copy, and the validator still checks that grant's term and scope. A new
-            # admission has no such Task and names its grant (V484).
+            # admission has no such Task and names its grant.
             grant_hash = next(
                 (
                     str(task.input.payload["data_issue_grant_hash"])
@@ -1449,8 +1448,8 @@ class WorkspacePreparationApplication:
 
     def _planned(self, plan_hash: str) -> WorkspacePreparationPlan | None:
         """The plan an answer named while it is runnable, kept by the store whether or not the
-        Host restarted since (V525); a newer plan supersedes it. Never this Host's memory alone,
-        which ran a plan past its hour that a restarted Host refused (V536)."""
+        Host restarted since; a newer plan supersedes it. Never this Host's memory alone,
+        which ran a plan past its hour that a restarted Host refused."""
         return self._previews.runnable(plan_hash)
 
     def _path(self, task_id: UUID, name: str) -> Path:
@@ -1882,7 +1881,7 @@ class WorkspacePreparationApplication:
                 completed_at=self.clock(),
                 bind_configuration=True,
             )
-            # Onto the manifest as it stands: an installation since does not go (V194).
+            # Onto the manifest as it stands: an installation since does not go.
             _, updated = update_research_workspace_manifest(
                 root,
                 lambda current: current.with_bindings(data_update=plan.binding),

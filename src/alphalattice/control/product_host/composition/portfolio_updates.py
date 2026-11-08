@@ -89,7 +89,7 @@ STAGES = ("verify_update", "seal_market_observations", "publish_decision_settlem
 
 IMPLEMENTATION_ROLE = "product_host.portfolio_updates"
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation_hash() -> str:

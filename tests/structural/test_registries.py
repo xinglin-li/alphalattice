@@ -1,4 +1,4 @@
-"""The registries the gate holds, and the lookup that reads them (binding plan G0)."""
+"""The registries the gate holds, and the lookup that reads them."""
 
 from __future__ import annotations
 

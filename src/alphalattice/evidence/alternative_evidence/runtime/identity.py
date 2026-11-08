@@ -146,7 +146,7 @@ class ObservedEvidenceBindings:
 
     Its publications read back as history under a contract of their own kind,
     fully verified and never current authority; new work refuses them as
-    superseded (binding plan, E2). Before this, a tuple nobody listed -- the QA
+    superseded. Before this, a tuple nobody listed -- the QA
     tuples D2 retired, or one a change forgot to list -- refused the readback of
     every review resting on it.
     """

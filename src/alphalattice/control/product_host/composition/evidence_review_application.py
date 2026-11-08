@@ -288,7 +288,7 @@ _INSTALLED_AUTHORITY = (
 
 DOSSIER_STANDINGS = frozenset({"REFUSED_EVIDENCE_CUTOFFS_DIFFER", "REFUSED_DOSSIER_INVALID"})
 """A dossier the book's current analyses cannot make: a refusal at every read on the review
-route, and at the book's readback its standing, never a failed read (V546)."""
+route, and at the book's readback its standing, never a failed read."""
 
 
 def _stamp(moment: datetime) -> str:
@@ -304,7 +304,7 @@ def _cutoffs_differ(
     ],
     carried: tuple[CarriedReading, ...],
 ) -> ReviewOutcome | None:
-    """The refusal of units read at different cutoffs, said before the dossier refuses (V546).
+    """The refusal of units read at different cutoffs, said before the dossier refuses.
 
     A dossier reads as of its children's earliest cutoff, and every citation must be available
     by then: late evidence is never admitted as early. Units prepared at different cutoffs -- two
@@ -362,7 +362,7 @@ def _cutoffs_differ(
 
 
 def _dossier_refused(chosen: BookSelector, error: ValidationError) -> ReviewOutcome:
-    """Any other refusal of the dossier's own model, said with its code and a way on (V546).
+    """Any other refusal of the dossier's own model, said with its code and a way on.
 
     The checks of the dossier's consistency -- its children, entities, citations, issues,
     authority -- are the CRO record's; a refusal of one is not the evidence's fault, and a read
@@ -406,7 +406,7 @@ class ResolvedEvidenceQuestion:
 class ResolvedCoverage:
     """The book's whole obligation at one cutoff: its units, sealed as one run.
 
-    Every book is a run (C2, 2026-09-23). A book that fits one unit is a run
+    Every book is a run (since 2026-09-23). A book that fits one unit is a run
     of one unit whose request, obligation and intent are exactly those a
     single preparation of the same book carried, so a single preparation's
     completion is that unit's completion.
@@ -459,7 +459,7 @@ _BUNDLE_FIELDS = frozenset(
 
 
 def with_analyst_bundles(requests: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-    """Each packet request with the Analyst's bundle request beside it (V295).
+    """Each packet request with the Analyst's bundle request beside it.
 
     `packet` and `packet_<unit>` gain `analyst_bundle` and `analyst_bundle_<unit>`: the same
     book, Task and unit as `AGENT_BUNDLE_PREPARE` for the Analyst, the bundle's directory left
@@ -580,7 +580,7 @@ def agent_answer_result(
             ),
             **({"task_id": body["task_id"]} if isinstance(body.get("task_id"), str) else {}),
             # The Task the answer started, its state beside the verdict: a wait follows it to its
-            # end, not the verdict's (OP18, V580).
+            # end, not the verdict's (OP18).
             **(
                 {"task_lifecycle": body["lifecycle"]}
                 if isinstance(body.get("lifecycle"), str)
@@ -603,7 +603,7 @@ def agent_answer_result(
             },
             "next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD",
             # For the lead: the Task the answer started and the book it answered for, so the
-            # work goes on from this answer and no earlier one is looked for (V406).
+            # work goes on from this answer and no earlier one is looked for.
             **(
                 {
                     "next_requests": {
@@ -659,7 +659,8 @@ class AlternativeEvidenceRefreshCommand:
     A book's coverage run, which carries every unit's request itself; or one
     unit's own Task -- its submitted analysis or its continuation -- by its
     request, obligation and admission. The Host admits no single preparation
-    of a whole book since C2; one admitted before recovers as it was admitted.
+    of a whole book since coverage runs were introduced; one admitted before
+    recovers as it was admitted.
     """
 
     application: EvidenceReviewApplication
@@ -1053,7 +1054,7 @@ class EvidenceReviewApplication:
         TaskReplan(task_kind=CRO_REVIEW_COMMAND, admitting="CRO_REVIEW"),
     )
     """The re-plans of the Task kinds this route admits, which the recovery view offers
-    (V188): the CRO review has no confirmation-free preview."""
+: the CRO review has no confirmation-free preview."""
 
     workspace_id: str
     workspace: Path
@@ -1114,12 +1115,12 @@ class EvidenceReviewApplication:
     _sealed_export: tuple[str, datetime, dict[str, object]] | None = field(
         default=None, init=False, repr=False
     )
-    """The export citation pages slice (V94): `EvidenceReviewDelivery`'s, the last it sealed."""
+    """The export citation pages slice: `EvidenceReviewDelivery`'s, the last it sealed."""
     _sealed_export_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
     _answer_turns: dict[str, threading.Lock] = field(default_factory=dict, init=False, repr=False)
-    """One lock a binding: its answers are numbered and filed one at a time (V557)."""
+    """One lock a binding: its answers are numbered and filed one at a time."""
     _answer_turns_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
@@ -1278,7 +1279,7 @@ class EvidenceReviewApplication:
     def _open_book(
         self, inputs: PortfolioEvidenceReviewInputs, selector: BookSelector
     ) -> SealedBook:
-        """The book a request's selector names, its Task refused by the selector's code (V546).
+        """The book a request's selector names, its Task refused by the selector's code.
 
         A study's selector that names a Task of another kind -- an installed strategy's public
         development replay, say, whose book is its result -- is refused by that kind, and a
@@ -2004,8 +2005,8 @@ class EvidenceReviewApplication:
         )
         floor = resources.minimum_entity_coverage
         short = units_short_of_sources(inventory, self.evidence_policy.mode, floor=floor)
-        # Offered if a unit can prepare or all holdings carry (W3), else its ways are the
-        # person's (V541); live reads the index.
+        # Offered if a unit can prepare or all holdings carry, else its ways are the
+        # person's; live reads the index.
         source_ready = (
             len(short) < len(run.units) + len(run.carried) * (not run.units)
             if self.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
@@ -2022,7 +2023,7 @@ class EvidenceReviewApplication:
         ways: dict[str, object] = {}
         if short:
             ways = {
-                # Said before any run, not learnt from a failed coverage (V445, V541).
+                # Said before any run, not learnt from a failed coverage.
                 "source_limit": (
                     "This Host reads only the documents the workspace holds (RECORDED), and a "
                     "unit is prepared only when enough of its issuers hold one for the installed "
@@ -2225,7 +2226,7 @@ class EvidenceReviewApplication:
                     "packet through its bundle (bundle prepare). Saved evidence and "
                     "reviews remain readable."
                 ),
-                # The request the words name, the book filled (V305).
+                # The request the words name, the book filled.
                 next_requests={
                     "analyst_bundle": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -2364,7 +2365,8 @@ class EvidenceReviewApplication:
         and still reads is reused whole; a run some of whose units failed or
         expired is admitted again, and the adapter carries every unit that
         did complete -- in any run, or in a single preparation admitted
-        before C2 -- into it instead of preparing it twice.
+        before coverage runs were introduced -- into it instead of preparing it
+        twice.
         """
 
         adapter = self.evidence_task_adapter
@@ -2380,8 +2382,7 @@ class EvidenceReviewApplication:
         if not run.units:
             # Nothing is left to read: every holding's filings in the window were read earlier, or
             # it filed nothing. The run is sealed where every run is -- the review reads it -- and
-            # nothing executes; the last review carries forward when nothing it read has changed
-            # (W3).
+            # nothing executes; the last review carries forward when nothing it read has changed.
             adapter.admit_run(run)
             return self._nothing_new(run, selector=selector, dispatcher=dispatcher)
         deadline = run.units[0].request.acquisition_deadline
@@ -2662,7 +2663,7 @@ class EvidenceReviewApplication:
         adapter = self.evidence_task_adapter
         task = self.session.task_control_registry.task(task_id)
         if adapter is not None and task.task_kind != adapter.task_kind:
-            # A review carried forward is no preparation: it has no packet (V434).
+            # A review carried forward is no preparation: it has no packet.
             return {}
         run = None if adapter is None else adapter.run_of(task)
         if run is None:
@@ -2882,8 +2883,8 @@ class EvidenceReviewApplication:
             return ReviewOutcome(
                 disposition="REFUSED_NO_BOOK_TO_REVIEW",
                 # What names a book, where a request that named a Task or a unit alone read
-                # as an empty workspace; an experiment's book is no default (V242), and the
-                # history read is the way to one (V295).
+                # as an empty workspace; an experiment's book is no default, and the
+                # history read is the way to one.
                 detail=_NO_BOOK_NAMED,
                 next_requests={"history": {"operation": "RESEARCH_HISTORY"}},
             )
@@ -2915,7 +2916,7 @@ class EvidenceReviewApplication:
                     "dossier through its bundle (bundle prepare). Saved reviews "
                     "remain readable."
                 ),
-                # The request the words name, the book filled (V305).
+                # The request the words name, the book filled.
                 next_requests={
                     "cro_bundle": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -2945,7 +2946,7 @@ class EvidenceReviewApplication:
         self, dossier: PortfolioReviewDossier, *, dispatcher: LocalBackgroundDispatcher
     ) -> ReviewOutcome | None:
         """The last fresh review of this dossier's basis, carried forward as of
-        its cutoff with no model call (W3), or nothing: the holdings, their
+        its cutoff with no model call, or nothing: the holdings, their
         bands, the findings and the open issues are what the CRO last assessed,
         so its assessment stands and is routed again on this dossier."""
 
@@ -3042,7 +3043,7 @@ class EvidenceReviewApplication:
     ) -> tuple[PortfolioReviewDossier | ReviewOutcome, datetime | None]:
         """The book's review dossier. With no run and no current analysis its cutoff is the
         time it is read: ``read_at``, the time a bundle or a first part sealed, so every later
-        read of that review resolves the same dossier; the clock only for a first read (V255).
+        read of that review resolves the same dossier; the clock only for a first read.
         """
         resolved = self.resolve_book(chosen)
         active = self.active_evidence_refresh(scope=resolved.scope)
@@ -3237,7 +3238,7 @@ class EvidenceReviewApplication:
         carries and the carried holdings it answers for (each held by its latest
         reading) -- and those an open issue of the register rests on, with the
         findings it cites, whatever their filing's age or the contract they were
-        sealed under (W3; `carried_reading_admitted`); never an analysis
+        sealed under (`carried_reading_admitted`); never an analysis
         the review reads as one of its units (`exclude`). With them, the carried
         holdings whose reading no longer reads under the current contract."""
 
@@ -3388,7 +3389,7 @@ class EvidenceReviewApplication:
 
         Admit one review answer: screened risk by risk, refused with every
         problem in plain words, or its risks bound and routed by the Task. ``read_at`` is
-        when its dossier was read, so the answer meets that dossier (V255).
+        when its dossier was read, so the answer meets that dossier.
         """
         if caller not in {"HUMAN", "EXTERNAL_AUTOMATION"}:
             raise PortfolioEvidenceReviewError(
@@ -3845,7 +3846,7 @@ class EvidenceReviewApplication:
         input_hash: str | None,
         newly_filed: bool,
     ) -> dict[str, object] | None:
-        """Resolve the generic filed answer and exact admitted Task for observation (V691).
+        """Resolve the generic filed answer and exact admitted Task for observation.
 
         Exact retries use the first filed acceptable answer with this digest, including
         its original author. An unfiled answer and a correction confer no credit. The
@@ -3941,7 +3942,7 @@ class EvidenceReviewApplication:
         acceptable answer only when a Task admits it, so a refused request or
         an exact reuse never spends one of the bundle's answers. A bundle whose
         corrections ran out (DONE) reads no other answer: the same one again is
-        its own record, whose receipt the exact reuse returns (V417). An accepted
+        its own record, whose receipt the exact reuse returns. An accepted
         answer closes nothing: another is a review of its own."""
 
         bundle_key = str(canonical_hash(binding))
@@ -3975,7 +3976,7 @@ class EvidenceReviewApplication:
     @contextmanager
     def _answer_turn(self, binding: dict[str, object]) -> Iterator[None]:
         """Hold one binding's turn: its next answer is counted, admitted and filed before another
-        is counted, so two answers sent at once are numbered one and two, each kept (V557)."""
+        is counted, so two answers sent at once are numbered one and two, each kept."""
         key = str(canonical_hash(binding))
         with self._answer_turns_lock:
             turn = self._answer_turns.setdefault(key, threading.Lock())
@@ -3984,8 +3985,8 @@ class EvidenceReviewApplication:
 
     def _file_answer(self, record: AgentAnswerRecord) -> bool:
         """File one answer in its slot. The same record again is the one filed -- a DONE answer
-        sent again (V417), however old its record -- and another in a slot already taken is
-        refused, never skipped (V557)."""
+        sent again, however old its record -- and another in a slot already taken is
+        refused, never skipped."""
         if not self.artifacts.exists(ANSWER_CATEGORY, record.record_hash):
             if record.verdict is AnswerVerdict.CORRECT and (intent := ANSWER_FILING.get()):
                 intent(record)  # named on its thread before it exists
@@ -4054,10 +4055,10 @@ class EvidenceReviewApplication:
 
         The published recommendation this workspace holds for this exact book,
         if any: the newest, chosen from the publication records and read once
-        -- a book reviewed every day holds a review a day (W3).
+        -- a book reviewed every day holds a review a day.
 
         `use_selected_analysis=False` reads the book's latest published review independently
-        of a currently selected Evidence analysis, as an activation decision requires (V614).
+        of a currently selected Evidence analysis, as an activation decision requires.
         `result_hash` binds that read to the exact installed result the book Task published.
         """
         wanted = (

@@ -392,7 +392,7 @@ body[data-page] .picker-trigger.picker-text:is(:hover, :focus-visible, [aria-exp
 }
 .table-sort-indicator { color: var(--muted); }
 th[aria-sort="none"] .table-sort-indicator { opacity: 0; }
-/* the glyph belongs to the sorted column; the others show it on hover */
+/* The glyph belongs to the sorted column; the others show it on hover */
 th[aria-sort="none"] .table-sort:is(:hover, :focus-visible) .table-sort-indicator { opacity: 1; }
 .data-table th.col-num .table-sort { justify-content: flex-end; }
 /* One standard: semantic action, navigation, status, identity — not one shape for all. */

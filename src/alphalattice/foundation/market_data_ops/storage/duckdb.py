@@ -703,7 +703,7 @@ class MarketDataRepository(WorkspaceRepository):
                 """
             )
             # The members a manifest was registered with, sealed beside its revision, so a
-            # read proves the membership it assembles (V269); NULL on a manifest written before.
+            # read proves the membership it assembles; NULL on a manifest written before.
             connection.execute(
                 """
                 ALTER TABLE universe_manifest
@@ -1317,7 +1317,7 @@ class MarketDataRepository(WorkspaceRepository):
                 )
                 """
             )
-            # A reclassification's Sectors and the session it takes effect from (V346); a row
+            # A reclassification's Sectors and the session it takes effect from; a row
             # written before the forward rule keeps them NULL and stays in the backfill.
             for definition in (
                 "prior_sector_name VARCHAR",
@@ -1652,7 +1652,7 @@ class MarketDataRepository(WorkspaceRepository):
                 """
             )
             # When a Panel is stale is Feature's rule alone: a Feature build runs it after
-            # this bootstrap and republishes the projection with it (V176).
+            # this bootstrap and republishes the projection with it.
             profile = manifest.profile
             connection.execute(
                 """
@@ -1896,7 +1896,7 @@ class MarketDataRepository(WorkspaceRepository):
         # acquisition revision binds nor a fixed copy of the profile (a later manifest of the
         # profile updates it), so the read proves the members it assembled against the digest
         # sealed at registration, or, on a manifest written before it, against the member count
-        # it stored (EV2, V269).
+        # it stored (EV2).
         members = [str(row[0]) for row in listing_rows]
         sealed_members, sealed_count = manifest_row[20], manifest_row[21]
         proved = (
@@ -2529,7 +2529,7 @@ class MarketDataRepository(WorkspaceRepository):
         """Atomically promote a completed manifest without rewriting history.
 
         ``within_activation`` is the caller's step, run inside this transaction: the state it
-        writes belongs to another owner, which defines it (V159), so activation stays atomic.
+        writes belongs to another owner, which defines it, so activation stays atomic.
         """
         self.bootstrap(manifest)
         candidate_json = json.dumps(

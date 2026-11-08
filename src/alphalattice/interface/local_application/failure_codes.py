@@ -6,7 +6,7 @@ Owners raise codes -- dotted names (`research_experiment.input_not_admitted`) or
 document -- is not served or persisted: its name has a space, or it has a quote or a path
 separator, which a code never has. The Web handler, the Agent bridge, the activity ledger and the
 recovery view say a typed code instead, and the Host's log keeps the detail under an
-incident that code carries (binding plan, rule 2): a caller learns that something failed
+incident that code carries: a caller learns that something failed
 and where to look, never the Host's internals.
 """
 

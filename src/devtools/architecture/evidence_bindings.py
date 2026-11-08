@@ -1,5 +1,5 @@
 """The Evidence binding tuple moves only with its successors recorded or its predecessor
-listed (binding plan, E2; LAWS.md ID1).
+listed (LAWS.md ID1).
 
 Six bindings seal every Alternative Evidence analysis, each an identity role. A change that
 keeps what they mean records each moved binding's successor
