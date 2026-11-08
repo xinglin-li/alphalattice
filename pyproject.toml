@@ -98,6 +98,7 @@ semantic = [
 
 [dependency-groups]
 dev = [
+    "ast-grep-cli==0.50.0",
     "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
