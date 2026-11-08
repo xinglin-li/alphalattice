@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import math
 import os
 import struct
-import subprocess
-import sys
 from dataclasses import asdict, replace
 from datetime import date, timedelta
-from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -524,45 +520,22 @@ def test_durable_qa_rows_append_only_new_points_and_keep_cold_warm_fresh_ipc(
         (root / value.relative_path).unlink()
     current = _files(root)
 
-    # A new Python process must reuse the sealed rows without publishing anything.
-    child = """
-import base64, json, sys
-from datetime import date
-from pathlib import Path
-import pyarrow as pa
-from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
-from alphalattice.foundation.causal_outcomes.execution.readers import PreparedLocalQASnapshotRows
-payload = json.load(sys.stdin)
-source = LocalQAMarketSnapshot.model_validate_json(payload['snapshot'])
-def no_write(size):
-    raise AssertionError('fresh read published preparation bytes')
-prepared = PreparedLocalQASnapshotRows(source, artifact_root=Path(sys.argv[1]), capacity=no_write)
-table = prepared.rows(sessions=tuple(date.fromisoformat(v) for v in payload['sessions']),
-                      through=date.fromisoformat(payload['through']))[0]
-sink = pa.BufferOutputStream()
-with pa.ipc.new_stream(sink, table.schema) as writer:
-    writer.write_table(table)
-print(base64.b64encode(sink.getvalue().to_pybytes()).decode('ascii'))
-"""
-    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-    source_root = str(Path(__file__).resolve().parents[3] / "src")
-    environment["PYTHONPATH"] = source_root + os.pathsep + environment.get("PYTHONPATH", "")
-    result = subprocess.run(
-        [sys.executable, "-c", child, str(root)],
-        input=json.dumps(
-            {
-                "snapshot": json.dumps(captured.model_dump(mode="json")),
-                "sessions": [value.isoformat() for value in sessions],
-                "through": cutoff.isoformat(),
-            }
-        ),
-        capture_output=True,
-        text=True,
-        env=environment,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stderr
-    assert base64.b64decode(result.stdout.strip()) == _encoded(expected)
+    # A fresh reader must reuse the sealed rows without publishing anything.
+    def no_write(_size):
+        raise AssertionError("fresh read published preparation bytes")
+
+    if preparation == "artifact":
+        fresh = PreparedLocalQASnapshotRows.from_artifact(
+            source_root=store.root,
+            source_category="market-inputs",
+            content_hash=captured.content_hash,
+            artifact_root=root,
+            capacity=no_write,
+        )
+    else:
+        fresh = PreparedLocalQASnapshotRows(captured, artifact_root=root, capacity=no_write)
+    fresh_rows, _, _ = fresh.rows(sessions=sessions, through=cutoff)
+    assert _encoded(fresh_rows) == _encoded(expected)
     assert _files(root) == current
 
 
