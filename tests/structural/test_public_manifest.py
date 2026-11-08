@@ -868,6 +868,17 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
+    for name in ("checkout", "public-tests-shard"):
+        job = jobs[name]
+        assert job.get("env", {}).get("npm_config_cache") == "${{ runner.temp }}/jscpd-npm-cache"
+        install = next(
+            step for step in job["steps"] if step.get("name") == "Install the locked clone detector"
+        )
+        assert "npm ci --prefix scripts/test-shape-tools" in install["run"]
+        assert all(
+            "npm_config_cache" not in {key.lower() for key in step.get("env", {})}
+            for step in job["steps"]
+        )
     cost = jobs["test-cost"]
     assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
     assert cost.get("strategy", {}).get("matrix", {}).get("shard") == [1, 2, 3, 4]

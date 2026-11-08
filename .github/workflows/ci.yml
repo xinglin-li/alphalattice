@@ -32,6 +32,8 @@ env:
 jobs:
   checkout:
     name: Source checkout
+    env:
+      npm_config_cache: ${{ runner.temp }}/jscpd-npm-cache
     if: ${{ !github.event.repository.private && github.event_name != 'schedule' }}
     runs-on: windows-latest
     timeout-minutes: 60
@@ -212,6 +214,8 @@ jobs:
 
   public-tests-shard:
     name: Public tests (${{ matrix.os }}, shard ${{ matrix.group }})
+    env:
+      npm_config_cache: ${{ runner.temp }}/jscpd-npm-cache
     needs: public-tests-plan
     if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
     runs-on: ${{ matrix.runner }}
