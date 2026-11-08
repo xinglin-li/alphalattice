@@ -8,8 +8,10 @@
 - A **file fact** binds a verified value to its kind and the file's SHA-256. xxh3 indexes the
   complete canonical key; a hit compares that key. Under a workspace whose writer lease this
   process holds it is kept across processes in `runtime/verified-files.jsonl`; elsewhere it
-  lives for the process. Legacy stamp-only rows are misses. A reader's digest of a file modified
-  within the last two seconds is not kept; a writer's own digest of what it wrote is.
+  lives for the process. Legacy stamp-only rows are misses. A digest is reused while file identity,
+  size, modification time and kernel change time hold; a reader waits for a recent stamp to settle.
+  A writer's own digest can be kept immediately. Deliberately restoring timestamps is outside the
+  accidental-change model.
 
 A missing fact only costs the full computation: both records are rebuildable caches, and a
 store that predates the year-fact table holds none until its first writer creates it.
@@ -17,12 +19,15 @@ store that predates the year-fact table holds none until its first writer create
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
 import time
 import weakref
+from _thread import LockType
 from collections.abc import Iterable, Mapping
+from ctypes import wintypes
 from pathlib import Path
 from threading import Lock
 
@@ -30,15 +35,21 @@ import duckdb
 import xxhash
 
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.spans import span
+
+if os.name == "nt":
+    import msvcrt
 
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 _CONTENT_KIND = "\x00content-v1:"
+_STAMP_KIND = "\x00file-stamp-v1:"
 RACY_SECONDS = 2.0
-"""How old a file's modification time must be before a reader's digest of it is kept."""
+"""How old the newest modification or change time must be before a digest is kept."""
 
 _Key = tuple[str, str]
 _Entry = tuple[tuple[int, int, int], str]
 _LOCK = Lock()
+_DIGEST_LOCKS: weakref.WeakValueDictionary[str, LockType] = weakref.WeakValueDictionary()
 _KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 """Per workspace whose writer lease this process holds: its file facts by path and kind."""
 _PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
@@ -212,12 +223,123 @@ def _content_sha256(path: Path) -> str:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
+def _stamp(path: Path) -> tuple[int, int, int, int, int]:
+    """Read identity, size and both change clocks from the same open file."""
+    with path.open("rb") as handle:
+        stat = os.fstat(handle.fileno())
+        if os.name == "nt":
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.GetFileInformationByHandleEx.argtypes = [
+                wintypes.HANDLE,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+            ]
+            kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
+            basic = (ctypes.c_longlong * 5)()
+            if not kernel.GetFileInformationByHandleEx(
+                msvcrt.get_osfhandle(handle.fileno()), 0, ctypes.byref(basic), ctypes.sizeof(basic)
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+            changed = (basic[3] - 116444736000000000) * 100
+        else:
+            changed = stat.st_ctime_ns
+        if changed <= 0:
+            raise OSError("File change time is unavailable")
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, changed
+
+
+def _stamp_key(path: Path, stamp: tuple[int, ...]) -> _Key:
+    return str(Path(os.path.abspath(path))), _STAMP_KIND + json.dumps(stamp, separators=(",", ":"))
+
+
+def _settled(stamp: tuple[int, ...]) -> bool:
+    return time.time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9
+
+
+def _held_digest(path: Path) -> str | None:
+    try:
+        stamp = _stamp(path)
+    except OSError:
+        return None
+    with _LOCK:
+        held = _PROCESS.get(_stamp_key(path, stamp))
+    return held[1] if held is not None and _settled(stamp) else None
+
+
+def _verified_digest(path: Path, *, settle: bool = False) -> str:
+    absolute = str(Path(os.path.abspath(path)))
+    with _LOCK:
+        gate = _DIGEST_LOCKS.get(absolute)
+        if gate is None:
+            gate = Lock()
+            _DIGEST_LOCKS[absolute] = gate
+    with gate:
+        return _read_digest(path, settle=settle)
+
+
+def _read_digest(path: Path, *, settle: bool = False) -> str:
+    try:
+        before = _stamp(path)
+    except OSError:
+        with span("hash", "file_stamp_unavailable"):
+            return _content_sha256(path)
+    with _LOCK:
+        held = _PROCESS.get(_stamp_key(path, before))
+    if held is not None and _settled(before):
+        return held[1]
+    age = time.time_ns() - max(before[-2:])
+    window = int(RACY_SECONDS * 10**9)
+    if settle and 0 <= age <= window:
+        # Wait without the shared cache lock, then read the stamp again before hashing.
+        with span("wait", "file_stamp_settle"):
+            time.sleep((window - age + 1_000_000) / 10**9)
+        try:
+            before = _stamp(path)
+        except OSError:
+            with span("hash", "file_stamp_unavailable"):
+                return _content_sha256(path)
+    digest = _content_sha256(path)
+    try:
+        after = _stamp(path)
+    except OSError:
+        with span("verify", "file_stamp_unavailable"):
+            pass
+        return digest
+    if before == after and _settled(after):
+        with _LOCK:
+            _PROCESS[_stamp_key(path, after)] = ((after[2], after[3], after[1]), digest)
+    elif before != after:
+        with span("verify", "file_stamp_changed"):
+            pass
+    else:
+        with span("verify", "file_stamp_unsettled"):
+            pass
+    return digest
+
+
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:
     """The value proved for this exact file content, or None when absent or unreadable."""
     try:
-        digest = _content if _content is not None else _content_sha256(path)
+        digest = (
+            _content
+            if _content is not None
+            else (_held_digest(path) if kind == "sha256" else _verified_digest(path))
+        )
     except OSError:
         return None
+    if digest is None:
+        entries, _ = _place(path, kind)
+        with _LOCK:
+            kept = entries is not _PROCESS and any(
+                k[1].startswith(_CONTENT_KIND) and '"sha256"' in k[1] for k in entries
+            )
+        if not kept:
+            return None
+        try:
+            digest = _verified_digest(path)
+        except OSError:
+            return None
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
     with _LOCK:
         held = entries.get(key)
@@ -237,7 +359,7 @@ def record_file_fact(
     stat = stat if stat is not None else os.stat(path)
     if not written and time.time() - stat.st_mtime <= RACY_SECONDS:
         return
-    digest = _content if _content is not None else _content_sha256(path)
+    digest = _content if _content is not None else _verified_digest(path)
     if kind == "sha256" and value != digest:
         return
     entry = ((stat.st_size, stat.st_mtime_ns, stat.st_ino), value)
@@ -259,9 +381,9 @@ def record_file_fact(
 
 
 def file_sha256(path: Path) -> str:
-    """Hash the file and remember the resulting fact when it held still."""
+    """Reuse a settled file's digest while its complete stamp holds."""
     before = os.stat(path)
-    digest = _content_sha256(path)
+    digest = _verified_digest(path, settle=True)
     if _holds(path, ((before.st_size, before.st_mtime_ns, before.st_ino), digest)):
         record_file_fact(path, "sha256", digest, stat=before, _content=digest)
     return digest

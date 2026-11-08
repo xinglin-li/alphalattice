@@ -32,6 +32,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from alphalattice.kernel.shared_kernel.spans import collect
 from tests._support.lease_age import age_lease_file
 
 if os.name == "nt":
@@ -1155,6 +1156,32 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
     """tamper: a file rewritten in place, same size, loses its fact and is digested again."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
         _aged(target)
+        age_lease_file(target)
+        digest = hashlib.file_digest
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append(True)
+            return digest(*args, **kwargs)
+
+        with monkeypatch.context() as counting:
+            counting.setattr(hashlib, "file_digest", counted)
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                assert (
+                    list(pool.map(facts.file_sha256, [target] * 4))
+                    == [hashlib.sha256(b"one").hexdigest()] * 4
+                )
+            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
+            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+            assert calls == [True]
+
+        def unavailable(_path):
+            raise OSError("stamp unavailable")
+
+        with monkeypatch.context() as blocked, collect() as timing:
+            blocked.setattr(facts.os, "fstat", unavailable)
+            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+        assert any(row["detail"] == "file_stamp_unavailable" for row in timing.rows())
         facts.record_file_fact(target, "columns", "a" * 64)
         copy = target.with_name("copy.parquet")
         copy.write_bytes(target.read_bytes())

@@ -156,6 +156,12 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
     assert all(line in guide for line in native_bridge.TOOL_INSTALL)  # a first use offers it
     version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
     assert all(line.format(version=version) in guide for line in native_bridge.WHEEL_INSTALL)
+    for name in (
+        ".claude/skills/alphalattice-research/references/operating.md",
+        "docs/public-source/upgrading.md",
+    ):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert text.count(f"alphalattice-{version}-py3-none-any.whl") == 2
     assert "absolute prefix" in guide and "no shell update" in guide
     assert all(value in guide for value in ("uv tool dir", "fresh shell", "continue_here"))
     assert "Activate.ps1" not in guide and "$ws" not in guide

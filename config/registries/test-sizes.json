@@ -2,6 +2,19 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
+    "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
+      "inputs": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py"
+      ]
+    },
+    "tests/integration/local_application/test_wheel_runtime.py::test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg": {
+      "inputs": [
+        "pyproject.toml",
+        ".agents/skills/alphalattice-research/references/operating.md",
+        ".claude/skills/alphalattice-research/references/operating.md",
+        "docs/public-source/upgrading.md"
+      ]
+    },
     "tests/integration/local_application/test_product_script_refusals.py::test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_carries": {
       "inputs": [
         "src/alphalattice/interface/local_application/refusal_words.json"

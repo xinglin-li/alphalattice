@@ -1007,19 +1007,19 @@
         "src/alphalattice/control/workspace_runtime/verified_facts.py::_PROCESS"
       ],
       "definition_line": 40,
-      "key": "xxh3_128 index and canonical kind plus file SHA-256",
-      "dependency_coverage": "Exact content commitment and kind, including the column proof's loaded code and toolchain; full canonical key checked on hits",
-      "invalidation_rule": "content change or unreadable input",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
+      "key": "file path and settled file stamp for a SHA-256, or xxh3_128 index and canonical kind plus file SHA-256",
+      "dependency_coverage": "File identity, size, modification and kernel change time under the accidental-change model; content and kind for derived facts",
+      "invalidation_rule": "file stamp change or unreadable input",
+      "size_bound": "BoundedMemo capacity; default 1024 entries per logical CPU",
+      "bound_scope": "process entries",
+      "eviction": "LRU",
       "safe_to_drop": "Yes: full-byte digest",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _PROCESS in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches file facts outside retained workspaces by content and kind, rebuilding on a miss or after LRU eviction."
+      "description": "Caches settled file digests by path and stamp and other facts by content and kind; a miss or unavailable stamp reads the file again."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._HELD::year-fact-schema-presence-held": {
       "owner": "alphalattice.control.workspace_runtime",
