@@ -133,6 +133,11 @@ codspeed = [
     "pytest-codspeed==5.0.3",
     "pytest-test-groups==1.2.1",
 ]
+# The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
+supply-chain = [
+    "cyclonedx-bom==7.5.0",
+    "pip-audit==2.10.1",
+]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
     "mkdocs-material>=9.7.7",

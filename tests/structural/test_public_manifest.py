@@ -53,6 +53,8 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         (".github/ISSUE_TEMPLATE/feature_request.yml", "PUBLIC", "PUBLIC_DOC"),
         (".github/PULL_REQUEST_TEMPLATE.md", "PUBLIC", "PUBLIC_DOC"),
         (".github/workflows/ci.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".github/workflows/supply-chain.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".github/gitleaks.toml", "PUBLIC", "PUBLIC_BUILD"),
         (".test_durations", "PUBLIC", "PUBLIC_BUILD"),
         (".github/workflows/internal.yml", "UNSETTLED", None),
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
@@ -830,6 +832,17 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     assert "public-tests-junit-${{ matrix.os }}-${{ matrix.group }}" in workflow
     assert "public-tests-result-${{ matrix.os }}-${{ github.run_id }}" in workflow
     assert "--durations-path .test_durations" in workflow
+    # every workflow's actions are pinned to a full commit, never a tag or branch
+    uses = [
+        found
+        for path in sorted((root / ".github/workflows").glob("*.yml"))
+        for found in re.findall(r"^\s*-?\s*uses:\s*(\S+)", path.read_text("utf-8"), re.M)
+    ]
+    assert (
+        uses
+        and [found for found in uses if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", found)]
+        == []
+    )
     # Each OS marker follows the matching shard-evidence verifier and is never emitted on failure.
     checked = workflow.index("      - name: Total and verify this operating system's shards\n")
     marker = workflow.index(

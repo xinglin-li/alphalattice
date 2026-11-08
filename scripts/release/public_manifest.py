@@ -433,6 +433,8 @@ RULES = [
             ".pre-commit-config.yaml",
             ".githooks/**",
             ".github/workflows/ci.yml",
+            ".github/workflows/supply-chain.yml",
+            ".github/gitleaks.toml",
             ".test_durations",
             "pyproject.toml",
             "uv.lock",
