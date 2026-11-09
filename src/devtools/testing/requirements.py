@@ -746,41 +746,143 @@ def _area_layers(tests: Iterable[Holder]) -> dict[str, Counter[str]]:
     return areas
 
 
+def _removed_imports(node: ast.AST, removed: set[str]) -> set[str] | None:
+    """Resolve project imports only when their exact modules have been removed."""
+
+    def deleted(module: str) -> bool:
+        path = module.replace(".", "/") + ".py"
+        return path in removed or "src/" + path in removed
+
+    if isinstance(node, ast.Import):
+        modules = [(item.name, item.asname or item.name.split(".")[0]) for item in node.names]
+    elif isinstance(node, ast.ImportFrom):
+        if node.level:
+            return None
+        module = node.module or ""
+        modules = [
+            (module if deleted(module) else f"{module}.{item.name}", item.asname or item.name)
+            for item in node.names
+        ]
+    else:
+        return set()
+    names: set[str] = set()
+    for module, name in modules:
+        if module.split(".", 1)[0] in {"importlib", "runpy", "subprocess", "os"}:
+            return None
+        if module.split(".", 1)[0] in {"scripts", "devtools", "alphalattice", "tests"}:
+            if name == "*" or not deleted(module):
+                return None
+            names.add(name)
+    return names
+
+
+def _removed_test_source(text: str, removed: set[str]) -> bool:
+    """A retired test file names only deleted project modules and no dynamic import route."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = (
+                node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            )
+            if name in {"__import__", "import_module", "run_module", "run_path", "exec", "eval"}:
+                return False
+        found = _removed_imports(node, removed)
+        if found is None:
+            return False
+        names.update(found)
+    tests = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    ]
+    return bool(names and tests) and all(
+        any(isinstance(part, ast.Name) and part.id in names for part in ast.walk(test))
+        for test in tests
+    )
+
+
+def _retired_area(
+    area: str,
+    current: list[Holder],
+    previous: list[Holder],
+    retired_tests: Mapping[str, str],
+    removed_sources: set[str],
+) -> bool:
+    old = {test.node: test for test in previous}
+    new = {test.node: test for test in current}
+    if new.keys() - old.keys():
+        return False
+    removed = [node for node in old.keys() - new.keys() if node.split("/")[2:3] == [area]]
+    unchanged = all(
+        getattr(test, "digest", "") == getattr(old[node], "digest", "")
+        for node, test in new.items()
+        if node in old and node.split("/")[2:3] == [area]
+    )
+    return bool(removed and unchanged) and all(
+        (path := node.partition("::")[0]) in retired_tests
+        and _removed_test_source(retired_tests[path], removed_sources)
+        for node in removed
+    )
+
+
+def _correct_prior_layers(
+    current: list[Holder],
+    previous: list[Holder],
+    then: dict[str, Counter[str]],
+    rows: Mapping[str, dict[str, Any]],
+    prior_rows: Mapping[str, dict[str, Any]],
+) -> None:
+    old = {test.node: test for test in previous}
+    for test in current:
+        if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
+            continue
+        original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
+        if not original or original.digest != test.digest or original.ids != test.ids:
+            continue
+        if all(
+            key in rows
+            and key in prior_rows
+            and prior_rows[key]["layer"] == "unit"
+            and rows[key]["layer"] == "integration"
+            and not lower_layer(key, rows[key], prior_rows[key])
+            for key in test.ids
+        ):
+            area = test.node.split("/")[2]
+            then[area]["unit"] -= 1
+            then[area]["integration"] += 1
+
+
 def pyramid(
     after: Iterable[Holder],
     before: Iterable[Holder] | None,
     rows: Mapping[str, dict[str, Any]] | None = None,
     prior_rows: Mapping[str, dict[str, Any]] | None = None,
+    *,
+    retired_tests: Mapping[str, str] | None = None,
+    removed_sources: set[str] | None = None,
 ) -> list[str]:
     """An area's integration share of its test functions may only fall: a change that raises it
     is refused by name. Correct an unchanged holder's prior label only when its raised registered
-    requirement says why it cannot run in unit; a new area has no prior share to keep."""
+    requirement says why it cannot run in unit; a new area has no prior share to keep. An
+    unchanged area's deleted tests may leave with the exact source they alone import."""
     current, previous = list(after), list(before or ())
     now, then = _area_layers(current), _area_layers(previous)  # no base tree: nothing to keep
+    retired_tests = retired_tests or {}
+    removed_sources = removed_sources or set()
     if rows is not None and prior_rows is not None:
-        old = {test.node: test for test in previous}
-        for test in current:
-            if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
-                continue
-            original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
-            if not original or original.digest != test.digest or original.ids != test.ids:
-                continue
-            if all(
-                key in rows
-                and key in prior_rows
-                and prior_rows[key]["layer"] == "unit"
-                and rows[key]["layer"] == "integration"
-                and not lower_layer(key, rows[key], prior_rows[key])
-                for key in test.ids
-            ):
-                area = test.node.split("/")[2]
-                then[area]["unit"] -= 1
-                then[area]["integration"] += 1
+        _correct_prior_layers(current, previous, then, rows, prior_rows)
     found = []
     for area, counts in sorted(now.items()):
         was = then.get(area, Counter())
         total, prior = sum(counts.values()), sum(was.values())
         if prior and counts["integration"] * prior > was["integration"] * total:
+            if _retired_area(area, current, previous, retired_tests, removed_sources):
+                continue
             found.append(
                 f"Test pyramid risk for {area}: its integration share would rise from "
                 f"{was['integration']}/{prior} to {counts['integration']}/{total} test functions; "
@@ -863,6 +965,8 @@ def guard(
     *,
     tests: Iterable[Holder] | None = None,
     before_tests: Iterable[Holder] | None = None,
+    retired_tests: Mapping[str, str] | None = None,
+    removed_sources: set[str] | None = None,
 ) -> list[str]:
     """The fast guard's step over a change: its new tests and its added or edited rows, parsed
     once; a tree with no registry at either end has nothing to register."""
@@ -899,5 +1003,12 @@ def guard(
         registration(root, candidates.values(), rows, at=at, prior=prior)
         + admission(root, rows, before, at=at)
         + _fresh_lower_layers(new, rows, before)
-        + pyramid(at.tests, before_tests, rows, before)
+        + pyramid(
+            at.tests,
+            before_tests,
+            rows,
+            before,
+            retired_tests=retired_tests,
+            removed_sources=removed_sources,
+        )
     )

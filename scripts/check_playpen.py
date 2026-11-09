@@ -755,6 +755,24 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
         added = [test.node for test in fresh if test.node not in old_nodes]
+        removed_sources = set(
+            git(
+                "diff",
+                *(["--cached"] if staged else []),
+                "--name-only",
+                "--diff-filter=D",
+                "-z",
+                base,
+                "--",
+                "src/",
+                "scripts/",
+            ).split("\0")
+        ) - {""}
+        removed_tests = {
+            path: blobs[f"{base}:{path}"]
+            for path in changed_tests & before
+            if (path not in indexed if staged else not (ROOT / path).is_file())
+        }
         registry = requirements.REGISTRY.as_posix()
         here = git("ls-files", "--", registry).strip() if staged else (ROOT / registry).is_file()
         declared = git("show", f":{registry}") if staged and here else None
@@ -802,6 +820,8 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
             *earlier,
             *(t for path, group in projected.items() if path not in changed_tests for t in group),
         ],
+        retired_tests=removed_tests,
+        removed_sources=removed_sources,
     )
     for line in refused:
         print(line, flush=True)

@@ -25,6 +25,51 @@ def test_an_areas_integration_share_may_only_fall():
     assert refused.startswith("Test pyramid risk for risk:") and "3/4 to 4/5" in refused
     assert pyramid(holders(integration__risk=4, unit__risk=2, integration__feature=3), before) == []
     assert pyramid(holders(integration__risk=3, unit__risk=1, integration__new=5), before) == []
+    retired = holders(integration__retired=3, unit__retired=2)
+    remaining = holders(integration__retired=3, unit__retired=1)
+    removed_test = "tests/unit/retired/test_x.py"
+    removed_source = "scripts/retired/example.py"
+    old_text = "from scripts.retired.example import run\ndef test_1(): run()\n"
+    proof = {removed_test: old_text}
+    # Only a whole test file for a deleted source is exempt; a partial file is not.
+    remaining[-1].node = "tests/unit/retired/test_other.py::test_0"
+    retired[-2].node = remaining[-1].node
+    assert pyramid(remaining, retired, retired_tests=proof, removed_sources={removed_source}) == []
+    assert pyramid(remaining, retired, retired_tests=proof, removed_sources=set())
+    assert pyramid(remaining, retired, retired_tests=proof, removed_sources={"scripts/other.py"})
+    assert pyramid(remaining, retired, retired_tests={}, removed_sources={removed_source})
+    assert pyramid(
+        remaining,
+        retired,
+        retired_tests={removed_test: old_text + "from scripts.live import run\n"},
+        removed_sources={removed_source},
+    )
+    assert pyramid(
+        remaining,
+        retired,
+        retired_tests={removed_test: old_text + "import importlib\nimportlib.import_module('x')\n"},
+        removed_sources={removed_source},
+    )
+    assert pyramid(
+        remaining,
+        retired,
+        retired_tests={
+            removed_test: "from scripts.retired.example import run\ndef test_1(): pass\n"
+        },
+        removed_sources={removed_source},
+    )
+    assert pyramid(
+        remaining + holders(integration__other=1),
+        retired,
+        retired_tests=proof,
+        removed_sources={removed_source},
+    )
+    assert pyramid(
+        [*remaining, SimpleNamespace(node="tests/integration/retired/test_added.py::test_new")],
+        retired,
+        retired_tests=proof,
+        removed_sources={removed_source},
+    )
     structural = [SimpleNamespace(node="tests/structural/test_tree.py::test_walk")]
     assert pyramid(before + structural * 3, before) == []
     old = SimpleNamespace(

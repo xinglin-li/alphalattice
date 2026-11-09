@@ -76,6 +76,91 @@
   },
   "defaults": [
     {
+      "pattern": "tests/unit/agent_eval/test_accepted_routing.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax14_audit.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax15_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax16_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1f_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax1g_probe.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1h_score.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax3_extract.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax3_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax4_drivers.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax5_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax5_rescore.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax6_books.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax8_compare.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_data_case_coverage.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_read_audit.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
       "pattern": "tests/integration/alpha_research/test_alpha_product_recipe.py*",
       "owner": "tests.alpha_research",
       "size": "medium"
