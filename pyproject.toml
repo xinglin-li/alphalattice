@@ -70,7 +70,7 @@ data-live = [
 # Explicitly admitted live evidence acquisition; network stays off by default.
 live-evidence = [
     "httpx>=0.28,<1",
-    "trafilatura==2.1.0",
+    "trafilatura==2.3.1",
 ]
 # Alpha, Risk, Sector, Portfolio, and Validation numerics.
 quant = [
@@ -92,14 +92,14 @@ quant = [
 # `config/requirements-retrieval.lock` and `scripts/create_retrieval_environment.py`.
 semantic = [
     "numpy>=2.5,<3",
-    "onnxruntime==1.27.0",
-    "sentencepiece==0.2.1",
+    "onnxruntime==1.30.0",
+    "sentencepiece==0.2.3",
     "sqlite-vec==0.1.9",
 ]
 
 [dependency-groups]
 dev = [
-    "ast-grep-cli==0.50.0",
+    "ast-grep-cli==0.51.1",
     "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
@@ -131,12 +131,12 @@ order = [
 ]
 # Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
 codspeed = [
-    "pytest-codspeed==5.0.3",
+    "pytest-codspeed==5.0.4",
     "pytest-test-groups==1.2.1",
 ]
 # The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
 supply-chain = [
-    "cyclonedx-bom==7.5.0",
+    "cyclonedx-bom==7.6.0",
     "pip-audit==2.10.1",
 ]
 docs = [
