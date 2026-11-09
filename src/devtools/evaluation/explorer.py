@@ -133,7 +133,7 @@ def research_update_findings(
 def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
     """A later day reads no filing an earlier analysis read, nor scores a selection over one.
 
-    The filing is the unit of reuse (W3). `store` is the Evidence artifact root and `before`
+    The filing is the unit of reuse. `store` is the Evidence artifact root and `before`
     the records it held before the day; the day's own records are the rest.
     """
 

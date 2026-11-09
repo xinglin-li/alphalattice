@@ -113,7 +113,7 @@
    },
    "lane-compact": {
     "width": 900,
-    "about": "Container threshold for two-column layouts, including Overview properties and the Team dock (round 31)."
+    "about": "Container threshold for two-column layouts, including Overview properties and the Team dock."
    },
    "lane-medium": {
     "width": 1080,
@@ -166,7 +166,7 @@
  ],
  "groups": {
   "scale.space": {
-   "about": "Spacing scale based on multiples of 4 with a 2 px half step (round 38). All gaps, padding and margins use the steps 2, 4, 8, 12, 16, 20, 24, 32, 40, 48 and 64. component.boxes owns named component gaps and insets; role.frame owns the frame gutter.",
+   "about": "Spacing scale based on multiples of 4 with a 2 px half step. All gaps, padding and margins use the steps 2, 4, 8, 12, 16, 20, 24, 32, 40, 48 and 64. component.boxes owns named component gaps and insets; role.frame owns the frame gutter.",
    "tokens": {
     "space-05": {
      "base": "2px"
@@ -204,7 +204,7 @@
    }
   },
   "scale.type": {
-   "about": "Shared typography scale (law 75, P1), expressed as font size / line height: chrome 12 / 16 for captions, badges, keycaps and chart ticks; UI 13 / 18 for callouts, row text, labels, controls and field values; reading 14 / 22 for introductory text, fact values and table cells, with prose using its dedicated line height; title-3 15 / 20; title-2 17 / 22; title-1 22 / 28 for figure values; large title 26 / 32. Footnote and headline are aliases of the UI style; heading emphasis uses font weight. Font size and line height come from the same style, enforced by the parameter gate. Chinese typography (round 24, 2026-09-20) accounts for CJK glyphs filling the em box: section title 18, body 15, every line height increased by 2, and no letter spacing. Strong text uses weight 600 because the Windows CJK face supplies Regular and Bold only.",
+   "about": "Shared typography scale (law 75), expressed as font size / line height: chrome 12 / 16 for captions, badges, keycaps and chart ticks; UI 13 / 18 for callouts, row text, labels, controls and field values; reading 14 / 22 for introductory text, fact values and table cells, with prose using its dedicated line height; title-3 15 / 20; title-2 17 / 22; title-1 22 / 28 for figure values; large title 26 / 32. Footnote and headline are aliases of the UI style; heading emphasis uses font weight. Font size and line height come from the same style, enforced by the parameter gate. Chinese typography (2026-09-20) accounts for CJK glyphs filling the em box: section title 18, body 15, every line height increased by 2, and no letter spacing. Strong text uses weight 600 because the Windows CJK face supplies Regular and Bold only.",
    "tokens": {
     "font-ui": {
      "base": "\"Geist\",-apple-system,BlinkMacSystemFont,\"Segoe UI Variable\",\"Segoe UI\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei UI\",\"Microsoft YaHei\",\"Noto Sans CJK SC\",Arial,sans-serif"
@@ -282,7 +282,7 @@
     },
     "style-footnote-size": {
      "base": "var(--style-callout-size)",
-     "about": "Minimum readable font size for facts, timestamps, identifiers and notes, based on Apple's 13 pt footnote style (round 89b)."
+     "about": "Minimum readable font size for facts, timestamps, identifiers and notes, based on Apple's 13 pt footnote style."
     },
     "style-footnote-leading": {
      "base": "var(--style-callout-leading)"
@@ -329,7 +329,7 @@
    }
   },
   "scale.radius": {
-   "about": "Shared radius scale (P4): micro 4 for keycaps, code and placeholders; control 6 for buttons, fields and row highlights; block 8 for nested boxes, empty states, setup cards and tiles; card 12 for cards, panels, verdicts, findings, menus, popovers and details; lg 22 for dialogs (round 80); pill for chips, badges, switches and primary buttons; rule 2 for the rounded end of a 2 px rule.",
+   "about": "Shared radius scale : micro 4 for keycaps, code and placeholders; control 6 for buttons, fields and row highlights; block 8 for nested boxes, empty states, setup cards and tiles; card 12 for cards, panels, verdicts, findings, menus, popovers and details; lg 22 for dialogs; pill for chips, badges, switches and primary buttons; rule 2 for the rounded end of a 2 px rule.",
    "tokens": {
     "radius-micro": {
      "base": "4px"
@@ -390,11 +390,11 @@
    }
   },
   "scale.motion": {
-   "about": "Motion parameters for feedback, in-place changes and surface entrances (round 41). Three durations and two curves, arrive and move, define transitions; highlights use a longer fade. Reduced motion makes transitions immediate (11-accessibility.css).",
+   "about": "Motion parameters for feedback, in-place changes and surface entrances. Three durations and two curves, arrive and move, define transitions; highlights use a longer fade. Reduced motion makes transitions immediate (11-accessibility.css).",
    "tokens": {
     "dur-1": {
      "base": "100ms",
-     "about": "Short transition duration for menus, previews, cards and compact-control feedback, based on Linear measurements (round 59)."
+     "about": "Short transition duration for menus, previews, cards and compact-control feedback, based on Linear measurements."
     },
     "dur-2": {
      "base": "150ms",
@@ -424,7 +424,7 @@
    }
   },
   "role.frame": {
-   "about": "Shared CSS frame geometry: maximum width 1440 px, with a 32 px inset reduced to 16 px below 768 px. Viewport lengths are divided by the text-size scale because root CSS zoom does not scale viewport units; applyZoom sets --zoom on the root only (round 84).",
+   "about": "Shared CSS frame geometry: maximum width 1440 px, with a 32 px inset reduced to 16 px below 768 px. Viewport lengths are divided by the text-size scale because root CSS zoom does not scale viewport units; applyZoom sets --zoom on the root only.",
    "tokens": {
     "vh": {
      "base": "calc(100dvh / var(--zoom, 1))"
@@ -477,7 +477,7 @@
     },
     "kv-key": {
      "base": "152px",
-     "about": "a Properties section's key column: a worded key of three words on one or two lines (the dialog's facts' width, round 86), one width down a column so the values align"
+     "about": "a Properties section's key column: a worded key of three words on one or two lines (the dialog's facts' width), one width down a column so the values align"
     },
     "kv-column": {
      "base": "360px",
@@ -498,7 +498,7 @@
    }
   },
   "role.ground": {
-   "about": "Achromatic surface hierarchy for both appearances: canvas, lane, box and overlay (rounds 39, 68 and 82). Dark uses canvas L 16, lane L 20, box L 24, raised surface L 26 and overlay L 30. Light uses canvas L 96.2 and lane L 99.2, with white boxes, overlays and fields; the 2026-09-24 revision increased the earlier L 95.2/L 98.2 values while preserving layer separation. Wells use translucent ink to appear inset. Group headers use the brighter surface-bar level; subtle cards sit between the lane and box levels.",
+   "about": "Achromatic surface hierarchy for both appearances: canvas, lane, box and overlay. Dark uses canvas L 16, lane L 20, box L 24, raised surface L 26 and overlay L 30. Light uses canvas L 96.2 and lane L 99.2, with white boxes, overlays and fields; the 2026-09-24 revision increased the earlier L 95.2/L 98.2 values while preserving layer separation. Wells use translucent ink to appear inset. Group headers use the brighter surface-bar level; subtle cards sit between the lane and box levels.",
    "tokens": {
     "surface-page": {
      "base": "var(--bg)",
@@ -562,7 +562,7 @@
    }
   },
   "role.ink": {
-   "about": "Text and interface inks (rounds 82, 89b and 90). The text ink is L 13 in Light and L 92.5 in Dark. Muted ink mixes text ink into the local ground using --muted-mix: 72%, or 80% in increased contrast; boxes recompute that mix against their own ground. Link ink is adjusted from the accent to reach 4.5:1 contrast. Primary buttons use text ink.",
+   "about": "Text and interface inks. The text ink is L 13 in Light and L 92.5 in Dark. Muted ink mixes text ink into the local ground using --muted-mix: 72%, or 80% in increased contrast; boxes recompute that mix against their own ground. Link ink is adjusted from the accent to reach 4.5:1 contrast. Primary buttons use text ink.",
    "tokens": {
     "faint": {
      "base": "color-mix(in srgb,var(--muted) 84%,var(--surface-face))"
@@ -599,7 +599,7 @@
      "contrast": "80%",
      "light": "80%",
      "light-contrast": "86%",
-     "about": "Text-ink mix for sustained readability. The round 89b revision increased contrast; the 2026-09-23 Light reference mixed the softer text ink at 80% to match measured Linear secondary ink at lch 38-39."
+     "about": "Text-ink mix for sustained readability. The contrast revision increased contrast; the 2026-09-23 Light reference mixed the softer text ink at 80% to match measured Linear secondary ink at lch 38-39."
     },
     "muted": {
      "base": "color-mix(in srgb, var(--text) var(--muted-mix), var(--surface-page))"
@@ -621,7 +621,7 @@
    }
   },
   "role.line": {
-   "about": "The lines: a hairline of the text ink between rows (7 %) and a box's edge (7 % in Light; in Dark a lit 4 % hairline over the box's ring); the strong edge for a hover or a chosen outline; increased contrast makes every edge read (>= 3:1). V657: Light needs 55%; the 45% contrast floor also covers a Dark field composited over the overlay ground (42% read 2.977:1).",
+   "about": "The lines: a hairline of the text ink between rows (7 %) and a box's edge (7 % in Light; in Dark a lit 4 % hairline over the box's ring); the strong edge for a hover or a chosen outline; increased contrast makes every edge read (>= 3:1). Light needs 55%; the 45% contrast floor also covers a Dark field composited over the overlay ground (42% read 2.977:1).",
    "tokens": {
     "edge-card": {
      "base": "color-mix(in srgb,var(--text) 7%,transparent)",
@@ -644,12 +644,12 @@
     "edge-stat": {
      "base": "color-mix(in srgb, var(--edge-hair) var(--tint-strong), transparent)",
      "contrast": "var(--edge-hair)",
-     "about": "V657: the statistic's ordinary soft divider keeps its tint; increased contrast reads the hairline without a second alpha reduction"
+     "about": "the statistic's ordinary soft divider keeps its tint; increased contrast reads the hairline without a second alpha reduction"
     },
     "edge-row": {
      "base": "color-mix(in srgb, var(--text) var(--tint-faint), transparent)",
      "contrast": "var(--edge-hair)",
-     "about": "V657: a table's inset row divider keeps its ordinary tint; increased contrast reads the same hairline as every row"
+     "about": "a table's inset row divider keeps its ordinary tint; increased contrast reads the same hairline as every row"
     },
     "thread-axis": {
      "base": "color-mix(in srgb,var(--text) 10%,transparent)",
@@ -663,7 +663,7 @@
      "dark": "0 0 0 0 transparent",
      "glass-parts": "0 0 0 0 transparent",
      "contrast": "0 0 0 0 transparent",
-     "about": "Decorative inner highlight. Glass layers provide their own illumination, so this highlight is removed there (law 150). Increased contrast removes it while preserving the outer edge at 3:1 (V657)."
+     "about": "Decorative inner highlight. Glass layers provide their own illumination, so this highlight is removed there (law 150). Increased contrast removes it while preserving the outer edge at 3:1."
     },
     "ui-line": {
      "body": "var(--edge-card)",
@@ -687,7 +687,7 @@
    }
   },
   "role.fill": {
-   "about": "The fills: the selected row neutral (the text ink at 8 %), the option under the pointer in a picker the accent at 12 % (round 91), a pressed segment the text ink at 8 % (round 24).",
+   "about": "The fills: the selected row neutral (the text ink at 8 %), the option under the pointer in a picker the accent at 12 %, a pressed segment the text ink at 8 %.",
    "tokens": {
     "ds-control-hover": {
      "body": "var(--surface-well)",
@@ -700,7 +700,7 @@
     "fill-highlight": {
      "light": "color-mix(in srgb,var(--accent) 12%,transparent)",
      "dark": "color-mix(in srgb,var(--accent) 18%,transparent)",
-     "about": "round 91: the option under the pointer or the keys, in a picker only"
+     "about": "the option under the pointer or the keys, in a picker only"
     },
     "switch-knob": {
      "base": "#fff",
@@ -760,7 +760,7 @@
    }
   },
   "role.focus": {
-   "about": "The keyboard's ring (round 51): 2 px of the accent 2 px outside the control; inside a strip that clips (a tab strip scrolls sideways) the ring is drawn inside by the same width.",
+   "about": "The keyboard's ring: 2 px of the accent 2 px outside the control; inside a strip that clips (a tab strip scrolls sideways) the ring is drawn inside by the same width.",
    "tokens": {
     "focus-ring-width": {
      "base": "2px"
@@ -779,7 +779,7 @@
    }
   },
   "role.depth": {
-   "about": "Surface shadows and stacking levels (round 39, P4, law 138). Resting boxes use measured Linear references: two soft shadow layers in Light and a tight 30% black ring in Dark. Raised surfaces and overlays use ambient and key-shadow layers. Glass modals reduce backdrop dimming and add blur (law 150). Named z-index levels are raised 1, sticky 2, float 3, top 5, side 6, inspector 30, menu 40, toast 80, peek 96 and skip 100.",
+   "about": "Surface shadows and stacking levels (law 138). Resting boxes use measured Linear references: two soft shadow layers in Light and a tight 30% black ring in Dark. Raised surfaces and overlays use ambient and key-shadow layers. Glass modals reduce backdrop dimming and add blur (law 150). Named z-index levels are raised 1, sticky 2, float 3, top 5, side 6, inspector 30, menu 40, toast 80, peek 96 and skip 100.",
    "tokens": {
     "shadow-rest": {
      "base": "0 3px 6px -2px rgba(0,0,0,.02), 0 1px 1px 0 rgba(0,0,0,.04)",
@@ -846,7 +846,7 @@
    }
   },
   "role.tone": {
-   "about": "The tones (round 82, decision A of phase 12): green, orange, red, purple, cyan and grey as marks (a dot, a glyph, a switch, a chart series) and as inks (the same hue at a lightness that reads as text: Light one step deeper, Dark the mark itself); a tint is the mark at 12 %. Colour gives meaning and appears nowhere else. Increased contrast deepens the inks. Code (round 61): a key in the green, a string in a deep blue, a constant in the brighter blue. Chart series: the accent, then a second hue per appearance, validated for colour vision.",
+   "about": "The tones : green, orange, red, purple, cyan and grey as marks (a dot, a glyph, a switch, a chart series) and as inks (the same hue at a lightness that reads as text: Light one step deeper, Dark the mark itself); a tint is the mark at 12 %. Colour gives meaning and appears nowhere else. Increased contrast deepens the inks. Code: a key in the green, a string in a deep blue, a constant in the brighter blue. Chart series: the accent, then a second hue per appearance, validated for colour vision.",
    "tokens": {
     "hue-good": {
      "base": "147"
@@ -1023,7 +1023,7 @@
    }
   },
   "role.grid": {
-   "about": "Shared grid families (round 38). The four templates using variables are declared on each element because var() references inside a custom property are resolved where that property is declared. Each grid defines --lead, --aside, --cols or --card-min beside its template. Page grids use one of these shared families.",
+   "about": "Shared grid families. The four templates using variables are declared on each element because var() references inside a custom property are resolved where that property is declared. Each grid defines --lead, --aside, --cols or --card-min beside its template. Page grids use one of these shared families.",
    "tokens": {
     "grid-equal": {
      "every-element": "repeat(var(--cols, 2), minmax(0, 1fr))"
@@ -1620,7 +1620,7 @@
    }
   },
   "component.boxes": {
-   "about": "Shared box geometry (P4): card inset 16 for headers, bodies and padded panels, based on GitHub boxes and Primer's normal stack; block gap 20; stack spacing (TY4, 04-surfaces) of 8 between text blocks, 12 before a control, 16 before or after a box, and 20 before a heading; gap below a card header 16; sheet inset 24; reading measures 68ch and 36em in Chinese. The component's own edge, --ds-edge, uses the card edge normally and muted ink in increased contrast.",
+   "about": "Shared box geometry : card inset 16 for headers, bodies and padded panels, based on GitHub boxes and Primer's normal stack; block gap 20; stack spacing (TY4, 04-surfaces) of 8 between text blocks, 12 before a control, 16 before or after a box, and 20 before a heading; gap below a card header 16; sheet inset 24; reading measures 68ch and 36em in Chinese. The component's own edge, --ds-edge, uses the card edge normally and muted ink in increased contrast.",
    "tokens": {
     "inset-card": {
      "base": "16px"
@@ -1786,7 +1786,7 @@
      "base": "rgba(0,0,0,.06)",
      "dark": "rgba(255,255,255,.08)",
      "contrast": "var(--edge-card)",
-     "about": "a control's edge on the glass. V672: increased contrast consumes role.line's edge-card, including its Light contrast value, without a second alpha reduction. Opaque: the control's own"
+     "about": "a control's edge on the glass. increased contrast consumes role.line's edge-card, including its Light contrast value, without a second alpha reduction. Opaque: the control's own"
     },
     "glass-control-hover": {
      "base": "rgba(0,0,0,.07)",
@@ -1902,13 +1902,13 @@
     "07-tasks.css",
     "12-material.css"
    ],
-   "why": "a box re-mixes the muted ink against its own ground (round 90)"
+   "why": "a box re-mixes the muted ink against its own ground"
   },
   "layout-max": {
    "files": [
     "04-surfaces.css"
    ],
-   "why": "a page of forms is one column centred in the lane (round 85)"
+   "why": "a page of forms is one column centred in the lane"
   },
   "ground": {
    "files": [

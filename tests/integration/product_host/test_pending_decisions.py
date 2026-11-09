@@ -79,7 +79,7 @@ def _kinds(**owners: object) -> dict[str, dict[str, object]]:
 
 
 def test_the_workspace_state_waits_on_a_person_from_its_owners_answers() -> None:
-    """requirement (V45): a workspace with no verified input and no preparation under way waits
+    """requirement: a workspace with no verified input and no preparation under way waits
     for its preparation; data past the newest input's end waits for a new input version; each
     names the request that takes it, and a preparation under way or refused is no decision."""
 
@@ -99,7 +99,7 @@ def test_the_workspace_state_waits_on_a_person_from_its_owners_answers() -> None
 
 
 def test_each_item_says_whom_it_waits_on_and_only_the_persons_are_counted() -> None:
-    """requirement (STOPS-1): a step only a person may take waits on the PERSON; a step the agent
+    """requirement: a step only a person may take waits on the PERSON; a step the agent
     takes and discloses, advice included, waits on the AGENT, and the headline counts only the
     person's. A preparation waits on the agent while a first-use goal delegates it."""
 
@@ -132,7 +132,7 @@ def test_each_item_says_whom_it_waits_on_and_only_the_persons_are_counted() -> N
 
 
 def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
-    """requirement (V45): a PLAN previewed and not run is one decision, whoever previewed it,
+    """requirement: a PLAN previewed and not run is one decision, whoever previewed it,
     with its preview and its RUN; the registry holds it runnable only until it expires."""
 
     preview = {"plan_hash": "a" * 64, "study_kind": "factor.screening-development"}

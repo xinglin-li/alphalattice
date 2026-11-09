@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -33,6 +34,23 @@ from tests.structural.size_fixture_support import (
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
     tmp_path, monkeypatch, case, layer, header, body, refused
 ):
+    if case == "network-caught":
+        import socket
+
+        from devtools.testing.contracts import LayerContract
+
+        guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "sqlite3"},))
+        original = socket.socket, socket.getaddrinfo, socket.gethostbyname
+        with guard.active():
+            for call, args in (
+                (socket.socket, ()),
+                (socket.getaddrinfo, ("localhost", 80)),
+                (socket.gethostbyname, ("localhost",)),
+            ):
+                with pytest.raises(AssertionError, match=r"testing\.layer_contract"):
+                    call(*args)
+        assert (socket.socket, socket.getaddrinfo, socket.gethostbyname) == original
+        return
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
         return
@@ -46,6 +64,38 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
 
         checkout, environment = pytest_checkout(tmp_path, root)
         marker = Path(environment["TEMP"]) / "given" / "framework-entered"
+        if case in {"root-session-golden", "root-session-golden-error"}:
+            (checkout / "tests/integration/test_golden_probe.py").write_text(
+                "from devtools.evaluation.golden_workspaces import hold_generation\n"
+                "def test_hold(golden_cache):\n"
+                "    generation = golden_cache / 'generation'\n"
+                "    generation.mkdir()\n"
+                + (
+                    "    def fail(): raise AssertionError('release-test')\n"
+                    if case.endswith("-error")
+                    else "    def fail(): pass\n"
+                )
+                + "    assert hold_generation(generation, fail)\n",
+                encoding="utf-8",
+            )
+        if case in {"root-session-seed", "root-session-seed-error"}:
+            (checkout / "tests/integration/test_golden_probe.py").write_text(
+                "import sys, types\n"
+                "from pathlib import Path\n"
+                "def test_seed():\n"
+                "    module = types.ModuleType('fixture_seed')\n"
+                "    def changed():\n"
+                "        Path(__file__).read_text()\n"
+                + (
+                    "        return ['changed seed']\n"
+                    if case.endswith("-error")
+                    else "        return []\n"
+                )
+                + "    module.seeds_changed = changed\n"
+                "    sys.modules['tests.researcher_methodology_surface."
+                "session_workspace'] = module\n",
+                encoding="utf-8",
+            )
         if case == "root-lookalike":
             target = checkout / "tests/unit/test_collection_probe.py"
             target.write_text(
@@ -93,8 +143,14 @@ def _memory_checks_read_no_host():
                 "-m",
                 "pytest",
                 "-q",
+                *(["-p", "xdist.plugin", "-n", "1"] if case.endswith("-error") else []),
                 "--basetemp",
                 str(marker.parent),
+                *(
+                    [str(checkout / "tests" / "integration" / "test_golden_probe.py")]
+                    if case.startswith(("root-session-golden", "root-session-seed"))
+                    else []
+                ),
                 str(checkout / "tests" / "unit" / "test_collection_probe.py"),
             ],
             cwd=checkout,
@@ -109,7 +165,14 @@ def _memory_checks_read_no_host():
         output = result.stdout + result.stderr
         assert result.returncode == (1 if refused else 0), output
         if refused:
-            assert "testing.layer_contract" in output
+            expected = (
+                "session fixture cleanup failed: AssertionError: release-test"
+                if case == "root-session-golden-error"
+                else "session fixture cleanup failed: AssertionError"
+                if case == "root-session-seed-error"
+                else "testing.layer_contract"
+            )
+            assert expected in output
         if case == "root-runtime":
             assert marker.is_file() and "unit dependency duckdb" in output
         else:
@@ -205,6 +268,11 @@ def _memory_checks_read_no_host():
                 )
                 + f" p['mandatory'].append({node!r})\n"
                 + " return p\ncollection.load_policy = sized\n"
+                + (
+                    f"collection._size_families = lambda config: ({node!r},)\n"
+                    if case == "size-live-large-missing"
+                    else ""
+                )
             )
         (tmp_path / "size-stage-selection.json").write_text(
             json.dumps({"base": "a" * 40, "head": "b" * 40, "families": families}),
@@ -242,10 +310,13 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args[:0] = ["-p", "disabled_audit"]
-    if case.startswith("own-"):
-        call_seconds = {"own-bad": "float('nan')", "own-over": "0.7", "own-boundary": "0.6"}.get(
-            case, "0.4"
-        )
+    if case.startswith("own-") or case == "instruction-over":
+        call_seconds = {
+            "own-bad": "float('nan')",
+            "own-over": "0.7",
+            "instruction-over": "0.7",
+            "own-boundary": "0.6",
+        }.get(case, "0.4")
         (tmp_path / "phase_probe.py").write_text(
             "import pytest\n"
             "@pytest.hookimpl(wrapper=True, tryfirst=True)\n"
@@ -256,6 +327,18 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args = ["-p", "phase_probe", "--log-file", str(tmp_path / "events.log")]
+    if case.startswith("instruction-"):
+        mode = "walltime" if case == "instruction-walltime" else "simulation"
+        (tmp_path / "codspeed_probe.py").write_text(
+            "from types import SimpleNamespace\n"
+            "def pytest_addoption(parser): parser.addoption('--codspeed', action='store_true')\n"
+            "def pytest_configure(config):\n"
+            " config.addinivalue_line('markers', 'benchmark: simulated CodSpeed')\n"
+            " config.pluginmanager.register(SimpleNamespace(is_codspeed_enabled=True, "
+            f"mode=SimpleNamespace(value={mode!r})), 'codspeed_plugin')\n",
+            encoding="utf-8",
+        )
+        phase_args += ["-p", "codspeed_probe", "--codspeed"]
     result = subprocess.run(
         [
             sys.executable,
@@ -287,7 +370,7 @@ def _memory_checks_read_no_host():
         env=child_environment(
             PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
             ALPHALATTICE_TEST_LANE="merge"
-            if case in {"size-live-large-merge", "size-live-large-missing"}
+            if case in {"size-live-large-merge", "size-live-large-missing", "instruction-gate"}
             else "nightly"
             if case == "size-live-large-nightly"
             else "",
@@ -298,6 +381,8 @@ def _memory_checks_read_no_host():
             else "[]",
             ALPHALATTICE_PIPELINE_STAGE="nightly"
             if case == "size-live-large-nightly"
+            else "post-merge"
+            if case == "size-live-large-missing"
             else "commit"
             if case.startswith("size-live-")
             else "",
@@ -307,6 +392,7 @@ def _memory_checks_read_no_host():
                 else ""
             ),
             PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS="1" if case.startswith("instruction-") else "",
             PYTEST_PLUGINS="",
         ),
         capture_output=True,
@@ -384,7 +470,7 @@ def _memory_checks_read_no_host():
         assert not (tmp_path / "unexpected-test-run").exists()
         return
     if case == "size-live-large-merge":
-        assert result.returncode == 5 and "test_size.nightly_only" in output, output
+        assert result.returncode == 5 and "1 deselected" in output, output
         assert "NIGHTLY_EXECUTED" not in output
         return
     if case == "size-live-large-nightly":
@@ -406,7 +492,9 @@ def _memory_checks_read_no_host():
             else "test_size.admission_unmeasured"
             if case == "size-live-skip"
             else "Timeout"
-            if case == "slow"
+            if case in {"slow", "instruction-gate", "instruction-walltime"}
+            else "assert False"
+            if case == "instruction-failure"
             else "testing.layer_contract"
         )
         assert result.returncode == 1 and expected in output, output
@@ -421,6 +509,13 @@ def _memory_checks_read_no_host():
             assert "10000001" in output and "medium" in output
     else:
         assert result.returncode == 0, output
+    if case in {"instruction-slow", "instruction-over"}:
+        from xml.etree import ElementTree as ET
+
+        case_xml = next(ET.parse(tmp_path / "child.xml").iter("testcase"))
+        properties = {row.get("name"): row.get("value") for row in case_xml.iter("property")}
+        assert float(properties["test_timeout_seconds"]) == 1
+        assert properties["test_timeout_mode"] == "off:codspeed-instruction-simulation"
     if case in {
         "size-live-over",
         "size-live-factory",
@@ -508,11 +603,63 @@ def _memory_checks_read_no_host():
 
 @pytest.mark.parametrize(
     "declared",
-    DECLARED_CASES,
+    [
+        *DECLARED_CASES,
+        pytest.param(("required-file",), id="required-file"),
+        pytest.param(("commit-tier",), id="commit-tier"),
+    ],
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
+    if declared == ("required-file",):
+        from types import SimpleNamespace
+
+        from devtools.testing import collection
+
+        nodes = [f"tests/test_wide.py::test_case_{i}" for i in range(1400)]
+        path = tmp_path / "required.json"
+        data = json.dumps(nodes)
+        assert len(data) > 32767
+        path.write_text(data, encoding="utf-8")
+        monkeypatch.delenv("ALPHALATTICE_PIPELINE_EVENTS", raising=False)
+        monkeypatch.delenv("WK_SUITE_PLUGIN", raising=False)
+        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "@" + str(path))
+        config = SimpleNamespace(option=SimpleNamespace(deselect=["tests/test_wide.py"]), stash={})
+        with suppress(pytest.UsageError):
+            collection.pytest_configure(config)
+        assert config.stash.get(collection.REQUIRED) == (tuple(nodes), ("tests/test_wide.py",))
+        assert config.option.deselect == []
+        path.unlink()
+        with pytest.raises(pytest.UsageError, match="required_selection_unavailable") as missing:
+            collection.pytest_configure(config)
+        assert str(path) in str(missing.value)
+        path.write_bytes(b"\xff")
+        with pytest.raises(pytest.UsageError, match="required_selection_unavailable"):
+            collection.pytest_configure(config)
+        path.write_text("{", encoding="utf-8")
+        with pytest.raises(pytest.UsageError, match="required_selection_invalid"):
+            collection.pytest_configure(config)
+        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(nodes[:1]))
+        collection.pytest_configure(config)
+        assert config.stash[collection.REQUIRED][0] == tuple(nodes[:1])
+        return
+    if declared == ("commit-tier",):
+        from devtools.testing import collection
+
+        _stage_admits = getattr(collection, "_stage_admits", None)
+        assert callable(_stage_admits), "commit needs a selection boundary for slow tests"
+        for layer, size, expected in (
+            ("unit", "small", True),
+            ("integration", "medium", True),
+            ("integration", "large", False),
+            ("e2e", "medium", False),
+            ("native", "medium", False),
+        ):
+            assert _stage_admits("commit", size, layer) is expected
+        assert _stage_admits("nightly", "large", "e2e")
+        assert _stage_admits("post-merge", "large", "integration")
+        return
     if not declared:
         monkeypatch.setenv(
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
@@ -619,6 +766,32 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                 "def test_param(x): pass\n"
             )
             new = old.replace("[1, 2]", "[1, 2, 3]") + "def test_new(): pass\n"
+            commented = old.replace("def test_same(): pass", "def test_same(): pass  # explanation")
+            assert (
+                requirements.edited_families(
+                    requirements.file_holders("tests/test_a.py", old, size_scope=True),
+                    requirements.file_holders("tests/test_a.py", commented, size_scope=True),
+                )
+                == []
+            )
+            assert requirements.edited_families(
+                requirements.file_holders("tests/test_a.py", old, size_scope=True),
+                requirements.file_holders(
+                    "tests/test_a.py",
+                    old.replace("def test_same(): pass", "def test_same(): assert True"),
+                    size_scope=True,
+                ),
+            ) == ["tests/test_a.py::test_same"]
+            literal = (
+                "def test_literal():\n    value = \"@pytest.mark.proves('old')\"\n"
+                "    assert value\n"
+            )
+            assert requirements.edited_families(
+                requirements.file_holders("tests/test_a.py", literal, size_scope=True),
+                requirements.file_holders(
+                    "tests/test_a.py", literal.replace("old", "new"), size_scope=True
+                ),
+            ) == ["tests/test_a.py::test_literal"]
             before = requirements.file_holders("tests/test_a.py", old, size_scope=True)
             after = requirements.file_holders("tests/test_a.py", new, size_scope=True)
             assert edited(before, after) == [
@@ -1178,6 +1351,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     )
     if case == "sibling-race":
         assert not sibling.exists() and sibling.with_name(sibling.name + "-moved").is_dir()
+    if post_stage == "commit":
+        assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
+        return
     if case in faults:
         assert result.returncode != 0 and "test_size." + refusal in result.stderr
     elif case == "timeout":
@@ -1199,9 +1375,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             assert rows[0]["timeout_marker"] == 0.05
             return
         if post_stage:
-            expected = (
-                ["large"] if post_stage == "commit" else ["large", "large", "medium", "small"]
-            )
+            expected = ["large", "large", "medium", "small"]
             assert sorted(r["test_size"] for r in rows) == expected
             return
         if lane:
@@ -1326,13 +1500,19 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     )
     nodes = [SimpleNamespace(nodeid=n) for n in (other, "tests/structural/test_fenced.py::t")]
     _record_moved(config, "merge", nodes, policy, changed)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": []}
+    _record_moved(config, "merge", nodes, policy, changed)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
+    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
+    assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
     _record_moved(config, "merge", nodes, policy, changed, floor=True)
     pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
-    _record_moved(config, "merge", nodes, policy, None, omitted=(nodes[0],))
+    _record_moved(config, "merge", nodes, policy, None)
+    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[1]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "post-merge", "moved": [other], "ran": []}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
@@ -1708,7 +1888,10 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
             r.legacy(tmp_path)
         return
     base, entries = json.dumps(registry), registry["entries"]
-    row = entries[HELD] | {"description": "A restarted Host reuses its last free port."}
+    row = entries[HELD] | {
+        "description": "A restarted Host reuses its last free port.",
+        "lower_layer": "Only a served Host on a real loopback port shows the reuse.",
+    }
     decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
     if edit is None:
         del entries[case]
@@ -1921,3 +2104,62 @@ def test_codspeed_measures_every_selected_test_and_a_plain_run_marks_none(
     pytestconfig.addinivalue_line("markers", "benchmark: registered by pytest-codspeed when on")
     collection.pytest_itemcollected(item)
     assert [mark.name for mark in marks] == ["benchmark"]
+
+    import yaml
+
+    workflow = yaml.safe_load(
+        (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text()
+    )
+    switch = "ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS"
+    assert switch not in workflow.get("env", {})
+    for name, job in workflow["jobs"].items():
+        assert switch not in job.get("env", {})
+        for step in job.get("steps", []):
+            value = step.get("env", {}).get(switch)
+            if name == "test-cost" and step.get("name") == "Measure each test of the pilot slice":
+                assert value == "1" and step["with"]["mode"] == "simulation"
+                assert job["continue-on-error"] is True and job["timeout-minutes"] == 90
+                assert step["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
+            else:
+                assert value is None
+
+
+@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
+def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed() -> None:
+    """A deferred guard follows what it reads: source selects it, and a slow one still waits."""
+    from devtools.testing import sizes
+
+    guard = "tests/structural/test_a_guard.py"
+    fast, slow = f"{guard}::test_fast", f"{guard}::test_slow"
+    rule = {"reason": "why", "reads": ["src/*"], "slow": [f"{slow}*"]}
+    policy = {**sizes.load_policy(Path(__file__).resolve().parents[2]), "whole_tree_guards": rule}
+    source = frozenset({"src/alphalattice/kernel/data/calendar.py"})
+    assert sizes.moved(fast, policy) and sizes.included(fast, "medium", "merge", policy, source)
+    assert not sizes.included(fast, "medium", "merge", policy, frozenset({"tests/README.md"}))
+    assert not sizes.included(slow, "medium", "merge", policy, source)
+    assert not sizes.included(
+        fast, "medium", "merge", {**policy, "whole_tree_guards": {}}, source
+    )  # the escape
+    with pytest.raises(ValueError, match=r"test_size\.whole_tree_guards_invalid"):
+        sizes.validate_policy({**policy, "whole_tree_guards": {**rule, "reads": []}})
+
+
+@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
+def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_nodes() -> None:
+    """Every public session loads this policy: its projection passes the rule, no private node."""
+    from scripts.release.public_manifest import project_public
+
+    from devtools.testing import sizes
+
+    path = "config/registries/test-sizes.json"
+    policy = json.loads((Path(__file__).resolve().parents[2] / path).read_text(encoding="utf-8"))
+    policy["whole_tree_guards"]["slow"] = ["tests/kept.py::test_a*", "tests/held.py::test_b*"]
+    published, _ = project_public(
+        path,
+        json.dumps(policy).encode(),
+        {"tests/held.py"},
+        {path, "tests/kept.py", "tests/held.py"},
+    )
+    sizes.validate_policy(json.loads(published))
+    assert json.loads(published)["whole_tree_guards"]["slow"] == ["tests/kept.py::test_a*"]
+    assert b"tests/held.py" not in published

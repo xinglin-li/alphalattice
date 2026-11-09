@@ -734,11 +734,13 @@ def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSess
     assert live.session is None
 
 
+@pytest.mark.proves("product_host.host_stop_keeps_finishing_visible")
 @pytest.mark.parametrize(
     "path",
     [
         "command",
         "held",
+        "host_stop",
     ],
 )
 def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
@@ -749,9 +751,20 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
     workspace.mkdir()
     options = {"workspace": workspace, "workspace_manifest": _manifest("qa-bounded")}
     session = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
+    host_stopping = threading.Event()
+    session.stop_requested = host_stopping.is_set
+    if path == "host_stop":
+        write_queue_setting(
+            workspace / "runtime",
+            1,
+            chosen_by="HUMAN",
+            chosen_at=datetime.now(UTC),
+            field="tasks_running",
+        )
     session.start()
     running, release = threading.Event(), threading.Event()
     handoff, executed = threading.Event(), threading.Event()
+    queued_called = threading.Event()
     errors = []
     stopper = threading.Thread(target=session.stop, daemon=True)
 
@@ -797,8 +810,18 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
         elif path == "admission":
             producer.start()
         else:
-            session.dispatcher.submit(_SlowCommand())
+            active_task = session.dispatcher.submit(_SlowCommand()).task_id
         assert running.wait(timeout=20.0)
+        if path == "host_stop":
+
+            class Queued(_SlowCommand):
+                def execute(self, task_id: UUID) -> None:
+                    queued_called.set()
+
+            waiting = session.dispatcher.submit(Queued())
+            assert waiting.task_id != active_task
+            host_stopping.set()
+            session.dispatcher._begin_drain()
         cutoff = session.dispatcher._last_needed + 901
         monkeypatch.setattr(
             "alphalattice.interface.local_application.dispatcher.monotonic", lambda: cutoff
@@ -808,6 +831,13 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
             session.stop(timeout=0.05)
         assert session.session is not None
         assert session.dispatcher is not None
+        if path == "host_stop":
+            try:
+                status = _json(session, "/api/session")
+            except (OSError, ValueError):
+                status = {}
+            assert status.get("workspace_id") == "qa-bounded"
+            assert session.dispatcher.finishing() == [str(active_task)]
         if path == "command":
             assert session.dispatcher.worker_alive
         contender = LocalPortfolioWebSession(**options, resolver=_Resolver(_resolved()))
@@ -823,6 +853,8 @@ def test_a_bounded_stop_will_not_release_the_lease_while_a_command_runs(
         if producer.ident is not None:
             producer.join(5)
         assert executed.is_set() and not errors
+        if path == "host_stop":
+            assert not queued_called.is_set()
         session.stop()
         assert session.session is None
     finally:

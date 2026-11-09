@@ -1,4 +1,4 @@
-"""Activation runs an installed reviewed strategy forward (LS1, V459; OW12).
+"""Activation runs an installed reviewed strategy forward (LS1; OW12).
 
 On a copy of the registered QA installation built by the product
 (`ls1-daily`: G6/G2 training inputs and lifecycle studies, a Risk study,
@@ -63,7 +63,7 @@ HELD_DATA_CLOCK = datetime(2026, 9, 11, tzinfo=UTC)
 
 
 def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, monkeypatch):
-    """V683/OP4/EV: one bad publication cannot hide peers or become a claim of no review."""
+    """OP4/EV: one bad publication cannot hide peers or become a claim of no review."""
     from alphalattice.control.product_host.composition.evidence_review_projection import (
         EvidenceCroProjector,
     )
@@ -553,7 +553,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
 def test_installed_book_controls_saves_the_flat_declaration_its_preview_reads(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """requirement (V538): controls gives the installed book's editable declaration; saving
+    """requirement: controls gives the installed book's editable declaration; saving
     and loading it preserves the defaults, and the named preview accepts that flat document.
     Long (about 1 min): it serves a copy of the real research installation."""
     root = evidence_roots.require("ls1_daily_flows")
@@ -780,7 +780,7 @@ def test_installed_strategy_dates_follow_sealed_records_on_the_cli(
 def test_strategy_with_a_missing_training_date_says_what_is_unknown(
     tmp_path, capsys, monkeypatch, gap
 ):
-    """V589: a missing sealed record cannot become study_end or a guessed information cutoff."""
+    """a missing sealed record cannot become study_end or a guessed information cutoff."""
     from alphalattice.control.product_host.composition.entry import main as date_cli
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 
@@ -820,7 +820,7 @@ def test_strategy_with_a_missing_training_date_says_what_is_unknown(
 
 @pytest.mark.parametrize("active", (False, True))
 def test_date_read_locates_the_original_studys_fits_without_bulk_verification(tmp_path, active):
-    """V589: inactive packages select training by the sealed study, with its actual fit metadata."""
+    """inactive packages select training by the sealed study, with its actual fit metadata."""
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host, study_date_owner
 
     with date_host(tmp_path / "workspace", active=active) as live:
@@ -853,7 +853,7 @@ def test_date_read_locates_the_original_studys_fits_without_bulk_verification(tm
 
 
 def test_conditional_start_uses_the_activations_admitted_score_axis(tmp_path, capsys, monkeypatch):
-    """V589: an interior component gap cannot silently become an activatable book axis."""
+    """an interior component gap cannot silently become an activatable book axis."""
     from alphalattice.control.product_host.composition.entry import main as date_cli
     from tests.portfolio_strategy_lab.strategy_dates_support import date_host
 
@@ -1073,7 +1073,7 @@ def test_conditional_actionable_readback_changes_at_the_entry_boundary(
 
 def _seen(answer: dict, registry: DuckDbTaskControlRegistry, task: str | None) -> str:
     """A wait's answer whole, as text, beside its Task's lifecycle as Task Control holds it at
-    the same instant (V602, V607): the lifecycle the answer read, its wait event and incident, so
+    the same instant: the lifecycle the answer read, its wait event and incident, so
     a Task read as running after it ended is told from an incident's wake."""
     held = None if task is None else registry.task(UUID(task)).lifecycle.value
     return json.dumps({"registry_lifecycle": held, "answer": answer}, indent=1, default=str)
@@ -1101,10 +1101,9 @@ def _forward_copy(
     ]
 ]:
     """A copy of the research installation, its strategy activated by a person, offline: the
-    provider's yfinance module absent, the membership source refusing, no socket off the machine
-    and no model fitted. Yields the Host, the real CLI on it and a Task's attempts by stage
-    (V600, V601). `provider_from` builds the provider from the copy before the Host opens it
-    (V604)."""
+        provider's yfinance module absent, the membership source refusing, no socket off the machine
+        and no model fitted. Yields the Host, the real CLI on it and a Task's attempts by stage
+    . `provider_from` builds the provider from the copy before the Host opens it."""
 
     # The provider's yfinance module is absent: every fetch refuses, `data.provider_unavailable`.
     monkeypatch.setitem(sys.modules, "yfinance", None)
@@ -1174,7 +1173,7 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
     """An update stopped on the network resumes by the way its stop names, whichever switch holds
     it. Long (about 1.5 min): a copy of the real research installation, activated."""
 
-    # V620: reproduce the UX's operator-held stop first. Switch-off read controls below
+    # Reproduce an operator-held stop first. Switch-off read controls below
     # use this copy's local provider guards; every read remains on the machine.
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     root = evidence_roots.require("ls1_daily_flows")
@@ -1255,7 +1254,7 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
             "operation": "RESEARCH_UPDATE_RUN",
             "update_plan_hash": planned["data"]["update_plan_hash"],
         }
-        # V599: READBACK must name the same provider work as STATUS's wait,
+        # READBACK must name the same provider work as STATUS's wait,
         # while keeping both the person's network request and the bound resume.
         code, read = cli("research-update", "show", "--task", task)
         assert (code, read["failure_code"]) == (2, stopped_code), read
@@ -1281,7 +1280,7 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
         assert admission["task_id"] == task, seen
         assert admission["lifecycle"] in {"QUEUED", "RUNNING"}, seen
         # It ran on past the network from the stage it stopped in, to the provider this test
-        # refuses, whose refusal defers it as it defers a data update (V601); its verified first
+        # refuses, whose refusal defers it as it defers a data update; its verified first
         # stage was kept, and its stop is its own record.
         assert (code, resumed["data"]["task_id"]) == (3, task), seen
         assert resumed["data"]["lifecycle"] == "DEFERRED", seen
@@ -1414,7 +1413,7 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
 
 def _held_data(provider: list[HeldDataProvider]) -> Callable[[Path], HeldDataProvider]:
     """The copy's own bars through Monday 2026-09-14, refused until a test says the provider's
-    bars are final (V604)."""
+    bars are final."""
 
     def build(workspace: Path) -> HeldDataProvider:
         provider.append(HeldDataProvider(workspace, through=date(2026, 9, 14)))
@@ -1447,7 +1446,7 @@ def _until(found: Callable[[], object], what: str, live: LocalPortfolioWebSessio
 def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
     tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
-    """V604: the real Host's daily automation resumes Friday's deferral at its retry time,
+    """the real Host's daily automation resumes Friday's deferral at its retry time,
     publishes Friday once the provider's bars are final, and plans Monday on that publication.
     Nothing queues behind the deferral. Offline: the provider serves the copy's own bars."""
 

@@ -682,7 +682,7 @@ def test_dynamic_panel_rank_ic_is_equal_session_weighted_and_fail_closed() -> No
 def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Binding plan B3: LightGBM's built-in l2 sums in parallel, so the last bits of the curve
+    """LightGBM's built-in l2 sums in parallel, so the last bits of the curve
     early stopping reads moved with the thread count; the l2 the adapters install reproduces
     the one-thread curve at any count, and the stored model text records no count."""
 

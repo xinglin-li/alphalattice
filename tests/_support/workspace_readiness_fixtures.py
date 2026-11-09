@@ -17,6 +17,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     HISTORY_START,
     OBSERVED_AT,
+    READINESS_UNIVERSE,
     SeededWalkProvider,
     _source_loader_for,
     build_real_risk_workspace,
@@ -145,10 +146,9 @@ def prepared(tmp_path_factory):
     This path only supplies a starting workspace via the supported local binding
     operations. Each process gets an independent writable database copy.
     """
+    symbols, sector_size = READINESS_UNIVERSE
     data = build_real_risk_workspace(
-        tmp_path_factory.mktemp("prepared-input"),
-        symbols=tuple(f"F{i:03d}" for i in range(120)),
-        sector_size=6,
+        tmp_path_factory.mktemp("prepared-input"), symbols=symbols, sector_size=sector_size
     )
     root = data.workspace
     publish_research_workspace_manifest(root, ResearchWorkspaceManifest.research_only("prepared"))

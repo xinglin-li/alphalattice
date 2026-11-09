@@ -41,7 +41,7 @@ _ID = r"^[a-z][a-z0-9_-]{0,63}$"
 _HASH = r"^[0-9a-f]{64}$"
 
 FIRST_USE_HOURS: Final = 24
-"""How long a first-use goal's delegation lasts from its opening (V452)."""
+"""How long a first-use goal's delegation lasts from its opening."""
 
 DAILY_NETWORK_ASK: Final = str(person_question("network.daily_updates")["words"])
 """The one line a first use asks at its start, word for word: the person's yes, relayed by
@@ -79,10 +79,19 @@ DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DA
 """The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
 
 DAILY_NETWORK_RELAY: Final = tuple(
-    (*words, "--person-said", "<their words>", "--asked", DAILY_NETWORK_ASK)
+    (
+        *words,
+        "--person-said",
+        "<their words>",
+        "--asked",
+        DAILY_NETWORK_ASK,
+        "--question-code",
+        "network.daily_updates",
+    )
     for words, _request in _DAILY_REQUESTS
 )
-"""The same two requests as the commands that relay the person's yes, verbatim but its words."""
+"""The same two requests as the commands that relay the person's yes, verbatim but its words.
+Each names its question's code, so the Host records the answer as that question's."""
 
 
 NOT_A_PERSON: Final = re.compile(
@@ -118,9 +127,15 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     return decision
 
 
-def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Project the first-use question at the Host boundary, before its observer."""
-    if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
+def opened_goal(
+    answer: dict[str, Any], declaration: Mapping[str, Any] | None, *, daily_answered: bool = False
+) -> dict[str, Any]:
+    """Project the first-use question while the person has not answered it."""
+    if (
+        answer.get("goal_id")
+        and not daily_answered
+        and (declaration or {}).get("kind") == "FIRST_USE"
+    ):
         answer["person_questions"] = [person_question("network.daily_updates")]
     return answer
 
@@ -152,14 +167,21 @@ def first_use_asks(
 ) -> dict[str, Any]:
     """Format the first-use road and unchanged notices beside the Host's questions."""
     selected_shell = shell()
+    questions = list(questions)
     relays = [join([*prefix, *words], selected_shell) for words in DAILY_NETWORK_RELAY]
     return {
         "road": [
             {"step": step, "command": join([*prefix, *words], selected_shell), "does": does}
             for step, words, does in road
         ],
-        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays],
-        "person_questions": list(questions),
+        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays]
+        if questions
+        else [
+            WATCH_IN_WORKBENCH.format(link=link),
+            "When Evidence is not set up, reviewing positions may acquire recent SEC filings "
+            "within the default budget and download the retrieval model needed by its setup.",
+        ],
+        "person_questions": questions,
     }
 
 
@@ -502,7 +524,7 @@ class GoalSession(GoalContract):
 class GoalAcceptedAnswerContext(GoalContract):
     """The original Goal frozen at genuine first acceptance.
 
-    The assignment fields read contexts written before FLOW-1, when a lead's assignment
+    The assignment fields read older contexts, when a lead's assignment
     message could close at acceptance; nothing writes them now.
     """
 

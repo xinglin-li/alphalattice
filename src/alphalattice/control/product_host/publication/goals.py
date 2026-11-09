@@ -70,7 +70,7 @@ def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
 
 
 def _deliverables(goal: Goal) -> list[dict[str, object]] | None:
-    """A complete goal's deliverables, each with what its submission put in it (U54).
+    """A complete goal's deliverables, each with what its submission put in it.
 
     None before the Host saved a submission, which it does only once it found the record
     complete; each deliverable names its kind and the declaration's description.
@@ -570,7 +570,7 @@ class GoalStore:
                 refused.append(_goal_item_refusal(str(goal_id), error, item="HEAD"))
                 continue
             if agent_session is not None:
-                # A session's goals: read once for every goal, kept for its row (U23, U54).
+                # A session's goals: read once for every goal, kept for its row.
                 try:
                     records[str(goal_id)] = self.attributed(goal_id)
                     named = sessions_of(records[str(goal_id)])
@@ -590,7 +590,7 @@ class GoalStore:
             if position is None:
                 raise ValueError("goal.cursor_moved_reload")
             rows = rows[position + 1 :]
-        # Each row's sessions (U23): read for the page alone, from the record that holds them.
+        # Each row's sessions: read for the page alone, from the record that holds them.
         # A bad attribution refuses only that goal item and does not assert an empty session list.
         page_candidates = rows[:limit]
         page = []

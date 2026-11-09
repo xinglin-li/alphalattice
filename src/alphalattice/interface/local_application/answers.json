@@ -11054,13 +11054,19 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "`HOST_STOPPING`: the Host answered and now stops once its running work has ended."
+    "meaning": "`HOST_STOPPING`: the Host is stopping work at safe points and retaining it for resumption."
    },
    {
     "name": "detail",
     "kind": "string",
     "required": true,
-    "meaning": "What the stop waits for and what it leaves: Tasks finish, nothing is cancelled."
+    "meaning": "What the stop waits for and what it leaves: work reaches safe points and can resume."
+   },
+   {
+    "name": "finishing_task_ids",
+    "kind": "array",
+    "required": true,
+    "meaning": "The Tasks still executing when the Host answered, by id; their live status remains readable while they finish."
    },
    {
     "name": "next_action",

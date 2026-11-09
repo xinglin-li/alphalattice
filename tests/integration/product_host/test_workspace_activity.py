@@ -817,7 +817,7 @@ def test_external_events_carry_the_boundary_assigned_trust_and_refuse_spoofing(
     assert page["tasks"][task_id]["lifecycle"] == "SUCCEEDED"
 
     # The event and the feed are the client's operations, on the external-client route: a
-    # browser origin, a session token or a foreign workspace never reach the observer (V266).
+    # browser origin, a session token or a foreign workspace never reach the observer.
     port = live.web.bound_port  # type: ignore[union-attr]
     status, _headers, body = _request(
         live,
@@ -1130,7 +1130,7 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
     assert "native_session_id" in words["detail"] and words["next_action"]
 
 
-# It raises an untyped failure on purpose, to prove its text stays out (V449).
+# It raises an untyped failure on purpose, to prove its text stays out.
 
 
 def test_artifact_is_verified_through_the_owner_readback_not_the_index(
@@ -1170,7 +1170,7 @@ def test_artifact_is_verified_through_the_owner_readback_not_the_index(
 def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_time(
     live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (U54): TASKS names an agent session and lists the Tasks it submitted, newest
+    """requirement: TASKS names an agent session and lists the Tasks it submitted, newest
     first, a page at a time; each row names its submitter, its final state and the artifact its
     owner opens when the listing answers, unavailable when it cannot -- never the feed's."""
 

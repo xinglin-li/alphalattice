@@ -56,7 +56,7 @@ from .matters import DocumentNeeds, EvidenceNeed
 from .operations import OPERATIONS_FAMILY
 
 ROUTING_RULES_ID = "alternative-evidence.topic-routing.v6"
-"""v6 (2026-09-24, W1): an issuer without a periodic filing held is no source
+"""v6 (2026-09-24): an issuer without a periodic filing held is no source
 gap -- the window is what each issuer filed recently, and nothing is read as
 a baseline; an issuer with no document held still is.
 

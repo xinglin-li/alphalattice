@@ -18,12 +18,12 @@ answers without a Host, imports the request document and the typed answers.
 
 Beside the operations, the client's own commands (``CLIENT_COMMANDS``), which it answers
 itself: one operation's schema (``schema show``: its fields, their JSON schema, its answer's
-schema, each field's meaning with it (V410), and a commented YAML template to fill) and the
+schema, each field's meaning with it, and a commented YAML template to fill) and the
 waiter (``activity wait``); ``serve``; and ``alphalattice request --file <file>``, a whole
 request document in YAML or JSON (``-`` reads stdin), or ``--from`` a saved answer and
 ``--action`` one of its next requests, ``--choices`` filling what it leaves open. The
 workspace, the operations, the activity feed, a declared event and the CPU budget are
-operations like any other (V266).
+operations like any other.
 
 The entry point is ``scripts/run_alphalattice.py`` (it composes the Host, which nothing under
 ``src`` may import); an installed ``alphalattice`` command points there at packaging.
@@ -88,6 +88,7 @@ from alphalattice.interface.local_application.failure_codes import (
     public_failure,
     safe_failure_code,
 )
+from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
     decision_hash,
@@ -133,7 +134,7 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     "person's from their own shell, outside any agent session. The research is unchanged.",
 }
 """The client's own commands, answered by the client itself, as `serve` and `request` are; every
-other command is an operation of the registry (V266, OP1)."""
+other command is an operation of the registry (OP1)."""
 
 AGENT_VERBS: Final = {verb.words: name for name, verb in client.AGENT_VERBS.items()}
 """The client's agent verbs by their words, each with the name its `run` knows it by."""
@@ -174,9 +175,9 @@ def _types(field: str) -> set[str]:
 def _value(field: str, text: str) -> object:
     """Parse a flag value according to the request schema.
 
-    ``@path`` reads a file: as text for a text field, as a YAML or JSON list for a list field
-    (V132), as a YAML or JSON mapping otherwise. ``@@`` stands for a literal ``@`` (V149). A
-    boolean is ``true`` or ``false`` and nothing else (V127).
+        ``@path`` reads a file: as text for a text field, as a YAML or JSON list for a list field
+    , as a YAML or JSON mapping otherwise. ``@@`` stands for a literal ``@``. A
+        boolean is ``true`` or ``false`` and nothing else.
     """
     kinds = _types(field)
     if text.startswith("@@"):
@@ -628,7 +629,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
 
 def _named(arguments: Sequence[str]) -> frozenset[str]:
     """The operation nouns a command line names, for which alone the parser builds flags: one
-    parser serves every line naming them (the seam check reads two thousand lines, V449)."""
+    parser serves every line naming them (the seam check reads two thousand lines)."""
     return frozenset(arguments) & {noun for noun, _verb in _commands()}
 
 
@@ -717,7 +718,7 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
         purpose = " Or: ".join(dict.fromkeys(table["purposes"][op] for op in operations))
         person = any(op in table["person_only"] for op in operations)
         required, positional, documents, others, line = _operation_fields(operations, table)
-        # One line per action, what it does then its contract: help shows each use (V377, F3).
+        # One line per action, what it does then its contract: help shows each use (F3).
         child = by_noun[noun].add_parser(
             verb,
             help=f"{purpose}{' (the person decides it)' if person else ''}  {line}".strip(),
@@ -776,7 +777,7 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
         )
         _section(child)
     # Every command reads the global options after its action too, as GNU reads options
-    # anywhere on the line: AX14's agent put --view full after the action (V412).
+    # anywhere on the line: AX14's agent put --view full after the action.
     for command in _commands_of(parser):
         _global_options(command, anywhere=True)
     return parser
@@ -806,11 +807,11 @@ def _person_confirmation_options(child: argparse.ArgumentParser) -> None:
 
 
 def _global_options(parser: argparse.ArgumentParser, *, anywhere: bool) -> None:
-    """The options that set the context a command works in (V401), declared once.
+    """The options that set the context a command works in, declared once.
 
     The root reads them before the object; ``anywhere`` adds them to one command, read after
     its action and left out of its help, so a value given there wins and an absent one keeps
-    the root's (V412). A command's own option of the same name keeps its own meaning
+    the root's. A command's own option of the same name keeps its own meaning
     (`activity wait --goal`).
     """
     own = {name for action in parser._actions for name in action.option_strings}
@@ -859,7 +860,7 @@ def _commands_of(parser: argparse.ArgumentParser) -> Iterator[argparse.ArgumentP
 
 def _epilog() -> str:
     """The top-level help after its options: the common path, then every object grouped in the
-    research's order with what it is, as the registry declares them (V401; Git's help)."""
+    research's order with what it is, as the registry declares them (Git's help)."""
     table = command_table()
     shown, fields = table["positional"], table["fields"]
     path = ", ".join(
@@ -898,7 +899,7 @@ _NOUN_WORDS: Final = (
 
 
 def _field_help(name: str, required: set[str] | frozenset[str]) -> str | None:
-    """A field's meaning and limits from its contract (SC3), for its flag's help (V401)."""
+    """A field's meaning and limits from its contract (SC3), for its flag's help."""
     table = command_table()
     kinds = _types(name)
     parts = [
@@ -984,7 +985,7 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
 
     A Factor study's readback holds its receipt and its deterministic result, each an owner's
     model; an agent asks for one of their parts with ``--section`` instead of reading the whole
-    answer again (V112: an AX0 run read it whole seven times).
+    answer again (an AX0 run read it whole seven times).
 
     Args:
         operation: The operation whose answer is described.
@@ -1010,7 +1011,7 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
 
 
 def _declaration_sections() -> dict[str, Any]:
-    """Each Desk's section of an experiment declaration, by its contract (V249, SC3)."""
+    """Each Desk's section of an experiment declaration, by its contract (SC3)."""
     from alphalattice.investment.alpha_research.experiments.authoring import (
         AlphaDevelopmentSection,
     )
@@ -1027,7 +1028,7 @@ def _declaration_sections() -> dict[str, Any]:
         "alpha (MODEL_LIFECYCLE_REPLAY)": AlphaLifecycleSection.model_json_schema(),
         "factor": FactorSection.model_json_schema(),
         # The declaration's schema, and what the catalog holds that a study may not declare
-        # yet, with why (V313).
+        # yet, with why.
         "portfolio": {
             **PortfolioExperimentSpec.model_json_schema(),
             "not_available": list(NOT_AVAILABLE),
@@ -1044,7 +1045,7 @@ _PERSON_ONLY_WORDS = (
 
 def _person_words(operations: tuple[str, ...], table: dict[str, Any]) -> str:
     """Who completes a person's step: the person, or for a first-use step also the agent the
-    person's first-use goal delegates it to (V452)."""
+    person's first-use goal delegates it to."""
     if set(operations) & set(table["first_use"]):
         return (
             ": the person decides it, or the agent running this workspace's first-use goal, "
@@ -1069,7 +1070,7 @@ _WRITTEN_BY = {
     "GOAL_SUBMIT": "`goal schema` gives the completion document's schema",
 }
 """The operations whose declaration a command writes, where the template alone holds none
-(V125: the `EXPERIMENT_PLAN` template held only its operation, which the Host refuses)."""
+(the `EXPERIMENT_PLAN` template held only its operation, which the Host refuses)."""
 
 
 def _restore(
@@ -1077,7 +1078,7 @@ def _restore(
     started: float,
     restore: Callable[..., dict[str, Any]] | None,
 ) -> int:
-    """Restore a backup generation with no Host: the workspace it names may be lost (V328)."""
+    """Restore a backup generation with no Host: the workspace it names may be lost."""
     answer: dict[str, Any] | None = None
     code = "local_client.restore_unavailable"
     if restore is not None:
@@ -1249,7 +1250,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     operation = "MODEL_SCAFFOLD" if scaffold else "MODEL_CHECK"
     written = getattr(args, "model_declaration_out", None)
     if scaffold and written is not None:
-        # The first step of a model of one's own: a declaration to edit (V413).
+        # The first step of a model of one's own: a declaration to edit.
         from alphalattice.capabilities.alpha_modeling.model_scaffold import declaration_template
 
         try:
@@ -1307,7 +1308,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
 
 
 def _declaration_fields(path: Path) -> str:
-    """The fields a refused model declaration misses or gets wrong, after the code's colon (V413).
+    """The fields a refused model declaration misses or gets wrong, after the code's colon.
 
     Read here, in the CLI, so the declaration's module, which number-deciding closures hold,
     keeps its bytes.
@@ -1327,12 +1328,12 @@ def _declaration_fields(path: Path) -> str:
 
 def _offline(args: argparse.Namespace, started: float) -> int:
     known = sorted(command_table()["fields"])
-    # A command's words name its operations, each a branch of its schema (V401).
+    # A command's words name its operations, each a branch of its schema.
     named = " ".join(args.operation_name)
     commands = command_table()["commands"]
     args.operation_name = commands[named][0] if named in commands else named
     if args.operation_name not in known:
-        # The registry's nearest names, where argparse answered only READ_HELP (V111).
+        # The registry's nearest names, where argparse answered only READ_HELP.
         refusal = client_refusal("local_client.operation_unknown")
         print(  # noqa: T201  # serializer
             answer_json(
@@ -1355,7 +1356,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     body = command_schema(named) if named in commands else schema(args.operation_name)
     saved: dict[str, Any] = {}
     if args.output is not None:
-        # The file is written as any answer's is, and never over one (V141).
+        # The file is written as any answer's is, and never over one.
         try:
             client._write_new(args.output, json.dumps(body, sort_keys=True).encode("utf-8"))
             saved["output_file"] = str(args.output.resolve())
@@ -1403,9 +1404,9 @@ def main(
     """
     started = time.perf_counter()
     arguments = sys.argv[1:] if argv is None else argv
-    # Counted before the arguments are read, so a help launch counts too (V364).
+    # Counted before the arguments are read, so a help launch counts too.
     launches = SESSION_LAUNCHES.set(count_launch())
-    # Read before the line parses, so the parser's own refusal reads in it too (V582).
+    # Read before the line parses, so the parser's own refusal reads in it too.
     reading = READ_VIEW.set(("compact", (), summary_display))
     language = ANSWER_LANGUAGE.set(_line_context(arguments))
     surface_token = SURFACE_USE.set(())
@@ -1426,7 +1427,7 @@ def main(
                 return _refused(error, started, line=arguments)
         if getattr(args, "client_command", None) in WORKSPACE_FREE:
             return _unbind(args, started)
-        # Read anywhere on the line (V412); left out, it is the session's binding's (V568).
+        # Read anywhere on the line; left out, it is the session's binding's.
         try:
             directory = _routing_bundle(parser, args)
             args.workspace, bound, chosen_by = _workspace(
@@ -1525,7 +1526,7 @@ def _workspace(
     timeout: float = client.DEFAULT_HTTP_WAIT_SECONDS,
 ) -> tuple[Path, Path | None, Literal["OPTION", "BINDING", "BUNDLE"]]:
     """The workspace a command works in, the one its agent session is bound to, and which chose
-    it (V568).
+    it.
 
     Named on the line, it overrides the binding when it matches any named bundle. A bundle
     locator is location only; a mismatched target offers caller-owned binding recovery.
@@ -1689,7 +1690,7 @@ def _refused(
     line: Sequence[str] = (),
     workspace: Path | None = None,
 ) -> int:
-    """A refusal the client raised before sending anything, in the one envelope (V568).
+    """A refusal the client raised before sending anything, in the one envelope.
 
     A line that named no workspace is shown again with one named, the exact next command; a
     no-Host one names the workspace it checked (`host_checked`).
@@ -1700,6 +1701,8 @@ def _refused(
     detail = str(worded(refusal.detail))
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
+        if code == "local_client.service_not_running":
+            detail += serving_workspace_notice(Path.cwd(), client.LocalResearchClient)
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
@@ -1737,11 +1740,11 @@ def _refused(
 
 WORKSPACE_FREE: Final = frozenset({("session", "unbind")})
 """The client's commands that work in no workspace: a binding is removed from its project, and the
-person's own shell, which names none, may remove it (V586)."""
+person's own shell, which names none, may remove it."""
 
 
 def _unbind(args: argparse.Namespace, started: float) -> int:
-    """Remove this project's binding (`session unbind`, V586): the bound session's own, or the
+    """Remove this project's binding (`session unbind`): the bound session's own, or the
     person's from their own shell; never another project's."""
     from alphalattice.interface.local_application.native_bridge import (
         NativeBridgeError,
@@ -1813,7 +1816,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
 
 
 def _bind(args: argparse.Namespace, started: float) -> int:
-    """Bind this agent session to the workspace named (`session bind`, V568): the binding the
+    """Bind this agent session to the workspace named (`session bind`): the binding the
     bridge reads and every later command of the session, or of its own specialists,
     finds from any folder of its project."""
     from alphalattice.interface.local_application.native_bridge import (
@@ -2016,7 +2019,7 @@ def request_of(argv: Sequence[str]) -> dict[str, Any]:
     """The request an operation's command line sends, read as the CLI reads it, never sent.
 
     The printed command's inverse: a next command run as printed sends the request it came
-    from, which the seam checks hold for every offered request (V449).
+    from, which the seam checks hold for every offered request.
 
     Args:
         argv: The command line without its program, an operation's command.
@@ -2199,7 +2202,7 @@ def _ways(operations: tuple[str, ...] | list[str]) -> str:
 
 
 def command_schema(command: str) -> dict[str, Any]:
-    """A command's request as its owners read it (V401).
+    """A command's request as its owners read it.
 
     Its operation's schema; for a command with two operations, each one a branch of ``oneOf``,
     told apart by its selectors. The branches' definitions are the request document's own, so
@@ -2241,7 +2244,7 @@ DECLARATION_CLIENT_COMMANDS: Final = {
 
 
 LEAD_READING_OPERATIONS: Final = frozenset({"GOAL_TAKE", "GOAL_SUBMIT", "AGENT_ANSWER_SUBMIT"})
-"""Read the lead after its Goal is taken, before that Goal or an answer is submitted (V301).
+"""Read the lead after its Goal is taken, before that Goal or an answer is submitted.
 The Host files the reading under the admitted parent Session and its exact active Goal."""
 
 

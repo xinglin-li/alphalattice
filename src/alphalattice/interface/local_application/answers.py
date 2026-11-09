@@ -1,4 +1,4 @@
-"""Every operation's answer, typed (binding plan C2, CLI-16; V410).
+"""Every operation's answer, typed.
 
 Each model names the fields an owner's answer always carries, with their types, so an Agent or a
 script can read an answer without guessing and `alphalattice schema show` can print it. An answer
@@ -513,7 +513,7 @@ class TaskGuardianAnswer(_Answer):
 
 
 _DECLARED: Final = Path(__file__).with_name("answers.json")
-"""Every operation's answer the models above leave out, a row each (V410)."""
+"""Every operation's answer the models above leave out, a row each."""
 _KINDS: Final[dict[str, Any]] = {
     "error_info": ErrorInfo,
     "string": str,
@@ -547,7 +547,7 @@ class FilteredOperationListAnswer(_Answer):
 
 
 def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseModel]:
-    """One operation's answer model from its row (V410): each field's kind (`string|null`),
+    """One operation's answer model from its row: each field's kind (`string|null`),
     whether every answer carries it, and its meaning, which `schema show` prints."""
     fields: dict[str, Any] = {}
     for field in row["fields"]:
@@ -581,8 +581,7 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
 
 def _declared_answers() -> dict[str, type[BaseModel]]:
     """Each row of `answers.json` as its operation's model, its purpose the registry's; a read's
-    model names, optional, the request the CLI's copy of its answer keeps (`named_read`, OP15,
-    V454)."""
+    model names, optional, the request the CLI's copy of its answer keeps (`named_read`, OP15)."""
     from .operations import table
 
     contract = table()
@@ -651,7 +650,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),
 }
-"""Each operation and the model of its answer: every operation the Host answers (V410)."""
+"""Each operation and the model of its answer: every operation the Host answers."""
 
 
 def collection_answer_fields(operation: str) -> tuple[str, ...]:
@@ -692,8 +691,8 @@ def answer_problem(
 ) -> str | None:
     """Whether one answer holds its published model and offers only acceptable requests.
 
-    The model is the one `schema show` publishes for its operation (V410); each request the
-    answer offers is one the Host accepts as it stands (`request_problem`, V449). A refusal
+    The model is the one `schema show` publishes for its operation; each request the
+    answer offers is one the Host accepts as it stands (`request_problem`). A refusal
     answers in the refusal's shape (`status` REFUSED, `refused`, a failure code), which no model
     describes: it holds when it carries words and a way on (OP4, `refusal_problem`). An
     operation with no model still holds its offered requests.
@@ -742,7 +741,7 @@ def answer_problem(
         return f"{operation}: {exited}"
     table = command_table()
     if operation in table["reads"]:
-        # As the CLI prints and saves it, which `--from` reads (V449).
+        # As the CLI prints and saves it, which `--from` reads.
         named = named_read({**(request or {}), "operation": operation}, body)
         return _rereads(operation, named, table)
     return None
@@ -839,7 +838,7 @@ def continuation_problem(body: dict[str, Any]) -> str | None:
 
 
 def _rereads(operation: str, body: dict[str, Any], table: dict[str, Any]) -> str | None:
-    """Whether a read's answer reads again from itself through `--from` (OP15, V449)."""
+    """Whether a read's answer reads again from itself through `--from` (OP15)."""
     from .client import LocalResearchClientError, continued
 
     allowed = frozenset(table["fields"][operation]["allowed"])
@@ -856,7 +855,7 @@ def _rereads(operation: str, body: dict[str, Any], table: dict[str, Any]) -> str
         ):
             # A read whose target is optional and whose file names none, a goal read with no
             # goal, is refused by `--from` rather than read the session's default (OP17); a
-            # readback whose Task is optional and that read none reads again as itself (V575).
+            # readback whose Task is optional and that read none reads again as itself.
             return None
         return f"{operation}'s answer does not read again from itself ({error})"
     if left := choices(again) or request_problem(again):
@@ -868,7 +867,7 @@ def outline(model: type[BaseModel], depth: int = 3) -> Any:
     """A model's parts by name, ``depth`` levels deep: the paths ``--section`` can ask for.
 
     Each part is its type, or its own parts; a list holds its item's outline. The owner's JSON
-    schema is read, never restated, so the outline moves with the model (V112).
+    schema is read, never restated, so the outline moves with the model.
 
     Args:
         model: The owner's model of the part.

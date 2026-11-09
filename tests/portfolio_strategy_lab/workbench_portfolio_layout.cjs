@@ -406,7 +406,7 @@ async function overlappingPerformanceReads() {
   assert.equal(vm.runInContext('Data.raw().forward_holdings.status',transport),'forward-current');
   assert.equal(vm.runInContext('Data.rollingPerformance().head_hash',transport),'head-a','the superseded Historical answer cannot overwrite the prior source');
 }
-// U194: the public chart binding installs the real resize/RAF path. The DOM and event
+// the public chart binding installs the real resize/RAF path. The DOM and event
 // ports retain the painted Historical chart while the current reader requests Forward;
 // neither the private navigator function nor its data/window inputs are monkeypatched.
 function navigatorFixture(source=portfolioSource) {

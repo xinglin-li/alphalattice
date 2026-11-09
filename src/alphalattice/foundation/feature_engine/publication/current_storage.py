@@ -121,7 +121,7 @@ def ensure_feature_current_schema(
 ) -> FeatureStorageLayout:
     """Create the current-only schema, or expose a read view over a legacy database.
 
-    ``parts`` lays a layered catalog's rows out (V92): each part's hash and factor axis, the
+    ``parts`` lays a layered catalog's rows out: each part's hash and factor axis, the
     base first. Their rows compose the catalog's in the runtime view.
     """
     factors = tuple(factor_ids)
@@ -238,7 +238,7 @@ def runtime_view_hash(connection: duckdb.DuckDBPyConnection) -> str:
 
 
 def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
-    """A layered catalog's row identity: its parts' row identities, the base first (V92).
+    """A layered catalog's row identity: its parts' row identities, the base first.
 
     Each part's row hash binds that part's catalog, cutoffs and values, so the composed row
     changes exactly when one of its parts does. The runtime view derives it in SQL.
@@ -333,7 +333,7 @@ def _runtime_view(
 
 
 def _key_rows_by_catalog(connection: duckdb.DuckDBPyConnection) -> None:
-    """Key a table an earlier release keyed by listing and session alone by catalog too (V92).
+    """Key a table an earlier release keyed by listing and session alone by catalog too.
 
     Copied once, every row and column kept in place; a table already keyed is left as it is.
     """

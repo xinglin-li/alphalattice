@@ -73,7 +73,7 @@ class PanelFeatureSourcePayload:
             ordered_factor_ids=source.ordered_factor_ids,
             absolute_state_factor_ids=source.absolute_state_factor_ids,
             ordered_sector_ids=source.ordered_sector_ids,
-            # A history crosses as itself (V346); a plain map as a picklable dict.
+            # A history crosses as itself; a plain map as a picklable dict.
             sector_by_listing_id=(
                 source.sector_by_listing_id
                 if isinstance(source.sector_by_listing_id, SectorHistory)

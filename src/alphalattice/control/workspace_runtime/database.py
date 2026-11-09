@@ -29,10 +29,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 from typing import Any, NamedTuple, cast
+from uuid import uuid4
 
 import duckdb
 
 from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+from alphalattice.kernel.shared_kernel.persistence import (
+    DURABLE_REPLACE_DELAYS,
+    replace_with_retry,
+)
 from alphalattice.kernel.shared_kernel.spans import span
 
 WORKSPACE_MARKET_DATA_DATABASE_FILENAME = "market-data.duckdb"
@@ -82,9 +88,12 @@ def _write_seal_record(
     path: Path, *, epoch: str, fingerprint: list[list[int] | None] | None
 ) -> None:
     target = Path(f"{path}{_SEAL_RECORD_SUFFIX}")
-    staged = target.with_name(f"{target.name}.tmp")
+    staged = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
     staged.write_text(json.dumps({"epoch": epoch, "fingerprint": fingerprint}), encoding="utf-8")
-    os.replace(staged, target)
+    try:  # a process scanning the record holds it for a moment, which Windows refuses
+        replace_with_retry(staged, target, delays=DURABLE_REPLACE_DELAYS)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def seal_epoch(path: Path) -> str:
@@ -615,7 +624,10 @@ def _closed(path: Path) -> None:
                 # The file as this owner's last writable close leaves it (`seal_epoch`).
                 epoch, read_only = _EPOCHS.pop(path, ("", True))
                 if not read_only:
-                    _write_seal_record(path, epoch=epoch, fingerprint=_fingerprint(path))
+                    # The open cleared the record, so a close that can't write it reads as a crash
+                    # (`seal_epoch`): seals are re-derived, and the Task that closed goes on.
+                    with suppress(WorkspaceConflictError):
+                        _write_seal_record(path, epoch=epoch, fingerprint=_fingerprint(path))
         _STATE.notify_all()
 
 

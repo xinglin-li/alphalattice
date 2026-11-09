@@ -228,7 +228,7 @@ body[data-page] .fv-step {
   background: transparent;
   transform: none;
 }
-/* the connector: at node-centre height, from just past this node through both steps' paddings
+/* The connector: at node-centre height, from just past this node through both steps' paddings
    to just short of the next node (clear of a ring or halo); none after the last */
 body[data-page] .fv-step::before {
   content: "";
@@ -251,7 +251,7 @@ body[data-page] .fv-step.is-complete::before {
   place-items: center;
   border: 1px solid var(--edge-strong);
   border-radius: 50%;
-  /* the surface the rail sits on: the theater names its own, the shared live work area is
+  /* The surface the rail sits on: the theater names its own, the shared live work area is
      the ui face its container paints */
   background: var(--ui-face);
   color: var(--muted);
@@ -269,7 +269,7 @@ body[data-page] .fv-step.is-complete::before {
   display: grid;
   gap: var(--space-05);
 }
-/* a wrapped title or count breaks evenly ("Verified ·" / "1 evidence"), not on its last word */
+/* A wrapped title or count breaks evenly ("Verified ·" / "1 evidence"), not on its last word */
 .fv-step-copy>* {
   text-wrap: balance;
 }
@@ -284,7 +284,7 @@ body[data-page] .fv-step.is-current {
 .fv-step.is-complete strong {
   color: var(--text);
 }
-/* the current step is the text ink, not a tone (the user, 2026-09-25: a green done step beside a
+/* The current step is the text ink, not a tone (the user, 2026-09-25: a green done step beside a
    blue current one did not pair; CO3): its place is its ink and halo, its state its word. Weighed
    under a stopped stage's tone (`:where`), which wins (ST2). */
 .fv-step:where(.is-current:not(.is-complete)) .fv-step-node {
@@ -292,7 +292,7 @@ body[data-page] .fv-step.is-current {
   border-color: color-mix(in srgb,var(--text) var(--tint-strong),var(--line));
   box-shadow: 0 0 0 var(--space-1) color-mix(in srgb,var(--fill-selected) var(--tint-edge),transparent);
 }
-/* a stage its owner stopped wears its state's tone, current or not (ST2: one state, one tone) */
+/* A stage its owner stopped wears its state's tone, current or not (ST2: one state, one tone) */
 .fv-step[data-tone=danger] .fv-step-node {
   color: var(--danger-ink);
   border-color: color-mix(in srgb,var(--danger-ink) var(--tint-edge),var(--line));
@@ -305,8 +305,8 @@ body[data-page] .fv-step.is-current {
   color: var(--review-ink);
   border-color: color-mix(in srgb,var(--review-ink) var(--tint-edge),var(--line));
 }
-/* the working node's motion is the work area's (06-pages: the turning arc) */
-/* finished: a tinted node with a dark, heavier check (a light check on a solid fill is lost at
+/* The working node's motion is the work area's (06-pages: the turning arc) */
+/* Finished: a tinted node with a dark, heavier check (a light check on a solid fill is lost at
    this size and stroke); the good tone -- a verified stage is done, the working one keeps the accent */
 .fv-step.is-complete .fv-step-node {
   color: var(--good-ink);
@@ -329,7 +329,7 @@ body[data-page] .fv-step:focus-visible {
   display: flex;
   flex-direction: column;
 }
-/* the head's tools keep their words on one line; the label gives way (N6) */
+/* The head's tools keep their words on one line; the label gives way (N6) */
 .run-log-head > :is(button, .text-btn) {
   flex: none;
   white-space: nowrap;
@@ -684,7 +684,7 @@ details.run-log > summary::-webkit-details-marker { display: none; }
   padding: var(--space-3) 0 0;
   font-size: var(--style-footnote-size);
 }
-/* the Task the activity follows: a state with its control, above the rows */
+/* The Task the activity follows: a state with its control, above the rows */
 .run-log-following {
   margin: 0 0 var(--space-3);
   color: var(--muted);
@@ -767,18 +767,18 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-replies > .team-reply > .team-exchange-icon .icon { width: var(--icon-xs); height: var(--icon-xs); }
 .team-replies > .team-reply.is-pm-response { margin: var(--space-1) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-block); background: var(--surface-well); }
 .team-replies-more { padding: var(--space-1) var(--space-3); }
-/* a clamped exchange opens where it stands; `Show more` stands only where the clamp hides words
+/* A clamped exchange opens where it stands; `Show more` stands only where the clamp hides words
    (the page's measured marks set its `hidden`) */
 .team-exchange-body > .team-words[data-clamp="open"] { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
 .team-exchange-body > .team-words-more { justify-self: start; }
-/* the thread's quiet ways keep their words on the column they belong to: the control's inline
+/* The thread's quiet ways keep their words on the column they belong to: the control's inline
    padding and edge bleed outward (its hover fill), never push the words in */
 .team-exchange-body > .team-words-more, .team-replies-more > .text-btn, .team-hook-toggle { margin-inline-start: calc(0px - var(--space-2) - 1px); }
-/* a run of hook events is one line; its count opens it in place, the chevron says which way */
+/* A run of hook events is one line; its count opens it in place, the chevron says which way */
 .team-hook-toggle { text-align: start; }
 .team-hook-toggle > .icon { width: var(--icon-xs); height: var(--icon-xs); transition: transform var(--dur-1) var(--curve-move); }
 .team-hook-toggle[aria-expanded="false"] > .icon { transform: rotate(-90deg); }
-/* a reply read in the side opens with the exchange it answers, one quoted line */
+/* A reply read in the side opens with the exchange it answers, one quoted line */
 .team-question-card { min-width: 0; margin: 0 0 var(--space-3); }
 .team-thread, .team-replies { list-style: none; margin: 0; padding: 0; }
 .team-exchange { position: relative; display: flex; gap: var(--space-3); padding: var(--exchange-pad, var(--space-2)) var(--space-3) var(--exchange-pad, var(--space-2)) var(--space-4); border-radius: var(--radius-block); }
@@ -795,12 +795,12 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .mark .icon { width: var(--icon-lg); height: var(--icon-lg); }
 .team-thread > .team-exchange:not(:last-child)::after, .team-thread > .team-exchange:last-child:has(.team-replies)::after { content: ''; position: absolute; left: calc(var(--space-4) + var(--exchange-mark-height) / 2 - 1px); top: calc(2 * var(--exchange-pad) + var(--exchange-mark-height)); bottom: calc(0px - var(--exchange-pad)); width: 1px; background: var(--thread-axis); }
 .team-thread > .team-exchange:last-child:has(.team-replies)::after { bottom: var(--exchange-pad); }
-/* an event line (a hook) carries the axis through its whole height, its glyph on the ground the line passes behind */
+/* An event line (a hook) carries the axis through its whole height, its glyph on the ground the line passes behind */
 .team-thread > .team-exchange.team-event:not(:last-child)::after { top: 0; }
 .team-thread > .team-event > .team-event-mark { position: relative; z-index: var(--layer-raised); background: var(--ground); }
-/* a reply draws no rail of the comment it stands under, which `--rail` would hand it by inheritance */
+/* A reply draws no rail of the comment it stands under, which `--rail` would hand it by inheritance */
 .team-replies > .team-exchange.team-reply { --rail: transparent; }
-/* an avatar is its speaker's colour wherever it stands (CO3; the user, 2026-09-25: a Main PM reply
+/* An avatar is its speaker's colour wherever it stands (CO3; the user, 2026-09-25: a Main PM reply
    under an objection drew the objection's orange): an objection is its word and its state */
 [data-role="lead"] { --role-ink: var(--ink-link); }
 [data-role="alpha"] { --role-ink: var(--role-alpha); }
@@ -815,7 +815,7 @@ details.run-log > summary::-webkit-details-marker { display: none; }
 .team-exchange-body > * { grid-column: 1 / -1; }
 .team-exchange-body > .team-exchange-line { grid-column: 1; grid-row: 1; }
 .team-exchange-body > .team-exchange-end { grid-column: 2; grid-row: 1; }
-.team-exchange-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-width: 0; } /* N5: the head wraps between its parts at a narrow width, never past the edge */
+.team-exchange-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-width: 0; } /* the head wraps between its parts at a narrow width, never past the edge */
 .team-exchange-line strong { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); font-weight: var(--weight-strong); }
 .team-exchange-end time { white-space: nowrap; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
 .team-kind { font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); white-space: normal; min-width: 0; }
@@ -878,7 +878,7 @@ span.team-objection-status > .row-dot.neutral { visibility: hidden; }
 }
 
 .team-members { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
-/* a toggle chip (the members, Observations' kinds): a hairline pill, quiet; pressed, it is filled -- never
+/* A toggle chip (the members, Observations' kinds): a hairline pill, quiet; pressed, it is filled -- never
    the dashed chip of an unset lobby filter */
 #main .team-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--filter-chip-height); padding: 0 var(--space-3); border: 1px solid var(--edge-hair); border-radius: var(--radius-pill); background: transparent; color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); font-weight: var(--weight-label); }
 #main .team-chip:hover { color: var(--text); background: var(--ds-control-hover); }
@@ -886,9 +886,9 @@ span.team-objection-status > .row-dot.neutral { visibility: hidden; }
 #main .team-chip > .icon { width: var(--icon-sm); height: var(--icon-sm); }
 #main .team-chip > .num { color: var(--muted); }
 .team-member-chip > .icon, .team-member-mark > .icon { color: var(--role-ink, var(--muted)); }
-/* the exchange the inspector shows takes the accent rail over its kind's (and a reply's none) */
+/* The exchange the inspector shows takes the accent rail over its kind's (and a reply's none) */
 .team-thread .team-exchange.is-selected, .team-thread .team-replies > .team-exchange.team-reply.is-selected { --rail: var(--rail-on); }
-/* what the product recorded outside the conversation, said once at the thread's top */
+/* What the product recorded outside the conversation, said once at the thread's top */
 .team-outside { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3); color: var(--muted); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .team-outside > .icon { flex: none; width: var(--icon-sm); height: var(--icon-sm); margin-top: calc((1lh - var(--icon-sm)) / 2); }
 .team-record-inline { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--edge-hair); color: var(--muted); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); }

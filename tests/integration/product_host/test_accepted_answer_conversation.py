@@ -1,4 +1,4 @@
-"""The owner returns a filed specialist contribution through its parent to Team (V691)."""
+"""The owner returns a filed specialist contribution through its parent to Team."""
 
 import json
 import shutil
@@ -960,7 +960,7 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
     answer_scene, tmp_path, monkeypatch, role
 ):
     """BEHAVIOUR: all five roles keep actual text and source Task; the conversation row is the
-    lead's product fact, its author unobserved (FLOW-1)."""
+    lead's product fact, its author unobserved."""
     live, task, prepared, bundle, authored, accepted_at, submit, answers = specialist_scene(
         answer_scene, tmp_path, monkeypatch, role
     )
@@ -1154,7 +1154,7 @@ def test_selected_typed_answer_reads_the_whole_accepted_task_contribution(
 ):
     """The typed readers reopen admitted input; this seam executes no scientific work. A row
     filed now is the lead's fact and reads through its operation return, which this direct
-    seam has none of; a stored pre-FLOW-1 row with its HOOK credit still reads whole."""
+    seam has none of; a stored legacy row with its HOOK credit still reads whole."""
     live, bundle, analyst, record, events, publish, _submit, answers = answer_scene
     prepared_id = UUID(bundle.submission["task_id"])
     prepared = live.session.task_control_registry.task(prepared_id)
@@ -1455,7 +1455,7 @@ def test_generic_prepare_requires_exact_assigned_task(answer_scene, tmp_path):
 def test_an_answer_of_any_recorded_basis_is_the_leads_fact_without_child_credit(
     answer_scene, basis
 ):
-    """BEHAVIOUR (FLOW-1): the lead submitted it; no recorded basis, a stored HOOK credit
+    """BEHAVIOUR: the lead submitted it; no recorded basis, a stored HOOK credit
     among them, names a child in the conversation."""
     _live, bundle, _accepted, record, _events, _publish, submit, answers = answer_scene
     run = (

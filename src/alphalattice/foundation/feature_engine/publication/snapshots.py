@@ -163,7 +163,7 @@ class _FeaturePanelSnapshotSource:
     # one the re-sourced manifest recorded).
     row_identity_basis: str = PANEL_ROW_IDENTITY_BY_BINDING
     membership: dict[str, object] | None = None
-    # The reclassifications the Panel's sessions read (V346), over its calculation axis.
+    # The reclassifications the Panel's sessions read, over its calculation axis.
     sector_reclassifications: tuple[SectorReclassification, ...] = ()
 
 
@@ -266,7 +266,7 @@ def reconcile_feature_panel_lifecycles(
     """Feature's one Panel lifecycle function: the rows, then the projection research reads.
 
     Market Data's bootstrap no longer supersedes Panels by its own SQL; a Feature build runs this
-    after it, so a publication that failed leaves no row its projection contradicts (V176).
+    after it, so a publication that failed leaves no row its projection contradicts.
 
     Args:
         panel_state: The Panel's lifecycle rows.
@@ -468,7 +468,7 @@ class FeaturePanelSnapshotPublisher:
                 "failure_code": sector_progress["failure_code"],
             }
         if source.sector_reclassifications:
-            # Each reclassification the sessions read from its effective session (V346);
+            # Each reclassification the sessions read from its effective session;
             # absent while none is in force, so such a Panel's lineage is what it was.
             lineage = cast(dict[str, object], safe_summary["lineage"])
             lineage["sector_reclassifications"] = [
@@ -795,7 +795,7 @@ class FeaturePanelSnapshotPublisher:
                 raise ValueError("feature panel calculation axis differs from recorded membership")
         else:
             listing_ids = tuple(sorted(item.listing_id for item in manifest.listings))
-        # The Sector each session read, over the axis the build read it for (V346).
+        # The Sector each session read, over the axis the build read it for.
         history = self.feature_state.sector_history(manifest, listing_ids=listing_ids)
         if history is None:
             raise ValueError("sector source changed during snapshot publication")
@@ -900,7 +900,7 @@ class FeaturePanelSnapshotPublisher:
                 "materialization_receipt_hash": recorded.get("materialization_receipt_hash"),
             }
             if record.catalog_hash is not None:
-                # Cells a catalog this one only adds columns to computed (V92).
+                # Cells a catalog this one only adds columns to computed.
                 origins[binding_hash]["catalog_hash"] = record.catalog_hash
             if prepared.binding.row_identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION:
                 manifest_revision = record.manifest_revision or recorded.get("manifest_revision")

@@ -1,4 +1,4 @@
-"""A stopped Task's durable declaration continues through the real CLI (V615)."""
+"""A stopped Task's durable declaration continues through the real CLI."""
 
 import gc
 import json

@@ -417,8 +417,7 @@
 "owner": "devtools.testing",
 "readers": [
 "src/devtools/testing/requirements.py",
-"src/devtools/testing/collection.py",
-"src/devtools/testing/layout.py"
+"src/devtools/testing/collection.py"
 ],
 "upgraders": [],
 "version": [
@@ -443,8 +442,7 @@
 "description": "The private host facts record what the agent hosts were observed to do, so host-seam fakes match them; readers find them by this schema.",
 "owner": "schema:alphalattice",
 "readers": [
-"scripts/release/public_manifest.py",
-"src/devtools/testing/layout.py"
+"scripts/release/public_manifest.py"
 ],
 "upgraders": [],
 "version": [

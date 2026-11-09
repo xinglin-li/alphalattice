@@ -7,7 +7,7 @@
 - Run a structural guard with no declared `reach` in the commit stage only when its own file changed or a
   `structural_fence` row names its fence law (public-private, identity, evidence, secrets); post-merge, candidate
   and nightly run every structural guard whole, and each run's `structural-moved.json` names the guards that moved.
-- Run explicitly required nodes at declared limits, including Large and quarantined nodes, and record them in the same receipt; leave ordinary commit selection unchanged.
+- Run explicitly required Small and Medium nodes at declared limits, including quarantined nodes, and record them in the same receipt. Measure Large, end-to-end and native tests separately and run them in their scheduled tiers.
 
 ## Verified result reuse
 

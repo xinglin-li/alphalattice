@@ -486,11 +486,29 @@ def test_two_chunks_from_one_line_return_different_excerpts(tmp_path: Path) -> N
     assert not all(span.character_start == 0 for span in spans)
 
 
-def test_a_span_excerpt_round_trips_to_the_sealed_source_bytes(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "heading",
+    (
+        pytest.param("## \u00a0", id="payx-8k-0000723531-26-000008"),
+        "## " + "LongHeading" * 24,
+    ),
+)
+def test_a_span_excerpt_round_trips_to_the_sealed_source_bytes(
+    tmp_path: Path, heading: str
+) -> None:
     """requirement: the excerpt is source bytes, verified against the revision."""
 
     runtime, _passes = _counted_runtime(tmp_path)
-    request, document_set, generation = _built(runtime, documents=(_one_line_document(),))
+    broken_headings = f"# Filing\n{heading}\noperating detail before and after\n"
+    document = _one_line_document().model_copy(update={"text": broken_headings})
+    from pydantic import ValidationError
+
+    try:
+        request, document_set, generation = _built(runtime, documents=(document,))
+    except ValidationError as error:
+        if error.title != "KnowledgeCitation" or "heading_path" not in str(error):
+            raise
+        pytest.fail(f"retrieval rejected the filing heading: {error}")
     session = runtime.retrieval.open_session(
         document_set=document_set,
         generation=generation,

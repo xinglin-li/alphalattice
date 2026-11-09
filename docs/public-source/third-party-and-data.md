@@ -19,7 +19,7 @@ Each Evidence recipe selects two packs for its local encoder and reranker. Insta
 | `Qwen/Qwen3-Reranker-0.6B` | `e61197ed45024b0ed8a2d74b80b4d909f1255473` | 1,207,471,008 | Apache-2.0 |
 | `Xenova/ms-marco-MiniLM-L-6-v2` | `a09144355adeed5f58c8ed011d209bf8ee5a1fec` | 91,707,303 | Apache-2.0; ONNX weights converted from `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 
-Verified packs are reused, and interrupted installations resume their staged files. On Windows, `%LOCALAPPDATA%/AlphaLattice/models` is the default store. `ALPHALATTICE_MODEL_STORE` or `--store` changes its location, and a store packs were installed into is remembered, so later runs find it without the variable. Workspaces share linked pack files. Runtime loaders read local files and never silently install missing models. Locked Python packages install during setup, while Playwright tooling installs separately. Both retain their licenses.
+Verified packs are reused, and interrupted installations resume their staged files. On Windows, `%LOCALAPPDATA%/AlphaLattice/models` is the default store. `ALPHALATTICE_MODEL_STORE` or `--store` changes its location, and a store packs were installed into is remembered in the user's home at `~/.alphalattice/model-store.json`, so later runs find it without the variable. The older platform-store pointer is still read when the home pointer is absent. Workspaces share linked pack files. Runtime loaders read local files and never silently install missing models. Locked Python packages install during setup, while Playwright tooling installs separately. Both retain their licenses.
 
 ## Yahoo Finance
 

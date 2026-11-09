@@ -53,7 +53,7 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         tools = {tool.strip() for tool in fields["tools"].split(",")}
         # No Agent for any card. The two evidence specialists read their bundle whole, write
         # their own answer file and run only its route's submit. The stage roles run their own
-        # commands and write their declarations (V384).
+        # commands and write their declarations.
         evidence = name in {"alphalattice_evidence_analyst", "alphalattice_cro"}
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
@@ -164,7 +164,7 @@ def test_each_card_carries_its_capability_and_graph(materialize):
 
 
 def test_the_skill_carries_every_command_its_paths_use(materialize):
-    """requirement (V384): the lead is an agent like the stage roles, so its Skill carries the
+    """requirement: the lead is an agent like the stage roles, so its Skill carries the
     same command list, current with the table, naming every command its shortest paths run."""
 
     skill = (ROOT / ".agents/skills/alphalattice-research/SKILL.md").read_text(encoding="utf-8")

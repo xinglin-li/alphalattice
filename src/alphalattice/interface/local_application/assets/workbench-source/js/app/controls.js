@@ -88,7 +88,7 @@ const Controls = (() => {
       const host = point.node.parentElement && el.contains(point.node.parentElement) ? point.node.parentElement : el;
       const last = host.lastChild;
       if (last && last.nodeType === 3) last.nodeValue = last.nodeValue.replace(/[\s;:,\u00b7\uff1b\uff1a\uff0c]+$/, ''); // a separator before the cut is not the clause's end
-      host.append(more); // N6: the (i) brings its own space (info-mark-gap), no space character before it
+      host.append(more); // the (i) brings its own space (info-mark-gap), no space character before it
     }
   }
   /* Where the first clause ends: the first sentence end, semicolon, colon or middle dot from the
@@ -442,7 +442,7 @@ const Geometry = (() => {
     // a click on blank space focuses `#main` or a sectioning element with tabindex="-1", and
     // centering one of those (taller than the window) is the page jumping for no reason.
     let pointer = false;
-    // The body says which kind of input came last (round 24h): a focus the page restores after a
+    // The body says which kind of input came last: a focus the page restores after a
     // pointer interaction shows no ring; the first key press brings the rings back.
     document.addEventListener('pointerdown', () => { pointer = true; document.body.dataset.input = 'pointer'; }, true);
     document.addEventListener('keydown', () => { pointer = false; document.body.dataset.input = 'keyboard'; }, true);
@@ -523,7 +523,7 @@ const Places = (() => {
           try {
             e.setSelectionRange(p.focus.start, p.focus.end);
           } catch {
-            /* not a text control */
+            /* Not a text control */
           }
         }
       }

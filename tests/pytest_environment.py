@@ -1,16 +1,24 @@
-"""Own pytest's temporary roots and the QA launcher's confined project discovery."""
+"""Own pytest's temporary roots and the QA launcher's confined project discovery.
+
+Also a pytest plugin of the root conftest: a fixture narrower than the session takes the
+temporary roots it made with it (pytest_fixture_setup)."""
 
 from __future__ import annotations
 
 import getpass
 import os
+import sys
 import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import TYPE_CHECKING, TextIO, cast
+from typing import TYPE_CHECKING, Any, TextIO, cast
 from unittest.mock import patch
+
+import pytest
+
+from devtools.evaluation.golden_workspaces import remove_tree
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -21,6 +29,17 @@ PROJECT_ROOT: ContextVar[Path | None] = ContextVar("pytest_project_root", defaul
 # The running test, set by the root conftest: the session seeds it copies read their market data
 # and Parquet in place unless it is marked private_data (it writes them, so it gets a copy).
 RUNNING_TEST: dict[str, object] = {"id": None, "private": False, "factory": None}
+# This process's backup root: one per process, named once at configure. A test's own workspaces'
+# generations go with the passed test, and the root with a clean session (backups_made).
+BACKUP_ROOT: Path | None = None
+
+
+def backups_made() -> frozenset[str]:
+    """The workspaces this process's backup root holds generations for."""
+    try:
+        return frozenset(e.name for e in os.scandir(BACKUP_ROOT)) if BACKUP_ROOT else frozenset()
+    except FileNotFoundError:
+        return frozenset()
 
 
 def golden_runtime():
@@ -101,9 +120,13 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
         backup_parent = (
             Path(basetemp).resolve().parent if basetemp is not None else temproot.resolve()
         )
-    os.environ["ALPHALATTICE_BACKUP_ROOT"] = tempfile.mkdtemp(
-        prefix="alphalattice-test-backups-", dir=backup_parent
-    )
+    # Printed commands are quoted for the shell a run started in, and a test replays one by POSIX
+    # rules: under PowerShell quoting that loses a path's backslashes, and the file lands at the
+    # drive root. The run's own shell must not decide that; a test of another shell sets its own.
+    os.environ.setdefault("ALPHALATTICE_SHELL", "posix")
+    global BACKUP_ROOT
+    BACKUP_ROOT = Path(tempfile.mkdtemp(prefix="alphalattice-test-backups-", dir=backup_parent))
+    os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(BACKUP_ROOT)
 
 
 @contextmanager
@@ -149,3 +172,74 @@ def project_scope(
             yield
     finally:
         PROJECT_ROOT.reset(token)
+
+
+# A fixture narrower than the session takes the temporary roots it made with it. A module's private
+# workspace copy lived to the session's end: at a full run's peak, 31 of one fixture's held 3.4 GB
+# (mac1, 11-07). Each root `tmp_path_factory.mktemp` makes is named after the fixture being set up,
+# and goes once that fixture's own teardown is done, unless a test failed while it lived: its inputs
+# are that failure's evidence. A session fixture keeps its roots to the end, and tmp_path keeps its
+# own removal (tests/conftest.py), which waits for the test's verdict.
+_ROOTS: list[list[Path] | None] = []
+"""The roots made for each fixture being set up, innermost last; None for one that keeps them."""
+_TORN: list[tuple[list[Path], Any, int]] = []
+"""Roots whose fixture's teardown ran, held for its report: one that raised keeps them."""
+
+
+def _record(factory: Any) -> None:
+    if getattr(factory, "_fixture_roots_recorded", False):
+        return
+    made = factory.mktemp
+
+    def mktemp(basename: str, numbered: bool = True) -> Path:
+        path: Path = made(basename, numbered)
+        if _ROOTS and _ROOTS[-1] is not None:
+            _ROOTS[-1].append(path)
+        return path
+
+    factory.mktemp, factory._fixture_roots_recorded = mktemp, True
+
+
+def _remove(roots: list[Path], request: Any, failed: int) -> None:
+    factory = request.config._tmp_path_factory
+    if request.session.testsfailed != failed or factory._retention_policy != "failed":
+        return
+    for root in roots:
+        if os.path.lexists(root) and (left := remove_tree(root, factory.getbasetemp())):
+            print(
+                f"test_tmp.fixture_scratch_left: {root}: {'; '.join(left)[:500]}", file=sys.stderr
+            )
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """A teardown is reported once all of it ran: a fixture whose own teardown raised is a failure
+    and its roots stay with the rest of its evidence."""
+    if report.when != "teardown" or not _TORN:
+        return
+    torn, _TORN[:] = list(_TORN), []
+    if not report.failed:
+        for roots, request, failed in torn:
+            _remove(roots, request, failed)
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """A fixture finalized outside a test's teardown goes only if nothing failed while it lived."""
+    torn, _TORN[:] = list(_TORN), []
+    for roots, request, failed in torn:
+        _remove(roots, request, failed)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(fixturedef: Any, request: Any) -> Iterator[Any]:
+    roots: list[Path] | None = None
+    if fixturedef.scope != "session" and fixturedef.argname != "tmp_path":
+        _record(request.config._tmp_path_factory)
+        roots, failed = [], request.session.testsfailed
+        request.addfinalizer(
+            lambda: _TORN.append((roots, request, failed))
+        )  # after its own teardown
+    _ROOTS.append(roots)
+    try:
+        return (yield)
+    finally:
+        _ROOTS.pop()

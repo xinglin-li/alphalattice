@@ -77,7 +77,7 @@ from tests.alternative_evidence_desk.review_package import _package
 from tests.structural.source_shape_samples import bundle_refusal_declarations
 
 ONE_UNIT = "u01"
-"""The harness book's only unit: every book is prepared as a coverage run (C2)."""
+"""The harness book's only unit: every book is prepared as a coverage run."""
 
 
 def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
@@ -772,7 +772,7 @@ def test_a_third_answer_with_problems_is_done_and_its_valid_part_admitted(servic
         "accepted_delivery": delivery,
     }
     service.drain()
-    # Settled (V417): the same answer again reads its receipt; another, even a clean one, is
+    # Settled: the same answer again reads its receipt; another, even a clean one, is
     # refused by name and starts no Task.
     again = client.request(document)
     assert again["disposition"] == "REUSED_EXACT", again
@@ -1473,7 +1473,7 @@ def test_a_person_and_the_installed_agent_choose_and_are_recorded_apart(
     assert human["evidence_as_of"] == agent["evidence_as_of"]
     assert human["selection_hash"] != agent["selection_hash"]
     # The receipt names the book the choice was recorded for and goes on to that book's review,
-    # never the default book's (V487, the user's review).
+    # never the default book's.
     assert agent["review_selector"]["result_hash"] == result_hash
     assert agent["next_requests"]["dossier"] == {
         "operation": "CRO_REVIEW_DOSSIER",
@@ -1646,7 +1646,7 @@ def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path, htt
 
 
 def test_a_request_that_names_no_book_is_told_what_names_one() -> None:
-    """regression (V242): a bundle asked for with its Task alone read "This workspace holds no
+    """regression: a bundle asked for with its Task alone read "This workspace holds no
     sealed book", though the workspace held one its request did not name; the refusal says what
     names a book and which request writes the whole selector."""
 
@@ -1658,12 +1658,12 @@ def test_a_request_that_names_no_book_is_told_what_names_one() -> None:
     outcome = EvidenceReviewApplication._review_selector(app, None)  # type: ignore[arg-type]
     assert outcome.disposition == "REFUSED_NO_BOOK_TO_REVIEW"
     assert "`experiment_task_id`" in outcome.detail and "`packet_<unit>`" in outcome.detail
-    # The way on is a request, not only words (V295): the history read lists the books.
+    # The way on is a request, not only words: the history read lists the books.
     assert outcome.next_requests == {"history": {"operation": "RESEARCH_HISTORY"}}
 
 
 def test_each_packet_comes_with_its_analyst_bundle_request() -> None:
-    """requirement (V295; LAWS OP12): after O2 a lead assembled the five-field selector of an
+    """requirement (LAWS OP12): after O2 a lead assembled the five-field selector of an
     Analyst's bundle by hand; every packet request now comes with the bundle request beside
     it, the book, Task and unit filled and only the directory left to choose."""
 
@@ -1702,7 +1702,7 @@ def test_each_packet_comes_with_its_analyst_bundle_request() -> None:
 
 
 def test_a_position_basis_beside_another_book_is_refused_by_its_name() -> None:
-    """regression (V290; LAWS OP12): an experiment's selector with the position basis its
+    """regression (LAWS OP12): an experiment's selector with the position basis its
     experiment recorded was refused `evidence_review_update_selector_invalid`, naming neither
     the field nor the way on; the refusal names the field and offers the request without it."""
 

@@ -233,7 +233,12 @@ _SCANNERS = {
 }
 
 
-def inventory(root: Path, files: Iterable[str]) -> dict[str, Counter[str]]:
+def inventory(
+    root: Path,
+    files: Iterable[str],
+    *,
+    details: tuple[list[tuple[str, str]], set[str]] | None = None,
+) -> dict[str, Counter[str]]:
     """Each registry's entries in ``files`` (relative, POSIX)."""
 
     result: dict[str, Counter[str]] = {name: Counter() for name in _SCANNERS}
@@ -244,9 +249,14 @@ def inventory(root: Path, files: Iterable[str]) -> dict[str, Counter[str]]:
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
+            if details is not None:
+                raise
             continue
         for name, scan in _SCANNERS.items():
             result[name].update(scan(relative, tree))
+        if details is not None:
+            details[0].extend((relative, owner) for owner in owners(relative, tree))
+            details[1].update(definitions(root, relative, tree))
     return result
 
 
@@ -353,7 +363,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
     Counts follow the access kind and symbol across files: moving an existing access is not
     growth. A new access or a second use still needs the product's public entry. The scan alone
-    let five through on 2026-09-30, each registered beside its test (V16).
+    let five through on 2026-09-30, each registered beside its test.
     """
 
     before: Counter[str] = Counter()
@@ -373,7 +383,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
 def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     """A format that does not name its version, readers and upgraders, or names a file that is
-    not there (LAWS.md DA6, V267)."""
+    not there (LAWS.md DA6)."""
 
     out: list[str] = []
     for key, value in sorted(known.items()):
@@ -395,7 +405,9 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
 def problems(root: Path, files: Sequence[str]) -> list[str]:
     """What ``files`` add to a registry without registering it."""
 
-    found = inventory(root, files)
+    owner_sites: list[tuple[str, str]] = []
+    decision_sites: set[str] = set()
+    found = inventory(root, files, details=(owner_sites, decision_sites))
     out: list[str] = message_problems(root, files)
     for name, entries in found.items():
         known = baseline(root, name, errors=out)
@@ -424,17 +436,12 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
             (root / "config" / "package-architecture.json").read_text("utf-8")
         )["packages"]
     }
-    for relative in files:
-        path = root / relative
-        if relative.endswith(".py") and path.is_file():
-            for owner in owners(relative, ast.parse(path.read_text(encoding="utf-8"))):
-                # A package, or one of its areas (`alpha_research.calibration`); an owner that
-                # names neither is refused unless the baseline already held it (its value is
-                # hashed into an identity, so renaming it is a successor of its own).
-                if owner.split(".")[0] not in registered and owner not in baseline(root, "owners"):
-                    out.append(f"{relative}: semantic_owner {owner!r} is not a registered package")
+    for relative, owner in owner_sites:
+        # A package or one of its areas; a historical owner remains identity-bound.
+        if owner.split(".")[0] not in registered and owner not in baseline(root, "owners"):
+            out.append(f"{relative}: semantic_owner {owner!r} is not a registered package")
     known_definitions = baseline(root, "noun-definitions")
-    for key in sorted(_definitions(root, files)):
+    for key in sorted(decision_sites):
         if key not in known_definitions:
             maker, noun, made = key.split("::")
             out.append(

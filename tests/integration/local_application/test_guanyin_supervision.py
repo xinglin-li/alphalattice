@@ -6,6 +6,10 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
+from alphalattice.control.task_control.contracts import TaskLifecycle
+
 
 def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_center_acts(
     live,
@@ -68,6 +72,45 @@ def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_c
     assert live.operations.status(task.task_id)["incident"] is None
     listed = ops.execute(PortfolioResearchOperationRequest(operation="TASK_INCIDENTS"))
     assert listed["open"] == 0 and listed["incidents"][0]["key"] == opened.key
+
+
+@pytest.mark.proves("task_control.dead_worker_reads_failed")
+def test_a_task_whose_command_died_with_its_failure_write_is_owed_a_recovery(live) -> None:
+    """A dead worker's Task stops reading RUNNING on the next pass, and a live one is left alone."""
+
+    from tests.workspace_task_runner.task_control_support import compatibility, task_contract
+
+    registry, dispatcher = live.session.task_control_registry, live.dispatcher
+    now = dispatcher.clock()
+    envelope, goal, plan = task_contract(salt="died")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    registry.start_next(
+        compatibility=compatibility(plan), worker_instance_id=uuid4(), observed_at=now
+    )
+    with dispatcher._lock:
+        dispatcher._running.add(task.task_id)
+        dispatcher._failures[task.task_id] = "PermissionError: [WinError 5] Access is denied"
+    live.operations.supervisor.supervise_once()
+    assert registry.task(task.task_id).lifecycle is TaskLifecycle.RUNNING  # its command still runs
+    with dispatcher._lock:
+        dispatcher._running.discard(task.task_id)
+    live.operations.supervisor.supervise_once()
+    stopped = registry.task(task.task_id)
+    assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+    assert stopped.failure_code == "TASK_EXECUTION_INTERRUPTED"
+    read = live.operations.status(task.task_id)
+    assert read["lifecycle"] == "RECOVERY_REQUIRED"
+    envelope, goal, plan = task_contract(salt="cancelled while read")
+    raced = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    (read_first, _) = registry.start_next(
+        compatibility=compatibility(plan), worker_instance_id=uuid4(), observed_at=now
+    )
+    dispatcher._failures[raced.task_id] = "PermissionError: [WinError 5] Access is denied"
+    registry.request_cancel(
+        task_id=raced.task_id, expected_task_hash=read_first.record_hash, observed_at=now
+    )
+    live.operations.supervisor._settle_dead_worker(read_first, now)
+    assert registry.task(raced.task_id).lifecycle is TaskLifecycle.CANCEL_REQUESTED
 
 
 def test_a_succeeded_linked_successor_does_not_reopen_the_stopped_source_incident(live) -> None:

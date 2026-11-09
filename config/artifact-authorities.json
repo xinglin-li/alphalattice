@@ -522,7 +522,7 @@
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
       "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
       "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
-      "retired": "RT V312"
+      "retired": "92df17c23dd9cbcba92dcd6ba9f5618cca3ff626"
     },
     {
       "path_prefixes": [
@@ -749,7 +749,7 @@
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
       "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
       "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED",
-      "retired": "RT V312"
+      "retired": "92df17c23dd9cbcba92dcd6ba9f5618cca3ff626"
     },
     {
       "path_prefixes": [
@@ -1245,7 +1245,7 @@
       "roots": [
         "experiment"
       ],
-      "semantic_role": "a Factor study's sealed deterministic evidence, content-addressed, under its experiment's output (V205)",
+      "semantic_role": "a Factor study's sealed deterministic evidence, content-addressed, under its experiment's output",
       "authority_owner": "factor_research.experiments.publish_factor_development_evidence",
       "retention_owner": "factor_research",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
@@ -1259,7 +1259,7 @@
       "roots": [
         "experiment"
       ],
-      "semantic_role": "a Factor study's lineage receipts beside its child, under its experiment's output (V205)",
+      "semantic_role": "a Factor study's lineage receipts beside its child, under its experiment's output",
       "authority_owner": "factor_research.experiments.publish_factor_development_receipt",
       "retention_owner": "factor_research",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
@@ -1273,7 +1273,7 @@
       "roots": [
         "experiment"
       ],
-      "semantic_role": "a Factor study's curation decisions, under its experiment's output (V205)",
+      "semantic_role": "a Factor study's curation decisions, under its experiment's output",
       "authority_owner": "factor_research.experiments.publish_factor_development_curation",
       "retention_owner": "factor_research",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
@@ -1287,7 +1287,7 @@
       "roots": [
         "workspace"
       ],
-      "semantic_role": "the retained retrieval recipe's model copy, which the relink turns into links to the machine's model store (V205, V208)",
+      "semantic_role": "the retained retrieval recipe's model copy, which the relink turns into links to the machine's model store",
       "authority_owner": "knowledge.model_store.relink_retained_copy",
       "retention_owner": "knowledge",
       "rebuildability": "REBUILDABLE_FROM_THE_MACHINES_MODEL_STORE",

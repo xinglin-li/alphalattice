@@ -16,7 +16,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
+from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -211,7 +211,7 @@ class PanelClosureSourceRepository:
         include members that have since left the manifest.
         """
         marks = ", ".join("?" for _ in listing_ids)
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             rows = connection.execute(
                 f"""
@@ -236,7 +236,7 @@ class PanelClosureSourceRepository:
         display-symbol order.  Reconstructing from Parquet would therefore
         preserve membership but lose the floating-point operation order.
         """
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             rows = connection.execute(
                 """
@@ -270,7 +270,7 @@ class PanelClosureSourceRepository:
             raise ValueError("base closure source scope cannot be empty")
         if required_keys.column_names != ["session_date", "listing_id"]:
             raise ValueError("base closure source keys have an invalid schema")
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             connection.register("panel_required_keys", required_keys)
             table = connection.execute(
@@ -314,7 +314,7 @@ class PanelClosureSourceRepository:
     def read_sector_rows(self, *, listing_ids: tuple[str, ...]) -> tuple[dict[str, object], ...]:
         """Read sector revision rows for the selected listings."""
         marks = ", ".join("?" for _ in listing_ids)
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             result = connection.execute(
                 f"""
@@ -336,7 +336,7 @@ class PanelClosureSourceRepository:
 
     def sector_revision_ledger_counts(self) -> tuple[int, int]:
         """Count sector revision and membership rows in the source ledger."""
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             row = connection.execute(
                 """
@@ -352,7 +352,7 @@ class PanelClosureSourceRepository:
     def read_availability(self, *, snapshot: PanelSnapshotSource) -> pa.Table:
         """The snapshot's availability rows, under the key its rows were computed with."""
         lineage = snapshot.lineage
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             if snapshot.row_identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION:
                 ranges = snapshot.cross_sections

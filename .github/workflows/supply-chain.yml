@@ -1,0 +1,103 @@
+name: Supply chain
+
+# Known vulnerabilities in the locked dependencies, secrets in the tree and in pushed commits, and a
+# CycloneDX bill of materials attached to each release. Runs only in a public repository; the tools are
+# the lock's own `supply-chain` group (pip-audit, cyclonedx-bom) and gitleaks' release binary, checked
+# against its published sha256. The advisory query needs the network, so this never runs in the
+# product's offline tests.
+on:
+  push:
+    branches: [main, next]
+  pull_request:
+    branches: [main, next]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vulnerabilities:
+    name: Known vulnerabilities in the lock
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - name: Install the locked supply-chain tools
+        run: uv sync --locked --only-group supply-chain
+      - name: Audit every locked package an install takes
+        run: |
+          uv export --locked --all-extras --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/requirements.txt"
+          uv run --no-sync pip-audit --disable-pip --strict --progress-spinner off --requirement "$RUNNER_TEMP/requirements.txt"
+
+  secrets:
+    name: Secrets in the tree and the pushed commits
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install gitleaks 8.30.1, checked against its release sha256
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --output gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan the tree
+        run: '"$RUNNER_TEMP/gitleaks" dir --config .github/gitleaks.toml --redact --no-banner --exit-code 1 .'
+      - name: Scan the commits this push or pull request adds
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then range="$HEAD"; else range="$BASE..$HEAD"; fi
+          "$RUNNER_TEMP/gitleaks" git --config .github/gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="$range" .
+
+  sbom:
+    name: CycloneDX bill of materials
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write  # attach the SBOM to the published release; other events only keep it as an artifact
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.28"
+      - name: Install the locked supply-chain tools
+        run: uv sync --locked --only-group supply-chain
+      - name: Build the SBOM of what an install takes
+        run: |
+          uv export --locked --all-extras --no-dev --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/runtime.txt"
+          uv run --no-sync cyclonedx-py requirements --pyproject pyproject.toml --output-format JSON \
+            --output-file "$RUNNER_TEMP/alphalattice.cdx.json" "$RUNNER_TEMP/runtime.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ github.sha }}
+          path: ${{ runner.temp }}/alphalattice.cdx.json
+          if-no-files-found: error
+      - name: Attach the SBOM to the release
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP/alphalattice.cdx.json" --repo "$GITHUB_REPOSITORY"

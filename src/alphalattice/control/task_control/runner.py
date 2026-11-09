@@ -23,6 +23,7 @@ from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
 from .child import ChildStartFailed
@@ -47,7 +48,7 @@ _LOG = logging.getLogger(__name__)
 
 REPEATED_STAGE_RAISES: Final = 3
 """A stage that raises on this many attempts in a row is blocked with its error's type, not
-resumed again; an attempt that defers or completes ends the row (V475). One raise is a stop the
+resumed again; an attempt that defers or completes ends the row. One raise is a stop the
 next run recovers from; the same stage raising on every attempt is a failure its owner did not
 name, and resuming it would loop (found by LS1's acceptance: a Sector reader's database error
 resumed nine times)."""
@@ -70,7 +71,7 @@ class StageExecutionResult:
         disposition: Outcome of domain-stage execution.
         evidence: Evidence references proposed for verification.
         failure_code: Optional stable domain failure cause.
-        failure_cause: What the owner saw beside that code, kept with the block (V444).
+        failure_cause: What the owner saw beside that code, kept with the block.
     """
 
     disposition: StageDisposition
@@ -157,7 +158,7 @@ def _bounded_raise(
         return StageExecutionResult(
             StageDisposition.BLOCKED,
             failure_code=f"TASK_STAGE_RAISED:{type(error).__name__}",
-            # What was raised rides beside the code, as an owner's cause does (V444).
+            # What was raised rides beside the code, as an owner's cause does.
             failure_cause=StageFailureCause.from_facts(
                 {"exception_type": type(error).__name__, "detail": str(error)}
             ),
@@ -525,6 +526,7 @@ class TaskControlRunner:
                 for item in self.registry.work_items(task.task_id):
                     if item.lifecycle is not WorkItemLifecycle.VERIFIED:
                         continue
+                    checkpoint()
                     try:
                         verified = _spanned(
                             (self._runtime_path, self.clock),
@@ -565,6 +567,12 @@ class TaskControlRunner:
             finally:
                 pool.close()
             return self.registry.task(task.task_id)
+        except HostStopping:
+            stopped = self.registry.mark_recovery_required(
+                task_id=task.task_id, failure_code="HOST_STOP_REQUESTED", observed_at=self._now()
+            )
+            self._publish_projection(task.task_id)
+            return stopped
         except ChildStartFailed as error:
             _LOG.exception("the OS refused a Task's child start; recovery is required")
             task = self.registry.mark_recovery_required(
@@ -678,6 +686,7 @@ class TaskControlRunner:
         if task.lifecycle is not TaskLifecycle.RUNNING:
             pool.drain()
             return False
+        checkpoint()
         work_states = registry.work_items(task_id)
         running = pool.stage_ids()
         if any(
@@ -708,8 +717,7 @@ class TaskControlRunner:
                     observed_at=self._now(),
                 )
             except TaskTransitionRejected:
-                # The Task moved between the read above and this claim -- a
-                # cancel requested in that window is the one case a running
+                # A cancel between the read and claim is the one case a running
                 # worker can meet here. The cancel is applied at this
                 # boundary, as it would have been one read earlier; anything
                 # else is the interruption it always was (seen on the book
@@ -723,7 +731,7 @@ class TaskControlRunner:
                     return False
                 raise
             self._publish_projection(task_id)
-            # This attempt, after the stage's interrupted ones in a row (V475).
+            # This attempt, after the stage's interrupted ones in a row.
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
             refused = None if self.stage_gate is None else self.stage_gate(task)
             pool.start(
@@ -812,11 +820,12 @@ class TaskControlRunner:
         """Seal what an interrupted execution stored before its receipt, where it verifies.
 
         The stage ran and stored its evidence, and the process stopped before the receipt: its
-        own verifier decides, and only a stage whose evidence fails runs again (V101, EV1).
+        own verifier decides, and only a stage whose evidence fails runs again (EV1).
         """
         for item in self.registry.work_items(task.task_id):
             if item.lifecycle is not WorkItemLifecycle.READY_FOR_VERIFICATION:
                 continue
+            checkpoint()
             definition = definitions[item.stage_id]
             try:
                 verified = _spanned(
@@ -919,7 +928,7 @@ def _declared_width(adapter: TaskDomainAdapter, task: TaskRecord, width: int | N
     workspace's CPU budget gives it when it starts, else the host's processors;
     1 for an adapter that declares nothing. Each work item may hold a worker
     process, so under several Hosts at once a width from the processors alone
-    multiplied the machine's processes (V436)."""
+    multiplied the machine's processes."""
 
     declared = getattr(adapter, "concurrent_work_items", None)
     if declared is None:

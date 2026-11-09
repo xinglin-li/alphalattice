@@ -220,12 +220,38 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
         "panel_sector_labels",
         lambda _store, _manifest, _panel, listings: (history.subset(listings), None),
     )
+    unavailable: set[Path] = set()
+
+    def verify_bundle(workspace, *_args):
+        if workspace in unavailable:
+            raise OSError("bundle unavailable")
+
+    monkeypatch.setattr(context, "read_factor_bundle", verify_bundle, raising=False)
     for axis in (["one"], ["one", "two"], ["two", "one"], ["one"]):
         body["portfolio_source"]["ordered_listing_ids"] = axis
         labels = context.book_sectors(tmp_path, body)["by_listing"]
         assert labels == {key: history.current[key] for key in axis}
         assert list(labels) == axis
         assert len(context._SECTOR_CACHE) == 1
+
+    # A warm result cannot hide a missing or corrupt bundle, here or in another workspace.
+    unavailable.update((tmp_path / "other", tmp_path))
+    for workspace in unavailable:
+        assert context.book_sectors(workspace, body)["status"] == "UNAVAILABLE"
+
+    # A collision in the index is not a collision in the full canonical key.
+    unavailable.clear()
+    monkeypatch.setattr(context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+    for axis in (["one"], ["two"]):
+        body["portfolio_source"]["ordered_listing_ids"] = axis
+        assert context.book_sectors(tmp_path, body)["by_listing"] == {
+            key: history.current[key] for key in axis
+        }
+    body["position"]["session"] = 1
+    assert context.book_sectors(tmp_path, body)["status"] == "BOOK_EXECUTION"
+    body["position"]["session"] = "1"
+    with pytest.raises(ValueError, match="Invalid isoformat"):
+        context.book_sectors(tmp_path, body)
 
 
 @pytest.mark.parametrize("last_eligible", (False, True), ids=("all-excluded", "one-scored"))
@@ -309,6 +335,19 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
             held[row["listing_id"]]["alias"],
             held[row["listing_id"]]["name"],
         )
+    # Listing names are presentation inputs even when the publication hash is unchanged.
+    renamed = {**readback, "listing_labels": dict(readback["listing_labels"])}
+    listing = inside["top_contributors"][0]["listing_id"]
+    renamed["listing_labels"][listing] = "Renamed listing"
+    changed = s.risk(renamed)
+    assert next(
+        row["name"] for row in changed["top_contributors"] if row["listing_id"] == listing
+    ) == ("Renamed listing")
+    assert s.risk() == inside
+    request.getfixturevalue("monkeypatch").setattr(
+        context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32
+    )
+    assert s.risk(renamed) == changed and s.risk() == inside
     s.sessions = s.days[: s.k - 2]
     carried = s.risk()
     assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
@@ -1157,6 +1196,25 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     store.attribute(first.goal_id, {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
     asked = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert committee.DAILY_ASK in asked["ask_now"]
+    assert asked.get("person_questions", [{}])[0].get("code") == "committee.daily"
+    assert "--question-code committee.daily" in asked["ask_now"][-1]
+    from alphalattice.interface.local_application.goals import relayed_decision
+    from alphalattice.interface.local_application.portfolio_research import (
+        PersonConfirmation,
+        decision_hash,
+    )
+
+    choice = {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": True}
+    confirmation = PersonConfirmation(
+        question=(
+            "Should each daily update also convene the investment committee, "
+            "about ten more minutes?"
+        ),
+        words="Yes.",
+        question_code="committee.daily",
+        decision_hash=decision_hash(choice),
+    )
+    assert relayed_decision(choice, confirmation) == confirmation.decision_hash
     # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
     # question waits for the person, and the goal's completion goes on beside it.
     assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked

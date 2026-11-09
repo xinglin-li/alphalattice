@@ -29,7 +29,7 @@ const c={Window:{renderTop(){}},console,URLSearchParams,Date,Number,Math,Set,Map
   html:(s,...v)=>s.reduce((a,p,i)=>a+p+(Array.isArray(v[i])?v[i].join(''):v[i]??''),''),t:(s,vars)=>s.replace(/\{(\w+)\}/g,(_,k)=>String(vars?.[k]??'')),
   notRead:(title,error,words='',action='')=>`<div class="warning">${title}:${error}${words?' '+words:''}${action}</div>`,noteLine:(title,body='',tone='',action='')=>`<p class="note-line">${title}${body?' · '+body:''}${action||''}</p>`,hint:(term)=>term,factsRef:(title,body)=>`<p>${title}</p>${body}`,codeRef:(title,text)=>'<p>'+title+'</p><template>'+(typeof text==='string' ? text : JSON.stringify(text))+'</template>',refCell:(uri)=>'<span>'+uri+'</span>',hashCell:(h)=>'<span>'+(h||'—')+'</span>',readingPane:(title,kind,body,close)=>'<aside>'+title+body+'</aside>',sourceRows:(rows)=>rows.map((r)=>[r.label,r.value]),badge:(tone,label)=>`[${tone}:${label}]`,stateLine:(x,o={})=>`[${(typeof x==='string'?x:(x?.lifecycle??x?.state??x?.status??''))}:${o.word??''}]`,skeleton:(shape='rows')=>'SKELETON('+shape+')',statusDot:(s,l)=>'['+s+(l?':'+l:'')+']',emptyState:(s,a='')=>'EMPTY('+s+')'+(a||''),btn:(label,action,value)=>`<${action}:${value}>`,btnAttrs:()=>'',banner:(a,b)=>`(${a}|${b})`,icon:()=>'',tile:()=>'',codeWords:(code)=>String(code ?? '—'),actorWords:(caller)=>({HUMAN:'You',EXTERNAL_AUTOMATION:'Agent · API'})[caller]||String(caller ?? '—'),when:(value)=>String(value ?? '—'),
   groupHead:(label,count)=>'GROUP('+label+':'+count+')',listFoot:()=>'',objectRow:(s={},x)=>'ROW('+[s.lead,s.name,s.why,...(((x&&x.props)||[]).filter(Boolean).map(p=>Array.isArray(p)?p[1]:p)),x&&x.time,s.to?`<${s.to.action}:${s.to.value}>`:'',x&&x.actions].filter(Boolean).join('|')+')'+((x&&x.under)||'')};
-const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
+const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes:');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 c.Data.readShared = (...args) => c.Data.read(...args);
 const routes=library.hostRoutes();c.Data.posts=operation=>routes[operation]?.method==='POST';
 c.LiveGoals={observe:()=>{goalObservations++;}};
@@ -42,7 +42,7 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   assert.equal(goalObservations,1,'Goals observes the existing shared activity refresh');
   assert.deepEqual(toasts,[]);assert.equal(A.state().groups,1);assert.equal(A.state().cursor,'e1:2');
   assert.ok(!reads[0].includes('after='),'first read has no cursor');
-  assert.ok(A.section().includes('Agent · API'),'the entry class, not a host identity (round 63: the class in words)');
+  assert.ok(A.section().includes('Agent · API'),'the entry class, not a host identity (the class in words)');
   assert.ok(!A.section().includes('Codex'));
   assert.ok(A.usageNote('not-recorded','codex').includes('Session usage unknown'),'missing session usage is not silently omitted');
   assert.ok(A.section().includes('Session unknown'),'a sessionless API request stays visible as unknown');
@@ -74,9 +74,9 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   await A.refresh();
   assert.equal(reads[1],'/api/activity?limit=200&after=e1%3A2','continues from the last cursor');
   assert.equal(A.groups()[0].items.length,2,'the REQUESTED half joins its Task once the RETURNED half names it');
-  assert.deepEqual(toasts,[],'an admitted Task counts, it does not toast (round 75)');assert.equal(A.unseen(),1);
+  assert.deepEqual(toasts,[],'an admitted Task counts, it does not toast');assert.equal(A.unseen(),1);
   assert.deepEqual(merged.map(v=>v.task_id),['task-1']);
-  assert.equal(A.facts(A.groups()[0]).state,'QUEUED'); // the dock line retired with the dock (round 62): the unseen count is the side's badge
+  assert.equal(A.facts(A.groups()[0]).state,'QUEUED'); // the dock line retired with the dock: the unseen count is the side's badge
   assert.ok(A.section().includes('daily yes'),'the row says whose setting let the Task reach the network');
   // 3. A re-delivered row is not a second event and not a second toast (ordinal watermark).
   pages=[page('CONTINUED','e1',[run],{'task-1':projection('task-1','QUEUED')})];
@@ -122,7 +122,7 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   pages=[page('CONTINUED','e1',[study],{'task-2':projection('task-2','SUCCEEDED',{task_kind:'research_experiment'})})];
   await A.refresh();await A.open('task-2');
   assert.deepEqual(opened.at(-1),'experiment:task-2');
-  // V659: both published artifact kinds read through the shared words in Activity and Record.
+  // both published artifact kinds read through the shared words in Activity and Record.
   const captionWords=library.words(root),savedWords={t:c.t,codeWords:c.codeWords};
   Object.assign(c,{t:captionWords.t,codeWords:captionWords.codeWords});
   for(const lang of ['en','zh']) {
@@ -276,7 +276,7 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
   const pinnedOpened=opened.length;
   A.absorbPage(page('CONTINUED','e2',[evidence(303,'task-10')],experiment('task-10','SUCCEEDED')));await settled();
   assert.equal(opened.length,pinnedOpened,'pinned: nothing opens by itself');assert.equal(A.state().pendingOpen,null);
-  assert.ok(!toasts.includes('Result verified · Task task-10 · open it from the activity list'),'pinned: the verified result counts as unseen and stays in the list, no toast (round 75)');
+  assert.ok(!toasts.includes(library.words(root).t('Result verified \u00b7 Task {task} \u00b7 open it from the activity list',{task:'task-10'})),'pinned: the verified result counts as unseen and stays in the list, no toast');
   assert.ok(A.section().includes('<activity-open:task-10>'),'the result stays one explicit click away');
   // A shared PLAN operated elsewhere: Follow inspects that exact hash, the Task follow state is untouched.
   const hash='7bf1e44881c6b21d2e7bbb95008947f7b24a35916a9b24829e8d12b8781dcb27';

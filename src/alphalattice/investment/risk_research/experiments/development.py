@@ -182,7 +182,7 @@ def build_development_covariance_surface(
     equal_weights: FloatArray = np.full(
         len(ordered_listing_ids), 1.0 / len(ordered_listing_ids), dtype=np.float64
     )
-    # Each formation's book is balanced over the Sectors in force at it (V346).
+    # Each formation's book is balanced over the Sectors in force at it.
     sector_weights: list[FloatArray] = []
     for rows, mapping in sector_slices(sector_by_listing_id, formation_sessions):
         weights = _sector_balanced_weights(ordered_listing_ids, mapping)

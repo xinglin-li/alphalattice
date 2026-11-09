@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import json
 import mmap
 import os
 import subprocess
@@ -31,6 +32,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from alphalattice.kernel.shared_kernel.spans import collect
 from tests._support.lease_age import age_lease_file
 
 if os.name == "nt":
@@ -1100,6 +1102,27 @@ def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
     """requirement: a digest verified once is kept for the next process of the workspace."""
     with _kept_facts(tmp_path) as (facts, workspace, target):
         _aged(target)
+        # A legacy metadata-only fact is readable but never used as a byte proof.
+        stat = target.stat()
+        journal = workspace / facts.FILE_FACTS
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(
+            json.dumps(
+                [
+                    target.relative_to(workspace).as_posix(),
+                    "columns",
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    stat.st_ino,
+                    "a" * 64,
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        facts.release_file_facts(workspace)
+        facts.keep_file_facts(workspace)
+        assert facts.file_fact(target, "columns") is None
         facts.record_file_fact(target, "columns", "a" * 64)
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
@@ -1116,14 +1139,65 @@ def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
             facts.keep_file_facts(workspace)
             assert (workspace / facts.FILE_FACTS).read_bytes() == journal
             assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
+            # Compaction keeps the latest content proof while bounding historical rows.
+            path = workspace / facts.FILE_FACTS
+            with path.open("ab") as stream:
+                stream.write(journal.splitlines(keepends=True)[-1] * 1100)
+            before = path.stat().st_size
+            facts.release_file_facts(workspace)
+            facts.keep_file_facts(workspace)
+            assert path.stat().st_size < before
+            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
         finally:
             facts.configure_file_facts()
 
 
-def test_a_change_to_the_file_ends_its_fact(tmp_path: Path) -> None:
+def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None:
     """tamper: a file rewritten in place, same size, loses its fact and is digested again."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
         _aged(target)
+        age_lease_file(target)
+        digest = hashlib.file_digest
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append(True)
+            return digest(*args, **kwargs)
+
+        with monkeypatch.context() as counting:
+            counting.setattr(hashlib, "file_digest", counted)
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                assert (
+                    list(pool.map(facts.file_sha256, [target] * 4))
+                    == [hashlib.sha256(b"one").hexdigest()] * 4
+                )
+            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
+            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+            assert calls == [True]
+
+        def unavailable(_path):
+            raise OSError("stamp unavailable")
+
+        with monkeypatch.context() as blocked, collect() as timing:
+            blocked.setattr(facts.os, "fstat", unavailable)
+            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+        assert any(row["detail"] == "file_stamp_unavailable" for row in timing.rows())
         facts.record_file_fact(target, "columns", "a" * 64)
+        copy = target.with_name("copy.parquet")
+        copy.write_bytes(target.read_bytes())
+        assert facts.file_fact(copy, "columns") == "a" * 64
+        stat = target.stat()
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+        assert facts.file_fact(target, "columns") == "a" * 64
+        original = target.stat()
+        assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
         target.write_bytes(b"two")
+        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+        assert facts.file_fact(target, "columns") is None
+        assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
+        # Even a forced index collision cannot match a different full content key.
+        monkeypatch.setattr(facts.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+        facts.record_file_fact(target, "columns", "b" * 64, written=True)
+        target.write_bytes(b"one")
+        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
         assert facts.file_fact(target, "columns") is None

@@ -10,7 +10,7 @@ const LiveTasks = (() => {
   // then offers no Open result that would only reopen itself.
   const RESULT_PAGES=new Set(['workspace_data_update','workspace_preparation','research_input_capture','research_feature_materialization','research_experiment','portfolio_public_development_replay','alternative_evidence.document_intelligence','chief_risk_officer.portfolio_review']);
   // `status`: the selected Task's STATUS (its timing, who submitted it, its open incident); `guardian`: every
-  // unfinished Task as Guanyin sees it (U22); `incidents`: the incident records, open first (U38); `remedy`:
+  // unfinished Task as Guanyin sees it; `incidents`: the incident records, open first; `remedy`:
   // the last remedy attempted from this page, said in place
   const S={selected:null,record:null,view:null,status:null,guardian:null,incidents:null,remedy:null,error:'',fetching:null,timer:null,confirming:null,busy:false,painted:'',settling:false,closureFailures:[]};
   const subjects=new Map(); // admission context, refreshed by receipts; never current Task state
@@ -91,12 +91,12 @@ const LiveTasks = (() => {
     if(typeof LiveActivity==='undefined' || !LiveActivity.retained) return '';
     let latest='';
     for(const g of LiveActivity.retained()) for(const item of g.items || []) if(item.task_id===taskId && item.stage_id===stageId && item.observed_at && item.observed_at>latest) latest=item.observed_at;
-    return latest ? when(latest) : ''; // N3 (law 133): the reader's clock (it was the UTC clock without its zone)
+    return latest ? when(latest) : ''; // law 133: the reader's clock (it was the UTC clock without its zone)
   }
-  /* The run's summary (round 72): the state line with the owner's times, then when it started and
+  /* The run's summary: the state line with the owner's times, then when it started and
    * who admitted it (the activity record's first operation for it). */
   function summary(v, r) {
-    // the next action is the refusal line's (round 75) where a held run has one under the summary
+    // the next action is the refusal line's where a held run has one under the summary
     const state=S.settling ? stateLine('settling',{duration:''}) : stateLine({...timedTask(v),lifecycle:r ? r.lifecycle : v.lifecycle},{live:Boolean(r && r.lifecycle==='RUNNING' && r.liveness?.status==='OBSERVED'),next:r && stateHeld(r.lifecycle) ? '' : undefined});
     const by=LiveActivity.starterOf(v.task_id), started=v.running_since ? when(v.running_since) : '';
     return html`<p class="run-summary">${state}${started ? html`<span class="muted">${t('started')} ${started}${by ? html` ${t('by')} ${by}` : ''}</span>` : ''}${r?.operation_running ? html`<span class="muted">${t('operation returning')}</span>` : ''}</p>`;
@@ -114,7 +114,7 @@ const LiveTasks = (() => {
       // a stopped step's words are the stop box's above it, said once (ST6): the step keeps its count and its lines
       const stopped=i===current && ['BLOCKED','CANCELLED'].includes(s.lifecycle) && Boolean(r.stop?.detail);
       const note=stopped || s.lifecycle==='VERIFIED' || s.evidence.length ? '' : t('no evidence yet');
-      const lines=all.filter(l=>l.stage===s.stage_id).map(logLine); // the step's own lines of the log (round 92)
+      const lines=all.filter(l=>l.stage===s.stage_id).map(logLine); // the step's own lines of the log
       return {id:s.stage_id,name:codeWords(s.stage_id),mark:s.lifecycle,at:stageInstant(r.task_id,s.stage_id),evidence:s.evidence_count,note,line,refs,lines,current:i===current,done:s.lifecycle==='VERIFIED',under:more};
     }));
   }
@@ -123,7 +123,7 @@ const LiveTasks = (() => {
     const hash=(h,n=SHORT.hash)=>hashCell(h,n); // a reference, the whole on hover and in the copy: never a line that rolls (WD3; the user, 2026-09-26)
     const rows=[[t('Task'),hash(v.task_id,SHORT.id)],[t('Kind'),codeWords(v.task_kind)],[t('Verified stages'),html`${count(v.verified_stage_count)} / ${count(v.total_stage_count)}`]];
     if(r) rows.push([t('Version'),hash(r.task_record_hash)],[t('Execution binding'),hash(r.execution_binding_hash)],[t('Kept safe'),r.artifact_refs.length ? html`<span class="run-step-refs">${r.artifact_refs.map(a=>refCell(a))}</span>` : r.verified_stage_count ? countText(r.verified_stage_count,'{n} verified stage; no artifact reference recorded yet','{n} verified stages; no artifact reference recorded yet') : t('No stage verified yet; nothing to keep beyond the admitted Task')]);
-    else rows.push([t('Current stage'),v.current_stage ? codeWords(v.current_stage) : ''],[t('Latest refusal'),v.latest_failure_code ? html`<span class="coded" data-tip="${v.latest_failure_code}">${t(S.status?.detail || v.detail || '')}</span>${causeLine(S.status?.failure_cause,true)}` : '']); // U71: its owner's cause beside the words
+    else rows.push([t('Current stage'),v.current_stage ? codeWords(v.current_stage) : ''],[t('Latest refusal'),v.latest_failure_code ? html`<span class="coded" data-tip="${v.latest_failure_code}">${t(S.status?.detail || v.detail || '')}</span>${causeLine(S.status?.failure_cause,true)}` : '']); // its owner's cause beside the words
     // R7: Task Control's own spans (a running Task's as of the read); U33: the agent session that submitted
     // it, as the Host's boundary read the request -- provenance, never an authority (an unknown is an empty slot)
     const tm=S.status?.timing, sb=S.status?.submitted_by, took=(s)=>s==null ? '' : durationText(Number(s)*1000);
@@ -134,7 +134,7 @@ const LiveTasks = (() => {
     if(sb) rows.push([t('Submitted by'),html`${sb.vendor ? PRODUCERS[String(sb.vendor).toLowerCase()] || codeWords(sb.vendor) : ''}${sb.session ? html`${sb.vendor ? ' · ' : ''}${t('session')} ${hash(sb.session,SHORT.id)}` : ''}${sb.goal_id ? html` · ${t('goal')} ${hash(sb.goal_id,SHORT.id)}` : ''}`]);
     return kv(rows,'run-receipt');
   }
-  /* The log: the exact observations, one line each, folded to `Worked for 21 s · 4 ›` (round 83). */
+  /* The log: the exact observations, one line each, folded to `Worked for 21 s · 4 ›`. */
   function log(v) {
     const lines=LiveActivity.logLines(v.task_id), worked=durationOf(timedTask(v));
     return runLog({id:'taskLog',title:t('Log'),count:lines.length,caption:t('The exact observations, in recorded order'),lines:lines.map(logLine),empty:emptyState(t('Nothing recorded for this Task in the retained activity window.')),search:true,fold:true,open:false,summary:worked ? t('Worked for {t}',{t:worked}) : t('Log'),cls:'inspector-section'});
@@ -147,13 +147,13 @@ const LiveTasks = (() => {
     const cancel=by.CANCEL, recover=by.RECOVER, replan=by.REPLAN;
     const off=(a)=>!fresh || S.busy || !a.available ? a.reason : '';
     const resumable=recover.available && !off(recover), replanNow=replan.available && r.task_kind==='research_experiment';
-    // V626 (U95): every operation a re-PLAN can name has its session route, so a bound re-PLAN is always a control
+    // every operation a re-PLAN can name has its session route, so a bound re-PLAN is always a control
     const bound=replan.available && r.next_requests?.replan && Data.offers(r.next_requests.replan.operation);
     const replanEntry=replanNow ? btn(t('Continue as a new draft'),'research-continue',r.task_id,stateHeld(r.lifecycle) && !resumable ? 'button primary' : 'button') : bound ? typedBtn(t('Declare again (re-PLAN)'),'task-replan',r.task_id,stateHeld(r.lifecycle) && !resumable ? 'button primary' : 'button',off(replan),'aria-describedby="taskActionsWhy"') : !replan.available && r.next_requests?.books ? link(t('Choose the book in History'),'history','button') : '';
     // A preparation or update Task has its own scene (the workspace page); the body names the way there.
     const sceneEntry=r.task_kind==='workspace_data_update' ? btn(t('Open update scene'),'task-update-scene',r.task_id,'button') : ['alternative_evidence.document_intelligence','chief_risk_officer.portfolio_review'].includes(r.task_kind) ? btn(t('Open the evidence review'),'task-review-scene',r.task_id,'button') : '';
     // The product's own sentences (scope, effect, reason) read through the catalog; a held action
-    // keeps its reason as its title and in the folded explanation (round 58).
+    // keeps its reason as its title and in the folded explanation.
     const why=html`${factsRef(html`${t('What each action does')}`, html`<dl class="tp-why">${[[t('Request cancel'),cancel],[t('Resume this Task'),recover],[t('Declare again (re-PLAN)'),replan]].map(([name,a])=>html`<div><dt>${name}</dt><dd>${t(a.scope)} <small class="muted" data-tip="${a.expected_effect}">${effectWords(a)}</small>${a.available ? '' : html`<small class="muted tp-why-held">${t(a.reason)}</small>`}</dd></div>`)}</dl>`)}`;
     const held='aria-describedby="taskActionsWhy"'; // the reason is the title; the note is the fold
     // R2: a Task the installed code cannot resume shows Resume held, its reason on demand (CT7)
@@ -161,7 +161,7 @@ const LiveTasks = (() => {
     const refusedReplan=S.replanRefused?.id===r.task_id ? refusal({code:S.replanRefused.code,reason:S.replanRefused.detail ? t(S.replanRefused.detail) : explainCode(S.replanRefused.code)},'warning',{word:t('Not done')}) : '';
     return html`${refusedReplan}<div class="tp-actions"><div class="flow">${r.lifecycle==='SUCCEEDED' && RESULT_PAGES.has(r.task_kind) ? btn(t('Open result'),'task-result',r.task_id,'button primary') : ''}${replanEntry}${r.next_requests?.controls ? prerequisiteWays({controls:r.next_requests.controls}) : ''}${sceneEntry}${recover.available ? typedBtn(t('Resume this Task'),'task-recovery',r.task_id,resumable ? 'button primary' : 'button',off(recover),held) : cannotResume}${cancel.available ? typedBtn(t('Request cancel'),'task-cancel',r.task_id,'button',off(cancel),held) : ''}</div>${why}</div>`;
   }
-  /* U38: the Task's open incident as Guanyin's supervisor last found it -- its code in words, the owner's
+  /* the Task's open incident as Guanyin's supervisor last found it -- its code in words, the owner's
    * detail, when it was found -- with the remedies the Host offers for it, each confirmed against this Task's
    * version; the attempts recorded for it, and the last one made here, said in place (LY7). */
   const REMEDY_WORDS={RECOVER:'Resume this Task',CANCEL:'Request cancel',REPLAN:'Declare again (re-PLAN)'};
@@ -202,7 +202,7 @@ const LiveTasks = (() => {
     } catch(e) { S.remedy={key,words:e.message}; }
     finally { S.busy=false; await refresh(); }
   }
-  /* V615, V627 (U91, U96): a Task's re-PLAN as its owner binds it (`next_requests.replan`: the preview's operation and
+  /* a Task's re-PLAN as its owner binds it (`next_requests.replan`: the preview's operation and
    * the retained declaration, never a default) -- previewed here through the session's route for that operation, which
    * records a plan and admits nothing. The admission the answer fills (a write it names, never a read) is a separate
    * press, sent whole, its operation choosing the route; an answer that admits nothing yet but offers the next press
@@ -262,7 +262,7 @@ const LiveTasks = (() => {
     } catch(e) { S.replanRefused={id:p.id,code:e.body?.failure_code || String(e.message).split(':')[0],detail:e.body?.detail || ''}; }
     finally { S.busy=false; await refresh(); }
   }
-  /* The run's one body (round 72): the truth line, the summary line, the cause and the next action
+  /* The run's one body: the truth line, the summary line, the cause and the next action
    * beside it, the steps, the receipt, the log, the guardian's line. */
   function runBody() {
     const v=S.record, r=S.view;
@@ -271,7 +271,7 @@ const LiveTasks = (() => {
     if(!v) return html`${S.error ? notRead(t('Task not read'),S.error,t('The owner did not answer for this Task; the list and the activity feed are unaffected. Refresh to ask again.'),btn(t('Refresh'),'task-refresh','','button compact')) : skeleton('body')}`;
     const fresh=!S.error;
     const [tone,ic,text]=r ? standing(r) : ['', 'info', t('Recovery view not read')];
-    // The cause, once (round 75): a held or failed run opens with its refusal line -- the state,
+    // The cause, once: a held or failed run opens with its refusal line -- the state,
     // the owner's stop detail and code, the next lawful action; a moving run its liveness note.
     const w=r?.worker_failure;
     // the truth line above already says the state: the stop box heads with its cause (the owner's code in
@@ -283,7 +283,7 @@ const LiveTasks = (() => {
     const offersResume=Boolean(r?.actions?.find(a=>a.action==='RECOVER')?.available);
     const replan=r?.actions?.find(a=>a.action==='REPLAN' && a.available);
     const way=r?.lifecycle==='BLOCKED' && offersResume && !STOP_WAYS[stopCode] ? t('resume it once its cause is repaired') : replan ? effectWords(replan) : wayOn(stopCode,r?.lifecycle);
-    // V507: a deferred Task's status says why in its owner's words (as the Data page says them, U63) and, until its
+    // a deferred Task's status says why in its owner's words (as the Data page says them, U63) and, until its
     // retry time, when it waits until; once the time has passed the state's own way stands
     const deferred=r?.lifecycle==='DEFERRED' ? S.status : null, until=deferred?.retry_after_at && Date.parse(deferred.retry_after_at)>(Date.parse(r.observed_at) || Date.now()) ? deferred.retry_after_at : null;
     const cause=!r ? noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic) : r.lifecycle==='SUCCEEDED' ? '' : stateHeld(r.lifecycle) || r.lifecycle==='CANCELLED' ? refusal({code:r.stop?.detail || w?.detail || stopKnown ? '' : stopCode,reason:(deferred?.detail ? LiveWorkspace.deferWords(deferred.detail) : '') || (r.stop?.detail ? t(r.stop.detail) : '') || (w?.detail ? t(w.detail) : '') || (r.operation_running ? t('the operation has not returned') : '')},TONE.attention,{state:r.lifecycle,word:t('Why it stopped'),next:until ? t('Waiting until {time}',{time:when(until)}) : way,more:causeLine(r.stop?.cause || S.status?.failure_cause)}) : noteLine(text,'',tone==='attention' ? 'warning' : 'neutral','',ic);
@@ -295,12 +295,12 @@ const LiveTasks = (() => {
    * first, then the day each ended) or by kind. One line a row: the dot, the goal, the facts, the
    * instant; the row opens the Task in the side panel. */
   const TASK_RANK = {running: 0, cancel_requested: 1, queued: 2, review_pending: 3, data_decision_pending: 3, recovery_required: 4, blocked: 5, deferred: 6, succeeded: 8, cancelled: 9};
-  // a row says once what needs attention: an open incident (U38), else the guardian's health when not
-  // healthy (U22); a healthy or finished Task says nothing more
+  // a row says once what needs attention: an open incident, else the guardian's health when not
+  // healthy; a healthy or finished Task says nothing more
   const care=(r)=>{ if(openIncident(r.id)) return badge('blocked',t('Open incident')); const g=S.guardian?.get(r.id); return g?.health?.status && g.health.status!=='HEALTHY' ? codeWords(g.health.status) : ''; };
   function lobby(runs) {
     const kinds = [...new Set(runs.map((r) => r.kind))];
-    // U22: an unfinished Task's progress is the guardian's (one read for every such Task); a finished one's its record's
+    // an unfinished Task's progress is the guardian's (one read for every such Task); a finished one's its record's
     const row = (r, d) => earlierStopRows(r, r => { const on = (k) => d.props[k] !== false, p = S.guardian?.get(r.id)?.progress;
       const current = p ? p.current_stage : r.current, [done, total] = p ? [p.verified_stage_count, p.total_stage_count] : r.verified;
       const health = care(r), recovery = LiveViews.taskAttentionFacts(r);
@@ -313,7 +313,7 @@ const LiveTasks = (() => {
       filters: kinds.length > 1 ? [{field: 'kind', label: t('Task kind'), multiple: true, options: kinds.map((k) => [k, codeWords(k)]), test: (r, one) => r.kind === one}] : [],
       properties: [['id', t('Task id'), false], ['kind', t('Task kind')], ['stage', t('Current stage')], ['verified', t('Verified stages')]]});
   }
-  /* U38: the incidents Guanyin recorded, open first, then the resolved newest first, each with its
+  /* the incidents Guanyin recorded, open first, then the resolved newest first, each with its
    * attempts; paged at the tables' one size (R3). A row opens its Task, where the remedies are. */
   function incidentList() {
     const found = (x) => String(x.incident?.detected_at || '');
@@ -341,7 +341,7 @@ const LiveTasks = (() => {
     }
   }
   function paint() {
-    Window.renderSide(); // the Tasks row's count (round 62)
+    Window.renderSide(); // the Tasks row's count
     refreshInspector();
     const visible=$('#homeRunning') || $('#currentWork'), kept=new Set([...(visible ? shownTasks().map(v=>v.task_id) : []),S.selected]);
     for(const [id,entry] of subjects){if(!kept.has(id))subjects.delete(id);else if(entry.error)void readSubject(id);}
@@ -404,7 +404,7 @@ const LiveTasks = (() => {
     if(moved || Date.now()-began>=FOLLOW_WAIT*1000/2) await refresh(); else S.timer=setTimeout(refresh,CADENCE.moving); // held at least half its wait: the Host waited
   }
   const titleOf=(id, recorded=null)=>LiveViews.nameOf(Data.tasks().find(v=>v.task_id===id) || (S.record?.task_id===id ? S.record : recorded) || {task_id:id,task_kind:'',goal_summary:''}).name || id;
-  /* The Task opens in the inspector (round 66): the same body from a row's Enter or Space, the
+  /* The Task opens in the inspector: the same body from a row's Enter or Space, the
    * Home, History, a study's link or a cold address. Closing the inspector clears the selection
    * and the address; the poll stops with it. */
   function open(id, wanted=()=>true) {
@@ -428,7 +428,7 @@ const LiveTasks = (() => {
     if(Window.inspectorMode()==='task') Window.closeInspector(true);
     if(after) after();
   }
-  /* The walk's held row is the open Task while the inspector holds one (round 58): J / K move it. */
+  /* The walk's held row is the open Task while the inspector holds one: J / K move it. */
   function follow(id) { if(Window.inspectorMode()==='task' && id && id!==S.selected) void open(id); }
   const ACTIONS={cancel:'CANCEL',recover:'RECOVER'};
   const unrecoverable = (view) => typeof view.task_record_hash === 'string' && view.attention?.task_record_hash === view.task_record_hash && view.attention?.unresolved === false && view.attention.resolution === 'UNRECOVERABLE';

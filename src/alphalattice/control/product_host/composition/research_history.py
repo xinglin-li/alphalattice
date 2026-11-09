@@ -90,9 +90,9 @@ class HistoryEntry:
         return value
 
     def requests(self) -> dict[str, dict[str, Any]]:
-        """What a reader of this row sends next, bound to it, so no locator is copied (V499).
+        """What a reader of this row sends next, bound to it, so no locator is copied.
 
-        Its Task's read; for a row naming a book, that book's review (V483's requests); for a
+        Its Task's read; for a row naming a book, that book's review (requests); for a
         row naming a CRO review, its export.
 
         Returns:
@@ -282,7 +282,7 @@ class ResearchHistory:
                     )
                 elif task.task_kind == PORTFOLIO_PUBLIC_TASK_KIND:
                     request = portfolio_research_task_input(task)
-                    # A Task that reused an earlier result names it too (V189).
+                    # A Task that reused an earlier result names it too.
                     manifest = manifests.get(task.task_id) or (
                         None if self.pipeline is None else self.pipeline.find_for_task(task.task_id)
                     )
@@ -498,7 +498,7 @@ class ResearchHistory:
             selected = selected[index + 1 :]
         page = selected[:limit]
         following = f"{query_hash}/{page[-1].entry_id}" if len(selected) > limit else None
-        # One entry selected: its own requests are the answer's; a page offers the next (V499).
+        # One entry selected: its own requests are the answer's; a page offers the next.
         offered: dict[str, dict[str, Any]] = {}
         if entry_id is not None and page:
             offered.update(page[0].requests())
@@ -537,7 +537,7 @@ class ResearchHistory:
         final_delivery: bool = True,
     ) -> HistoryEntry:
         # Each publication is dated by its own publication, never by its Task's
-        # admission: a continuous Task publishes many, newest last (V190).
+        # admission: a continuous Task publishes many, newest last.
         return HistoryEntry(
             f"update:{value.content_hash}",
             "CONTINUOUS_UPDATE",

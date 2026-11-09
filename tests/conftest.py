@@ -1,12 +1,12 @@
 """Shared fixtures for every case directory: the real-evidence lane's root resolver, and the
 order a parallel run takes; and every operation's answer a test receives, held to the model
-`alphalattice schema show` publishes for it (V410).
+`alphalattice schema show` publishes for it.
 
 Deliberately tiny. Directory-level ``conftest.py`` files keep their own session
 fixtures; this one only exposes the typed evidence-root declaration so a test
 that needs a dogfood artifact asks for it by name and skips with the reason the
 declaration gives, instead of spelling a path of its own. A run records each
-test's seconds, and an xdist run starts its longest modules first (TT, V289).
+test's seconds, and an xdist run starts its longest modules first (TT).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from contextlib import nullcontext, suppress
+from contextlib import ExitStack, nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -68,13 +68,16 @@ def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
             environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _seeds_read_in_place_stay_unchanged() -> Iterator[None]:
-    """A write through a seed file read in place is named by seed and file at session end."""
-    yield
-    # Found among the loaded modules, never imported here: only a run that copied a seed pays.
+def _verify_session_seeds() -> None:
+    """A write through a session seed is still a session failure, never a unit dependency."""
     if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
         assert seeds.seeds_changed() == []
+
+
+def _session_cleanup(config: pytest.Config) -> ExitStack:
+    if not hasattr(config, "_golden_cleanup"):
+        config._golden_cleanup = ExitStack()
+    return config._golden_cleanup
 
 
 @pytest.fixture(autouse=True)
@@ -87,23 +90,24 @@ def project_isolation(tmp_path, tmp_path_factory, request):
 
 
 @pytest.fixture(scope="session")
-def golden_cache(tmp_path_factory):
-    """Workers bind acquisition and discovery to the same invocation, never another run."""
-    # Old-source counterfactuals retain their original per-worker discovery scope.
+def golden_cache(tmp_path_factory, request):
+    """Keep golden reader leases until session cleanup, after the last test's contract."""
     kwargs = {}
     if hasattr(evaluation, "GoldenRuntime"):
         kwargs.update(runtime=environment.golden_runtime(), controller=False)
     base = tmp_path_factory.getbasetemp()
-    with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
-        try:
-            yield root
-        finally:
-            # Verify linked seeds before their invocation releases its reader leases.
-            if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
-                changed = seeds.seeds_changed()
-                if not changed:
-                    seeds.LINKED_SEEDS.clear()
-                assert changed == []
+    stack = _session_cleanup(request.config)
+    root = stack.enter_context(getattr(evaluation, "golden_run", nullcontext)(base, **kwargs))
+
+    def verify() -> None:
+        if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+            changed = seeds.seeds_changed()
+            if not changed:
+                seeds.LINKED_SEEDS.clear()
+            assert changed == []
+
+    stack.callback(verify)  # Verify before releasing the invocation's reader leases.
+    return root
 
 
 @pytest.fixture
@@ -324,7 +328,7 @@ def _memory_checks_read_no_host(
     """The early memory refusal reads unknown memory, and skips, unless a test sets it.
 
     The refusal compares a plan's estimate with the machine's free memory. A fixture's work
-    passes or fails by its own code, never by what else the host runs (PERF-1 item 3: a
+    passes or fails by its own code, never by what else the host runs (a
     preparation fixture was refused while another heavy set held commit).
     """
     if _unit_contract(request):
@@ -342,7 +346,7 @@ def _memory_checks_read_no_host(
 def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]:
     """Every answer an operation gives a test holds the model `schema show` publishes for it.
 
-    Each owner is held to its published reading by every test that runs the operation (V410,
+    Each owner is held to its published reading by every test that runs the operation (
     SC3), at the one door every caller's request passes, `PortfolioResearchOperations.execute`;
     a test that never loaded the Host's operations pays nothing.
     """
@@ -376,7 +380,7 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 body = original(self, request, **kwargs)
             except Exception as error:
                 # A raised failure without a product code is a crash the caller meets as a
-                # bare fingerprint (V449: AX15's review IndexError).
+                # bare fingerprint (AX15's review IndexError).
                 code = public_failure(error, "operation.raised")
                 _observer.raised(
                     request.operation,
@@ -424,12 +428,12 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     if observed.failure_kind == "untyped":
         pytest.fail(
             "an operation failed without a product code, a crash or a failure naming no rule "
-            "(V449; a test that causes one on purpose is marked `untyped_failure`): "
+            "(a test that causes one on purpose is marked `untyped_failure`): "
             + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
     if observed.unworded and report:
-        # Discovery: every such code a run meets, written down rather than failed (V456).
+        # Discovery: every such code a run meets, written down rather than failed.
         with open(report, "a", encoding="utf-8") as kept:
             kept.writelines(
                 f"{issue['reason']}\t{request.node.nodeid}\n" for issue in observed.unworded
@@ -437,7 +441,7 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     if observed.failure_kind == "answer":
         pytest.fail(
             "an answer does not hold its published model, offers a request the Host does not "
-            "accept as it stands, or refuses without words and a way on (V410, V449, OP4): "
+            "accept as it stands, or refuses without words and a way on (OP4): "
             + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
@@ -464,6 +468,8 @@ def _recorded_durations() -> dict[str, float]:
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
+    if not config.pluginmanager.is_registered(environment):  # its fixture-roots hook
+        config.pluginmanager.register(environment, "tests.pytest_environment")
     checkout = Path(__file__).resolve().parents[1]
     try:
         environment.configure_temporary_roots(checkout, config.getoption("basetemp"))
@@ -575,6 +581,10 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 builder.warm_real_risk_golden(external=external)
             for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
                 builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
+            # `revision_seed` asks for `prepared` only when it builds: list both names.
+            if any({"prepared", "revision_seed"} & set(i.fixturenames) for i in session.items):
+                symbols, sector_size = builder.READINESS_UNIVERSE
+                builder.warm_real_risk_golden(symbols=symbols, sector_size=sector_size)
         if any("fresh_workspace" in item.fixturenames for item in session.items):
             factory = session.config._tmp_path_factory
             base = factory.getbasetemp()
@@ -625,9 +635,23 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     items[:] = [item for name in sorted(modules, key=lambda n: -cost[n]) for item in modules[name]]
 
 
+_BACKUPS = pytest.StashKey[frozenset[str]]()
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
+    """The workspaces backed up while a test ran, its fixtures' setup and teardown included: the
+    process root kept every one to the run's end, 1.13 GB a worker at a full run's peak (mac1,
+    11-07). Every test that reads backups names its own root, so this one is only a sink. Read
+    outermost, before a unit test's file audit begins."""
+    item.stash[_BACKUPS] = environment.backups_made()
+    return (yield)
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
-    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks.
+    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks, and so do
+    the backups its body made.
 
     pytest's own removal ignores errors, and on Windows a sealed golden's read-only links defeat
     it, so a passed journey's whole scratch stayed to the run's end. What still cannot go is named
@@ -645,15 +669,21 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
         raise  # a fixture teardown failure keeps the test's diagnostics
     else:
         factory = item.config._tmp_path_factory  # type: ignore[attr-defined]
-        if (
-            isinstance(path, Path)
-            and passed
-            and factory._retention_policy == "failed"
-            and path.exists()
-        ):
-            left = evaluation.golden_workspaces.remove_tree(path, factory.getbasetemp())
-            if left:
-                item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
+        if not passed or factory._retention_policy != "failed":
+            return
+        owned = [path] if isinstance(path, Path) and path.exists() else []
+        roots = [(owned, factory.getbasetemp())]
+        if environment.BACKUP_ROOT is not None:
+            made = environment.backups_made() - item.stash.get(_BACKUPS, environment.backups_made())
+            roots.append(([environment.BACKUP_ROOT / n for n in made], environment.BACKUP_ROOT))
+        left = [
+            line
+            for paths, root in roots
+            for each in paths
+            for line in evaluation.golden_workspaces.remove_tree(each, root)
+        ]
+        if left:
+            item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -666,8 +696,28 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """The main process merges what this run measured into the recorded seconds."""
-    if controller := getattr(session.config, "_golden_controller", None):
-        controller.__exit__(None, None, None)
+    try:
+        with ExitStack() as cleanup:
+            if controller := getattr(session.config, "_golden_controller", None):
+                cleanup.callback(controller.__exit__, None, None, None)
+            if goldens := getattr(session.config, "_golden_cleanup", None):
+                cleanup.callback(goldens.close)
+            cleanup.callback(_verify_session_seeds)
+            if (
+                environment.BACKUP_ROOT is not None and not session.testsfailed
+            ):  # it outlived every run
+                cleanup.callback(
+                    evaluation.golden_workspaces.remove_tree,
+                    environment.BACKUP_ROOT,
+                    environment.BACKUP_ROOT.parent,
+                )
+    except Exception as error:
+        # An xdist worker's exit status alone is not propagated as a test failure.
+        message = f"session fixture cleanup failed: {type(error).__name__}: {error}"
+        session.config.hook.pytest_collectreport(
+            report=pytest.CollectReport("session cleanup", "failed", message, [])
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if os.environ.get(_WORKER) or not _measured:
         return
     from devtools.testing.collection import merge_timing_hints

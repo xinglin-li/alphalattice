@@ -474,7 +474,7 @@ def test_delivery_renderer_keeps_units_gaps_and_escapes_commentary(monkeypatch):
 
 
 def test_each_explained_refusal_keeps_its_code_and_asks_only_operations_the_host_accepts():
-    """Binding plan B9: a refusal a person meets after an upgrade says what happened and what
+    """a refusal a person meets after an upgrade says what happened and what
     to request next; the code stays exact for an Agent, and a next request the Host would
     refuse would send the person from one refusal into another."""
 

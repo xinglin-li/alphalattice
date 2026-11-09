@@ -44,7 +44,7 @@
   {
    "row": "several files",
    "match": "11-accessibility",
-   "reason": "the accessibility sheet's scoped overrides (forced colours, reduced motion) are excepted (plan, C1)"
+   "reason": "the accessibility sheet's scoped overrides (forced colours, reduced motion) are excepted"
   },
   {
    "row": "important",

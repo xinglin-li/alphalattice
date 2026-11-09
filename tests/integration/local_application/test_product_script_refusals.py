@@ -1,4 +1,4 @@
-"""Every product script that writes a location it chooses answers its failure in words (V539).
+"""Every product script that writes a location it chooses answers its failure in words.
 
 RR5d's agent met a PermissionError traceback from the pack installer in a sandbox that could
 not write the application-data model store, and found `--store` by reading the script. Each
@@ -47,7 +47,7 @@ def _refusal(capsys: pytest.CaptureFixture[str]) -> dict[str, str]:
 def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """regression (V539, RR5d's FINDING 20:06): an unwritable model store is refused by name
+    """regression (RR5d's FINDING 20:06): an unwritable model store is refused by name
     before any download, `--store <directory>` the way on, outside the checkout and any
     workspace; a store inside either is refused too, and nothing is created there."""
 
@@ -63,6 +63,19 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     assert "ALPHALATTICE_MODEL_STORE" in refusal["detail"]
     assert refusal["next_action"] == "INSTALL_INTO_A_WRITABLE_STORE"
     assert refusal["store"] == str(blocked.resolve())
+
+    with monkeypatch.context() as patch:
+        home = tmp_path / "pointer-home"
+        pointer = home / ".alphalattice" / "model-store.json"
+        pointer.parent.mkdir(parents=True)
+        pointer.write_text("{", encoding="utf-8")
+        patch.setattr(Path, "home", classmethod(lambda cls: home))
+        patch.delenv("ALPHALATTICE_MODEL_STORE", raising=False)
+        assert installer.main(["--status"]) == 2
+        refused = _refusal(capsys)
+        assert refused["failure_code"].startswith("model_store.pointer_unreadable:")
+        assert str(pointer) in refused["detail"]
+        assert refused["next_action"] == "REPAIR_THE_MODEL_STORE_POINTER"
 
     inside = installer.PLAYPEN / "models-never-here"
     assert installer.main(["--store", str(inside), *arguments]) == 2
@@ -225,7 +238,7 @@ def test_retrieval_setup_uses_checkout_scratch(
 def test_the_local_web_build_answers_an_asset_it_cannot_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """requirement (V539): the build writes its assets beside their sources in the checkout; a
+    """requirement: the build writes its assets beside their sources in the checkout; a
     write it cannot make is refused in words, the served assets left as they were."""
 
     from scripts import build_local_web_ui as build
@@ -250,7 +263,7 @@ def test_the_local_web_build_answers_an_asset_it_cannot_write(
 def test_the_claude_host_files_answer_a_write_they_cannot_make(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """requirement (V539): the host files are derived into the checkout's .claude directory; a
+    """requirement: the host files are derived into the checkout's .claude directory; a
     write that cannot be made is refused in words, `--check` named for any drift left."""
 
     from scripts import materialize_claude_host as host
@@ -268,7 +281,7 @@ def test_the_claude_host_files_answer_a_write_they_cannot_make(
 def test_the_native_bridge_answers_files_it_cannot_reach_in_words(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """requirement (V539): the bridge reads and writes the checkout's host directories, its
+    """requirement: the bridge reads and writes the checkout's host directories, its
     binding and the workspace; a file it cannot reach is refused in words with its way on,
     never as a bare code."""
 
@@ -289,7 +302,7 @@ def test_the_native_bridge_answers_files_it_cannot_reach_in_words(
 
 
 def test_a_backup_refuses_an_unwritable_root_by_name_and_words_it(tmp_path: Path) -> None:
-    """requirement (V539): the backup root is the application data unless
+    """requirement: the backup root is the application data unless
     ALPHALATTICE_BACKUP_ROOT names another; a root the Host cannot write is refused by name
     with that way on, and the automatic backup after a data update reads the same words."""
 
@@ -469,7 +482,7 @@ def test_the_evidence_setup_names_the_network_hold_without_offering_to_override_
 
     monkeypatch.setattr(setup, "materialize", refused)
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-    # Only an acquisition meets the network hold, and only it is offered the decision (V590).
+    # Only an acquisition meets the network hold, and only it is offered the decision.
     acquisition = ["--acquire-sec", "--entities", "AAPL", "--network-consent"]
     assert setup.main(["--workspace", str(tmp_path), *acquisition]) == 2
     payload = json.loads(capsys.readouterr().out)
@@ -486,7 +499,7 @@ def test_the_evidence_setup_names_the_network_hold_without_offering_to_override_
         token in payload["detail"].lower() for token in ("ask", "remov", "restart", "network set")
     )
 
-    # V620: with no operator hold, the actual workspace control's way works.
+    # with no operator hold, the actual workspace control's way works.
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)

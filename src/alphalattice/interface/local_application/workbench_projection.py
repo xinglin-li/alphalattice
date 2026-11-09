@@ -234,7 +234,7 @@ def portfolio_view(body: dict[str, Any], sectors: dict[str, Any] | None = None) 
             "candidate_id": source["candidate_id"],
             "target_recipe_id": source["target_recipe_id"],
             "foundation_admission_hash": source.get("foundation_admission_hash"),
-            # The Risk study the weights read, as the source bound it (V340, U41).
+            # The Risk study the weights read, as the source bound it.
             "risk_task_id": source.get("risk_task_id"),
             "risk_surface_hash": source.get("risk_surface_hash"),
             "origin_task_id": body.get("origin_task_id"),
@@ -365,7 +365,7 @@ def portfolio_view(body: dict[str, Any], sectors: dict[str, Any] | None = None) 
                 "tranches": declaration.get("tranches"),
                 "weight_rule": declaration.get("weight_rule"),
                 # A declared catalog policy runs in place of the tranche book, whose fields its
-                # document leaves out (V323): the policy names the book.
+                # document leaves out: the policy names the book.
                 "catalog_policy": declaration.get("policy"),
             },
             "input_id": input_id,
@@ -419,9 +419,9 @@ def portfolio_view(body: dict[str, Any], sectors: dict[str, Any] | None = None) 
             "grossReturn": percent(position.get("gross_simple_return")),
             "benchmarkReturn": percent(position.get("benchmark_simple_return")),
         },
-        # Each position metric's unit by its path, as the book's readback names it (V343, U58).
+        # Each position metric's unit by its path, as the book's readback names it.
         "metricUnits": body.get("metric_units"),
-        # What the book can claim, one statement a mark, comparison first (V368, U59).
+        # What the book can claim, one statement a mark, comparison first.
         "standing": body.get("standing"),
         "review_standing": body.get("review_standing"),
         "holdings": holdings,
@@ -453,7 +453,7 @@ def portfolio_view(body: dict[str, Any], sectors: dict[str, Any] | None = None) 
         "riskDisposition": (body.get("reading_context", {}).get("strategy") or {}).get(
             "risk_disposition"
         ),
-        # An installed book's statements of its window and survivorship (V347, U52); an
+        # An installed book's statements of its window and survivorship; an
         # authored book's are its timing's.
         "temporalScope": body.get("reading_context", {}).get("temporal_scope"),
         # The authored policy and the recorded sources, read from this same verified

@@ -1,4 +1,4 @@
-"""What an agent ran and spent, read from synthetic session files of both hosts (AU, V300)."""
+"""What an agent ran and spent, read from synthetic session files of both hosts (AU)."""
 
 import json
 import os
@@ -863,7 +863,7 @@ def test_a_codex_lead_names_its_children_in_its_own_rollout(tmp_path, monkeypatc
 
 
 def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path, monkeypatch):
-    """requirement (FLOW-1): only ``<session>/subagents/agent-<id>.jsonl`` beside the bound
+    """requirement: only ``<session>/subagents/agent-<id>.jsonl`` beside the bound
     lead's own file names children; another Session's directory is never listed."""
     config = tmp_path / "claude"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
@@ -886,7 +886,7 @@ def test_claude_children_are_listed_from_the_leads_own_directory_alone(tmp_path,
 
 @pytest.mark.parametrize("off", ["binding", "person", "unknown_control", "unreadable_control"])
 def test_reading_off_opens_no_session_file(tmp_path, monkeypatch, off):
-    """requirement (privacy, FLOW-1): a binding with ``"usage": "OFF"``, or the person's
+    """requirement (privacy): a binding with ``"usage": "OFF"``, or the person's
     workspace switch turned off, reads nothing at all; a switch record this owner did not
     write, or cannot read, reads as off."""
     from alphalattice.interface.local_application import native_bridge
@@ -925,7 +925,7 @@ def test_reading_off_opens_no_session_file(tmp_path, monkeypatch, off):
 
 @pytest.mark.parametrize("host", [HOST_CODEX, HOST_CLAUDE_CODE])
 def test_an_unknown_record_shape_reads_as_unavailable_never_as_zero(tmp_path, monkeypatch, host):
-    """requirement (FLOW-1): a host that changed its usage record files nothing: no zero total,
+    """requirement: a host that changed its usage record files nothing: no zero total,
     no partial count, and no refusal of research."""
     from alphalattice.interface.local_application import native_bridge
 

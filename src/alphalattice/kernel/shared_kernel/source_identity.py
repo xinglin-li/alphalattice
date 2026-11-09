@@ -101,7 +101,7 @@ def source_syntax_sha256(path: Path) -> str:
     A module's identity as its syntax: the parsed tree without its docstrings and other bare
     string statements, and without its execution spans (``without_measurement``). A comment, a
     docstring, a span or the layout is not syntax, so editing one moves nothing; a changed name,
-    value or statement does (binding plan R1).
+    value or statement does.
 
     Args:
         path: Python module file to parse.
@@ -436,7 +436,7 @@ def source_rule_closure_hash(
 ) -> str:
     """Hash one role's rule-derived module closure and tracked non-module bytes.
 
-    A role's closure by rule (binding plan R1): each tracked module is an entry, and the
+    A role's closure by rule: each tracked module is an entry, and the
     closure is what the entries import inside the number-deciding packages, each module
     hashed as its syntax (``number_deciding_closure``); a tracked file that is not a module
     under ``src`` (a lock, a Skill, a profile) is hashed by its bytes.

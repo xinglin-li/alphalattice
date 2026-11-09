@@ -285,7 +285,7 @@ def test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_o
     composition = "control/product_host/composition"
     assert judges == {
         f"{composition}/evidence_authority_setup.py::package": True,
-        f"{composition}/evidence_review_application.py::units_short_of_sources": False,
+        f"{composition}/evidence_review_resume.py::units_short_of_sources": False,
         "evidence/alternative_evidence/runtime/task_adapter.py::_execute_stage": True,
     }
     assert by_hand == {"evidence/alternative_evidence/runtime/coverage.py::sources_short"}

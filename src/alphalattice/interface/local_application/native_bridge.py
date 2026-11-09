@@ -3,7 +3,7 @@
 A binding names the agent Session a workspace serves. The Host reads that Session's usage, and
 its children's, from the host's own session files at the moments research reaches -- a goal's
 take or submission, an answer's submission, a Goal or Team page opening -- through
-`native_usage` (AU, V300; LAWS OP13, OP14), unless the binding turned reading off
+`native_usage` (AU; LAWS OP13, OP14), unless the binding turned reading off
 (``"usage": "OFF"``). Each reading and each accepted answer is filed through the Host's own
 activity owner. No hook, message or always-running reader is involved.
 """
@@ -181,7 +181,7 @@ BINDING_RECORDS = 128
 """The bounded collection of exact host/Session bindings in one configured project."""
 # Every bound the bridge applies is the contract of what it carries, so it never refuses what
 # that contract admits nor passes what the Host then refuses under another word; the table
-# beside its tests pins each against its contract (V574).
+# beside its tests pins each against its contract.
 SUBJECT_VALUE_CHARACTERS = 200
 """The longest value the Host's activity event holds in its subject: each id, role, locator
 and reference the bridge carries is bounded by it where it enters."""
@@ -203,7 +203,7 @@ PIN_CHARACTERS = 64
 """The longest model or effort a role card pins that the bridge carries."""
 SPAWN_HOPS = 4
 """The most threads a Codex specialist's spawn chain climbs to reach the bound session: a
-specialist's specialist and two more (V568)."""
+specialist's specialist and two more."""
 # One producer identity per foreground host; the Team page shows the host as source
 # information, never as authentication (the product philosophy, 2026-09-22).
 HOSTS = ("codex", "claude-code")
@@ -266,7 +266,7 @@ def declares_product(folder: Path, host: str) -> bool:
 
 
 def session_project(start: Path, host: str | None) -> Path:
-    """The agent project a session binds in, found up from where the binding runs (V568).
+    """The agent project a session binds in, found up from where the binding runs.
 
     It is the nearest folder with this host's explicit configure-owned project declaration.
     Ordinary host settings and hook matchers do not identify a product project.
@@ -494,7 +494,7 @@ class NativeResearchBinding:
             if observed_at is not None and observed_at.utcoffset() is None:
                 raise ValueError
             # The session's id is every event's correlation id, and a role a card's name; a
-            # binding holding a longer one would deliver nothing (V574).
+            # binding holding a longer one would deliver nothing.
             session_id = _text(value["session_id"], CORRELATION_CHARACTERS)
             workspace = Path(_text(value["workspace"]))
             roles = value["roles"]
@@ -521,7 +521,7 @@ class NativeResearchBinding:
     def find(
         cls, start: Path, *, session: tuple[str, str] | None = None
     ) -> tuple[Path, NativeResearchBinding] | None:
-        """The nearest binding from a directory upward, as git finds its `.git` (V568).
+        """The nearest binding from a directory upward, as git finds its `.git`.
 
         A checkout is one such project; an installed agent project is another.
 
@@ -574,7 +574,7 @@ class NativeResearchBinding:
         return None
 
     def serves(self, session: tuple[str, str]) -> bool:
-        """Whether a command of this agent session works in this binding's workspace (V568).
+        """Whether a command of this agent session works in this binding's workspace.
 
         The bound session's own commands do, and its own specialists': a Claude Code subagent
         carries its lead's session id, and a Codex specialist runs in a thread of its own whose
@@ -989,7 +989,7 @@ def file_bound_fact(
     It names the Session in Team and the Goal's Conversation from the first call, whether or
     not its usage file can be read yet. Filed again, it is the same observation. With
     `goal_hash` it names the goal the Session holds, which its Sessions row reads as its
-    question (STOPS-1).
+    question.
     """
     event: dict[str, Any] = {"source": "product_bound", "occurred_at": at.isoformat()}
     if goal_hash is not None:

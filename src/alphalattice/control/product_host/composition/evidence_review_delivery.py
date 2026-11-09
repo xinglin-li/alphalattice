@@ -86,7 +86,7 @@ from .evidence_review_application import _CHECKS_ITEM, ReviewOutcome
 SEALED_EXPORT_REUSE_SECONDS = 600
 """How long the export the Host last sealed answers its next pages before one is sealed again: a
 page slices what this Host built and verified in full, and the bound keeps it from outliving new
-evidence for long (V94)."""
+evidence for long."""
 
 if TYPE_CHECKING:
     from alphalattice.evidence.alternative_evidence.contracts import AlternativeEvidenceRequest
@@ -755,7 +755,7 @@ class EvidenceReviewDelivery:
         cite (uncited citations ride with part 1), and every part carrying the
         issuers, the children, the coverage, the schema and the submission
         template; `review_dossier_hash` binds a continuation to the dossier
-        it started from, and `review_read_at` resolves it as read then (V255). Beside the
+        it started from, and `review_read_at` resolves it as read then. Beside the
         sealed dossier: `evidence_sources` on
         every part, and each issuer's reported checks (`issuer_checks`) as
         items after the findings, each in exactly one part, so no part grows
@@ -787,7 +787,7 @@ class EvidenceReviewDelivery:
             "submission_template": self.app._review_submission(dossier, read_at=read_at),
             "claim": "EXTERNAL_ASSESSMENT_IS_NOT_A_ROUTE_OR_PROTECTED_VALIDATION",
             # The coverage in words beside its numbers: a quiet holding was checked and had
-            # nothing to read; only the unreached share is unread (FLOW-3).
+            # nothing to read; only the unreached share is unread.
             "coverage_words": [*coverage_words(dossier.coverage), *review_cutoff_words(dossier)],
             "review_state_words": REVIEW_STATE_WORDS,
             "external_host_usage": "UNAVAILABLE",
@@ -902,7 +902,7 @@ class EvidenceReviewDelivery:
         *,
         read_update: Callable[[UUID, str], dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        """Read the exact book's latest published review for an activation decision (V614).
+        """Read the exact book's latest published review for an activation decision.
 
         Read sealed review and analysis facts only: no current eligibility, dossier compiler
         or review actor. Preparation covers only analysis-linked packets with an exact
@@ -1204,7 +1204,7 @@ class EvidenceReviewDelivery:
         *,
         prior_publication_hash: str | None = None,
     ) -> tuple[dict[str, object], str]:
-        """The export a citation page slices, and how it was verified (V94).
+        """The export a citation page slices, and how it was verified.
 
         A page names the book and the review; the export last sealed for them (its
         `export_hash`) answers each page, built and verified in full by the first request that
@@ -1259,8 +1259,8 @@ class EvidenceReviewDelivery:
     ) -> tuple[dict[str, object], PortfolioReviewView | None]:
         """The export and the review view it verified.
 
-        A caller reads on the view rather than opening the review again (V151). Each export
-        verified in full is sealed for its citation pages (V94).
+        A caller reads on the view rather than opening the review again. Each export
+        verified in full is sealed for its citation pages.
         """
         exported, view, _analyses = self.verified_read_view(
             selector, publication_hash, prior_publication_hash=prior_publication_hash

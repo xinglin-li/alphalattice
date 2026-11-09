@@ -12,7 +12,7 @@ Packs live in the application model store (`--store`, else
 `ALPHALATTICE_MODEL_STORE`, else the platform's application-data directory),
 never in the Git checkout or a workspace: a store there, or one this process
 cannot write, is refused by name, `--store <directory>` the way on, and every
-other failure is answered in words too (V539). `--install` fetches the pinned
+other failure is answered in words too. `--install` fetches the pinned
 revision's files from the Hub over HTTPS only with `--network` (an
 explicitly admitted setup step; the product's `ALPHALATTICE_NETWORK_DISABLED`
 stays as it is for everything else), printing the bytes as they arrive;
@@ -42,7 +42,7 @@ PLAYPEN = resolve_playpen_root(Path(__file__))
 
 
 def _outside_checkout_and_workspaces(store: Path) -> Path:
-    """The store, refused by name when it lies in the checkout or in a workspace (V539).
+    """The store, refused by name when it lies in the checkout or in a workspace.
 
     Packs stay outside both: the checkout is code, a workspace binds a pack by a link to the
     store. A store named by `--store` or `ALPHALATTICE_MODEL_STORE` keeps that boundary as the
@@ -67,6 +67,16 @@ _ELSEWHERE = (
 )
 _AGAIN = "Every file already verified is kept, so the same command continues where it stopped."
 _WORDS: dict[str, tuple[str, str]] = {
+    "model_store.pointer_unreadable": (
+        "The saved model-store pointer at {subject} could not be read or names an unavailable "
+        "store. Repair that pointer or set ALPHALATTICE_MODEL_STORE to the intended store.",
+        "REPAIR_THE_MODEL_STORE_POINTER",
+    ),
+    "model_store.pointer_unwritable": (
+        "The pack is kept, but its model-store pointer at {subject} could not be written. "
+        "Repair access to that path or set ALPHALATTICE_MODEL_STORE for the Host.",
+        "REPAIR_THE_MODEL_STORE_POINTER",
+    ),
     "model_store.store_unwritable": (
         "This process cannot create or write the model store, so no pack was installed. "
         + _ELSEWHERE,
@@ -112,12 +122,12 @@ _WORDS: dict[str, tuple[str, str]] = {
         "IMPORT_FROM_A_DIRECTORY_HOLDING_THE_PACK",
     ),
 }
-"""Each refusal the installer meets, in words with its way on (V539): its own, since it never
+"""Each refusal the installer meets, in words with its way on: its own, since it never
 reaches the Host."""
 
 
 def pack_command(*arguments: str) -> list[str]:
-    """This installer with these arguments, as the person runs it (V590).
+    """This installer with these arguments, as the person runs it.
 
     The checkout's script, or the installed module.
     """
@@ -133,7 +143,7 @@ def _status_command(store: Path) -> list[str]:
 
 
 def _refused(code: str, store: Path, error: Exception) -> dict[str, object]:
-    """Build a refusal with its words and way on, the store it names beside it (V539)."""
+    """Build a refusal with its words and way on, the store it names beside it."""
     base, _sep, subject = code.partition(":")
     detail, next_action = _WORDS.get(
         base,
@@ -255,9 +265,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments.command_line = tuple(pack_command(*(sys.argv[1:] if argv is None else argv)))
     if (arguments.view or arguments.output) and (arguments.install or arguments.import_recipe):
         parser.error(str(worded("read.summary")).format(pointer="--status"))
-    store = arguments.store or model_store.default_store_root()
+    store = arguments.store or model_store._platform_store_root()
     try:
-        store = store.resolve()
+        store = (arguments.store or model_store.default_store_root()).resolve()
         if arguments.install:
             payload = _install(
                 _outside_checkout_and_workspaces(store),

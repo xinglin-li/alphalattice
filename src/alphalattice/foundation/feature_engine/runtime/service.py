@@ -146,7 +146,7 @@ _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
 
 
 def catalog_reads_as_traded(catalog: FeatureCatalog) -> bool:
-    """Whether a catalog holds a formula reading the as-traded fields (V395).
+    """Whether a catalog holds a formula reading the as-traded fields.
 
     Only then does a listing's frame carry them, so a build whose catalog reads none projects
     exactly what it did before and keeps every source window and reuse record it wrote.
@@ -203,13 +203,13 @@ def materialize_listing_rows(
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[FeatureRowIdentity, ...] | None, str]:
     """One listing's Feature rows for `sessions` and its ineligibility facts, in a Host worker.
 
-    The listing's computation, moved off the build's writer, which only reads, writes and
-    seals (W10): its input frame is projected here from the stored inputs the writer read
-    (V92), and the frame's values hash is answered for the write's source window. Given an
-    `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
-    -- the rows' identities are derived here as well, by the derivation the closure
-    coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
-    capability the build installed, unless the build sends its own.
+        The listing's computation, moved off the build's writer, which only reads, writes and
+        seals (W10): its input frame is projected here from the stored inputs the writer read
+    , and the frame's values hash is answered for the write's source window. Given an
+        `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
+        -- the rows' identities are derived here as well, by the derivation the closure
+        coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
+        capability the build installed, unless the build sends its own.
     """
     projected_bars = feature_source_frame(source, sessions=source_sessions)
     with span("hash", "listing_inputs"):
@@ -256,7 +256,7 @@ def configure_worker_memos(*, capacity: int | None = None) -> None:
 
 @dataclass
 class _PartWork:
-    """What one part of a listing's work computes and writes under its own catalog (V92).
+    """What one part of a listing's work computes and writes under its own catalog.
 
     An unlayered catalog is its own only part.
     """
@@ -414,7 +414,7 @@ class FeatureFoundationService:
         """Build Feature rows and their Panel under the admitted source identities.
 
         ``compose_panel=False`` stops once the base values are materialized and the Sector
-        revision is active, for a membership its baseline qualification will replace (V311).
+        revision is active, for a membership its baseline qualification will replace.
         """
         now = observed_at or datetime.now(UTC)
         if now.tzinfo is None:
@@ -565,7 +565,7 @@ class FeatureFoundationService:
         current_listing_id: str | None = None
         current_target_sessions: tuple[date, ...] = ()
         # Each part of the layer plans from its own state: a part whose closure is complete
-        # keeps its rows through a catalog change (V92).
+        # keeps its rows through a catalog change.
         part_invalidations = self._part_invalidations(invalidation_items, axis_listings, request)
         part_listings = {
             catalog_hash: {
@@ -583,7 +583,7 @@ class FeatureFoundationService:
         axis_ids = tuple(item.listing_id for item in axis_listings)
         # The active Panel serves as the base of this catalog's composition when this catalog
         # only adds columns to the one it was built under: the catalog change then reaches the
-        # Panel for the added columns alone (V92).
+        # Panel for the added columns alone.
         held_columns = self._held_panel_columns()
         panel_invalidations = (
             tuple(
@@ -637,7 +637,7 @@ class FeatureFoundationService:
                 # build could reuse, so its listings skip the read of their verified rows; and a
                 # column part that holds none under its genesis head is loaded whole, its rows
                 # written as computed with no per-key transition, its head attesting their
-                # digest once the stage has written them all (V92).
+                # digest once the stage has written them all.
                 parts_holding_rows = frozenset(
                     part.binding.catalog_hash
                     for part in self.layer.parts
@@ -780,7 +780,7 @@ class FeatureFoundationService:
                     try:
                         # The writer reads each window's stored inputs; the worker computing
                         # the listing projects them. Only a held part's reuse is verified here,
-                        # against the window's frame (V92).
+                        # against the window's frame.
                         sources = {
                             input_start: held.inputs
                             or self._base_source_inputs(
@@ -1006,7 +1006,7 @@ class FeatureFoundationService:
                     )
                     self.feature_persistence.assert_ready(self.catalog.binding.catalog_hash)
                     # Every part now holds the axis; rows of a catalog outside the layer (one a
-                    # rotation replaced, a deactivated column) answer for nothing (V398, V92).
+                    # rotation replaced, a deactivated column) answer for nothing.
                     self.feature_state.retire_rows_outside_layer(_connection=base_connection)
                     # The closed years' seals, once each: a year the build closed, or one a
                     # correction reopened, so tomorrow's proofs read only the open year.
@@ -1208,7 +1208,7 @@ class FeatureFoundationService:
         # Raw/base preparation may already include a future-effective entrant;
         # the published Panel axis contains only members of its own history.
         axis_listing_ids = membership.listing_ids
-        # The Sector each session reads (V346): the backfill before a listing's first
+        # The Sector each session reads: the backfill before a listing's first
         # reclassification, then each from the session its update observed it.
         sector_history = self.feature_state.sector_history(
             self.manifest, listing_ids=axis_listing_ids
@@ -1255,7 +1255,7 @@ class FeatureFoundationService:
             membership=membership,
             sector_history=sector_history,
             # A Panel built under the catalog this one only adds columns to holds
-            # every other column: its partitions are merged with the added ones (V92).
+            # every other column: its partitions are merged with the added ones.
             extension=(
                 PanelColumnExtension(
                     catalog_hash=held_columns.binding.catalog_hash,
@@ -1356,7 +1356,7 @@ class FeatureFoundationService:
         # reads the next chunk's Feature rows; the writer then stages, publishes and
         # records them in chunk order, as it did one by one (W10). A chunk a Sector
         # reclassification falls inside is one call per run of sessions that read one
-        # map (V346).
+        # map.
         with child_calls(_PANEL_CHUNK, workers=workers) as panel_calls:
             for factor_ids, grouped_sessions in panel_groups:
                 for connection_start in range(
@@ -2039,7 +2039,7 @@ class FeatureFoundationService:
         One bounded read of this listing (its window of source rows), only
         for a listing about to be excluded; the market frame is the caller's,
         read once per judgement. A layered catalog's row was verified part by
-        part, so each part holding a missing factor proves its own (V92).
+        part, so each part holding a missing factor proves its own.
         """
         if not self.layer.layered:
             return self._exclusion_proved(
@@ -2172,7 +2172,7 @@ class FeatureFoundationService:
         """
         if not composition.base_compatible:
             return ()
-        # Under a column extension (V92) the added columns are computed on every
+        # Under a column extension the added columns are computed on every
         # session; the cells a year must already hold are the base's columns'.
         held_factors = frozenset(
             composition.extension.factor_ids
@@ -2540,7 +2540,7 @@ class FeatureFoundationService:
         It is this catalog restricted to the Panel's factors, and its hash must be the one the
         Panel's lineage records: then every value the Panel holds is the one this catalog
         computes for that column, and its partitions serve as the base of this catalog's
-        composition, merged with the added columns (V92).
+        composition, merged with the added columns.
         """
         snapshot = self.panel_state.feature_panel_snapshot_for_active(
             self.manifest.profile.market_profile_id
@@ -2578,7 +2578,7 @@ class FeatureFoundationService:
         axis_listings: tuple[ManifestListing, ...],
         request: FeatureBuildRequest,
     ) -> dict[str, tuple[FeatureInvalidation, ...]]:
-        """What each part of the layer recomputes (V92).
+        """What each part of the layer recomputes.
 
         An unlayered catalog is its own only part and plans from the build's invalidations as
         they are. A layered catalog's part plans from its own closure: a part complete for the

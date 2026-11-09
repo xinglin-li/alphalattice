@@ -118,7 +118,7 @@ class RecordedEvidenceSource:
         the rest newest first. Independent of any other issuer: what the
         packer counts and what the acquisition takes are the same list. A
         document an earlier analysis read (`read`, by revision) is passed
-        over, as live acquisition passes over a filing read earlier (W3).
+        over, as live acquisition passes over a filing read earlier.
         """
         capacity = min(policy_budget, ADMITTED_DOCUMENT_CAPACITY)
         items = [
@@ -163,7 +163,7 @@ class RecordedEvidenceSource:
 
         The library's cutoff-valid documents a current analysis did not read (`read_by`, revision
         to publication). An issuer whose every document one read is carried, its readings named,
-        as live acquisition carries an issuer with no new filing (W3); a library says nothing of
+        as live acquisition carries an issuer with no new filing; a library says nothing of
         what was filed, so no issuer is named as filing nothing. Without `carry` -- the view of a
         scope no run sealed -- nothing is passed over, so an analysis still finds its unit, as
         live mode packs such a view from its plans.

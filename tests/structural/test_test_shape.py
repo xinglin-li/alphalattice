@@ -1,6 +1,8 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -155,6 +157,26 @@ def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt()
     assert not problems(path, branch(21), branch(20))
     nested = "    def inner():\n" + "        if ready:\n            pass\n" * 21
     assert not problems(path, branch(19) + nested, branch(20) + nested)
+    snapshots = {
+        "before": branch(20),
+        "after": branch(21),
+        "nested": branch(20) + nested,
+        "mixed": "def shape(a, b):\n    if a and b:\n        return 1 if a else 2\n",
+        "loop_else": "def shape(a):\n    for x in a:\n        pass\n    else:\n        pass\n",
+        "async_loop": "async def shape(a):\n    async for x in a:\n        pass\n",
+    }
+    measured = shape.ruff_decisions(snapshots)
+    for before, after in (
+        ("before", "after"),
+        ("after", "before"),
+        ("before", "nested"),
+        ("before", "mixed"),
+        ("before", "loop_else"),
+        ("before", "async_loop"),
+    ):
+        assert problems(
+            path, snapshots[before], snapshots[after], (measured[before], measured[after])
+        ) == problems(path, snapshots[before], snapshots[after])
     for generated in shape.GENERATED | shape.WORD_CATALOGS:
         assert not problems(generated, big, big + "\u754c")
     assert problems(shape.ASSETS + "workbench-source/js/app/new.js", big, big + "\u754c")
@@ -196,8 +218,18 @@ def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrati
         assert not problems(path, None, f"connection.execute({sql!r})\n")
 
 
-def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs() -> None:
+def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
+    monkeypatch, tmp_path
+) -> None:
     """Added eight-line code copies are refused while debt, comments and literal changes pass."""
+    stale = tmp_path / "stale" / "scripts/test-shape-tools"
+    (stale / "node_modules/jscpd").mkdir(parents=True)
+    source_package = shape.ROOT / "scripts/test-shape-tools"
+    for name in ("package.json", "package-lock.json"):
+        (stale / name).write_bytes((source_package / name).read_bytes())
+    (stale / "node_modules/jscpd/run-jscpd.js").write_text("stale tool")
+    with pytest.raises(ValueError, match=r"jscpd\."):
+        shape.jscpd_runner(tmp_path / "stale", tmp_path / "owner/.venv/Scripts/python.exe")
     body = "".join(f"    value{index} = {index}\n" for index in range(8))
     original, copy = "src/original.py", "src/copy.py"
     source, duplicate = "def original():\n" + body, "def copy():\n" + body
@@ -215,10 +247,85 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs()
     assert not shape.clone_problems(
         workbench, None, js.replace("two  words", "two words"), {"src/original.js": js}
     )
+    same_file = source + "def copy():\n" + body
+    assert shape.clone_problems(original, source, same_file, {original: same_file})
+    assert shape.clone_problems(workbench, None, body, {original: source})
+    real_run, commands = shape.subprocess.run, []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", run)
+    result = shape.clone_problems_batch(
+        [(copy, None, duplicate), (copy, duplicate, duplicate)], corpus
+    )
+    assert result[0] and not result[1]
+    assert sum("--min-lines" in command for command in commands) == 1
+    runner = getattr(shape, "jscpd_runner", None)
+    assert callable(runner), "a fresh gate checkout must bind the matching locked tool"
+    staged = tmp_path / "staged"
+    package = staged / "scripts/test-shape-tools"
+    package.mkdir(parents=True)
+    for name in ("package.json", "package-lock.json"):
+        (package / name).write_bytes((source_package / name).read_bytes())
+    executable = Path(sys.executable)
+    installed = source_package / "node_modules/jscpd/run-jscpd.js"
+    assert runner(staged, executable) == installed
+    with monkeypatch.context() as environment:
+        environment.setenv("NODE_OPTIONS", "--require=missing-inherited-module")
+        environment.setenv("NODE_PATH", str(tmp_path / "untrusted"))
+        assert runner(staged, executable) == installed
+    with monkeypatch.context() as environment:
+        environment.delenv("npm_config_cache", raising=False)
+        environment.setenv("NPM_CONFIG_CACHE", str(tmp_path / "empty-cache"))
+        with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
+            runner(staged, executable)
+    (package / "package-lock.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"jscpd\.lock_unreadable"):
+        runner(staged, executable)
+    (package / "package-lock.json").write_bytes((source_package / "package-lock.json").read_bytes())
+    with pytest.raises(ValueError, match=r"jscpd\.unavailable"):
+        runner(staged, tmp_path / "other-python")
+    import shutil
+
+    shutil.copytree(source_package / "node_modules", package / "node_modules")
+    assert runner(staged, executable) == package / "node_modules/jscpd/run-jscpd.js"
+    with monkeypatch.context() as inaccessible:
+
+        def denied_walk(_path, *, followlinks=False, onerror=None):
+            if onerror is not None:
+                onerror(PermissionError("fixture unreadable"))
+            return iter(())
+
+        inaccessible.setattr(shape.os, "walk", denied_walk)
+        with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable.*fixture unreadable"):
+            runner(staged, executable)
+    locked = json.loads((package / "package-lock.json").read_bytes())
+    locked["packages"]["node_modules/jscpd"]["integrity"] = "sha512-" + "A" * 86 + "=="
+    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
+        runner(
+            staged,
+            executable,
+            ((package / "package.json").read_bytes(), json.dumps(locked).encode()),
+        )
+    binary = next((package / "node_modules").glob("jscpd-*/bin/jscpd*"))
+    original_binary = binary.read_bytes()
+    binary.write_bytes(b"tampered native executable")
+    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
+        runner(staged, executable)
+    binary.write_bytes(original_binary)
+    (package / "node_modules/jscpd/platform-map.js").write_text("tampered", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
+        runner(staged, executable)
+    monkeypatch.setattr(shape.shutil, "which", lambda _command: None)
+    with pytest.raises(ValueError, match="jscpd unavailable"):
+        shape.clone_problems(copy, None, duplicate, corpus)
 
 
 def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkeypatch) -> None:
     """Only staged content is checked, and inherited parent violations do not block a merge."""
+    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     state = {"merge": False}

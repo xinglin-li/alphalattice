@@ -497,7 +497,7 @@ class ResearchInputRevisions:
         groups = []
         refusals: list[dict[str, object]] = []
         anchors = read_research_workspace_manifest(self.workspace).experiment_inputs or ()
-        # One Task Control connection for every revision's lifecycle (binding plan, N8).
+        # One Task Control connection for every revision's lifecycle.
         with self.session.task_control_registry.retain(read_only=True):
             publications, refusals = self._discover_publications()
             publication_refusals = list(refusals)

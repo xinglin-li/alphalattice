@@ -1031,7 +1031,7 @@ class PortfolioResearchOperationRequest:
                 frozenset({"feature_factor_id"}),
                 frozenset({"feature_factor_id"}),
             ),
-            # Every declared formula factor, a page at a time (U56).
+            # Every declared formula factor, a page at a time.
             "FEATURE_EXTENSIONS": (frozenset(), frozenset({"extensions_page"})),
             "FEATURE_CATALOG_PLAN": (
                 frozenset({"feature_document"}),
@@ -1143,12 +1143,12 @@ class PortfolioResearchOperationRequest:
                 frozenset({"update_plan_hash"}),
                 frozenset({"update_plan_hash"}),
             ),
-            # A Task, or a strategy's latest update, never another strategy's (V595).
+            # A Task, or a strategy's latest update, never another strategy's.
             "RESEARCH_UPDATE_READBACK": (
                 frozenset(),
                 frozenset({"task_id", "strategy_package_id"}),
             ),
-            # The client's own commands, operations like any other (V266, OP1).
+            # The client's own commands, operations like any other (OP1).
             "OPERATION_LIST": (frozenset(), frozenset({"strategy_package_id", "schema_operation"})),
             "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
             "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
@@ -1172,13 +1172,13 @@ class PortfolioResearchOperationRequest:
             ),
             "USAGE_READING_SET": (frozenset({"usage_reading_enabled"}),) * 2,
             "COMMITTEE_DAILY_SET": (frozenset({"committee_daily_enabled"}),) * 2,
-            # One of the three, which the owner holds to: a setting a request (V100).
+            # One of the three, which the owner holds to: a setting a request.
             "CPU_BUDGET_SET": (
                 frozenset(),
                 frozenset({"cpu_budget", "tasks_waiting", "tasks_running"}),
             ),
-            # The held state's backup outside the workspace (V209); its restore is the
-            # client's own, with no Host (V328).
+            # The held state's backup outside the workspace; its restore is the
+            # client's own, with no Host.
             "WORKSPACE_BACKUP": (frozenset(), frozenset({"backup_generations_kept"})),
             "MODEL_ACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
             "MODEL_DEACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
@@ -1196,7 +1196,7 @@ class PortfolioResearchOperationRequest:
                 frozenset({"update_plan_hash"}),
                 frozenset({"update_plan_hash"}),
             ),
-            # A Task, or a strategy's latest update, never another strategy's (V595).
+            # A Task, or a strategy's latest update, never another strategy's.
             "PORTFOLIO_UPDATE_READBACK": (
                 frozenset(),
                 frozenset({"task_id", "strategy_package_id"}),
@@ -1209,7 +1209,7 @@ class PortfolioResearchOperationRequest:
                 frozenset({"calibration_plan_hash"}),
                 frozenset({"calibration_plan_hash"}),
             ),
-            # A Task, or a strategy's latest, never another strategy's (V595).
+            # A Task, or a strategy's latest, never another strategy's.
             "STRATEGY_CALIBRATION_READBACK": (
                 frozenset(),
                 frozenset({"task_id", "strategy_package_id"}),
@@ -1219,7 +1219,7 @@ class PortfolioResearchOperationRequest:
                 frozenset({"strategy_package_id", "formation_session", "component_id"}),
             ),
             "STRATEGY_SCORE_RUN": (frozenset({"score_plan_hash"}), frozenset({"score_plan_hash"})),
-            # A Task, or a strategy's latest, never another strategy's (V595).
+            # A Task, or a strategy's latest, never another strategy's.
             "STRATEGY_SCORE_READBACK": (frozenset(), frozenset({"task_id", "strategy_package_id"})),
             "DATA_UPDATE_RUN": (frozenset({"update_plan_hash"}), frozenset({"update_plan_hash"})),
             "DATA_UPDATE_READBACK": (frozenset(), frozenset({"task_id"})),
@@ -2572,7 +2572,7 @@ class LocalPortfolioResearchService:
             originating_task_id=(None if originating_task is None else str(originating_task)),
             execution_mode=spec.execution_mode,
             controls=tuple(report.control_receipt.selected),
-            # The product's own command, the spec saved from `spec_document` (OP2, V401).
+            # The product's own command, the spec saved from `spec_document` (OP2).
             command="alphalattice --workspace <dir> strategy-book run --file <spec.json>",
             spec_document=_spec_document(spec),
         )

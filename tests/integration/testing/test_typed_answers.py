@@ -1,4 +1,4 @@
-"""The typed reads answer what their published models say (binding plan, CLI-16)."""
+"""The typed reads answer what their published models say."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ STUDY_READS = frozenset(
 def test_each_task_and_book_read_answers_its_published_model(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """contract (binding plan, CLI-16): on a workspace with a finished run, each typed read's
+    """contract: on a workspace with a finished run, each typed read's
     answer validates against the model `alphalattice schema show` publishes for it; the study
     reads are checked beside a published study."""
 

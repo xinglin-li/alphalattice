@@ -187,7 +187,7 @@ body[data-page] :is(.stat-strip,.data-readiness-strip) {
 .evidence-tree .list-row[data-depth="1"] {
   padding-left: var(--space-6);
 }
-.list-row-props > span > .evidence-fold { min-height: 0; padding-top: 0; padding-bottom: 0; } /* round H3 (R2): a fold button keeps its row one line */
+.list-row-props > span > .evidence-fold { min-height: 0; padding-top: 0; padding-bottom: 0; } /* a fold button keeps its row one line */
 .evidence-fold .icon {
   transform: rotate(-90deg);
   transition: transform var(--dur-1) var(--curve-move);
@@ -198,7 +198,7 @@ body[data-page] :is(.stat-strip,.data-readiness-strip) {
 .evidence-filters {
   margin: 0 0 var(--space-3);
 }
-/* B1 (the book plan's item 8): an unresolved question is a row -- its unit a small reference, the
+/* an unresolved question is a row -- its unit a small reference, the
    question whole at its reading measure, the way to the Review at the row's end. */
 .question-rows { list-style: none; margin: 0; padding: 0; }
 .question-rows > li + li { border-top: 1px solid var(--edge-hair); }
@@ -230,12 +230,12 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
   .ledger-narrow { display: none; }
 }
 .ledger-cell { padding: 0; min-height: 0; white-space: nowrap; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
-/* nine columns in one lane: tight cells, nothing wraps */
+/* Nine columns in one lane: tight cells, nothing wraps */
 .ledger-table :is(th, td) { padding-inline: var(--space-2); white-space: nowrap; }
 .ledger-cell[aria-pressed="true"] { background: var(--fill-selected); border-radius: var(--radius-micro); }
 .ledger-topics { margin: 0 0 var(--space-3); }
 .ledger-uniform { margin-top: var(--space-3); } /* the folded uniform rows under the table of mixed rows */
-/* The reading workbench (round E3): the view's pickers in one row, the passage's excerpt as a well
+/* The reading workbench: the view's pickers in one row, the passage's excerpt as a well
    of untouched bytes, the document cell as the row's opener, the folded groups under the table. */
 .view-pickers { margin: var(--space-3) 0; }
 .passages-table .passage-open { padding: 0; min-height: 0; text-align: left; }
@@ -265,7 +265,7 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
    pane), the other cells one word each; beside them the entries as property sections. */
 .review-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--slot-gap); min-height: var(--row-regular); padding: var(--space-2) var(--inset-card); margin: 0 0 var(--gap-block); border: 1px solid var(--edge-card); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); } /* a box: the one box's material (04-surfaces) */
 .review-banner > .status-mark { flex: none; }
-.review-banner > .review-banner-words { flex: 1 1 var(--width-xs); min-width: 0; } /* B2: the notice's words -- who asked, then the CRO's recorded words -- take the line; the action goes under them when both do not fit */
+.review-banner > .review-banner-words { flex: 1 1 var(--width-xs); min-width: 0; } /* the notice's words -- who asked, then the CRO's recorded words -- take the line; the action goes under them when both do not fit */
 .review-banner-words > p { margin: 0; color: var(--text); max-width: var(--ds-prose-measure); }
 .review-banner-words > .review-rationale { margin-top: var(--space-1); }
 .review-banner b { font-weight: var(--weight-label); }
@@ -292,10 +292,10 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
 .review-table .finding-open { overflow-wrap: anywhere; }
 }
 .review-table .finding-open .mono { overflow-wrap: normal; white-space: nowrap; }
-/* B1: where the Review's handoff stands -- the turn, then each party's day -- its first line (a state, not a lede) */
+/* where the Review's handoff stands -- the turn, then each party's day -- its first line (a state, not a lede) */
 .review-where { margin: 0 0 var(--head-content-gap); font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .verdict { padding: var(--space-4); border-radius: var(--radius-card); background: var(--subtle-surface); margin-bottom: var(--space-5); }
-/* Round H1 (Mercury's cards, GitHub's run summary): the evidence pages' measures as tiles, six
+/* The evidence pages' measures as tiles, six
    across where the lane allows, three otherwise; the meter under the figure, the note under the meter. */
 /* Six across when the strip's own box holds six tiles whose labels fit one line (six of 132),
    three otherwise -- measured on the box, never the window (2026-09-22: at the 125 % text size,
@@ -309,14 +309,14 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
   .es-measures > .stat:nth-child(3n) { border-right: 1px solid var(--line); }
   .es-measures > .stat:last-child { border-right: 0; }
 }
-/* N6: the Data figures carry dates and sizes -- two a line under the narrow lane, not three */
+/* the Data figures carry dates and sizes -- two a line under the narrow lane, not three */
 @container (width < 640px) {
   .es-measures.data-figures { --cols: 2; }
   .es-measures.data-figures > .stat:nth-child(3n) { border-right: 1px solid var(--line); }
   .es-measures.data-figures > .stat:nth-child(2n) { border-right: 0; }
 }
 .es-measures .meter { --meter-max: 100%; }
-/* A one-line list (round H1, rule R2): the title and its words on one line, the words cut with
+/* A one-line list (rule R2): the title and its words on one line, the words cut with
    an ellipsis (the whole sentence on hover), the row 36 px; the lead sits on the line. */
 .card-list.lines > .list-row { min-height: var(--row-dense); padding-top: var(--space-1); padding-bottom: var(--space-1); }
 .card-list.lines .list-row-main { display: flex; align-items: baseline; gap: var(--space-2); white-space: nowrap; }
@@ -327,7 +327,7 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
 .kv-icons .kv-key { display: inline-flex; align-items: center; gap: var(--space-2); }
 .kv-icons .kv-key > .icon { width: var(--icon-sm); height: var(--icon-sm); flex: none; }
 
-/* Set up (round F2): a prerequisite's step under its row -- one sentence, the exact command in a
+/* Set up: a prerequisite's step under its row -- one sentence, the exact command in a
    block (Vercel's instruction card), `Read again`; the product cannot run it. */
 .setup-card { margin: 0 0 var(--space-3) calc(var(--space-2) + var(--slot-lead) + var(--slot-gap)); padding: var(--space-3) var(--space-4); border-radius: var(--radius-block); background: var(--surface-well); }
 .setup-card .code-block { border: 0; background: transparent; padding: 0; }
@@ -342,13 +342,13 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
 .setup-details { margin-bottom: var(--space-5); }
 .setup-details > summary { cursor: pointer; }
 
-/* Round H3 (Linear's issue cards): a finding or an issue as a card -- the chips in its head, the
+/* a finding or an issue as a card -- the chips in its head, the
    owner's text clamped to three lines (More opens it), the citations as pills, a 2 x 3 grid of
    axes on an issue. Owner text (`.owner-text`) is content: the walk's R1 / R4 count the product's words. */
 .issue-card { padding: var(--space-2) var(--space-3); }
 .clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--clamp-note); overflow: hidden; }
 .card-more { margin-top: var(--space-1); } /* six words a card read at the headline size, not the figure's */
-/* B2 (the book plan's item 9): an issue is a group of the one list -- its issuers, severity and impact
+/* an issue is a group of the one list -- its issuers, severity and impact
    over the CRO's inference (two lines; whole in the pane), its count and handle small under them. */
 .review-table .table-group.issue-group > th { padding-top: var(--space-5); font-weight: var(--weight-body); }
 .review-table .table-group.issue-group .table-group-note { display: block; margin: var(--space-1) 0 0; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); }
@@ -359,7 +359,7 @@ button.question-row { width: 100%; text-align: left; } /* a question is the way 
 .finding-passage-head { margin: 0 0 var(--space-1); font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
 .finding-passage[data-cite="contra"] > .record-statement { border-left-color: var(--warning-ink); }
 body[data-page] .passages-table td.passage-cited .inline-link { display: flex; white-space: nowrap; text-align: left; } /* the findings a passage cites, one a line: the column is as wide as its longest topic, and the passage takes the rest (it held 371 px of one row's topics on one line and left the passage 137: the quiet control's inline-flex outranked a lighter rule) */
-/* B3 (item 5): the issuers and their documents, one table -- a row's chevron opens its documents under
+/* the issuers and their documents, one table -- a row's chevron opens its documents under
    it, a step in; the issuer's name keeps its line. */
 .holdings-table .doc-issuer { font-weight: var(--weight-label); color: var(--text); }
 .holdings-table .doc-toggle .icon { transform: rotate(-90deg); transition: transform var(--dur-1) var(--curve-move); }

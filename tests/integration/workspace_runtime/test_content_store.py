@@ -16,6 +16,8 @@ from threading import Barrier
 from typing import ClassVar, Literal
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pydantic import BaseModel, ConfigDict
 
@@ -275,11 +277,69 @@ def test_a_store_written_before_v210_is_read_from_its_bin_files(tmp_path: Path) 
     assert read_page == page
 
 
-def test_a_changed_or_missing_lane_is_refused_by_name(tmp_path: Path) -> None:
+def test_a_changed_or_missing_lane_is_refused_by_name(tmp_path: Path, monkeypatch) -> None:
+    from alphalattice.control.workspace_runtime import content_store as owner
+
     store = _store(tmp_path)
-    lane = store.publish_columns(category="lanes/x", columns={"value": np.arange(3.0)})
+    lane = store.publish_columns(category="lanes/x", columns={"value": np.array([1.0, 2.0, 3.0])})
     path = tmp_path / "store/lanes/x" / f"{lane}.parquet"
     written = path.read_bytes()
+    stat = path.stat()
+
+    table = pq.read_table(path).set_column(0, "value", pa.array([7.0, 8.0, 9.0]))
+    sink = pa.BufferOutputStream()
+    pq.write_table(table, sink, use_dictionary=False)
+    replacement = sink.getvalue().to_pybytes()
+    assert len(replacement) == len(written)
+    original_read = pq.read_table
+
+    calls = []
+    original_digest = owner.columns_digest
+
+    def new_producer(columns):
+        calls.append(True)
+        return original_digest(columns)
+
+    with monkeypatch.context() as changing:
+        changing.setattr(owner, "columns_digest", new_producer)
+        store.load_columns(category="lanes/x", content_hash=lane)
+        store.load_columns(category="lanes/x", content_hash=lane)
+        assert calls == [True, True]  # an undeclared captured producer never reuses
+    first = (value + "A" for value in ()).gi_code
+    second = (value + "B" for value in ()).gi_code
+    assert owner._column_fact_kind((first,), ()) != owner._column_fact_kind((second,), ())
+    doc_changed = new_producer.__code__.replace(
+        co_consts=("changed doc", *new_producer.__code__.co_consts[1:])
+    )
+    assert owner._column_fact_kind((new_producer.__code__,), ()) == owner._column_fact_kind(
+        (doc_changed,), ()
+    )
+    original_kind = owner._column_kind(store)
+
+    original_environment = owner.recorded_environment
+
+    def changed_environment(packages):
+        result = original_environment(packages)
+        return {**result, "packages": {**result["packages"], "numpy": "changed"}}
+
+    with monkeypatch.context() as changing:
+        changing.setattr(owner, "recorded_environment", changed_environment)
+        assert owner._column_kind(store) != original_kind
+
+    def move_during_read(target):
+        result = original_read(target)
+        path.write_bytes(replacement)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        return result
+
+    with monkeypatch.context() as changing:
+        changing.setattr(pq, "read_table", move_during_read)
+        with pytest.raises(ContentAddressedStoreError, match=r"content_store\.artifact_tampered"):
+            store.load_columns(category="lanes/x", content_hash=lane)
+    path.write_bytes(replacement)
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    with pytest.raises(ContentAddressedStoreError, match=r"content_store\.artifact_tampered"):
+        store.load_columns(category="lanes/x", content_hash=lane)
 
     for changed in (written[:-1], bytes([written[0] ^ 1]) + written[1:]):
         path.write_bytes(changed)

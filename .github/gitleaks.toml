@@ -1,0 +1,33 @@
+# The public secret scan: gitleaks' own rules, with one reviewed allowance for its generic-api-key rule.
+# The allowance names exact values, never a shape or a line: a value is added here only after a review shows
+# it is public content (a pinned digest, a constant's name, a test placeholder). Every other rule stays whole.
+title = "AlphaLattice public secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Reviewed non-secret values the generic rule reads as keys: SHA-256 pins of the semantic tokenizer files and the recorded demo, two constants' names, and the tests' sequential placeholder"
+regexes = [
+  # SHA-256 pins: src/alphalattice/kernel/knowledge/hybrid_contracts.py
+  '''^0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53$''',
+  '''^253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0$''',
+  '''^aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4$''',
+  '''^b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3$''',
+  '''^cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865$''',
+  '''^d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66$''',
+  '''^def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a$''',
+  # recording keys: src/alphalattice/kernel/resources/recorded_demo_v1/command.json
+  '''^0e46fcc8df7e6780abacf6126ed1f7dc1e22384b6e2e7b1cb62f32874c204d6f$''',
+  '''^1d86e24b28087e833beb6b10ab669cb17410095a4abc503ce7cbeb964a47c366$''',
+  '''^258e2e7be4367d26aa18bc01b0e662d86a68b6b2f87193ff6c8c80033495833e$''',
+  '''^2c86182120f21b145dc69138b4b833a2c3ee5d8398faa32f4dc448c8d0c7214c$''',
+  '''^345651ff15a2b3380fce4403a1034f85eb723c161709d64af5153859a2f65b91$''',
+  '''^5de25638e16094557c223a70738d7e017bafc6c89998ff604923752cc18b3d99$''',
+  # constants' names: kernel/shared_kernel/retired_spellings.py, kernel/knowledge/_embeddings.py and hybrid_contracts.py
+  '''^IW184_EVIDENCE_ROOT$''',
+  '''^XLM_ROBERTA_SENTENCEPIECE_V1$''',
+  # the tests' sequential placeholder: tests/integration/local_application/test_local_web_client.py
+  '''^0123456789abcdef0123456789abcdef$''',
+]

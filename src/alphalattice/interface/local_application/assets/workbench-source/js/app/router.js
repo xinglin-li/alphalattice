@@ -5,9 +5,9 @@ const PAGES = {}; // page id → () => html; filled by the page modules below.
 /* The History view is its filters: they travel in the route (replaced while typing, never
  * pushed), so a copied link, a reload and Back/Forward all show the same list. Defaults are
  * omitted so an unfiltered link stays short. */
-const HISTORY_ROUTE = {q: ['historyQuery', ''], kind: ['historyKind', 'all']}; // the ordering is a display choice (round 57), kept per viewer
+const HISTORY_ROUTE = {q: ['historyQuery', ''], kind: ['historyKind', 'all']}; // the ordering is a display choice, kept per viewer
 const historyRoute = () => Object.fromEntries(Object.entries(HISTORY_ROUTE).filter(([, [field, fallback]]) => app[field] !== fallback).map(([key, [field]]) => [key, app[field]]));
-/* The link grammar (round 67): `#page=<page>` names the page; the object travels as the page's
+/* The link grammar: `#page=<page>` names the page; the object travels as the page's
  * own key (`study`, `book`, `task`, `foundation`, `case`, `plan`, `team` / `actor` / `event`,
  * `review_publication` / `review_selector`, `preparation`, `update`); `input` and `session` name
  * the research input and the holdings date; History carries its filters (`q`, `kind`, `mode`);
@@ -49,7 +49,7 @@ function replaceHash(update) {
   for (const [k, v] of Object.entries(update)) { if (v === '' || v === null || v === undefined) q.delete(k); else q.set(k, v); }
   history.replaceState(history.state, '', '#' + q);
 }
-const historyDepth = () => Number(history.state?.alpha) || 0; // round 81: the entries this product pushed and stamped
+const historyDepth = () => Number(history.state?.alpha) || 0; // the entries this product pushed and stamped
 /* A pushed address (2026-09-22, the way back): a choice that changes what a page holds -- a packet, an
  * item opened in the pane, a page stepped to -- is one entry, stamped with its depth, so `<-` returns to
  * the level before it; the depth the next link navigation is stamped from follows it. */
@@ -86,9 +86,9 @@ function readRoute() {
     page = 'team'; q.set('page', page);
     history.replaceState(history.state, '', '#' + q);
   }
-  if (page === 'advanced') page = 'settings'; // round 62: the Advanced page is a section of Settings
-  if (page === 'welcome') page = 'overview'; // round 74: first use is the Home with one run; old links land there
-  if (page === 'issues' && !q.get('issue')) page = 'data'; // N5 (2026-09-24): Data issues is Data maintenance's section; an issue keeps its page
+  if (page === 'advanced') page = 'settings'; // the Advanced page is a section of Settings
+  if (page === 'welcome') page = 'overview'; // first use is the Home with one run; old links land there
+  if (page === 'issues' && !q.get('issue')) page = 'data'; // Data issues is Data maintenance's section; an issue keeps its page
   if (page === 'team-members') page = 'team'; // C4 (2026-09-24): Participants folded into the conversation's filter
   if (page && ROUTES[page]) app.page = page;
   const inp = q.get('input');
@@ -109,7 +109,7 @@ function objectEntry(key) {
   Data.beginNavigation();
   if (routeObject() === key) return false;
   history.pushState({alpha: historyDepth() + 1}, '', location.href);
-  const opened = readPreference('objects.recent'); // round 65: the Home's recent objects, per viewer
+  const opened = readPreference('objects.recent'); // the Home's recent objects, per viewer
   savePreference('objects.recent', [key, ...(Array.isArray(opened) ? opened : []).filter((k) => k !== key)].slice(0, 12));
   return true;
 }
@@ -119,7 +119,7 @@ function objectEntry(key) {
  * left in the address (the study a reader came from, the book they read before) is not this
  * page's object and never counts as one. */
 const REVIEW_OBJECT = {kind: 'review', ids: ['review_publication', 'review_selector'], clears: ['review_publication', 'review_selector']};
-// the Reading page's own object is the packet it holds (round E4): its dock row and its way up are the chooser, the book stays
+// the Reading page's own object is the packet it holds: its dock row and its way up are the chooser, the book stays
 const READING_OBJECT = {kind: 'review', ids: ['review_publication', 'review_selector'], clears: ['prepared_task', 'prepared_unit', 'view_entity_id', 'view_topic', 'view_last_days', 'review_item'], chooser: true};
 const STUDY_OBJECT = {kind: 'study', ids: ['study'], clears: ['study'], chooser: true};
 const BOOK_OBJECT = {kind: 'book', ids: ['book'], clears: ['book', 'compare'], chooser: true};
@@ -134,8 +134,8 @@ const OBJECT_KEYS = {
   data: {kind: 'update', ids: ['update'], clears: ['update']},
   issues: {kind: 'issue', ids: ['issue'], clears: ['issue'], chooser: true}, // F2: a data issue's page; the dock's row is the lobby
   inputs: {kind: 'version', ids: ['version'], clears: ['version', 'via'], chooser: true}, // F3: an input version's page (four levels); `via` the list it was opened from
-  models: {kind: 'model', ids: ['model'], clears: ['model'], chooser: true}, // U50: a model's review packet; the dock's row is the list
-  'feature-research': {kind: 'feature-review', ids: ['feature'], clears: ['feature'], chooser: true}, // U56: a formula factor's review packet, `<plan hash>:<factor id>`
+  models: {kind: 'model', ids: ['model'], clears: ['model'], chooser: true}, // a model's review packet; the dock's row is the list
+  'feature-research': {kind: 'feature-review', ids: ['feature'], clears: ['feature'], chooser: true}, // a formula factor's review packet, `<plan hash>:<factor id>`
   features: {kind: 'feature', ids: ['feature_plan', 'feature_build'], clears: ['feature_plan', 'feature_build']}, // a saved PLAN or a build's values; the way up is the composer over the same input
 };
 function routeObject(q = hashParams()) {
@@ -179,7 +179,7 @@ function stampEntry() {
 }
 function navigate(page, extra = {}, {replace = false} = {}) {
   Data.beginNavigation();
-  if (typeof SAVED_VIEWS !== 'undefined' && !SAVED_VIEWS.has(page) && page !== 'history') app.listContext = null; // round 53: a navigation elsewhere forgets the list a record came from
+  if (typeof SAVED_VIEWS !== 'undefined' && !SAVED_VIEWS.has(page) && page !== 'history') app.listContext = null; // a navigation elsewhere forgets the list a record came from
   LiveWorkspace.dismissConfirmation();
   hideToast();
   closeDialog();
@@ -198,7 +198,7 @@ function navigate(page, extra = {}, {replace = false} = {}) {
   scrollTo({top: 0, behavior: 'instant'});
 }
 
-/* The appearance in effect (round 68): the viewer's choice, or the host's when following. */
+/* The appearance in effect: the viewer's choice, or the host's when following. */
 const hostDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 const effectiveTheme = () => app.theme === 'follow' ? (hostDark() ? 'dark' : 'light') : app.theme;
 function applyTheme() {
@@ -219,7 +219,7 @@ function setTheme(theme) {
 function toggleTheme() { setTheme(effectiveTheme() === 'dark' ? 'light' : 'dark'); }
 let localeRequest = 0; // the newest language choice; a dictionary that arrives after a newer choice is dropped
 function setLocale(lang) {
-  const normalized = ['zh-CN', 'cn', 'zh'].includes(lang) ? 'zh-CN' : 'en'; // the public API takes every spelling I18N.set takes (round E2)
+  const normalized = ['zh-CN', 'cn', 'zh'].includes(lang) ? 'zh-CN' : 'en'; // the public API takes every spelling I18N.set takes
   const request = ++localeRequest;
   const apply = () => {
     if (request !== localeRequest) return; // a later choice was made while this dictionary loaded: it wins
@@ -230,7 +230,7 @@ function setLocale(lang) {
     Dialog.rerender();
     refreshToast();
   };
-  const dictionary = I18N.ensure(normalized); // the dictionary loads once, on the first switch (round 96)
+  const dictionary = I18N.ensure(normalized); // the dictionary loads once, on the first switch
   // a dictionary that did not load is named, never applied as an empty catalog: the page was
   // opened before the product changed (its content-hashed assets are gone), and a reload is the way
   if (dictionary) dictionary.then((ok) => { if (ok) apply(); else if (request === localeRequest) notify(t('The dictionary did not load: the product changed since this page was opened. Reload the page to switch the language.')); }); else apply();
@@ -251,7 +251,7 @@ function titleText() {
  * nested scroll positions, open disclosures, text-field scroll and the focused control with its
  * selection. Captured before markup is replaced and put back after, so a repaint that must
  * change a region does not lose where the reader was inside it. */
-/* N5 (law 113): the Team's conversation flows with the page -- no scroller of its own. */
+/* law 113: the Team's conversation flows with the page -- no scroller of its own. */
 const SURFACE_SCROLLERS = '.table-scroll,details,.run-log-lines,.reading-pane-body'; // law 149: a detail beside its list keeps its place when the list repaints (its body scrolls)
 /* A scroller or disclosure with an id is named by it (unique in the document, so a row arriving
  * above it moves nothing). Each other one is named by its nearest anchored ancestor (an id, an
@@ -314,7 +314,7 @@ function restoreSurface(s, {scroll = true} = {}) {
         try {
           el.setSelectionRange(s.start, s.end);
         } catch (e) {
-          /* not a text control */
+          /* Not a text control */
         }
       }
     }
@@ -335,7 +335,7 @@ function dataStateView() {
   }
   return html`<section class="panel pad">${emptyState(t('No study data; open a workspace or a saved study.'), link(t('Open workspace'), 'overview', 'text-btn'), '', 'elsewhere')}</section>`;
 }
-/* No site footer: an instrument ends where its content ends (round 8). The original product's
+/* No site footer: an instrument ends where its content ends. The original product's
  * entry stays reachable from Quick Open and the workspace dialog. */
 
 /* The in-place repaint of a live page between polls: the same markup `render()` would
@@ -371,7 +371,7 @@ function patchPage() {
   });
   Window.syncRoutes(); // the page's route context may have moved even where no section changed (a selection the page wrote while painting)
   Window.renderSide(); // the dock's counts and the window's title follow what arrived: a Team objection reaches Home's Needs a decision by a patch (2026-09-25); memoised, free when unchanged
-  // The live owners read the route after a patch as after a render (round 86): a deep-linked
+  // The live owners read the route after a patch as after a render: a deep-linked
   // study, review or case first paints while the workspace is loading, and the session's
   // arrival is a patch of the same page -- without this, the link never opened its object.
   if (LiveGoals.pages.has(app.page)) queueMicrotask(LiveGoals.ensure);
@@ -385,8 +385,8 @@ function patchPage() {
   Portfolio.bindCharts(); // a replaced chart keeps its readers and its navigator
   Controls.sync();
   Window.markDetail(); // law 149: the open detail's row carries the mark after every paint
-  LiveTasks.refreshInspector(); // V649: local receipt words follow the locale before restoring its reading state
-  Inspect.refreshFacts(); Inspect.refreshRecord(); LiveGoals.refreshReference(); Inspect.reopenFromAddress(); // round 67: the inspector follows the object
+  LiveTasks.refreshInspector(); // local receipt words follow the locale before restoring its reading state
+  Inspect.refreshFacts(); Inspect.refreshRecord(); LiveGoals.refreshReference(); Inspect.reopenFromAddress(); // the inspector follows the object
   restoreSurface(saved); restoreSurface(overlay, {scroll: false}); // restore after local detail bodies, as in a full render
   if (typeof LiveWorkspace !== 'undefined') LiveWorkspace.afterPaint();
   Geometry.schedule();
@@ -399,7 +399,7 @@ function sectionMarkup(markup) {
 }
 
 let lastRenderedPage = null;
-/* The render boundary (round 96): a page whose template throws is not a blank page and not a
+/* The render boundary: a page whose template throws is not a blank page and not a
  * console line alone. The card in `#main` names the failure in the product's refusal shape --
  * the state, the error's words, `Reload` and a way to Home -- and says so on the live region.
  * Reload retries the same address; no in-memory count promises to survive it. `app.failNextRender` is the test
@@ -464,13 +464,13 @@ function renderPage() {
     if(lastRenderedPage==='lab')LiveResearch.leaveReads();
   }
   if (pageChanged && lastRenderedPage === 'features') LiveFeatures.leave(); // its late answers no longer take the page
-  if (pageChanged && LiveModels.pages.has(lastRenderedPage)) LiveModels.leave(); // U50: the packets are read once a visit
-  if (pageChanged && LiveFeatureResearch.pages.has(lastRenderedPage)) LiveFeatureResearch.leave(); // U56: as Models
-  if (pageChanged && lastRenderedPage === 'team-outputs') LiveTeam.leaveOutputs(); // U54: the session's Tasks are read once a visit
+  if (pageChanged && LiveModels.pages.has(lastRenderedPage)) LiveModels.leave(); // the packets are read once a visit
+  if (pageChanged && LiveFeatureResearch.pages.has(lastRenderedPage)) LiveFeatureResearch.leave(); // as Models
+  if (pageChanged && lastRenderedPage === 'team-outputs') LiveTeam.leaveOutputs(); // the session's Tasks are read once a visit
   const previousKey = Places.key();
   Places.capture();
-  if (Inspect.closePeek) Inspect.closePeek(); // a hover card belongs to the page it was read on (round 59)
-  Window.onNavigate(pageChanged); // the side's overlay closes; a changed page closes the inspector (round 62)
+  if (Inspect.closePeek) Inspect.closePeek(); // a hover card belongs to the page it was read on
+  Window.onNavigate(pageChanged); // the side's overlay closes; a changed page closes the inspector
 
   applyTheme();
   const painting = app.page;
@@ -488,7 +488,7 @@ function renderPage() {
 
   Portfolio.syncSessionButtons();
   Portfolio.bindCharts();
-  // a page change is a cut (round 94; Linear's, Codex's, Finder's): the page is readable at its
+  // a page change is a cut (Linear's, Codex's, Finder's): the page is readable at its
   // first frame, and what arrives later settles by itself (the skeleton's reveal, a row's arrival)
   lastRenderedPage = app.page;
 
@@ -496,8 +496,8 @@ function renderPage() {
   if (typeof LiveWorkspace !== 'undefined') LiveWorkspace.afterPaint(pageChanged);
   Controls.sync();
   Window.markDetail(); // law 149: the open detail's row carries the mark after every paint
-  LiveTasks.refreshInspector(); // V649: local receipt words follow the locale before restoring its reading state
-  Inspect.refreshFacts(); Inspect.refreshRecord(); LiveGoals.refreshReference(); Inspect.reopenFromAddress(); // round 67: the inspector follows the object
+  LiveTasks.refreshInspector(); // local receipt words follow the locale before restoring its reading state
+  Inspect.refreshFacts(); Inspect.refreshRecord(); LiveGoals.refreshReference(); Inspect.reopenFromAddress(); // the inspector follows the object
   if (!pageChanged) { restoreSurface(saved); restoreSurface(overlay, {scroll: false}); }
   Geometry.schedule();
   Places.restoreAfterRender(previousKey, pageChanged);

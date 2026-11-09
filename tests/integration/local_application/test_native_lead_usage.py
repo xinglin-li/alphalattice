@@ -1,5 +1,5 @@
 """The Session's own optional readings and CLI ordering: the lead and the children its own
-files record, with no hook, message or always-running reader (FLOW-1)."""
+files record, with no hook, message or always-running reader."""
 
 from __future__ import annotations
 

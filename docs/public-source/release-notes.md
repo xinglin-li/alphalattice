@@ -1,7 +1,39 @@
 # AlphaLattice release notes
-Last checked: 2026-11-06 against 0.2.5
+Last checked: 2026-11-08 against 0.2.6
 
-Latest released version: [0.2.5](#025). Earlier measurements describe their own versions.
+Latest released version: [0.2.6](#026). Earlier measurements describe their own versions.
+
+## 0.2.6
+
+0.2.6 makes Windows and packaged-app setups easier to diagnose, and fixes repeated Evidence reviews, parked preparations and several Windows path and heading cases. Its test, CI and verification work changes how the project is verified; it does not change how people use AlphaLattice.
+
+### Changed
+
+- The doctor checks Windows long-path support and reports when a shell runs inside a packaged app, with the model store it uses.
+- The model store location is recorded in `~/.alphalattice/model-store.json`; a pointer written by an earlier version is still read.
+- Daily runs get their own Host.
+- First-use guidance, Goal delivery and Windows diagnostics are clearer.
+- An invalid Evidence need reports the record and the rule it breaks.
+- The daily-updates relay commands name their question.
+- Public CI audits dependencies, scans for secrets and attaches a software bill of materials (SBOM) to releases.
+
+### Fixed
+
+- A repeated strategy-book review joins the preparation already in flight instead of starting an overlapping one, and a later preparation keeps the reuse of its units.
+- A parked preparation is recovered by the Host instead of blocking newer Tasks of its kind.
+- A seal record replaced on Windows retries briefly instead of failing on the first access-denied error.
+- Research inputs with long Windows paths are staged and published through extended paths.
+- An Evidence heading that is blank, including one holding only a non-breaking space, or longer than 256 characters no longer fails its whole unit.
+- A model store installed from a packaged app is found by the Host.
+- A joined preparation shows its own status text in the Workbench.
+- A stored result is reused only when every input that determines it is unchanged, so a changed input no longer reuses a stale result.
+
+### Known limits
+
+- The long-path case is verified with a simulated path boundary, not on a Windows machine with long paths disabled.
+- An Evidence unit whose need record is invalid still fails for that unit; the failure now names the record, but its cause is not yet identified.
+- A Task whose worker stops may still show RUNNING for a while; CANCEL clears it.
+- The repeated-review path is covered by tests; it has not yet been confirmed on a real workspace.
 
 ## 0.2.5
 

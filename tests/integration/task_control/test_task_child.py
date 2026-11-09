@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import subprocess
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
@@ -43,7 +45,7 @@ def _no_kept_workers():
 def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
     monkeypatch, spread, at, error_type
 ):
-    """V610: both child APIs normalize constructor/start resource refusals and can recover."""
+    """both child APIs normalize constructor/start resource refusals and can recover."""
     # Retire even a warm worker through the public boundary before injecting at its next start.
     with pytest.raises(ChildInterrupted):
         run_in_child(f"{HERE}:ended", {})
@@ -249,6 +251,86 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
     from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
     from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
 
+    # Exercise a fresh process: no prior cached pool view may hide the Windows race.
+    probe = """import importlib
+import numpy
+import threadpoolctl
+from alphalattice.kernel.shared_kernel import environment
+original = threadpoolctl.ThreadpoolController
+for kind, expected in (("transient", 2), ("persistent", 16), ("other", 1)):
+    importlib.reload(environment)
+    environment._loaded_module_handles = lambda: (101,)
+    attempts = []
+    def discover():
+        attempts.append(1)
+        if kind == "other": raise OSError("other failure")
+        if kind == "persistent" or len(attempts) == 1:
+            raise OSError("GetModuleFileNameEx failed")
+        return original()
+    threadpoolctl.ThreadpoolController = discover
+    try:
+        pools = environment.numerical_thread_pools()
+        assert kind == "transient" and pools
+    except OSError as error:
+        assert kind != "transient", error
+    assert len(attempts) == expected, (kind, attempts)
+threadpoolctl.ThreadpoolController = original
+
+# A changing module set must be rebuilt for this call, never applied or recorded.
+importlib.reload(environment)
+environment._load_limited_libraries = lambda: None
+built, limited = [], []
+class Controller:
+    def __init__(self):
+        self.number = len(built) + 1
+        built.append(self)
+    def info(self): return [{"internal_api": "fixture", "num_threads": self.number}]
+    def limit(self, limits):
+        limited.append((self.number, limits))
+        return self
+    def restore_original_limits(self): pass
+threadpoolctl.ThreadpoolController = Controller
+snapshots = iter([(101,), (101, 202), (101, 202), (101, 202), (101, 202)])
+environment._loaded_module_handles = lambda: next(snapshots)
+with environment.numerical_thread_limit(1):
+    assert environment.numerical_thread_counts() == (("fixture", 2),)
+assert limited == [(2, 1)] and len(built) == 2
+
+# Sustained churn refuses both callers before applying or recording a partial view.
+for caller in ("limit", "counts"):
+    importlib.reload(environment)
+    environment._load_limited_libraries = lambda: None
+    built.clear(); limited.clear()
+    snapshots = iter([(101,), (101, 202)] * 16)
+    environment._loaded_module_handles = lambda: next(snapshots)
+    try:
+        if caller == "counts": environment.numerical_thread_counts()
+        else:
+            with environment.numerical_thread_limit(1):
+                raise AssertionError("unproved controller was applied")
+    except RuntimeError as error:
+        assert "module" in str(error).lower()
+    else: raise AssertionError("unstable view was accepted")
+    assert len(built) == 16 and not limited and not environment._LIMITS
+if environment.os.name == "nt":
+    importlib.reload(environment)
+    built.clear()
+    environment._loaded_module_handles = lambda: None
+    try: environment.numerical_thread_counts()
+    except RuntimeError as error: assert "unavailable" in str(error)
+    else: raise AssertionError("unavailable snapshot was accepted")
+    assert not built
+threadpoolctl.ThreadpoolController = original
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
     counts = numerical_thread_counts()
     assert counts and all(isinstance(api, str) and threads >= 1 for api, threads in counts)
     record = {
@@ -317,7 +399,7 @@ def observe_cancellation(*, started: str, stopped: str, cancelled):
 
 
 def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp_path):
-    """V610: a second worker start refusal drains a real first call through its cancel flag."""
+    """a second worker start refusal drains a real first call through its cancel flag."""
     start = multiprocessing.get_context("spawn").Process.start
     processes = []
 

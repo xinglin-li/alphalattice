@@ -29,7 +29,9 @@ def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWor
     and each group pays a copy of a few seconds.
     """
 
-    return build_real_risk_workspace(tmp_path_factory.mktemp("real-risk-workspace"))
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("real-risk-workspace"), factory=tmp_path_factory
+    )
 
 
 @pytest.fixture(scope="session")

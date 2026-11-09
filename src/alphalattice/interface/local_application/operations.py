@@ -1,4 +1,4 @@
-"""The operation registry: every typed operation, its CLI name and its fields (C1 rule 3).
+"""The operation registry: every typed operation, its CLI name and its fields.
 
 The operations are the ``PortfolioResearchOperation`` literal; their fields are the request's
 own field contract; which only read is the activity ledger's ``READ_OPERATIONS``. This module
@@ -947,7 +947,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "HOST_STOP": Command(
         "host",
         "stop",
-        "Stops this workspace's Host once its running work has ended; no Task is cancelled.",
+        "Stops this workspace's Host at safe points and retains Tasks for resumption.",
     ),
     "UPGRADE_ACKNOWLEDGE": Command(
         "upgrade",
@@ -1195,8 +1195,8 @@ def _types(spec: dict[str, Any], definitions: dict[str, Any]) -> list[str]:
 
 
 def _reference(spec: dict[str, Any]) -> bool:
-    """Whether the contract types a field as a hash or an id, or a list of them (V399), or
-    names it an id the Host issues around one (`reference: issued`, V561)."""
+    """Whether the contract types a field as a hash or an id, or a list of them, or
+    names it an id the Host issues around one (`reference: issued`)."""
     if spec.get("reference") == "issued":
         return True
     options = (spec, *spec.get("anyOf", []))
@@ -1219,7 +1219,7 @@ def _first_sentence(text: str) -> str:
 
 
 def _limits(spec: dict[str, Any], definitions: dict[str, Any]) -> str:
-    """A field's choices and range as its contract states them, in a few words (V401)."""
+    """A field's choices and range as its contract states them, in a few words."""
     found: list[str] = []
     for option in _schema_options(spec, definitions):
         if option.get("enum"):
@@ -1243,7 +1243,7 @@ def _limits(spec: dict[str, Any], definitions: dict[str, Any]) -> str:
 
 
 def _inner_required(document: dict[str, Any]) -> dict[str, list[str]]:
-    """Each request field typed by a model, and the fields that model requires (V373)."""
+    """Each request field typed by a model, and the fields that model requires."""
     models = document.get("$defs", {})
     found: dict[str, list[str]] = {}
     for name, spec in sorted(document["properties"].items()):
@@ -1331,7 +1331,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("cpu-budget", "The CPU budget and how many Tasks run at once."),
             ("incident", "The supervisor's incidents and their remedies."),
             ("upgrade", "What an installed upgrade changed."),
-            ("host", "This workspace's Host: stop it once its running work has ended."),
+            ("host", "This workspace's Host: stop at safe points and retain Tasks for resumption."),
         ),
     ),
     (
@@ -1375,7 +1375,7 @@ ALTERNATIVES: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
     ),
 }
 """The requests whose owner takes exactly one of several field groups, which `schema show` states
-as its `oneOf` (V409, the review's F4). The gate holds each group to the request's own fields."""
+as its `oneOf` (the review's F4). The gate holds each group to the request's own fields."""
 
 
 def table() -> dict[str, Any]:
@@ -1398,7 +1398,7 @@ def table() -> dict[str, Any]:
         },
         "flags": {name: flag_name(name) for name in sorted(properties)},
         "primary": list(PRIMARY),
-        # Each field's meaning and limits, from its contract (SC3), for the help (V401).
+        # Each field's meaning and limits, from its contract (SC3), for the help.
         "descriptions": {
             name: _first_sentence(spec.get("description", ""))
             for name, spec in sorted(properties.items())
@@ -1414,23 +1414,23 @@ def table() -> dict[str, Any]:
             for operation, (required, allowed) in sorted(contracts.items())
         },
         "types": {name: _types(spec, definitions) for name, spec in sorted(properties.items())},
-        # Each object field whose owner's model requires fields of its own (V373), so a next
+        # Each object field whose owner's model requires fields of its own, so a next
         # request that fills such an object in part reads as a template naming what is left.
         "inner_required": _inner_required(document),
         # Each field the contract types as a hash or an id: the only ones where the client reads
-        # a beginning the compact view shows back as the whole value (V393, V399).
+        # a beginning the compact view shows back as the whole value.
         "references": sorted(name for name, spec in properties.items() if _reference(spec)),
         "person_only": sorted(PERSON_ONLY),
         "first_use": sorted(FIRST_USE_STEPS),
         # The operations that change nothing (the activity ledger's): each answer names what it
-        # read and reads again from itself through `--from` (V449).
+        # read and reads again from itself through `--from`.
         "reads": sorted(READ_OPERATIONS),
         "collections": sorted(op for op, command in GRAMMAR.items() if command.collection),
-        # Each request's exactly-one field groups, as its owner refuses otherwise (V409).
+        # Each request's exactly-one field groups, as its owner refuses otherwise.
         "alternatives": {
             op: [list(group) for group in groups] for op, groups in sorted(ALTERNATIVES.items())
         },
-        # The top-level help's common path and its objects in the research's order (V401).
+        # The top-level help's common path and its objects in the research's order.
         "help_groups": [[group, [list(pair) for pair in nouns]] for group, nouns in HELP_GROUPS],
         "common_path": list(COMMON_PATH),
     }

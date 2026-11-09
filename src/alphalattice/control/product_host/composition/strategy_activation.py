@@ -1,10 +1,10 @@
-"""A person's activation of an installed research strategy's reviewed book (LS1, V459; OW12).
+"""A person's activation of an installed research strategy's reviewed book (LS1; OW12).
 
 The daily chain, a research update bringing data, scores, calibration and the book's next
 positions to the latest completed session, reads three bindings for a package: its score
 inputs, its calibration seed and its decision checkpoint. An installed research strategy
 (`NON_DEFAULT_RESEARCH`) has none until a person activates one of its books, so its books
-replay history and never give their next positions (V459).
+replay history and never give their next positions.
 
 An activation builds the three from the strategy's own research and binds them in one
 manifest write, with no fit, no replay and no book built from final weights:
@@ -20,7 +20,7 @@ manifest write, with no fit, no replay and no book built from final weights:
   installed calendar's through the horizon.
 
 A book whose package moved since it ran is refused: running it again and activating that run
-is the re-bind (V458). A deactivation removes the three bindings; the history stays readable.
+is the re-bind. A deactivation removes the three bindings; the history stays readable.
 """
 
 from __future__ import annotations
@@ -318,13 +318,13 @@ class StrategyActivation:
 
         Args:
             session: The Host's workspace session (its workspace, Task registry and gate).
-            manifest: The one manifest the Host's applications read (V182); the write reads
+            manifest: The one manifest the Host's applications read; the write reads
                 the file under the gate and refuses one that differs from it.
             packages: The installed packages by strategy id.
             ledger: The Portfolio ledger the books and the decision checkpoints live in.
             read_experiment: A completed study's readback, its document included.
             clock: The observed time.
-            hold: The Host's refresh of the one manifest every application reads (V182).
+            hold: The Host's refresh of the one manifest every application reads.
             read_information: Metadata-only summary locating the sealed study's date sources.
             read_review: The review owner's standing for the exact book Task's published result.
         """
@@ -1407,7 +1407,7 @@ class StrategyActivation:
             "claim": "FORWARD_RESEARCH_NOT_TRADING_ADVICE",
             "next_requests": {
                 "update": {"operation": "RESEARCH_UPDATE_PLAN", "strategy_package_id": package_id},
-                # The person's one click back, which the agent names when it tells them (STOPS-1).
+                # The person's one click back, which the agent names when it tells them.
                 "deactivate": {
                     "operation": "STRATEGY_DEACTIVATE",
                     "strategy_package_id": package_id,
@@ -1533,7 +1533,7 @@ class StrategyActivation:
         }
 
     def offer(self, package_id: str) -> dict[str, object]:
-        """A package's state and the request a person can take on it (U73).
+        """A package's state and the request a person can take on it.
 
         A package its bindings name is offered its stop. One that does not run forward from
         its installed package is offered the activation of its newest completed book when

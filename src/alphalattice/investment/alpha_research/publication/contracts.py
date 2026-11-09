@@ -165,7 +165,7 @@ class WorkspaceObservationHistoryMarker(_Contract):
 
 
 class SectorReclassificationRecord(_Contract):
-    """One listing's move to another Sector, read from its effective session on (V346)."""
+    """One listing's move to another Sector, read from its effective session on."""
 
     listing_id: str = Field(min_length=1)
     effective_session: date
@@ -223,7 +223,7 @@ class FrozenScoreObservationSnapshot(_Contract):
     ordered_listing_ids: tuple[str, ...]
     sector_by_listing_id: dict[str, str]
     sector_history: SectorHistoryRecord | None = Field(default=None, exclude_if=lambda v: v is None)
-    """The reclassifications its sessions read beside the current map (V346); absent while
+    """The reclassifications its sessions read beside the current map; absent while
     none is in force, so such a snapshot is what it was."""
     array_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     array_blocks: tuple[str, ...] | None = Field(default=None, exclude_if=lambda v: v is None)

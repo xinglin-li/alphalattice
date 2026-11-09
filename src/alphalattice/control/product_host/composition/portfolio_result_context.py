@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from bisect import bisect_left
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
@@ -10,6 +11,7 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 import numpy as np
+import xxhash
 from numpy.typing import NDArray
 
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
@@ -33,6 +35,7 @@ from alphalattice.control.product_host.research_authoring.execution import (
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
     factor_input_paths,
+    read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -808,17 +811,24 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
             "by_listing": {},
         }
     shown = (body.get("position") or {}).get("session")
-    key = (
-        str(binding),
-        str(snapshot),
-        str(revision),
-        str(shown),
-        canonical_hash(tuple(str(v) for v in listings)),
+    canonical = json.dumps(
+        [
+            binding,
+            snapshot,
+            revision,
+            shown if isinstance(shown, str) else None,
+            [str(value) for value in listings],
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
-    cached = _SECTOR_CACHE.get(key)
-    if cached is not None:
-        return cached
+    key = (xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")), canonical)
     try:
+        # A sealed identity may be the same in two workspaces; each must still have its bytes.
+        read_factor_bundle(workspace, str(binding))
+        cached = _SECTOR_CACHE.get(key)
+        if cached is not None:
+            return cached
         source_workspace, artifact_root = factor_input_paths(workspace, str(binding))
         manifest = MarketDataRepository(source_workspace).load_universe_manifest_revision(
             str(revision)
@@ -889,6 +899,44 @@ def _risk_session_gap(start: date, through: date) -> int:
     )
 
 
+def _dated_risk_inputs(
+    workspace: Path,
+    surface: CausalRiskReturnSurface,
+    classification: SectorRevisionMap,
+    sessions: tuple[date, ...],
+    session: date,
+    readback: Mapping[str, Any],
+    positions: PortfolioUpdatePositions,
+) -> tuple[
+    date,
+    NDArray[np.float64],
+    list[str],
+    tuple[str, ...],
+    set[str],
+    dict[str, float],
+    float,
+    tuple[date, ...],
+]:
+    """Prepare the covered listing axis and return history for one dated position."""
+    classified = {entry.listing_id for entry in classification.entries}
+    listings = tuple(v for v in surface.epoch.ordered_listing_ids if v in classified)
+    calendar = (
+        [p.formation_session for p in planned_local_qa_schedule(sessions[-1], session)]
+        if session > sessions[-1]
+        else [session]
+    )
+    gap = tuple(v for v in calendar if sessions[-1] < v < session)
+    carried = _carried_returns(workspace, surface, listings, (sessions[-1], *gap))
+    formation, forward, hashes = (
+        (session, *carried) if carried else (calendar[1], np.empty((0, len(listings))), [])
+    )
+    missing = {v for v, column in zip(listings, forward.T, strict=True) if np.isnan(column).any()}
+    held = dict(zip(readback["listing_labels"], positions.weights, strict=True))
+    total = sum(abs(w) for w in held.values())
+    covered = sum(abs(held.get(v, 0.0)) for v in listings if v not in missing) / (total or 1.0)
+    return formation, forward, hashes, listings, missing, held, covered, gap
+
+
 def _date_risk(
     workspace: Path,
     manifest: ResearchWorkspaceManifest,
@@ -907,22 +955,9 @@ def _date_risk(
     classification = closure.load_model(
         category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
     )
-    classified = {entry.listing_id for entry in classification.entries}
-    listings = tuple(v for v in surface.epoch.ordered_listing_ids if v in classified)
-    calendar = (
-        [p.formation_session for p in planned_local_qa_schedule(sessions[-1], session)]
-        if session > sessions[-1]
-        else [session]
+    formation, forward, hashes, listings, missing, held, covered, gap = _dated_risk_inputs(
+        workspace, surface, classification, sessions, session, readback, positions
     )
-    gap = tuple(v for v in calendar if sessions[-1] < v < session)
-    carried = _carried_returns(workspace, surface, listings, (sessions[-1], *gap))
-    formation, forward, hashes = (
-        (session, *carried) if carried else (calendar[1], np.empty((0, len(listings))), [])
-    )
-    missing = {v for v, column in zip(listings, forward.T, strict=True) if np.isnan(column).any()}
-    held = dict(zip(readback["listing_labels"], positions.weights, strict=True))
-    total = sum(abs(w) for w in held.values())
-    covered = sum(abs(held.get(v, 0.0)) for v in listings if v not in missing) / (total or 1.0)
     producer = RiskSurfaceProducer()
     recipe = producer.recipe
     required = recipe.conditional_volatility_initialization_sessions + recipe.factor_fit_sessions
@@ -933,13 +968,25 @@ def _date_risk(
         return _unevaluated(f"risk_research.{why}", covered)
     columns = [surface.epoch.ordered_listing_ids.index(v) for v in listings]
     source = canonical_hash({"surface": surface.surface_hash, "carried": hashes})
-    key = (
-        str(readback["publication"]["content_hash"]),
-        authority.authority_hash,
-        recipe.recipe_hash,
-        positions.position_hash,
-        source,
+    names = {row["listing_id"]: row for row in holdings(readback)}
+    canonical = json.dumps(
+        [
+            readback["publication"]["content_hash"],
+            authority.authority_hash,
+            recipe.recipe_hash,
+            positions.position_hash,
+            formation.isoformat(),
+            positions.schedule.entry_session.isoformat(),
+            positions.weights,
+            list(readback["listing_labels"].items()),
+            [(listing, row["alias"], row["name"]) for listing, row in names.items()],
+            source,
+        ],
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
     )
+    key = (xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")), canonical)
     cached = _DATE_RISK.get(key)
     if cached is not None:
         return cached
@@ -957,7 +1004,6 @@ def _date_risk(
     w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
     variance, shares = float(model.book_variance(w)), model.variance_shares(w)
     systematic, specific = model.variance_split(w)
-    names = {row["listing_id"]: row for row in holdings(readback)}
     value = {
         "risk_status": "EVALUATED",
         "risk_as_of": formation.isoformat(),

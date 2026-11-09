@@ -44,7 +44,7 @@ if sys.platform == "win32":
 def test_observation_capacity_takes_a_fresh_sample_when_the_workspace_reopens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """V680: a retained sample from another session cannot set this session's allowance."""
+    """a retained sample from another session cannot set this session's allowance."""
 
     from alphalattice.control.workspace_runtime.storage import capacity
 
@@ -266,6 +266,41 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
         read_factor_bundle,
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
+
+    # Emulate Windows' path limit at the real bundle-reader boundary.
+    long_root = tmp_path / ("long-workspace-" + "x" * 80)
+    long_root.mkdir()
+    (long_bundle,) = _inputs(long_root, count=1)
+    original_open = Path.open
+    long_reads = []
+
+    def windows_path_limit(path, *args, **kwargs):
+        value = str(path)
+        if len(value) >= 260:
+            long_reads.append(value)
+            if not value.startswith("\\\\?\\"):
+                raise FileNotFoundError("simulated Windows long-path refusal")
+        return original_open(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        if os.name == "nt":
+            patch.setattr(Path, "open", windows_path_limit)
+        try:
+            readback = read_factor_bundle(long_root, long_bundle.binding_hash)
+        except AuthoringError as error:
+            if str(error) != "research_experiment.input_file_unavailable":
+                raise
+            pytest.fail(f"long-path readback was refused: {error}")
+        except FileNotFoundError as error:
+            if str(error) != "simulated Windows long-path refusal":
+                raise
+            pytest.fail(f"long-path readback was refused: {error}")
+        assert readback == long_bundle
+    assert os.name != "nt" or long_reads
+    missing = long_root / "research-inputs" / ("a" * 64) / "manifest.json"
+    with pytest.raises(FileNotFoundError) as failure:
+        read_factor_bundle(long_root, "a" * 64, verify=False)
+    assert failure.value.filename == str(missing.resolve())
 
     (bundle,) = _inputs(tmp_path, count=1)
     source = tmp_path / "research-inputs" / bundle.binding_hash / "source"
@@ -555,6 +590,16 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         # The installed binding and a succeeded historical publication both
         # name their exact missing manifest, without discarding the references.
         before = storage.readback()
+        foreign = tmp_path / "elsewhere" / "research-inputs" / ("a" * 64) / "manifest.json"
+
+        def foreign_missing(_self):
+            raise FileNotFoundError(2, "missing", str(foreign))
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(type(app.revisions), "publications", foreign_missing)
+            with pytest.raises(FileNotFoundError) as unrelated:
+                storage.readback()
+            assert unrelated.value.filename == str(foreign)
         for binding in (default.binding_hash, c.binding_hash):
             folder = tmp_path / "research-inputs" / binding
             aside = tmp_path / f"held-{binding}"

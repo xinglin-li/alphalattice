@@ -65,9 +65,10 @@ from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_fi
 
 STOPPING: dict[str, object] = {
     "status": "HOST_STOPPING",
-    "detail": "This Host stops once its running work has ended: it answers this, lets its Tasks "
-    "finish, joins its workers and releases the workspace; nothing is cancelled. Serve it again "
-    "when work needs it.",
+    "detail": "This Host is stopping its Tasks at safe points and will keep their completed work "
+    "for resumption. It joins the workers before releasing the workspace. Read Task status "
+    "while it finishes; serve it again to resume.",
+    "finishing_task_ids": [],
     "next_action": "SERVE_AGAIN_WHEN_WORK_NEEDS_IT",
 }
 """The answer to `host stop`, given before the Host begins to stop."""
@@ -584,16 +585,20 @@ def main(
         session.idle_timeout_seconds = 0
     # `start` is inside the cleanup boundary, not before it. It acquires a
     # workspace lease and starts a worker before it binds a socket, so a failure
-    # part-way through still has something to release -- and this `finally` is
-    # what releases it.
+    # part-way through is released by `finally`.
     tied = arguments.stop_on_stdin and _stdin_ties()
     stop = threading.Event()
 
     def stopping() -> dict[str, object]:
+        stop.set()
         if session.dispatcher is not None:
             session.dispatcher._begin_drain()
-        stop.set()
-        return dict(STOPPING)
+        return {
+            **STOPPING,
+            "finishing_task_ids": (
+                [] if session.dispatcher is None else session.dispatcher.finishing()
+            ),
+        }
 
     def watched() -> None:
         _wait_for_stop_on_stdin()
@@ -647,6 +652,7 @@ def main(
             ):
                 stopping()
     except KeyboardInterrupt:
+        stopping()
         print("\nStopping.")  # noqa: T201  # bootstrap/lifecycle
     finally:
         # Unbounded on purpose: it joins every request thread and the dispatcher

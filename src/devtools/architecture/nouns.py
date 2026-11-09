@@ -77,21 +77,23 @@ def _resolver(root: Path, tree: ast.AST) -> Callable[[ast.expr], _Resolved | Non
     """Resolve imported noun types once for the decision walk."""
 
     types = _decision_types(root)
-    by_package = {
-        (defining, name): value
-        for defining, names in types.items()
-        for name, value in names.items()
-    }
+    by_name: dict[str, list[tuple[str, _Decision]]] = {}
+    for defining, names in types.items():
+        for name, value in names.items():
+            by_name.setdefault(name, []).append((defining, value))
     named: dict[str, _Resolved] = {}  # local name -> (Type, noun, owners, caller input)
     modules: dict[str, str] = {}  # local name -> a defining module imported whole
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             for alias in node.names:
-                for (defining, name), (noun, owners, input_contract) in by_package.items():
-                    if alias.name == name and (
-                        node.module == defining or _inside(node.module, owners)
-                    ):
-                        named[alias.asname or alias.name] = (name, noun, owners, input_contract)
+                for defining, (noun, owners, input_contract) in by_name.get(alias.name, ()):
+                    if node.module == defining or _inside(node.module, owners):
+                        named[alias.asname or alias.name] = (
+                            alias.name,
+                            noun,
+                            owners,
+                            input_contract,
+                        )
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name in types:

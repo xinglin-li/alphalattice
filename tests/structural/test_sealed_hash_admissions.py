@@ -1,4 +1,4 @@
-"""TE12 over a whole class (NM2, V451): each equality on a hash NM1's rule moved has a reason.
+"""TE12 over a whole class (NM2): each equality on a hash NM1's rule moved has a reason.
 
 NM1 moved how a recipe, strategy or package hash is computed. An admission that compares a value
 sealed before the move with the installed one, by equality, refuses it. One did, unseen: the
@@ -63,7 +63,7 @@ CLASSIFIED: dict[str, str] = {
         WORKSPACE
     ),
     "control/product_host/composition/rolling_portfolio_report.py::_baseline": (
-        WORKSPACE + "; V690 binds the exact sealed source book program to its checkpoint's "
+        WORKSPACE + "; bind the exact sealed source book program to its checkpoint's "
         "package before extending the report; neither is inferred from an installed recipe"
     ),
     "control/product_host/composition/strategy_activation.py::StrategyActivation._book": WORKSPACE,
@@ -72,13 +72,12 @@ CLASSIFIED: dict[str, str] = {
     ),
     "control/product_host/composition/strategy_activation.py::"
     "StrategyActivation._activation_book": (
-        WORKSPACE + "; V614 moves the unchanged already-active package/hash guard into the shared "
+        WORKSPACE + "; the unchanged already-active package/hash guard is in the shared "
         "book admission read used by activation, its offer and REPORT standing"
     ),
     "control/product_host/composition/strategy_activation.py::StrategyActivation._state": WORKSPACE,
     "control/product_host/composition/strategy_activation.py::StrategyActivation.dates": (
-        WORKSPACE
-        + "; V589 selects a sealed model set's fit dates against its training admission's "
+        WORKSPACE + "; select a sealed model set's fit dates against its training admission's "
         "component recipe, not an admission or reuse of numbers; both records are from that "
         "workspace and unmatched model sets are not sources of this strategy's dates"
     ),
@@ -103,7 +102,7 @@ CLASSIFIED: dict[str, str] = {
     "StrategyScoringApplication.published_score": WORKSPACE,
     "control/product_host/composition/strategy_scoring.py::"
     "StrategyScoringApplication._verify_step": (
-        WORKSPACE + "; V691 moves the unchanged score/package equality into the shared "
+        WORKSPACE + "; the unchanged score/package equality is in the shared "
         "verified score reader used by verify_step and verify_score_step"
     ),
     "investment/alpha_research/scores/frozen_inference.py::"
@@ -237,7 +236,7 @@ def _sites() -> dict[str, ast.AST]:
 
 
 def test_every_equality_on_a_moved_hash_has_its_reason() -> None:
-    """requirement (TE12, NM2, V451): the walk finds exactly the classified comparisons: one
+    """requirement (TE12, NM2): the walk finds exactly the classified comparisons: one
     added unclassified, or one classified that left, fails here."""
 
     sites = {key for key in _sites() if not key.endswith("#def")}
@@ -245,7 +244,7 @@ def test_every_equality_on_a_moved_hash_has_its_reason() -> None:
 
 
 def test_a_sealed_root_admission_reads_recorded_moves() -> None:
-    """regression (NM2, V451): the heterogeneous closure, sealed before NM1, refused at its pins
+    """regression (NM2): the heterogeneous closure, sealed before NM1, refused at its pins
     because the admission compared its strategy and recipe hashes by equality. Each admission of
     a sealed root reads the recorded moves instead, and holds no such equality."""
 

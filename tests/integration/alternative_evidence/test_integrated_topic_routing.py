@@ -776,7 +776,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
                 window_limit=192,
             )
 
-        # The lead's counterexample: the units rewritten (a changed
+        # The counterexample: the units rewritten (a changed
         # alignment collapsed to an exact repeat) with every seal recomputed
         # is a valid contract with the same closure -- and another record
         # hash. Under the bound file's name it is refused by the store
@@ -2018,7 +2018,7 @@ def test_a_candidate_is_covered_only_when_its_whole_range_was_delivered() -> Non
         overlapping_span_handles,
     )
 
-    # The lead's counterexample: most of the range, not all of it.
+    # The counterexample: most of the range, not all of it.
     held = delivered_ranges(_delivered(("SPAN-M01-R0001", 0, 80, "DOC-A")))
     assert covering_span_handles(held, "DOC-A", 0, 100) == ()
     assert overlapping_span_handles(held, "DOC-A", 0, 100) == ("SPAN-M01-R0001",)

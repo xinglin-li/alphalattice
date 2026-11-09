@@ -499,7 +499,7 @@ class _AdmittedRows:
 def _declared_sample(plan: AlphaFoldArrayPlan) -> pa.Array | None:
     """The plan's listing axis, when it is a declared sample of the Panel's listings.
 
-    An exploration study runs on a sample of its input's names (binding plan, B17): its
+    An exploration study runs on a sample of its input's names: its
     authority's listing axis is a strict subset of the Panel's, and rows of the other
     names are left out. A plan on the Panel's own axis (its `listing_set_hash`) keeps
     refusing any row off that axis, as before.

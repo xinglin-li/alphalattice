@@ -188,7 +188,7 @@
         "alphalattice.investment.portfolio_management.mandates.research_effort"
       ],
       "folds_in": [],
-      "note": "the planning desk retired (RT V312) and its contracts with V327; what is left is the research desk's candidate inventory and the paired panel grid (V1's route)"
+      "note": "the planning desk and its contracts retired; what remains is the research desk's candidate inventory and the paired panel grid"
     },
     "alternative evidence": {
       "description": "Alternative evidence preserves issuer sources, scoped readings and cited findings so a portfolio review can trace the evidence it considers.",
@@ -226,7 +226,7 @@
         "alphalattice.control.research_program.authoring.workflow"
       ],
       "folds_in": [],
-      "note": "level 1 with no peers: only code importing level 0 alone may move there (V213) The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation for V365 and V366 (V325, 2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
+      "note": "level 1 with no peers: only code importing level 0 alone may move there. The Host's research_authoring files are its composition (O3, 2026-09-29): the Desk handoffs, the drafts that compose the Host's input envelope with a Desk's installed domain, the authority resolver over the workspace, and the paired methodology's source resolver over five owners' stores; their one-owner helpers adapt an owner's store to the workspace or translate its refusal into the authoring vocabulary. The Desk computations they held moved: the execution-outcome selection to causal outcomes and the development Alpha mandate to Alpha. One component's lifecycle admission moved to Alpha's scores/lifecycle_preparation.py with MODEL_KERNEL's rotation after dead code was removed (2026-10-01). The Host composition/research_experiment_plan.py owns its existing sealed Task-plan adapter and validation; application-local bounded plan memos rebuild through that same validator. composition/plain_refusals owns invalid Feature and strategy document recovery for the two PLAN consumers in portfolio_research_operations; CLI, Host and Workbench read the same located refusal and bound discovery offers."
     },
     "the agent seam": {
       "description": "The agent seam binds an actor's submitted proposal to its producer and execution provenance so domain owners can seal a response with its origin recorded.",
@@ -4882,15 +4882,14 @@
       "note": "Consumers: scripts/pipeline.py health, which the test manager runs daily; the harness's daily metrics reader takes its JSON. It reads receipts through devtools.pipeline.receipt.read and holders through devtools.testing.requirements.file_holders, each file once."
     },
     "test layout move": {
-      "description": "A test layout move preserves whole-file bodies while reviewed placement decisions relocate tests and their inherited fixture bindings.",
+      "description": "The test layout map admits new test files in their owner's declared location and keeps recorded moved paths readable.",
       "owner": "devtools.testing",
-      "covers": "revision-bound plans, checked file images, explicit pytest fixture providers, import wiring, inverse and collision refusals; coupled size, private-use, legacy and host-fact declaration images; universal root isolation and explicit layer cache bindings; collected per-file fixture closures distinguish unused session exports from consumed provider splits; exact source-derived JSON pointer and registered text/literal locator images, preserving non-location payloads and the original inverse; staged new-file placement from one declared source module and registered owner",
+      "covers": "staged new-file placement from one declared source module and registered owner, recorded test paths and projections for changed path rules",
       "defined_by": [
-        "devtools.testing.layout",
-        "devtools.testing.layout_references"
+        "devtools.testing.layout"
       ],
       "folds_in": [],
-      "note": "Consumers: the structural round-trip holder and the layout pilot call snapshot, plan, apply and inverse. The pipeline consumes this one API; no second command parser or loader. The testing package entry matches TEST-REGISTRY A. Every legacy-area project_discovery binding retires when that move empties its area; unit nodes never activate that binding or golden_cache. Consumers include all existing legacy areas and the integration, contract, e2e and native layer conftests. Root project_isolation applies to every test, including unit and root-only probes, without golden-cache setup. The compatible project_discovery layer fixture only activates golden_cache; it does not install a second discovery guard. layout.plan consumes reviewed reference declarations through layout_references. The staged test-shape check uses the same target map for a new file and its declared source; the map remains after the one-time mover retires."
+      "note": "The one-time mover is retired. The staged test-shape check retains the target map; the impact selector retains recorded old paths, and Git input guards retain path-rule projections. Root project isolation and the layer fixture remain in their existing owners."
     },
     "test layer contract": {
       "description": "A test layer contract confines each registered test to its declared resources and own-phase execution bound.",

@@ -37,6 +37,7 @@ from alphalattice.control.product_host.composition.first_use_road import (
     undated,
 )
 from alphalattice.control.product_host.composition.goal_check import (
+    first_use_answered,
     goal_schema,
     missing_items,
     offer_completion,
@@ -126,7 +127,7 @@ REFERENCE_OPERATIONS = {
     "COMPARE": ("PORTFOLIO",),
     "EVIDENCE_CRO_EXPORT": ("EVIDENCE_CRO",),
     "RESEARCH_UPDATE_READBACK": ("PORTFOLIO",),
-    # A formula factor's trial and its review packet, each read exactly (V371).
+    # A formula factor's trial and its review packet, each read exactly.
     "FEATURE_TRIAL_READBACK": ("DATA_FEATURES",),
     "FEATURE_REVIEW": ("DATA_FEATURES",),
 }
@@ -165,7 +166,7 @@ _DECLARATION_TEMPLATE: dict[str, object] = {
     ],
 }
 """The shortest goal declaration, valid as it stands, its words for the author to replace
-(V378); `goal schema` prints every field."""
+; `goal schema` prints every field."""
 
 MESSAGE_EVENT = "NATIVE_COORDINATION_MESSAGE"
 _EVENT_FIELDS = (
@@ -282,7 +283,7 @@ def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str,
     """The goal's conversation: what the product recorded of its Sessions' work, in time order.
 
     Each request a bound Session sent under the goal is a product fact, and so is an accepted
-    answer filed beside it; messages filed before FLOW-1 stay as recorded.
+    answer filed beside it; previously filed messages stay as recorded.
     """
     rows: list[dict[str, Any]] = []
     for number, entry in enumerate(entries):
@@ -430,7 +431,7 @@ _SESSION_GOAL_OPERATIONS = frozenset(
         "GOAL_ABANDON",
     }
 )
-"""The operations that take the session's own goal when the request names none (V391); a
+"""The operations that take the session's own goal when the request names none; a
 write without its hash applies to the goal's current revision."""
 
 
@@ -448,7 +449,7 @@ class GoalApplication:
         workspace: Path,
         preparation_completed: Callable[[], bool] = lambda: False,
     ) -> None:
-        """Bind the store, clock, owners' reader, Task facts; handoffs name `workspace` (V492)."""
+        """Bind the store, clock, owners' reader, Task facts; handoffs name `workspace`."""
         self.store, self.clock, self.read = store, clock, read
         self.admitted_at, self.task_facts = admitted_at, task_facts
         self.workspace, self.preparation_completed = workspace, preparation_completed
@@ -480,7 +481,7 @@ class GoalApplication:
         return None if session is None else self.store.bound(session)
 
     def first_use(self) -> Goal | None:
-        """The workspace's one first-use goal, if opened (V452); its sentence and date reuse it."""
+        """The workspace's one first-use goal, if opened; its sentence and date reuse it."""
         heads = (self.store.head(goal_id) for goal_id in self.store.goal_ids())
         return next((h for h in heads if h and h.declaration.kind == "FIRST_USE"), None)
 
@@ -597,7 +598,7 @@ class GoalApplication:
 
     @staticmethod
     def delegation_ends(goal: Goal) -> datetime:
-        """When a first-use goal's delegation ends: its hours from its opening (V452)."""
+        """When a first-use goal's delegation ends: its hours from its opening."""
         return goal.intent_registered_at + timedelta(hours=FIRST_USE_HOURS)
 
     def first_use_open(self, goal: Goal) -> bool:
@@ -619,7 +620,7 @@ class GoalApplication:
         }
 
     def delegation(self, goal: Goal, operation: str, caller: str) -> str | None:
-        """The person's delegation one of the goal's requests acts under, if any (V452, OP19).
+        """The person's delegation one of the goal's requests acts under, if any (OP19).
 
         An open first-use goal within its hours delegates its steps (`FIRST_USE_STEPS`) to its
         agent; every other step, and every step after, stays the person's.
@@ -1017,9 +1018,9 @@ class GoalApplication:
     ) -> None:
         """Record one request the goal's work made, and the Task it started, if any.
 
-        A step the person delegated is recorded as theirs, by the delegation that carried it
-        (V452), and one they confirmed by the yes the agent relayed, whole; a network step
-        records what it set.
+                A step the person delegated is recorded as theirs, by the delegation that carried it
+        , and one they confirmed by the yes the agent relayed, whole; a network step
+                records what it set.
         """
         receipt = body.get("receipt")
         task = (
@@ -1274,7 +1275,7 @@ class GoalApplication:
             "sessions": sessions_of(entries),
             "question": self.store.question(goal, entries),
             "tasks": [t.model_dump(mode="json") for t in tasks],
-            # The person's delegation and each step it took, as the ledger keeps it (V452).
+            # The person's delegation and each step it took, as the ledger keeps it.
             **(
                 {"delegation": self.first_use_delegation(goal)}
                 if goal.declaration.kind == "FIRST_USE"
@@ -1309,7 +1310,7 @@ class GoalApplication:
                 task_id=request.task_id,
             )
         if request.operation == "GOAL_OPEN":
-            return opened_goal(self._open(request, caller, provenance), request.goal_declaration)
+            return self._open(request, caller, provenance)
         if (
             request.operation in _SESSION_GOAL_OPERATIONS
             and request.goal_id is None
@@ -1324,7 +1325,7 @@ class GoalApplication:
             prior = self._selected(request)
             declaration = GoalDeclaration.model_validate(request.goal_declaration)
             if "FIRST_USE" in {prior.declaration.kind, declaration.kind}:
-                # A first use keeps its sentence, kind and opening time (V452).
+                # A first use keeps its sentence, kind and opening time.
                 raise ValueError("goal.first_use_is_not_revised")
             if prior.declaration.intent() != declaration.intent():
                 # The previous objective's pre-execution timing must not be attributed
@@ -1451,7 +1452,11 @@ class GoalApplication:
         if prior is not None:
             if prior.revision == 1 and prior.declaration == declaration:
                 answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
-                return {**answer, **self._bind(prior, session)}
+                bound = {**answer, **self._bind(prior, session)}
+                answered = declaration.kind == "FIRST_USE" and first_use_answered(
+                    self.workspace, self.clock
+                )
+                return opened_goal(bound, request.goal_declaration, daily_answered=answered)
             raise ValueError("goal.already_open_revise_it")
         if (dated := undated(self.workspace, declaration, self.clock())) is not None:
             return dict(dated)
@@ -1465,11 +1470,11 @@ class GoalApplication:
         answer = self._save(request, caller, None, declaration=declaration, goal_id=goal_id)
         saved = self.store.load(str(answer["goal_hash"]))
         bound = self._bind(saved, session)
-        return {
+        result = {
             **answer,
             **bound,
             "goal_prompt": goal_prompt(saved, self.workspace),
-            # The goal's commands take it from the session: no id, no hash (V391).
+            # The goal's commands take it from the session: no id, no hash.
             **(
                 {
                     "claim": "This session is bound to the goal: every request it sends is "
@@ -1481,6 +1486,7 @@ class GoalApplication:
                 else {}
             ),
         }
+        return opened_goal(result, request.goal_declaration)
 
     def _bind(self, goal: Goal, session: GoalSession | None) -> dict[str, Any]:
         if session is None:
@@ -1507,7 +1513,7 @@ class GoalApplication:
 
     @staticmethod
     def _reference_clash(goal: Goal, submission: GoalSubmission) -> dict[str, Any] | None:
-        """Refuse clashing ids; identical held references keep a sendable retry (V385)."""
+        """Refuse clashing ids; identical held references keep a sendable retry."""
         held = {r.reference_id: r for r in goal.references}
         declared = [
             ("references", index, draft.reference_id)
@@ -2027,7 +2033,7 @@ class GoalApplication:
         }
         if goal.state != "OPEN":
             return base
-        # A first use keeps the person's sentence: nothing revises it (V452).
+        # A first use keeps the person's sentence: nothing revises it.
         revise = (
             {}
             if goal.declaration.kind == "FIRST_USE"
@@ -2049,7 +2055,7 @@ class GoalApplication:
                 **identity,
                 "goal_hash": goal.goal_hash,
                 # Each open field is None, a choice the client leaves to its reader; the
-                # goal and its revision stay bound (V441). `goal show --save-declaration`
+                # goal and its revision stay bound. `goal show --save-declaration`
                 # writes the completion, and the declaration reads in `show`.
                 "goal_submission": None,
             },
@@ -2339,7 +2345,7 @@ def goal_prompt(goal: Goal, workspace: Path) -> str:
     """The `/goal ` prompt that hands a goal to Claude or Codex, at most 4,000 characters.
 
     Its commands name the goal's workspace, which every command requires, quoted for the shell
-    the CLI prints commands for, so the agent taking the goal runs them as written (V492).
+    the CLI prints commands for, so the agent taking the goal runs them as written.
     """
 
     def command(*parts: str) -> str:

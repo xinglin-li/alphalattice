@@ -57,7 +57,7 @@ CURRENT_SNAPSHOT_HANDLE = "current"
 
 EXPLORATION_SAMPLE_MARK = ".sample-"
 """A universe handle `<profile>.sample-<n>` names a sample of the profile's names: the
-exploration lane's small universe (binding plan, B17)."""
+exploration lane's small universe."""
 MINIMUM_EXPLORATION_SAMPLE = int(AlphaMetricPolicy.model_fields["minimum_cross_section"].default)
 """An Alpha study ranks a session only on this many names (its metric policy's minimum
 cross-section); a smaller sample would publish no rank IC."""
@@ -177,7 +177,7 @@ def panel_sector_labels(
 def exploration_sample(
     listing_ids: tuple[str, ...], size: int, sectors: Mapping[str, str]
 ) -> tuple[str, ...]:
-    """A sample of a Panel's listings by Sector, in the axis order (binding plan, decision 4).
+    """A sample of a Panel's listings by Sector, in the axis order.
 
     The names are given out one at a time, each to the Sector with the highest Sainte-Lague
     quotient (its names over twice its names taken plus one; a Sector with none taken first;

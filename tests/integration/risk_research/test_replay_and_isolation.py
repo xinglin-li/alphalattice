@@ -90,6 +90,10 @@ def test_output_workspace_cannot_be_the_source_workspace(tmp_path: Path, alias: 
     workflow = _workflow(source=root / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_is_source"):
         workflow._output_workspace(alias)
+    if sys.platform == "win32":
+        extended = Path("\\\\?\\" + str(root / "ws"))
+        with pytest.raises(AuthoringError, match="output_workspace_is_source"):
+            _workflow(source=extended, root=root)._output_workspace(alias)
 
 
 def test_output_workspace_cannot_nest_inside_the_source(tmp_path: Path) -> None:
@@ -98,6 +102,11 @@ def test_output_workspace_cannot_nest_inside_the_source(tmp_path: Path) -> None:
     workflow = _workflow(source=root / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
         workflow._output_workspace("ws/inner")
+    if sys.platform == "win32":
+        extended = Path("\\\\?\\" + str(root / "ws"))
+        workflow = _workflow(source=extended, root=root)
+        with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
+            workflow._output_workspace("ws/inner")
 
 
 def test_source_nested_under_output_is_also_refused(tmp_path: Path) -> None:
@@ -108,6 +117,14 @@ def test_source_nested_under_output_is_also_refused(tmp_path: Path) -> None:
     workflow = _workflow(source=root / "out" / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
         workflow._output_workspace("out")
+    if sys.platform == "win32":
+        extended = Path("\\\\?\\" + str(root / "out" / "ws"))
+        with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
+            _workflow(source=extended, root=root)._output_workspace("out")
+        assert ResearchProgramWorkflow._same_path(
+            Path("\\\\?\\UNC\\server\\share\\source"),
+            Path("\\\\server\\share\\source"),
+        )
 
 
 def test_a_sibling_sharing_a_name_prefix_is_allowed(tmp_path: Path) -> None:

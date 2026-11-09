@@ -27,7 +27,7 @@ _HELD_OFFLINE: ContextVar[bool] = ContextVar("alphalattice_held_offline", defaul
 
 
 def offline(environment: Mapping[str, str] | None = None) -> bool:
-    """Whether the operator's offline switch holds, or a run holds its reads offline (OP5, V250).
+    """Whether the operator's offline switch holds, or a run holds its reads offline (OP5).
 
     The one reader of `ALPHALATTICE_NETWORK_DISABLED`: the workspace's network control and every
     source guard ask it, so the rule cannot differ between them. Only ``1`` holds it.
@@ -50,7 +50,7 @@ def running_held_offline() -> bool:
 
 @contextmanager
 def held_offline() -> Iterator[None]:
-    """Hold this context's reads offline for one run, whatever its workspace allows (OP5, V116).
+    """Hold this context's reads offline for one run, whatever its workspace allows (OP5).
 
     A research run declares the network off and reads only sealed inputs; inside this block the
     network control and every source guard read closed, so the declaration holds by
@@ -162,20 +162,41 @@ def _thread_pool_controller() -> Any:
     """The threadpoolctl view of the loaded numerical libraries, reused while no module loads.
 
     Building the view asks every loaded module for its path, about 10 ms on Windows, and a
-    model scope builds it twice for each fit or prediction. The view is reused while the
-    process's loaded modules are exactly those it was built over, so a library loaded since
-    is always seen; elsewhere, or when the modules cannot be listed, it is built each time.
+    model scope builds it twice for each fit or prediction. On Windows, reuse requires a
+    matching module snapshot; a change during discovery is retried. If snapshots stay
+    unstable or unavailable, discovery refuses. Elsewhere the view is built each time.
     """
     global _THREAD_POOLS
     from threadpoolctl import ThreadpoolController  # type: ignore[import-untyped]  # lazy: quant.
 
-    loaded = _loaded_module_handles()
     with _THREAD_POOLS_LOCK:
-        if loaded is not None and _THREAD_POOLS is not None and _THREAD_POOLS[0] == loaded:
-            return _THREAD_POOLS[1]
-        controller = ThreadpoolController()
-        _THREAD_POOLS = None if loaded is None else (loaded, controller)
-        return controller
+        for attempt in range(16):
+            loaded = _loaded_module_handles()
+            if loaded is None and os.name == "nt":
+                _THREAD_POOLS = None
+                if attempt == 15:
+                    raise RuntimeError("numerical thread-pool module snapshot unavailable")
+                continue
+            if loaded is not None and _THREAD_POOLS is not None and _THREAD_POOLS[0] == loaded:
+                return _THREAD_POOLS[1]
+            try:
+                controller = ThreadpoolController()
+            except OSError as error:
+                # A DLL unloaded between threadpoolctl's module list and its path lookup.
+                # Retry the complete discovery, never use a partial controller.
+                _THREAD_POOLS = None
+                if str(error) != "GetModuleFileNameEx failed" or attempt == 15:
+                    raise
+                continue
+            after = _loaded_module_handles() if loaded is not None else None
+            if loaded is not None and loaded != after:
+                _THREAD_POOLS = None
+                if attempt == 15:
+                    raise RuntimeError("numerical thread-pool modules changed during discovery")
+                continue
+            _THREAD_POOLS = (loaded, controller) if loaded is not None else None
+            return controller
+    raise AssertionError("unreachable thread-pool discovery")
 
 
 def numerical_thread_pools() -> list[dict[str, Any]]:

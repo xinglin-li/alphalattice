@@ -24,7 +24,7 @@ of those failing refuses before a single owner is called.
 carries a key the Host holds in memory and prints and opens for the person; the
 token is read back only by a request that already holds the cookie. A local
 program that knows the port reads the projections, as any reader may, but cannot
-take an operation only a person may take (HB, V183).
+take an operation only a person may take (HB).
 
 **Nothing leaves the machine.** Assets are inlined from local files, the CSP
 forbids every remote origin including `connect-src`, and there is no font,
@@ -85,7 +85,7 @@ BROWSER_REFUSED_PORTS: Final = frozenset(
     | {5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080}
 )
 """The ports Chromium refuses to load (`ERR_UNSAFE_PORT`). Windows may assign one to a
-port-0 bind, as the staged gate met at 1720 (STOPS-1), and the Workbench would not open."""
+port-0 bind, as the staged gate met at 1720, and the Workbench would not open."""
 BROWSER_SAFE_REBINDS: Final = 16
 """How many refused ports one bind holds while it asks for another, before it keeps one."""
 SESSION_COOKIE = "alphalattice_local_session"
@@ -121,7 +121,7 @@ def session_cookie_name(port: int) -> str:
     return f"{SESSION_COOKIE}_{port}"
 
 
-# A content-hashed asset never changes under its path (round 96).
+# A content-hashed asset never changes under its path.
 IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 CONTENT_SECURITY_POLICY = "; ".join(
     (
@@ -181,7 +181,7 @@ class LocalWebResponse:
 
     Every API answer and the host page are `no-store`: the product's state is
     read from its owners, never from a cache. An asset served under its
-    content-hashed path is the one exception (round 96): its bytes cannot
+    content-hashed path is the one exception: its bytes cannot
     change under that path, so it is `immutable` for a year and a warm load
     fetches nothing.
     """
@@ -610,7 +610,7 @@ class LocalWebApplication:
         if isinstance(answer, LocalWebResponse):
             return answer
         if isinstance(answer, dict) and isinstance(answer.get("yaml"), str):
-            # An exported declaration must read back as it was written (V146). Until W12 moves
+            # An exported declaration must read back as it was written. Until W12 moves
             # each exporter onto `dump_declaration`, the answer is rewritten here, once.
             answer = {**answer, "yaml": rewrite_in_declaration_dialect(answer["yaml"])}
         return LocalWebResponse(
@@ -623,8 +623,7 @@ class LocalWebApplication:
         self, status: HTTPStatus, reason: str, *, next_action: str | None = None
     ) -> LocalWebResponse:
         body: dict[str, object] = {"refused": reason}
-        # A raised refusal carries its code's words and way on, as a returned one does (OP4,
-        # V449).
+        # A raised refusal carries its code's words and way on, as a returned one does (OP4).
         words = refusal_words(reason)
         if next_action is not None or words:
             body.update(
@@ -753,7 +752,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.close_connection |= cast(_Server, self.server).stopping.is_set()
 
     def _discard_announced_body(self) -> None:
-        """Read and drop a refused request's announced body after its answer (V551).
+        """Read and drop a refused request's announced body after its answer.
 
         A socket closed with unread bytes is reset, and a client under load could read the
         reset before the refusal (WinError 10053). The body is drained in bounded chunks,

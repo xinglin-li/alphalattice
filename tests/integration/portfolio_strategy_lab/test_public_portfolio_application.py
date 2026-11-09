@@ -1925,7 +1925,7 @@ def test_every_task_that_published_a_result_is_named(tmp_path: Path) -> None:
 def test_result_collection_keeps_readable_rows_and_names_a_bad_result_index(
     tmp_path: Path,
 ) -> None:
-    """V633/TE12: discovery keeps its sound rows; scientific selectors stay fail-closed."""
+    """TE12: discovery keeps its sound rows; scientific selectors stay fail-closed."""
 
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineManifest,
@@ -1968,9 +1968,9 @@ def test_result_collection_keeps_readable_rows_and_names_a_bad_result_index(
 def test_the_shared_axis_says_what_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V336): no Risk return surface where the shared lanes are read is refused
+    """requirement: no Risk return surface where the shared lanes are read is refused
     as absent, apart from several; a frozen axis sharing nothing with the Risk surface says
-    its counts, in a code the Host serves as written (V306: 0 of 466 listings in 80)."""
+    its counts, in a code the Host serves as written (0 of 466 listings in 80)."""
 
     from alphalattice.interface.local_application.failure_codes import safe_failure_code
     from alphalattice.investment.portfolio_strategy_lab.application import resolution

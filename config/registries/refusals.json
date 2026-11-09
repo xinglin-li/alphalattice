@@ -23,6 +23,7 @@
 "test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_size.data_files_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_size.fence_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "reason": "A structural_fence row names a tests/structural pattern once, one of the fence laws and why."},
+"test_size.whole_tree_guards_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "reason": "The whole_tree_guards rule names why, the paths its guards read and the guards too slow for the commit stage."},
 "testing.layer_contract": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "testing.layer_contract_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
 "test_size.required_selection_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "message_id": "test_size.required_selection_invalid"},
@@ -9391,12 +9392,12 @@
 "native_bridge.assignment_ambiguous": {
 "owner": "native_bridge",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A retained pre-FLOW-1 context has no unique assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
+"classification_note": "A retained legacy context has no unique assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
 },
 "native_bridge.assignment_not_observed": {
 "owner": "native_bridge",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A retained pre-FLOW-1 context has no observed assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
+"classification_note": "A retained legacy context has no observed assignment proof. goals.py:479-489 explicitly says nothing writes these historical fields now."
 },
 "native_bridge.binding_ambiguous": {
 "owner": "native_bridge",

@@ -15,6 +15,7 @@ from devtools.testing import collection
 from tests.structural.pytest_support import child_environment
 
 TEST_SOURCE = "src/devtools/testing/collection.py"
+ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.proves("testing.session_footprint")
@@ -23,6 +24,7 @@ TEST_SOURCE = "src/devtools/testing/collection.py"
     [
         (0, "normal"),
         (2, "normal"),
+        (2, "golden-summary"),
         (0, "collision"),
         (0, "nested"),
         (0, "fixture-error"),
@@ -44,8 +46,16 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         + "    return root\n"
         "@pytest.fixture(scope='session')\n"
         "def no_root(): return 7\n"
-        "def test_seed(seed, no_root):\n"
-        "    assert (seed/'payload').stat().st_size == 37 and no_root == 7\n",
+        + ("@pytest.mark.large\n" if scenario == "golden-summary" else "")
+        + "def test_seed(seed, no_root):\n"
+        "    assert (seed/'payload').stat().st_size == 37 and no_root == 7\n"
+        + (
+            "    from devtools.evaluation.golden_workspaces import note_acquisition\n"
+            "    note_acquisition(dict(recipe='probe', nested=False, cold=True, "
+            "fill_seconds=1.25, lock_seconds=0.0, copy_seconds=0.0))\n"
+            if scenario == "golden-summary"
+            else ""
+        ),
         encoding="utf-8",
     )
     monkeypatch.setenv(
@@ -104,6 +114,9 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert done.returncode == (1 if scenario == "fixture-error" else 0), done.stdout + done.stderr
+    if scenario == "golden-summary":
+        summary = done.stdout.partition("Golden fills in Large tests")[2]
+        assert all(value in summary for value in ("test_seed", "1.250", "probe:fill"))
     record = tmp_path / f"session-footprint-{'f' * 32}-main.json"
     if scenario == "nested":
         assert not record.exists()
@@ -215,3 +228,61 @@ def test_a_crashed_workers_prefetched_case_keeps_its_place_in_the_order() -> Non
     worker = SimpleNamespace(workerinput={}, config=controller)
     scheduler.pytest_configure_node(worker)
     assert worker.workerinput["recorded_durations"][node] == 900.0
+
+
+@pytest.mark.proves("testing.narrow_fixture_scratch_goes_with_it")
+@pytest.mark.parametrize("verdict", ["passed", "failed", "teardown"])
+def test_a_module_fixtures_roots_go_with_it_unless_a_test_failed(tmp_path, verdict):
+    """Its own teardown still reads its root; then the root goes, and a session's stays.
+
+    A teardown that raises keeps its root, as a failed test does."""
+    (tmp_path / "test_held.py").write_text(
+        "import pytest\n"
+        "@pytest.fixture(scope='module')\n"
+        "def held(tmp_path_factory):\n"
+        "    root = tmp_path_factory.mktemp('held')\n"
+        "    (root / 'payload').write_bytes(b'x' * 37)\n"
+        "    yield root\n"
+        "    assert (root / 'payload').is_file()\n"
+        f"    assert {verdict != 'teardown'}, 'teardown failed'\n"
+        "@pytest.fixture(scope='session')\n"
+        "def kept(tmp_path_factory):\n"
+        "    return tmp_path_factory.mktemp('kept')\n"
+        f"def test_one(held, kept):\n    assert {verdict != 'failed'}\n",
+        encoding="utf-8",
+    )
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "pytest",
+            "-p",
+            "tests.pytest_environment",
+            "--noconftest",
+            "--rootdir",
+            str(tmp_path),
+            "--basetemp",
+            str(tmp_path / "base"),
+            "-o",
+            "addopts=",
+            "-o",
+            "tmp_path_retention_policy=failed",
+            "-q",
+            str(tmp_path / "test_held.py"),
+        ],
+        cwd=tmp_path,
+        env=child_environment(
+            PYTHONPATH=os.pathsep.join(str(p) for p in (ROOT, ROOT / "src")),
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            PYTEST_PLUGINS="",
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf8",
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert done.returncode == (0 if verdict == "passed" else 1), done.stdout + done.stderr
+    assert (tmp_path / "base/held0").exists() == (verdict != "passed")
+    assert (tmp_path / "base/kept0").is_dir()

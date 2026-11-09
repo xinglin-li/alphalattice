@@ -166,7 +166,7 @@ class RiskExperimentCompiler:
             recipe_hash=admission.recipe_hash,
             parameter_domain_hash=admission.parameter_domain_hash,
             # The code that runs is bound by the study plan's implementation hash
-            # (binding plan, P), not by the Program; the environment is provenance,
+            # , not by the Program; the environment is provenance,
             # recorded beside each estimate (LAWS.md ID6).
         )
         desk_program_hash = str(

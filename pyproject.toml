@@ -12,7 +12,7 @@
 # product needs all of them; a narrower environment is a deliberate choice.
 [project]
 name = "alphalattice"
-version = "0.2.5"
+version = "0.2.6"
 description = "A local quantitative research workstation for Claude Code and Codex."
 authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"
@@ -28,6 +28,7 @@ dependencies = [
     # `protocols.actor_execution.projections` imports it at module load and is
     # reached by deterministic Factor and Evidence contracts.
     "tiktoken>=0.13,<1",
+    "xxhash>=3.7,<4",
 ]
 
 [project.scripts]
@@ -98,6 +99,7 @@ semantic = [
 
 [dependency-groups]
 dev = [
+    "ast-grep-cli==0.50.0",
     "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
@@ -105,12 +107,15 @@ dev = [
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
     "pandas-stubs>=3.0,<4",
+    "pip-licenses>=5,<6",
     "portalocker>=3.2,<4",
     "pre-commit>=4.3,<5",
+    "pre-commit-hooks>=5,<7",
     "py-spy>=0.4,<1",
     "pyinstrument>=5.1,<6",
     "pytest>=8.4,<10",
     "pytest-cov>=6,<8",
+    "pytest-socket>=0.7,<1",
     "pytest-split>=0.10,<1",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist==3.8.0",
@@ -124,18 +129,23 @@ dev = [
 order = [
     "pytest-randomly>=5,<6",
 ]
-# Coverage-based test selection.
-testmon = [
-    "pytest-testmon>=2.2,<3",
-]
 # Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
 codspeed = [
     "pytest-codspeed==5.0.3",
+    "pytest-test-groups==1.2.1",
+]
+# The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
+supply-chain = [
+    "cyclonedx-bom==7.5.0",
+    "pip-audit==2.10.1",
 ]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=2.0.9",
+]
+mutation = [
+    "mutmut>=3,<4",
 ]
 
 [tool.uv]

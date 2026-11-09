@@ -1,6 +1,79 @@
 {
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
+  "selection_readers": {
+    "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
+      "inputs": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py"
+      ]
+    },
+    "tests/integration/local_application/test_wheel_runtime.py::test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg": {
+      "inputs": [
+        "pyproject.toml",
+        ".agents/skills/alphalattice-research/references/operating.md",
+        ".claude/skills/alphalattice-research/references/operating.md",
+        "docs/public-source/upgrading.md"
+      ]
+    },
+    "tests/integration/local_application/test_product_script_refusals.py::test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_carries": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/local_application/test_cli_printed_commands.py::test_every_refusal_and_answer_template_command_parses": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/product_host/test_research_flow_answers.py::test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/integration/workspace_runtime/test_network_access.py::test_every_network_way_on_reads_the_effective_decision": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_every_plan_expiry_refusal_offers_its_replan": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form": {
+      "inputs": [
+        "src/alphalattice/interface/local_application/refusal_words.json"
+      ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape": {
+      "inputs": [
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_review_application.py",
+        "src/alphalattice/evidence/alternative_evidence/runtime/coverage.py",
+        "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py"
+      ]
+    },
+    "tests/structural/test_wait_caps.py::test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed": {
+      "facet": "deadline_owners",
+      "within": [
+        "src/alphalattice/interface/local_application/*.py",
+        "src/alphalattice/control/product_host/*.py",
+        "src/alphalattice/control/workspace_runtime/*.py"
+      ]
+    },
+    "tests/structural/test_lifecycle_tables.py::test_every_lifecycle_set_is_registered_with_its_reason": {
+      "facet": "lifecycle_sets",
+      "within": [
+        "src/alphalattice/*.py"
+      ]
+    },
+    "tests/integration/product_host/test_local_web_service.py::test_every_web_handler_preserves_every_typed_owner_exception": {
+      "facet": "class_declarations",
+      "within": [
+        "src/alphalattice/*.py"
+      ]
+    }
+  },
   "defaults": [
     {
       "pattern": "tests/integration/alpha_research/test_alpha_product_recipe.py*",
@@ -2069,7 +2142,6 @@
         "src/devtools/pipeline/stage.py",
         "src/devtools/testing/__init__.py",
         "src/devtools/testing/layout.py",
-        "src/devtools/testing/layout_references.py",
         "src/devtools/testing/requirements.py",
         "src/devtools/testing/sizes.py",
         "+src/*",
@@ -2335,6 +2407,27 @@
       "reason": "It builds and checks the Local Web assets from copies in tmp_path, so only the builder, its assets, labels or registries can change it; the post-merge tier runs it whole.",
       "escape_class": "web asset build or child check fails",
       "review_date": "2026-12-03"
+    },
+    {
+      "pattern": "tests/structural/test_documented_commands.py::test_every_documented_command_line_parses*",
+      "owner": "tests.structural",
+      "inputs": [
+        "AGENTS.md",
+        "README.md",
+        "README.zh-CN.md",
+        ".agents/skills/alphalattice-research/*",
+        ".claude/skills/alphalattice-research/*",
+        ".codex/agents/*",
+        ".claude/agents/*",
+        "docs/public-source/*",
+        "config/registries/messages.json",
+        "scripts/run_alphalattice.py",
+        "src/alphalattice/interface/local_application/cli*.py",
+        "src/alphalattice/interface/local_application/operations.json"
+      ],
+      "reason": "It parses every command line the guides, skills, agent cards and public documents show through the CLI grammar, about a second; it runs when one of those or the grammar changed, which a skill copy edited alone reached develop past (11-05).",
+      "escape_class": "a documented command line the CLI no longer parses, or a skill copy out of step",
+      "review_date": "2026-12-07"
     }
   ],
   "structural_fence": [
@@ -2481,115 +2574,25 @@
   ],
   "quarantine": [
     {
-      "node": "tests/integration/product_host/test_local_web_service.py::test_browser_session_cookies_are_port_scoped_and_restart_replaces_only_its_own",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "macOS only: the replacement LocalWebService cannot rebind the stopped service's port while it sits in TIME_WAIT (Address already in use). Three macOS runs failed; a Windows environment passed. Review when the service rebinds or the test takes a fresh port.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/alpha_research/test_current_artifact_array_cache.py::test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_lease[True]",
-      "owner": "tests.alpha_research",
-      "reason": "macOS only: the opted-in lease's second reuse is not recorded there; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_process_resource_monitor_reports_a_time_aligned_live_child_tree",
-      "owner": "tests.feature_engine",
-      "reason": "Windows only: the live child tree is measured through the Windows job, so macOS reports no descendants. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_the_panel_driver_never_deletes_a_development_workspace",
-      "owner": "tests.feature_engine",
-      "reason": "Windows only: the refused other root is another drive letter (C: or D:), which macOS paths have not. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/feature_engine/test_feature_observation_clock.py::test_the_runner_is_capacity_bounded_before_any_stage",
-      "owner": "tests.feature_engine",
-      "reason": "Windows or Linux only: it pins processor affinity, and macOS has no os.sched_setaffinity. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/local_application/test_cli_contract.py::test_every_answer_is_one_envelope_and_exits_by_its_outcome",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "macOS only: the answer's workspace redaction matches the Windows path form, so a POSIX temp path shows through; green on Windows. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "In observed macOS and Windows environments, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
+      "reason": "In an observed Windows environment, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
       "seen_on": [
-        "mac1",
         "pc1"
-      ]
-    },
-    {
-      "node": "tests/integration/local_application/test_native_bridge.py::test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Windows only: the native bridge's binding is the Windows host's, and macOS refuses it as binding_invalid. If macOS is a supported platform this is a POSIX gap; its owner decides. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
       ]
     },
     {
       "node": "tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "In observed macOS and Windows environments, Playwright setup is missing (third_party/playwright, installed by scripts/playwright.ps1 setup), so browser and Node.js checks stop; a configured Windows environment passed. Review by its date.",
+      "reason": "In an observed Windows environment, Playwright setup is missing (third_party/playwright, installed by scripts/playwright.ps1 setup), so browser and Node.js checks stop; a configured Windows environment passed. Review by its date.",
       "until": "2026-12-03",
       "class": "environment",
       "since": "2026-11-02",
       "seen_on": [
-        "mac1",
         "pc1"
-      ]
-    },
-    {
-      "node": "tests/integration/product_host/test_research_input_storage.py::test_an_alias_removed_after_grouping_is_not_answered",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Windows only: a file removed during verification is named by the Windows sharing error; POSIX reports it as unavailable. Review by its date.",
-      "until": "2026-12-03",
-      "class": "platform",
-      "since": "2026-11-02",
-      "seen_on": [
-        "mac1"
       ]
     }
   ],
@@ -2616,6 +2619,34 @@
     "pattern"
   ],
   "shrink_only_list": "large",
+  "whole_tree_guards": {
+    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration; a slower one stays in post-merge. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
+    "reads": [
+      "src/*",
+      "scripts/*",
+      "config/*"
+    ],
+    "slow": [
+      "tests/structural/test_book_declarations.py::test_no_owner_exports_a_declaration_as_a_whole_request*",
+      "tests/structural/test_lifecycle_tables.py::test_every_lifecycle_set_is_registered_with_its_reason*",
+      "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair*",
+      "tests/structural/test_owner_source_shape.py::test_every_coverage_floor_is_judged_by_one_rule_that_leaves_quiet_holdings_out_shape*",
+      "tests/structural/test_owner_source_shape.py::test_every_fit_plan_call_site_states_its_protocol*",
+      "tests/structural/test_owner_source_shape.py::test_only_the_owner_writes_the_manifest*",
+      "tests/structural/test_pipeline_stage.py::test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies*",
+      "tests/structural/test_plan_retention.py::test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last*",
+      "tests/structural/test_plan_retention.py::test_no_owner_keeps_a_preview_in_one_slot*",
+      "tests/structural/test_product_scripts_answer_their_writes.py::test_every_product_script_that_writes_a_location_it_chooses_answers_in_words*",
+      "tests/structural/test_refusal_contracts.py::test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form*",
+      "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words*",
+      "tests/structural/test_registries.py::test_a_new_host_module_is_refused_unless_registered_as_composition*",
+      "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items*",
+      "tests/structural/test_scoped_resumes.py::test_every_owner_resume_names_the_task_its_request_chose*",
+      "tests/structural/test_task_child_start.py::test_every_process_pool_owner_is_in_the_child_start_class*",
+      "tests/structural/test_test_shape.py::test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps*",
+      "tests/structural/test_wait_caps.py::test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed*"
+    ]
+  },
   "post_merge_only": [
     "tests/integration/local_application/test_cli_contract.py"
   ],

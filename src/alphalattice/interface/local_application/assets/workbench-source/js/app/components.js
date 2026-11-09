@@ -43,12 +43,12 @@ function typedBtn(label, action, value = '', cls = 'button', disabled = '', extr
 function link(label, page, cls = 'button', extra = {}) {
   return html`<a class="${cls}" href="${routeUrl(page, extra)}"${controlAttrs(cls)}>${label}</a>`;
 }
-/* The state vocabulary (round 71). `badge` is the tinted pill, kept only where a word alone
+/* The state vocabulary. `badge` is the tinted pill, kept only where a word alone
  * would mislead: a refusal, an attention item, a decision, Historical. Everything that runs or
  * waits reads as `stateLine`: the dot in the state's tone, the word from the table, the time or
  * the duration in the muted ink, and after a `·` the next action when the state is a person's
  * to move. `statusDot` is the dot alone, its word in the label: the lead of a list row. */
-/* The root's scale (round 85): under `zoom`, a rect from getBoundingClientRect comes in the
+/* The root's scale: under `zoom`, a rect from getBoundingClientRect comes in the
  * viewport's px while every layout length (a menu's width, a fixed `left`) is scaled; anything
  * that places a surface reads rects and the viewport through these, in layout px. */
 const rootZoom = () => Number(getComputedStyle(document.documentElement).zoom) || 1;
@@ -58,7 +58,7 @@ function badge(status, label) {
   const a = stateOf(status);
   return html`<span class="badge ${a.tone}" data-status="${a.key}"${STATUS_ATTR}>${label || t(a.word)}</span>`;
 }
-/* The mark (round 85, Linear's rule: colour on a glyph, never on a word; the Team page's tile
+/* The mark (Linear's rule: colour on a glyph, never on a word; the Team page's tile
  * made the product's): a 28 px circle tinted in its tone, the glyph in the tone's ink. A saved
  * object's mark is its kind's (one colour per kind everywhere, as Linear's labels); a row that
  * waits for a decision wears the warning mark, a live one the accent. */
@@ -85,24 +85,24 @@ function stateLine(x, o = {}) {
   const wait = html`${o.since ? html`<span class="state-time">· ${t('since')} ${when(o.since)}</span>` : ''}${o.until ? html`<span class="state-time">· ${t('retries at')} ${when(o.until)}</span>` : ''}`;
   return html`<span class="state ${a.tone}" data-status="${a.key}"${o.live ? ' data-live="true"' : ''}${STATUS_ATTR}>${o.dot === false ? '' : html`<i aria-hidden="true"></i>`}<span class="state-word">${word}</span>${time || at ? html`<span class="state-time">· ${time || at}</span>` : ''}${wait}${next ? html`<span class="state-next">· ${next}</span>` : ''}</span>`;
 }
-/* The shape before the content (round 71): rows, a head or a body in the face's grey, shown
+/* The shape before the content: rows, a head or a body in the face's grey, shown
  * after the 400 ms hold, never a spinner and never a word; a slow shimmer where motion is allowed. */
 function skeleton(shape = 'rows', n = 3) {
   const rows = () => Array.from({length: n}, () => html`<div class="skeleton-row" aria-hidden="true"><span class="ph ph-dot"></span><span class="ph ph-line"></span><span class="ph ph-short"></span></div>`);
   const body = shape === 'head' ? html`<span class="ph ph-title"></span><span class="ph ph-line"></span>` : shape === 'body' ? html`<span class="ph ph-line"></span><span class="ph ph-line"></span><span class="ph ph-short"></span>` : rows();
   return html`<div class="skeleton skeleton-${shape}" aria-busy="true" aria-label="${t('Reading')}">${body}</div>`;
 }
-/* A section (N3, law 121): a box named by a label -- 13 / 500 in the muted ink, with its count --
+/* A section (law 121): a box named by a label -- 13 / 500 in the muted ink, with its count --
  * never a heading with a sentence under it; what the product would have said there is the label's (i) (`sub`, read on hover and focus). */
 function panel(title, sub, content, action = '', attrs = '') {
   return html`<section class="panel"${attrs ? ' ' + attrs : ''}>${sectionHead(title, sub, action)}<div class="panel-body">${content}</div></section>`;
 }
-/* A banner (round 75): attention that blocks the page's primary, in two tones; a refusal is
+/* A banner: attention that blocks the page's primary, in two tones; a refusal is
  * `refusal`, a note is `noteLine`, an unanswered owner is `notRead`. */
 function banner(title, text, tone = 'warning', action = '', ic = 'info', decision = tone !== 'neutral') { // law 148: a notice with a tone is a decision; a neutral one is a line unless it blocks (`decision`)
   return html`<div class="banner ${tone}"${decision ? ' data-box="decision"' : ''} role="status">${icon(ic)}<div class="grow"><strong>${title}</strong><p>${text}</p></div>${action}</div>`;
 }
-/* One owner for "the owner did not answer" (round 64): the error as the exact token, the words that say what stays unaffected, an optional way to read again. */
+/* One owner for "the owner did not answer": the error as the exact token, the words that say what stays unaffected, an optional way to read again. */
 // Legacy Error.message retains a machine prefix; translate only its owner's sentence.
 function refusalParts(error) {
   const body = error?.body, text = String(error?.message ?? error ?? '');
@@ -111,23 +111,23 @@ function refusalParts(error) {
   return {code: body?.failure_code || body?.refusal_code || body?.refused || body?.disposition || text, detail: body?.message || body?.detail || body?.explanation || body?.refusal_detail || ''};
 }
 function notRead(title, error, words = '', action = '') {
-  // N6 (law 17, a refusal in words): what could not be read, in words, first; the owner's code small beneath it
+  // law 17, a refusal in words: what could not be read, in words, first; the owner's code small beneath it
   const failure = refusalParts(error), detail = words || said(failure.detail) || explainCode(failure.code);
   return banner(title, html`${detail ? html`${detail}<br>` : ''}<span class="mono refusal-code">${failure.code}</span>`, 'warning', action);
 }
-/* The one instrument rail (round 27): facts side by side over a hairline, wrapping 4 → 2 → 1 by
+/* The one instrument rail: facts side by side over a hairline, wrapping 4 → 2 → 1 by
  * the lane; each item is `stat()`'s label / value / note with an optional tile. `cls` names the page's rail for its own rules. */
 function rail(items, cls = '', label = '') {
   return html`<div class="stat-strip rail ${cls}"${label ? html` aria-label="${label}"` : ''}>${items}</div>`;
 }
-/* A hairline between sections, with an optional label in the meta ink (round 27). */
+/* A hairline between sections, with an optional label in the meta ink. */
 function separator(label = '') {
   return label ? html`<div class="separator" role="separator"><span>${label}</span></div>` : html`<hr class="separator">`;
 }
-/* A fact on a strip; with `ic` a tinted tile leads it (round 20g). A value has no caption (N3, the
+/* A fact on a strip; with `ic` a tinted tile leads it. A value has no caption (N3, the
  * user: 数值下不跟说明): the `note` is the label's tip, the label dotted as a hint; `figure` (a meter) is drawn under the value -- a figure, not words. */
 function stat(label, value, note = '', word = false, ic = '', figure = '') {
-  // the icon, when given, sits inline before the label (round 30): no tile on a rail
+  // the icon, when given, sits inline before the label: no tile on a rail
   const noted = note && String(note).trim();
   return html`<div class="stat"><div class="stat-label${noted ? ' hint' : ''}" data-tip="${noted ? note : '@overflow'}"${noted ? ' tabindex="0"' : ''}>${ic ? html`<span class="stat-icon" aria-hidden="true">${icon(ic)}</span>` : ''}${label}</div><div class="stat-value ${word ? 'word' : ''}">${value}</div>${figure ? html`<div class="stat-figure">${figure}</div>` : ''}</div>`;
 }
@@ -155,7 +155,7 @@ function tr(cells) {
   return html`<tr>${cells.map((x) => html`<td>${x == null ? '' : x}</td>`)}</tr>`;
 }
 const COLUMN_TYPES = new Set(['text', 'num', 'id', 'date', 'status', 'link']);
-/* A head is one line (round 60, Stripe's table): a label written "Words (unit)" keeps the words on
+/* A head is one line (Stripe's table): a label written "Words (unit)" keeps the words on
  * the line and the unit as a sub-line under them; `unit` may also be given outright. */
 function columnSpec(header) {
   const spec = typeof header === 'object' && header !== null && Object.hasOwn(header, 'label') ? {...header, type:COLUMN_TYPES.has(header.type) ? header.type : (header.cls === 'num' ? 'num' : 'text')} : {label:header, type:'text'};
@@ -177,7 +177,7 @@ function table(headers, rows, note = '', classes = '', options = {}) {
   else if (classes && typeof classes === 'object') { options = classes; classes = options.classes || ''; }
   const hasRows = Array.isArray(rows) ? rows.length > 0 : String(rows ?? '').length > 0; // rows: fragment list or fragment
   const columns = headers.map(columnSpec);
-  // the column geometry (round 60): a '#' head is the index column, the first column after it the identity
+  // the column geometry: a '#' head is the index column, the first column after it the identity
   const indexAt = columns.findIndex((x) => x.index || String(x.label) === '#'); // a sortable '#' head is markup: it says `index` outright
   const actionAt = columns.length - 1 >= 0 && columns.at(-1).type === 'link' && !columns.at(-1).label ? columns.length - 1 : -1;
   // The slack. A list gives it to its substance column: the one the producer names (`absorb`), else
@@ -200,7 +200,7 @@ function table(headers, rows, note = '', classes = '', options = {}) {
 function field(label, id, value, type = 'text', hint = '', attrs = '', {inline = false} = {}) {
   return html`<div class="field${inline ? ' inline' : ''}"><label for="${id}">${label}</label><input id="${id}" class="ui-field" type="${type}" value="${(value)}"${attrs ? ' ' + attrs : ''}>${hint ? html`<small>${hint}</small>` : ''}</div>`;
 }
-/* One picker (round 91, the user's reading of four stills: several kinds of dropdown, no
+/* One picker (the user's reading of four stills: several kinds of dropdown, no
  * standard, the native select's OS list). Every choice in the product is this component: a pill
  * (or a word, `kind: 'text'`; a chip, `kind: 'chip'`) that shows the value, and a list on the top
  * layer -- Radix's contract (the list at least the trigger's width with a floor, flips and shifts
@@ -212,7 +212,7 @@ function field(label, id, value, type = 'text', hint = '', attrs = '', {inline =
  * (`Events.changed`), so a form field needs no action of its own -- `Picker.value(id)` reads it.
  * `multiple` keeps the list open and toggles rows; the trigger shows the count. */
 const pickerChoice = (choice) => Array.isArray(choice) ? {value:choice[0], title:choice[1]} : choice;
-/* A long list (round 94; measured: 1,264 sessions were 88 % of the Portfolio page's elements and
+/* A long list (measured: 1,264 sessions were 88 % of the Portfolio page's elements and
  * 130 ms of style on each open): a single-choice list longer than PICKER_WINDOW rows renders the
  * rows around the current one and keeps the rest here, by its popup id; its search draws the
  * first matches from here, and a foot line says how many more there are. */
@@ -250,7 +250,7 @@ function picker(id, choices, {placeholder = '', disabled = false, action = 'pick
   const faceWords = kind === 'switch' ? icon('chevron') : html`<span class="picker-trigger-label">${title}</span><span class="picker-chevron" aria-hidden="true">${icon('chevron')}</span>`; // a switch is the chevron beside a name the head already says (E1)
   return html`<div class="picker-anchor" data-picker-id="${id}">${btnAttrs(faceWords, 'picker-menu', '', faceCls, html`id="${id}" aria-haspopup="dialog" aria-expanded="false" aria-controls="${popupId}"${labelled}${held ? ' disabled' : ''}${attrs ? html` ${attrs}` : ''}`)}<div class="menu menu-fixed picker-pop" id="${popupId}" role="dialog" aria-labelledby="${labelId || id}" data-picker-kind="${kind}"${multiple ? ' data-picker-multiple="true"' : ''} popover="manual" hidden>${context ? html`<p class="menu-context">${context}</p>` : ''}${searchable ? html`<div class="menu-search">${icon('search')}<input type="search" role="combobox" aria-expanded="true" aria-controls="${listId}" aria-autocomplete="list" placeholder="${t('Filter…')}" data-picker-search-input></div>` : ''}<div class="menu-list" id="${listId}" role="listbox"${multiple ? ' aria-multiselectable="true"' : ''}${labelId ? html` aria-labelledby="${labelId}"` : html` aria-label="${label}"`}>${items}<p class="menu-empty" hidden>${t('No matching choices')}</p></div></div></div>`;
 }
-/* A subject choice (round 93): a label and a picker that reads as a word, on the header's subject line. */
+/* A subject choice: a label and a picker that reads as a word, on the header's subject line. */
 function subjectChoice(label, id, choices, {selected = '', disabled = false, action = 'picker-choose', attrs = '', kind = 'text'} = {}) {
   return html`<span class="subject-choice"><label id="${id}Label" for="${id}">${label}</label>${picker(id, choices, {selected, disabled, action, attrs, kind, labelId: id + 'Label'})}</span>`;
 }
@@ -297,17 +297,17 @@ function tabMore(key) {
 }
 
 /* ---- page chrome ---- */
-/* The page tools (round 19, revised on the user's reading): the title row keeps one secondary and
+/* The page tools (revised on the user's reading): the title row keeps one secondary and
  * one primary; everything else — Map, Focus and a page's own tools (`extra`) — lives in one ···
- * menu at the row's end (Apple's more button), an anchored popover of one-line rows (round 81).
+ * menu at the row's end (Apple's more button), an anchored popover of one-line rows.
  * The menu is rendered with the head, hidden, so a repaint compares it like any other markup; `tools-menu` shows it. */
-/* A group's head (round 52, Linear's "In Review · 9"): the label and its count on a band above
+/* A group's head (Linear's "In Review · 9"): the label and its count on a band above
  * the rows; `tools` sits at its right (a Clear filters, a +). The foot line under a filtered
  * list says how many rows the filters hide and offers the way out. */
 function groupHead(label, count, tools = '') {
   return html`<div class="group-head"><span>${label}</span><b class="num">${count == null ? '' : count}</b>${tools ? html`<span class="group-head-tools">${tools}</span>` : ''}</div>`;
 }
-/* ---- forms as inset grouped lists (round 83: macOS's form list, Codex's settings) ---- */
+/* ---- forms as inset grouped lists (macOS's form list, Codex's settings) ---- */
 /* A group is a label on the ground and one box of rows, with an optional one-line note under
  * the box; `tools` is the label's one way to add a row (Codex's `Sources +`). */
 function formGroup(label, rows, {note = '', tools = '', id = ''} = {}) { // law 148: a page of forms is a workspace -- every group its grouped-list box (Codex's settings), a read-only row or not
@@ -324,12 +324,12 @@ function formRow({title, line = '', control = '', detail = '', mono = false, act
   if (action) return btnAttrs(html`${words}<span class="form-control">${right}<span class="form-tail" aria-hidden="true">›</span></span>`, action, value, `form-row form-row-open${cls ? ' ' + cls : ''}`, html`aria-label="${title}"`); // the row's name is its title
   return html`<div class="form-row${cls ? ' ' + cls : ''}">${words}<span class="form-control">${right}</span></div>`;
 }
-/* A boolean row: the native checkbox drawn as a switch (round 82), the row its label. */
+/* A boolean row: the native checkbox drawn as a switch, the row its label. */
 function switchRow(id, on, title, line = '', {disabled = false} = {}) {
   const says = disabled && line; // a held switch's own line says why (CT7): it describes the switch
   return html`<label class="form-row" for="${id}"><span class="form-words"><span class="form-title">${title}</span>${line ? html`<small class="form-line"${says ? html` id="${id}-why"` : ''}>${line}</small>` : ''}</span><span class="form-control"><input id="${id}" class="switch" type="checkbox" role="switch"${on ? ' checked' : ''}${disabled ? ' disabled' : ''}${says ? html` aria-describedby="${id}-why"` : ''}></span></label>`;
 }
-/* A short question with two or three answers (round 82, macOS's alert): a bold title, one line of
+/* A short question with two or three answers (macOS's alert): a bold title, one line of
  * body, equal pills; anything with a body of facts stays a dialog. */
 function alertDialog(title, body, footer) {
   openDialog('', title, html`<p>${body}</p>`, footer, 'alert');
@@ -341,7 +341,7 @@ function stepper(value, action, {label = '', reset = '', resetAction = '', reset
 function listFoot(hidden, clear) {
   return hidden > 0 ? html`<p class="list-foot">${t('{n} hidden by the filters', {n: count(hidden)})}${clear ? html` · ${clear}` : ''}</p>` : '';
 }
-/* A key as caps (round 51): "G then H" → two caps and the word, "Ctrl K" → two caps, "J / ↓" →
+/* A key as caps: "G then H" → two caps and the word, "Ctrl K" → two caps, "J / ↓" →
  * two caps and a slash; the sheet, the menus and the command menu all read it. */
 function keycap(keys) {
   return html`<span class="keycap" aria-label="${keys}">${String(keys).split(' ').map((part) => part === 'then' || part === '/' ? html`<i>${part === 'then' ? t('then') : '/'}</i>` : html`<kbd>${part}</kbd>`)}</span>`;
@@ -362,7 +362,7 @@ function railTools(extra = []) {
   const item = (i) => menuRow({ic: i.ic, word: i.word, key: i.key || '', title: i.why || '', action: i.action, value: i.value || '', pressed: i.pressed === undefined ? null : Boolean(i.pressed)});
   return html`<span class="rail-tools">${btnAttrs(icon('more'), 'tools-menu', '', 'icon-btn rail-more', html`aria-label="${t('More')}" data-tip="${t('More · page tools')}" aria-haspopup="menu" aria-expanded="false"`)}<div class="menu" role="menu" aria-label="${t('Page tools')}" hidden>${items.map(item)}</div></span>`;
 }
-/* A reading pane (round 92; law 149): the lane's reading column -- the Lab's PLAN, the desk's item --
+/* A reading pane (law 149): the lane's reading column -- the Lab's PLAN, the desk's item --
  * a detail beside the page's list from the pane step up and the pane's layer below it; never the
  * window's column. It takes focus as a region; `close` is the action that closes it. */
 function readingPane(title, kind, body, close, cls = '', by = null) {
@@ -377,7 +377,7 @@ function detailSplit(content, modes, {over = false, pane: suppliedPane} = {}) {
   // `over`: the detail floats over its list, which keeps its width (the Portfolio's holdings: the user, 2026-09-24)
   return html`<div class="lane-split${pane ? ' has-reading' : ''}" data-stack-box="section" data-detail-host="${[].concat(modes).join(' ')}"${over ? ' data-detail-over' : ''}><div class="lane-main">${content}</div>${pane}</div>`;
 }
-/* A leave (round 94; Apple's both ways, Linear's short exits): the element takes `data-leaving`
+/* A leave (Apple's both ways, Linear's short exits): the element takes `data-leaving`
  * and its stylesheet plays the entrance in reverse over --dur-1; when the engine says that
  * animation finished, `done` hides it. At once when the page is hidden, under reduced motion or
  * where no rule animates the leave; a show in between (`cancelLeave`) drops the pending `done`. */
@@ -390,7 +390,7 @@ function leave(el, done) {
 }
 function cancelLeave(el) { if (el) delete el.dataset.leaving; }
 /* Show or hide the head's ··· menu; while it is open, a click elsewhere or Escape closes it and a chosen item closes it before the item's own action runs. */
-/* One menu opener (round 55): shows the menu beside its trigger (or at a pointer), closes it on
+/* One menu opener: shows the menu beside its trigger (or at a pointer), closes it on
  * a choice, an outside click or Esc (one layer per Esc), and puts focus on its search field or first row; any other open menu closes first. */
 function toggleMenu(pop, trigger, {root = trigger?.parentElement, at = null, stay = false} = {}) { // `stay`: a choice inside keeps it open
   if (!pop || !trigger) return;
@@ -427,11 +427,11 @@ function toolsMenu() {
   const tools = document.querySelector('#top .rail-tools') || document.querySelector('#main .rail-tools'); // the page's menu stands beside the path (N1)
   if (tools) toggleMenu(tools.querySelector('.menu'), tools.querySelector('.rail-more'), {root: tools});
 }
-/* The filter bar's grammar (round 95, Linear's): a stated filter is a clause chip -- the field,
+/* The filter bar's grammar (Linear's): a stated filter is a clause chip -- the field,
  * the operator word (`is`, `is any of`), the values, its × -- and clauses combine with `and`;
  * `+ Filter` is the one picker of the fields not yet in a clause (a bar with one field shows that
  * field's chip in its place), and choosing a field opens its values at once; `Clear` removes them
- * all. A clause's chip is the field's own picker (round 91: multiple where the field allows),
+ * all. A clause's chip is the field's own picker (multiple where the field allows),
  * so its values change in place; the choice reaches the owner through the change handlers
  * (`data-filter-name`), the field through `filter-field`, and the route carries the clauses. */
 const chipValues = (value) => (value === '' || value === 'all' || value == null ? [] : String(value).split(',').filter(Boolean));
@@ -449,7 +449,7 @@ function filterBar(fields, {pending = '', clear = '', clearValue = ''} = {}) {
   const clearing = clauses.some((f) => chipValues(f.value).length) && clear ? btnAttrs(t('Clear'), clear, clearValue, 'text-btn filter-clear-all') : '';
   return html`<div class="filter-clauses">${stated}${add}${clearing}</div>`;
 }
-/* Round 56: a property is a chip you press (Linear's). The label in the muted ink, the value in
+/* a property is a chip you press (Linear's). The label in the muted ink, the value in
  * the text ink, its key as a cap; pressing it (or the key on its page) opens the menu with a
  * context line naming the object, a search field past eight rows and the current value checked.
  * A read-only property is the same chip: its rows are none, and its press says who recorded it. */
@@ -462,7 +462,7 @@ function propertyChip(label, value, {icon: ic = '', key = '', rows = [], context
   // a read-only chip is not a menu; its note (and its context) is the tooltip's
   return html`<span class="filter-chip property-chip${value ? ' is-active' : ''} is-read"${id ? html` id="${id}"` : ''}${key ? html` data-property="${key}"` : ''}><span class="filter-chip-main" data-tip="${[context, note || t('Recorded by the owner; not editable here.')].filter(Boolean).join(' · ')}" tabindex="0">${face}</span></span>`;
 }
-/* Round 57: display options (Linear's Shift V). Everything about how a list is shown lives in one
+/* display options (Linear's Shift V). Everything about how a list is shown lives in one
  * popover per list: Grouping and Ordering as checked rows, Display properties as toggle chips. A
  * list declares its spec where it renders ({groupings, orderings, properties, apply}); the
  * viewer's choices are kept per list in the preference store (`display.<list>`), never in the
@@ -510,7 +510,7 @@ function chooseDisplay(value) {
   const pop = document.querySelector(`.display-options[data-display="${name}"] .menu`);
   if (pop && !pop.hidden) pop.innerHTML = displayMenuBody(name);
 }
-/* The key of a property (round 56): its chip takes focus and opens. */
+/* The key of a property: its chip takes focus and opens. */
 function pressProperty(key) {
   const button = document.querySelector(`#main .property-chip[data-property="${key}"] .filter-chip-main`);
   if (!button) return false;
@@ -518,7 +518,7 @@ function pressProperty(key) {
   if (button.dataset.action === 'picker-menu') Picker.open(button); else if (button.dataset.tip) Tip.show(button); else button.click(); // a read-only chip shows its note
   return true;
 }
-/* Round 56: the composer (Linear's). One sheet for making a new thing: the context line above,
+/* the composer (Linear's). One sheet for making a new thing: the context line above,
  * a title field and a body field with placeholders instead of labels, the properties as chips
  * along the bottom, more fields folded under a disclosure, one primary button; `Ctrl Enter`
  * submits, `Esc` closes. The composer is markup: the caller's save reads the same ids. */
@@ -560,7 +560,7 @@ const Picker = (() => {
      * Long labels wrap inside that measure. This keeps Lab, Team and the theme chooser aligned
      * at every responsive width instead of widening or narrowing them by content kind. */
     // the list is at least the xs width and at most the md width (or the viewport), never a wall of wrapped words;
-    // a pop-up in a form row (round 83) hangs from the pill's right edge; below 640 the list is a sheet from the foot
+    // a pop-up in a form row hangs from the pill's right edge; below 640 the list is a sheet from the foot
     const sheet = vw < BREAKPOINTS.window.phone;
     if (sheet) { pop.dataset.sheet = 'true'; pop.style.removeProperty('--picker-left'); pop.style.removeProperty('--picker-top'); pop.style.setProperty('--picker-width', `${Math.max(0, vw - edge * 2)}px`); pop.style.setProperty('--picker-max', `${Math.round(vh * 0.6)}px`); pop.dataset.side = 'sheet'; return; }
     delete pop.dataset.sheet;
@@ -590,7 +590,7 @@ const Picker = (() => {
     pop.dataset.side = up ? 'top' : 'bottom';
     pop.style.setProperty('--picker-left', `${left}px`); pop.style.setProperty('--picker-top', `${top}px`);
   }
-  /* The list's width (round 94, the user's rule: "the entry button and the menu must align"):
+  /* The list's width (the user's rule: "the entry button and the menu must align"):
    * the trigger is the measure -- the list starts at the trigger's left edge and is the
    * trigger's width; only when the titles need more does it grow to its widest title (at most
    * 400 px), and a title within 6 px of the trigger snaps to it (the ✓'s box gives the pixels).
@@ -603,7 +603,7 @@ const Picker = (() => {
     if (!active) return;
     const {trigger, pop} = active, list = pop.querySelector('.menu-list');
     if (!list || viewW() < BREAKPOINTS.window.phone) { active.width = 0; return; }
-    // layout widths (`offsetWidth`), not client rects: the entrance plays at scale .96 while this runs;
+    // layout widths (`offsetWidth`), not client rects: the entrance plays at scale.96 while this runs;
     // the menu's own padding and border from its style (before its first placement the container is 10 px wide)
     const cs = getComputedStyle(pop), pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((a, k) => a + (parseFloat(cs[k]) || 0), 0) + 2;
     pop.classList.add('measuring');
@@ -634,7 +634,7 @@ const Picker = (() => {
   function close(restore = false) {
     if (!active) return false;
     const {trigger, pop, dirty} = active; active = null;
-    if ((dirty || trigger?.dataset.filterPending !== undefined) && trigger && typeof Events !== 'undefined' && Events.changed) Events.changed(trigger, value(trigger.id)); // a multi-select applies when it closes; a pending clause reports its emptiness too (round 95)
+    if ((dirty || trigger?.dataset.filterPending !== undefined) && trigger && typeof Events !== 'undefined' && Events.changed) Events.changed(trigger, value(trigger.id)); // a multi-select applies when it closes; a pending clause reports its emptiness too
     trigger.setAttribute('aria-expanded', 'false'); document.removeEventListener('pointerdown', outside, true); window.removeEventListener('resize', resize); window.removeEventListener('scroll', scroll, true);
     if (observer) { observer.disconnect(); observer = null; }
     finish(pop);
@@ -655,7 +655,7 @@ const Picker = (() => {
     (pop.querySelector('[data-picker-search-input]') || pop.querySelector('[aria-selected="true"]') || pop.querySelector('.picker-option'))?.focus({preventScroll:true});
     pop.querySelector('.picker-option[aria-selected="true"]')?.scrollIntoView({block: 'center'}); // the current choice in view (Apple's)
   }
-  /* A choice (round 91): the row is marked, the trigger reads it, the list closes (a multi-select
+  /* A choice: the row is marked, the trigger reads it, the list closes (a multi-select
    * list stays), and a field without an action of its own tells the change handlers. */
   function choose(option) {
     const pop = option.closest('.picker-pop'); if (!pop) return false;
@@ -716,12 +716,12 @@ const Picker = (() => {
   }
   return {toggle, close, filter, keydown, select, choose, value, open};
 })();
-/* The rail is navigation only (round 17): a page's sub-tabs where it has them, nothing where it
+/* The rail is navigation only: a page's sub-tabs where it has them, nothing where it
  * has none — the title line names the page. In the product, an unprepared or preparing workspace
  * names its next step under the rail of every page (the scene itself excepted); a deep link is never redirected. */
 /* A grouped-list row inside a card (Apple's inset lists, Mercury's list cards): the whole row is
  * the link; it reads an icon, the thing to do or look at, why, and a chevron. `to` is a page route ({page, extra}) or an action ({action, value}). */
-/* One empty state (N6, law 130; the user: 这种情况统一用我们的logo): in the list's place the
+/* One empty state (law 130; the user: 这种情况统一用我们的logo): in the list's place the
  * product's own mark, one line of what would be here (what it means is the line's (i)), and the one way to make it -- the same on every page. */
 /* The one empty state (law 130; the user's reading 2026-09-23: 空页面好几种款式, 统一成几种 scenarios):
  * `create` a list the reader fills here (the mark, the line, the primary way); `elsewhere` a list
@@ -735,13 +735,13 @@ function emptyState(line, way = '', cls = '', kind = '') {
   const marked = scenario !== 'nomatch' && /(^|\s)page-empty(\s|$)/.test(cls);
   return html`<div class="section-empty${cls ? ' ' + cls : ''}" data-empty="${scenario}" role="status">${!marked ? '' : html`<span class="empty-mark" aria-hidden="true">${typeof mark === 'function' ? mark() : ''}</span>`}<p>${said}</p>${way}</div>`; // a reader without the product's glyphs (a harness) draws the line alone
 }
-/* A refusal or a failure, named once (round 75): the state's dot and word, the cause in the
+/* A refusal or a failure, named once: the state's dot and word, the cause in the
  * owner's words (a code the table knows reads as words, the raw code stays on hover; an unknown
  * one is shown as one), the next lawful action as a line -- and the control beside it. `body` is
  * the owner's typed refusal ({failure_code | refused | disposition | code, reason | detail |
  * message | explanation, next_action | next}); `o.state` names the state (`refused` unless the
  * tone is danger: `failed`), `o.word` the word, `o.action` the control. */
-/* U71 (V444): what a stopped stage's owner saw beside its code -- the raised type, its step, the unit in hand and its
+/* what a stopped stage's owner saw beside its code -- the raised type, its step, the unit in hand and its
  * sessions, its message -- so a person can tell an exhausted machine (a `MemoryError`, a paging file too small) from a
  * defect. As the owner kept it; nothing is inferred. `inline` for a sentence's paragraph, else its own caption line. */
 function causeLine(cause, inline = false) {
@@ -766,13 +766,13 @@ function refusal(body, tone = 'warning', o = {}) {
   const after = o.next !== undefined ? o.next : nextLine; // A state alone cannot name a route; the caller supplies its next press or command (ST6).
   return html`<div class="banner ${tone} refusal${o.cls ? ' ' + o.cls : ''}"${tone === 'neutral' ? '' : ' data-box="decision"'} role="alert"${o.attrs ? html` ${o.attrs}` : ''}><div class="grow">${stateLine(state, {word: o.word, next: ''})}${why || code ? html`<p>${cause}</p>` : ''}${after ? html`<p class="refusal-next">${t('Next step')}: ${after}</p>` : ''}${o.more || ''}</div>${o.action || ''}</div>`;
 }
-/* ---- run shapes (round 72): the steps, the log and its scroll owner; the harnesses load this block by its markers ---- */
-/* A run's steps (round 72): one owner for a step list. `items`: [{id, name, mark, at, evidence,
+/* ---- run shapes: the steps, the log and its scroll owner; the harnesses load this block by its markers ---- */
+/* A run's steps: one owner for a step list. `items`: [{id, name, mark, at, evidence,
  * note, under, current, shown, done}]. As the list a run's body reads: the mark's dot, the name,
  * the mark's word with the evidence count and the step's note, the instant at the right, the
  * current step's line under it. As the rail a work area inspects (`o.rail`): the round-44 nodes,
  * buttons that carry `o.action`; the mark is `data-state`. */
-/* A reference (round 92): its kind worded, its short hash in mono, the whole on hover, a copy glyph
+/* A reference: its kind worded, its short hash in mono, the whole on hover, a copy glyph
  * that copies the exact URI. A value never rolls sideways or breaks inside itself: what its column
  * cannot hold is its short form (WD3; the user, 2026-09-26: a scrollbar under every hash of a Task's
  * receipt). A hash the same way without the kind (`hashCell`), a locator by its ends (`locatorCell`). */
@@ -810,7 +810,7 @@ function codeCell(code) {
 }
 function stepList(items, o = {}) {
   if (o.rail) return html`<nav class="fv-pipeline ${o.cls || ''}" aria-label="${o.label || ''}" style="--fv-stage-count:${items.length}">${items.map((s, i) => html`<button type="button" class="fv-step ${o.stepCls || ''}${s.current ? ' is-current' : ''}${s.shown && !s.current ? ' is-inspected' : ''}${s.done ? ' is-complete' : ''}${s.current && o.moving ? ' is-working' : ''}" data-action="${o.action}" data-value="${s.id}" data-state="${s.mark}" data-tone="${stateOf(s.mark).tone}"${s.current ? ' aria-current="step"' : ''} aria-pressed="${Boolean(s.shown)}" aria-label="${s.name} · ${s.words || codeWords(s.mark)}${s.current ? ' · ' + t('current stage') : ''}"><span class="fv-step-node">${s.done ? icon('check') : ['BLOCKED', 'CANCELLED', 'UNAVAILABLE', 'REFUSED'].includes(s.mark) ? icon('ban') : String(i + 1).padStart(2, '0')}</span><span class="fv-step-copy"><strong>${s.name}</strong><small>${s.words || codeWords(s.mark)}${s.evidence ? html` · ${t('{n} evidence', {n: s.evidence})}` : ''}</small></span></button>`)}</nav>`;
-  // round 92 (GitHub Actions' shape): each step one row -- the number, the state's dot, the name,
+  // (GitHub Actions' shape): each step one row -- the number, the state's dot, the name,
   // the state's word with the evidence count, the instant at the right -- folded, and opened by its
   // chevron to its note, its evidence references (a kind, a short hash, a copy glyph: never a URI
   // cut) and its own lines of the log; the current step and a stopped one open by themselves.
@@ -822,13 +822,13 @@ function stepList(items, o = {}) {
     return html`<li><details class="run-step${s.current ? ' is-current' : ''}" data-mark="${s.mark}"${open && has ? ' open' : ''}${has ? '' : ' data-empty="true"'}><summary class="run-step-head">${icon('chevron')}<span class="run-step-num">${String(i + 1).padStart(2, '0')}</span>${statusDot(s.mark)}<strong>${s.name}</strong><span class="run-step-word">${codeWords(s.mark)}${s.evidence ? html` · ${countText(s.evidence, '{n} evidence reference', '{n} evidence references')}` : ''}</span>${s.at ? html`<time class="run-step-at">${s.at}</time>` : ''}</summary>${has ? html`<div class="run-step-body">${s.line ? html`<p class="run-step-line">${s.line}</p>` : ''}${s.note ? html`<p class="run-step-note">${s.note}</p>` : ''}${refs.length ? html`<div class="run-step-refs">${refs.map(ref)}</div>` : ''}${s.lines && s.lines.length ? html`<div class="run-log-lines run-step-log" role="log" aria-label="${s.name}">${s.lines}</div>` : ''}${s.under || ''}</div>` : ''}</details></li>`;
   })}</ol>`;
 }
-/* One log (round 72): the shell every run reads its record in -- a head (the title, its line, the
+/* One log: the shell every run reads its record in -- a head (the title, its line, the
  * controls, the filter `/` focuses), the viewport (`id` names it for the scroll owner), a status
  * line under it; `fold` makes the whole log a disclosure, open. `lines` are `logLine`s or a
  * scene's own rows. */
 function runLog({id = 'runLog', title, caption = '', lines = [], empty = '', status = '', controls = '', search = false, rail = '', cls = '', linesCls = '', notes = '', attrs = '', fold = false, count = null, summary = '', open = true}) {
   const field = search ? html`<input type="search"  class="search-input log-search" data-filter=".log-line" data-filter-scope=".run-log" placeholder="${t('Filter the log')}" aria-label="${t('Filter the log')}">` : '';
-  const titles = html`<div class="panel-label"><h3>${title}${count !== null ? html` <span>${count}</span>` : ''}</h3>${infoMark(caption)}</div>`; // N6 (law 121): the log's sentence is its label's (i)
+  const titles = html`<div class="panel-label"><h3>${title}${count !== null ? html` <span>${count}</span>` : ''}</h3>${infoMark(caption)}</div>`; // law 121: the log's sentence is its label's (i)
   // a fold with a `summary` reads as Codex's one grey line (`Worked for 3 min · 4 ›`) until opened
   const folded = summary ? html`<summary class="run-log-head run-log-fold"><span class="run-log-summary">${summary}${count !== null ? html` · ${count}` : ''}</span></summary>` : html`<summary class="run-log-head">${titles}</summary>`;
   const head = fold ? html`${folded}${field || controls ? html`<div class="run-log-tools">${field}${controls}</div>` : ''}` : html`<header class="run-log-head">${titles}${field}${controls}</header>`;
@@ -848,11 +848,11 @@ function observationLine(v, declared) {
   const [by, words, code, ic = 'team'] = (OBSERVED_WORDS[v.schema_kind] || declared)(p);
   return {at: when(v.occurred_at || v.observed_at), by, words: v.availability && v.availability !== 'AVAILABLE' ? html`${words} · ${codeWords(v.availability)}` : words, code: code || '', stage: v.stage_id || '', key: v.observation_id, ic};
 }
-/* A line of the log: a grey mark for the kind of thing that happened (Linear's activity, round 85), the instant, who, the words; a reference (a hash, a path) as code. */
+/* A line of the log: a grey mark for the kind of thing that happened (Linear's activity), the instant, who, the words; a reference (a hash, a path) as code. */
 function logLine({at = '', by = '', words = '', code = '', stage = '', key = '', cls = '', ic = 'activity'}) {
   return html`<div class="log-line${cls ? ' ' + cls : ''}"${stage ? html` data-stage="${stage}"` : ''}${key ? html` data-key="${key}"` : ''}>${tile(ic, 'neutral')}<time>${at}</time>${by ? html`<span class="log-by">${by}</span>` : ''}<span class="log-words">${words}${code ? html` <code class="log-code line-cut" data-tip="${code}">${code}</code>` : ''}</span></div>`;
 }
-/* The log's scroll owner (round 72, from the work area): a log follows its end until the reader
+/* The log's scroll owner (from the work area): a log follows its end until the reader
  * moves away, and resumes when they come back. `area` holds `follow` and `logTop`; `moved` is
  * told when the following changed (the work area saves it and rewords its control). */
 function logMove(el, top, area) { el.scrollTop = top; area.logTop = el.scrollTop; }
@@ -871,7 +871,7 @@ function logHeld(el, area, moved) {
 }
 /* The bounded ring a log keeps: the newest `n` rows stay. */
 function logRetain(log, n) { while (log.rows.size > n) log.rows.delete(log.rows.keys().next().value); log.primed = true; }
-/* A run's row (round 73): the state's dot, the name, the state's word with the duration, who
+/* A run's row: the state's dot, the name, the state's word with the duration, who
  * started it, its facts, the instant at the right -- one shape for a Task, a data update, a
  * session; `o.pinned` (the running one at the top of a list) adds the current step's line. */
 /* The clock of an instant (HH:MM, 24-hour, in the reader's zone as `when` writes it; `seconds`
@@ -904,7 +904,7 @@ function earlierStopRows(row, render) {
 }
 function runRow(run, o = {}) {
   const at = run.finished || run.started;
-  // N6 (law 58): a held data update's way on is the Data page's; any other stop its code's or its state's
+  // law 58: a held data update's way on is the Data page's; any other stop its code's or its state's
   const stop = typeof LiveWorkspace !== 'undefined' && LiveWorkspace.stopWords ? LiveWorkspace.stopWords(run.object) : null;
   const next = stop ? stop.next : wayOn(run.object?.latest_failure_code, run.state);
   const stage = o.pinned && run.current ? html`${t('stage')} ${typeof STAGES !== 'undefined' && STAGES[run.current] ? t(STAGES[run.current].word) : codeWords(run.current)}` : '';
@@ -913,7 +913,7 @@ function runRow(run, o = {}) {
   return objectRow({...(o.dot ? {lead: statusDot(run.state)} : {state: run}), name: run.markup || run.name, why: o.line === false ? '' : o.why || stage, to: o.to || {action: 'task', value: run.id}, cls: 'run-row' + (o.pinned ? ' is-pinned' : '') + (o.cls ? ' ' + o.cls : '')}, {key: run.id, selected: o.selected, until: o.until, word: o.word, columns: [...(o.dot ? ['state'] : []), 'starter', ...(o.columns || []), 'next'], props: [...(o.dot ? [''] : []), run.starter ? html`<span class="run-by">${run.starter}</span>` : '', ...(o.props || []), after], time: at ? (o.inDay ? clockOf(at) : when(at)) : '', actions: o.actions || '', attrs: o.attrs || ''});
 }
 /* ---- end of run shapes ---- */
-/* ---- evidence objects (round 76): the object model written (the laws, "The evidence objects"),
+/* ---- evidence objects: the object model written (the laws, "The evidence objects"),
  * one reading per type from the owners' own fields -- the kind, the subject, the state as a
  * STATES key with the owner's word, the one-line why, the facts. `evidenceRow` is the row every
  * evidence page renders; `citePill` the one shape of a handle, with the hover card (inspect.js).
@@ -964,7 +964,7 @@ function evidenceName(type, x) {
   const kind = t(r.kind || '');
   return {...r, kind, name: r.subject ? html`${kind} · ${r.subject}` : kind, type: typeof type === 'object' ? r.type || '' : type};
 }
-/* The row (round 76): the state's dot and word, the subject (with its kind when the list mixes
+/* The row: the state's dot and word, the subject (with its kind when the list mixes
  * types or the row heads a reading: `o.named`), the why, the facts (`o.brief`: the state alone,
  * for a narrow list), the time; `o.to` the way on. */
 function evidenceRow(type, x, o = {}) {
@@ -977,7 +977,7 @@ function citePill(handle, opens = true) {
   const pill = html`<span class="mono">${handle}</span>`;
   return opens ? btnAttrs(pill, 'review-live-item', handle, 'es-cite', html`data-cite="${handle}" aria-label="${t('Open citation {h}', {h: handle})}"`) : html`<span class="es-cite" data-cite="${handle}" tabindex="0">${pill}</span>`;
 }
-/* The words a page keeps behind the fold (round 76): each term once, one line, read in the
+/* The words a page keeps behind the fold: each term once, one line, read in the
  * inspector's Facts as the Glossary; the pages name at most twelve objects above the fold. */
 const GLOSSARY = [
   ['Evidence version', 'The sealed corpus one review reads: its issuers, documents and policy hashes, as of one instant, expiring at another.'],
@@ -1000,7 +1000,7 @@ const GLOSSARY = [
   ['Evidence structure', 'How a finding is held up by its own citations: supported, single source, contested, unsupported.'],
   ['Disposition', 'The route a review recommends: no material objection, accept with limits, refresh, human review, material objection.'],
   ['Matters, families, lanes', 'The owner\u2019s grouping of typed disclosures: a matter is one named subject, a family its disclosure kind, a lane one issuer \u00d7 family.'],
-  // the reading workbench's words (round E3)
+  // the reading workbench's words
   ['Passage', 'One excerpt of one document at one character range, delivered under a span handle; a row of the reading.'],
   ['Matter', 'A named unit of a filing -- a financing, a proceeding, a corporate event -- read through its window.'],
   ['Cell', 'One issuer and one topic in the ledger: the state of its sealed reading plan, never that the topic was checked.'],
@@ -1015,12 +1015,12 @@ const GLOSSARY = [
   ['Reading budget', 'The allowance one reading session holds: its reads, windows and bytes; more is read only through a declared continuation.'],
 ];
 const glossarySection = () => ({title: t('Glossary'), body: kv(GLOSSARY.map(([term, line]) => [t(term), t(line)]), 'glossary')});
-/* A share of a whole (round 77) is one meter (law 89): the words first (the counts, read by
+/* A share of a whole is one meter (law 89): the words first (the counts, read by
  * the agent), the bar under them with a segment per count in its tone and, where the owner
  * states one, a mark for the required minimum. */
 const coverageBar = (segments, o = {}) => meter({kind: 'share', segments, ...o});
 /* ---- end of evidence objects ---- */
-/* The one row of every list (round 13, one shape since round 65): a lead (a glyph name, or a
+/* The one row of every list (one shape): a lead (a glyph name, or a
  * status dot), the name with its second line, its facts on the same line, the time at the right,
  * the row's actions shown on hover or focus, and the way on — `to` is a route ({page, extra}), an
  * action ({action, value}) or null for a row that only carries facts. The title is the link and stretches over the whole row; the
@@ -1028,7 +1028,7 @@ const coverageBar = (segments, o = {}) => meter({kind: 'share', segments, ...o})
  * reference (`ref`, law 136: what tells two alike apart) leads the facts; in a slotted list it is the
  * column before the name. */
 function objectRow({lead: ic = '', state = null, name = '', why = '', ref = '', to = null, cls = ''} = {}, slots = null) {
-  // a run's row (round 71): the dot leads, the state's word and duration are its first fact
+  // a run's row: the dot leads, the state's word and duration are its first fact
   const lead = state ? statusDot(typeof state === 'string' ? state : state.lifecycle ?? state.state ?? state.status) : typeof ic === 'string' ? (ic ? html`<span class="feature-icon">${icon(ic)}</span>` : '') : ic;
   // the row says what leads it (a glyph, a dot, a mark) so the facts line's indent needs no :has()
   const leadKind = state ? 'dot' : typeof ic === 'string' ? (ic ? 'icon' : '') : /class="mark\b/.test(String(ic)) ? 'mark' : /class="row-dot\b/.test(String(ic)) ? 'dot' : /class="feature-icon\b/.test(String(ic)) ? 'icon' : '';
@@ -1046,7 +1046,7 @@ function objectRow({lead: ic = '', state = null, name = '', why = '', ref = '', 
   const actions = slots?.actions ? html`<span class="row-actions">${rowMenu(slots.actions)}</span>` : '';
   return html`<div class="list-row ${cls}" data-row${slots?.columns ? html` data-row-columns="${slots.columns.join(' ')}"` : ''}${leadKind ? html` data-lead="${leadKind}"` : ''}${slots?.selected ? ' aria-current="true"' : ''}${slots?.key ? html` data-key="${slots.key}"` : ''}${slots?.attrs ? html` ${slots.attrs}` : ''}>${lead}${main}${props}${time}${actions}${to && !slots?.actions ? icon('chevron') : slots?.actions ? '' : html`<span class="icon chevron-slot" aria-hidden="true"></span>`}${slots?.under || ''}</div>`;
 }
-/* The choice list (round 95; GitHub's label picker, Linear's multi-select): a multiple choice
+/* The choice list (GitHub's label picker, Linear's multi-select): a multiple choice
  * in place as a well -- the chosen as chips above it (removable by their ×, the rest as a
  * count), a head with the count and All · None and the filter field, then one row per option in
  * the picker's shape (the name, a ✓ on the chosen); ↑ ↓ Home End walk the rows, Space or Enter
@@ -1081,19 +1081,19 @@ const Choice = (() => {
   return {press, keydown, values: choiceValues};
 })();
 /* A sentence that explains a surface lives behind an (i): the fact line stays, the prose opens on
- * demand (round 9). The sentence is still in the DOM for readers and probes. */
-/* Round 64: a term explained by the hover card (Space on the term reads it too), instead of an
+ * demand. The sentence is still in the DOM for readers and probes. */
+/* a term explained by the hover card (Space on the term reads it too), instead of an
  * (i) fold beside it; the words are the card's, the term stays a word on the page. */
 function hint(term, words) {
   return words ? html`<span class="hint" data-tip="${words}" tabindex="0">${term}</span>` : term;
 }
-/* A note is one line (round 64): an icon and a sentence, the successor of the informational
+/* A note is one line: an icon and a sentence, the successor of the informational
  * banner; a refusal or a call for attention keeps `banner`. */
 const NOTE_ICONS = {neutral: 'info', '': 'info', warning: 'warning', ok: 'checkcircle', danger: 'warning'};
 function noteLine(title, text = '', tone = 'info', action = '', ic = '') {
   return html`<p class="note-line" role="status">${icon(ic || NOTE_ICONS[tone] || tone)}<span>${title}${text ? html` · ${text}` : ''}</span>${action}</p>`;
 }
-/* A fact section read in the inspector (round 64), the successor of the page's fold: its opener
+/* A fact section read in the inspector, the successor of the page's fold: its opener
  * is a text link, its body travels inert in a template beside it and is shown in the Facts mode. */
 const textHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 function factsRef(title, body, cls = '') {
@@ -1102,7 +1102,7 @@ function factsRef(title, body, cls = '') {
   const id = 'facts-' + textHash(String(title) + String(body));
   return html`<p class="facts-ref${cls ? ' ' + cls : ''}">${btnAttrs(html`${title}${icon('arrow')}`, 'facts-open', id, 'text-btn')}<template data-facts-id="${id}">${body}</template></p>`;
 }
-/* A document's opener (round 92): the same text link as a fact section's, but the body is a
+/* A document's opener: the same text link as a fact section's, but the body is a
  * document -- JSON, YAML, a list of references -- and it opens in the code dialog, never in the
  * side column. `text` is the exact text the dialog shows and copies (a value is stringified as
  * JSON); it travels inert in a template beside the link. */
@@ -1111,17 +1111,17 @@ function codeRef(title, text, lang = 'json', cls = '') {
   const id = 'code-' + textHash(String(title) + body);
   return html`<p class="facts-ref${cls ? ' ' + cls : ''}">${btnAttrs(html`${title}${icon('arrow')}`, 'code-open', id, 'text-btn')}<template data-code-id="${id}" data-code-lang="${lang}" data-code-title="${String(title).replace(/<[^>]+>/g, '')}">${body}</template></p>`;
 }
-/* A record's facts under its title (round 49) as read-only property chips (round 56): the same
+/* A record's facts under its title as read-only property chips: the same
  * chip as the declaration's, pressed it says who recorded the value. The last chip opens the
- * object's facts in the inspector when the page declares any (round 64). */
+ * object's facts in the inspector when the page declares any. */
 /* The head's facts (E1; law 110's head): one line of words -- a label in the muted ink, its value in
  * the text ink, a middle dot between -- never a row of boxes; the Facts panel opens from the
- * line's (i). An unknown fact is not shown (round 93, rule 1). */
+ * line's (i). An unknown fact is not shown (rule 1). */
 function contextFacts(cells, label = '') {
   const known = (v) => v != null && String(v).trim() !== '' && String(v) !== '\u2014';
   const shown = cells.map((cell) => (Array.isArray(cell) ? cell : [cell.label, cell.value])).filter(([, v]) => known(v));
   const sep = html`<span class="context-sep" aria-hidden="true">\u00b7</span>`;
-  // N1: a break may follow each dot, so the line wraps between facts at a phone's width; a fact is one
+  // a break may follow each dot, so the line wraps between facts at a phone's width; a fact is one
   // box that carries its dot, whole on its line unless it is longer than the line (W: at 375 and 125 %
   // a study's input name ran past the window)
   return html`<span class="context-facts"${label ? html` aria-label="${label}"` : ''}>${shown.map(([k, v], i) => html`<span class="context-fact"><span class="context-key">${k}</span> <b>${v}</b>${i < shown.length - 1 ? sep : ''}</span>${i < shown.length - 1 ? html`<wbr>` : ''}`)}</span>`;
@@ -1143,7 +1143,7 @@ function objectHead(name, meta, actions = '', state = '', tools = [], details = 
   const top = html`<template class="page-menu">${railTools(tools)}</template><template class="page-actions">${actions}</template>${lede ? html`<template class="page-info">${lede}</template>` : ''}${state && !details.object ? html`<template class="page-state">${state}</template>` : ''}`;
   const chosen = details.object ? details.top : html`${details.top || ''}${details.subject || ''}`;
   const controls = String(chosen || '').trim() ? html`<div class="page-controls" role="group" aria-label="${t('What this page shows')}">${chosen}</div>` : '';
-  // N2 (laws 122-123): the chosen object this page reads (`details.scope`: {name, href, self}) opens
+  // laws 122-123: the chosen object this page reads (`details.scope`: {name, href, self}) opens
   // the path; the frame reads the template after the paint. `self`: the page is the object's own.
   const scope = details.scope ? html`<template class="page-scope" data-href="${details.scope.href || ''}" data-self="${details.scope.self ? 'true' : 'false'}">${details.scope.name}</template>` : '';
   if (!details.object) return html`${top}${scope}${details.views || ''}${controls}`; // law 129: the page's tabs, then its choosers
@@ -1184,7 +1184,7 @@ function statusBox({tone = 'neutral', title = '', caption = '', reasons = [], ch
  * checklist, the properties, the activity feed, the measures and the document with its contents.
  * Each is fed data and nothing else; the views keep what to say, these how it is drawn, and the
  * workshop (`pages-kit.js`) shows each as a specimen. ---- */
-/* A section's head (N3, law 121): its label, the label's (i), its action at the right. */
+/* A section's head (law 121): its label, the label's (i), its action at the right. */
 function sectionHead(title, sub = '', action = '') {
   return html`<header class="panel-head"><div class="panel-label"><h2 data-tip="@overflow">${title}</h2>${infoMark(sub)}</div>${action}</header>`; // a label cut by a narrow box reads whole on hover (law 88)
 }
@@ -1200,7 +1200,7 @@ function fillStackSlot(slot, content, kind = 'section') {
   else slot.removeAttribute('data-stack-box');
 }
 /* The (i) of a label (N3): the explanation a reader may need, on hover and focus, never on the
- * face; the words are its accessible name. The same glyph as a folded line's rest (round 90). */
+ * face; the words are its accessible name. The same glyph as a folded line's rest. */
 function infoMark(words) {
   return words && String(words).trim() ? html`<button type="button" class="hint-more" data-tip="${words}" aria-label="${words}">${icon('info')}</button>` : '';
 }
@@ -1208,7 +1208,7 @@ function infoMark(words) {
 /* Fragments joined by a separator, kept as markup (UX2-01): `Array.join` stringifies each fragment, and the string,
  * interpolated, is escaped -- its tags print. An empty list is '' so a fallback can stand after `||`. */
 const joinMarkup = (list, separator = ' · ') => list.reduce((out, x, i) => html`${out}${i ? separator : ''}${x}`, '');
-/* The operator's offline switch where an owner's sentence names it (V620, U93): the literal a person types, set as
+/* The operator's offline switch where an owner's sentence names it: the literal a person types, set as
  * code, never a raw code among the words; any other text comes back as it came. */
 const OFFLINE_SWITCH = 'ALPHALATTICE_NETWORK_DISABLED=1';
 const literalWords = (text) => (typeof text === 'string' && text.includes(OFFLINE_SWITCH) ? raw(esc(text).split(OFFLINE_SWITCH).join(`<code class="literal">${OFFLINE_SWITCH}</code>`)) : text);
@@ -1219,7 +1219,7 @@ function pageOf(list, page, size = LIST_PAGE) {
 /* The foot of a paged list: the count in words (`one` / `many`, when `total` is given), the page,
  * and Previous / Next -- each an [action, value] pair, held at its end. */
 function pager({total = null, one = '', many = '', page, pages, prev, next}) {
-  if (pages <= 1) return total === null ? '' : html`<div class="table-foot"><span>${countText(total, one, many)}</span></div>`; // N6: one page has no page to turn
+  if (pages <= 1) return total === null ? '' : html`<div class="table-foot"><span>${countText(total, one, many)}</span></div>`; // one page has no page to turn
   const turn = (label, [action, value], held, reason) => btnAttrs(t(label), action, value, 'button compact', held ? html`aria-disabled="true" data-tip="${t(reason)}"` : '');
   return html`<div class="table-foot"><span>${total === null ? '' : html`${countText(total, one, many)} · `}${t('Page {n} of {total}', {n: count(page + 1), total: count(pages)})}</span><span class="table-pages">${turn('Previous', prev, page === 0, 'First page')}${turn('Next', next, page >= pages - 1, 'Last page')}</span></div>`;
 }
@@ -1357,7 +1357,7 @@ const tableRow = (attrs, cells) => html`<tr${attrs ? ' ' + attrs : ''}>${cells.m
 /* The passage list (E3; Mail's list, measured): a passage is its document over its words (two
  * lines; whole in the pane), then the issuer, the day and the state, one word each. */
 function passageList(passages) {
-  // B2 (item 4): where the passages carry the findings that cite them (`cited`), that column stands for the state's one word
+  // where the passages carry the findings that cite them (`cited`), that column stands for the state's one word
   const cites = passages.some((p) => p.cited != null);
   const row = (p) => tableRow(html`data-span="${p.handle}"${p.selected ? html` aria-selected="true"` : ''}`, [
     ['col-text col-absorb', rowTitle({title: html`${p.type || t('Document')} <span class="mono muted">${p.document}</span>`, sub: p.excerpt, action: p.action, value: p.value, cls: 'finding-open passage-open', attrs: 'data-row-press'})],
@@ -1373,7 +1373,7 @@ function checkList({title, rows, key, rowCls = '', cls = '', attrs = ''}) {
   return html`<details class="reveal-details${cls ? ' ' + cls : ''}"${attrs ? ' ' + attrs : ''}${unmet.length ? ' open' : ''}><summary>${title} <span class="num">${count(rows.length - unmet.length)} / ${count(rows.length)}</span>${unmet.length ? html` · ${t('{n} to do', {n: count(unmet.length)})}` : ''}</summary>${list}</details>`;
 }
 /* An object's properties (G1; Linear's right column, measured): a glyph and a word a key, the value
- * in words; a property with nothing to say is not shown (round 93, rule 1). Rows: [icon, word, value]. */
+ * in words; a property with nothing to say is not shown (rule 1). Rows: [icon, word, value]. */
 const kvKey = (ic, word) => html`<span class="kv-key">${icon(ic)}${word}</span>`;
 function propertyList(title, rows, attrs = '') {
   return panel(title, '', kv(rows.filter(([, , v]) => v !=='').map(([ic, word, v]) => [kvKey(ic, word), v]), 'kv-icons side-props'), '', attrs);
@@ -1392,12 +1392,12 @@ const measureStrip = (figures, label, cls = '') => html`<div class="es-measures-
  * preparation's stages (contract 10.10). */
 const workCount = (n, total, unit) => ({count: html`<span class="tp-number">${Number(n).toLocaleString('en-US')}</span><span class="tp-denom"> / ${Number(total).toLocaleString('en-US')} ${unit}</span>`, bar: [Number(n), Number(total)]});
 /* ---- end of the Evidence library ---- */
-/* A record's properties (round 14): icon + label + value pairs in a two-column grid, the value a
+/* A record's properties: icon + label + value pairs in a two-column grid, the value a
  * link where the row names a route (`to`) or an action (`action`); `note` a second line under the
  * value. `opts`: eyebrow (with `about` behind an (i)), `body` (more inside the card: a list of
  * limitations, a disclosure), `fact` and `foot` (the card's foot: its own fact left, one opener
  * right). The one card a record page opens on. */
-/* Sources as one kv (round 64): each value the way to its object; a `kv` row, not a block. */
+/* Sources as one kv: each value the way to its object; a `kv` row, not a block. */
 function sourceRows(rows) {
   const value = (r) => r.to ? link(html`${r.value}${icon('arrow')}`, r.to.page, 'text-btn', r.to.extra || {}) : r.action ? btn(html`${r.value}${icon('arrow')}`, r.action.name, r.action.value, 'text-btn') : r.value;
   return rows.filter(Boolean).map((r) => [html`${r.icon ? icon(r.icon) : ''}${r.label}`, html`${value(r)}${r.note ? html`<span class="sub-cell">${r.note}</span>` : ''}`]);
@@ -1425,7 +1425,7 @@ function chart(kind = 'indexed', compact = false, spec = null) {
   if (!all.length) return emptyState(t('No published observations'));
   const lines = spec?.lines || PORTFOLIO_LINES;
   const [a, b] = spec?.window || (id === 'portfolio' && typeof Inspect !== 'undefined' ? Inspect.window(all.length) : [0, all.length - 1]);
-  CHART_ROWS.set(id, {rows: all, lines, window: [a, b], kind, tick: spec?.tick, axis: spec?.axis, value: spec?.value, note: spec?.note, title: spec?.title, label: spec?.label}); // N6: a chart may say its own ticks, values, reading note and what it is (law 17: a variance figure is never announced as returns)
+  CHART_ROWS.set(id, {rows: all, lines, window: [a, b], kind, tick: spec?.tick, axis: spec?.axis, value: spec?.value, note: spec?.note, title: spec?.title, label: spec?.label}); // a chart may say its own ticks, values, reading note and what it is (law 17: a variance figure is never announced as returns)
   const n = b - a + 1;
   const values = lines.map((line) => all.slice(a, b + 1).map((r) => (isDaily ? r[line.daily] : r[line.key])));
   const flat = values.flat().filter(finiteValue);
@@ -1458,7 +1458,7 @@ function chart(kind = 'indexed', compact = false, spec = null) {
       : html`<path class="${line.cls}" d="${path(values[k])}"/>`));
   const label = spec?.label || t('Published historical returns; read-only chart.');
   const windowed = a > 0 || b < all.length - 1;
-  // round 95 (Stocks' price label): the study's last value on the axis, in the series' ink, over a
+  // (Stocks' price label): the study's last value on the axis, in the series' ink, over a
   // ground patch so a tick under it is not read twice; the featured indexed chart only
   let lastLabel = '';
   if (!compact && !isDaily && id === 'portfolio') {
@@ -1477,7 +1477,7 @@ function fitCharts(root = document) {
   for (const wrap of root.querySelectorAll('[data-chart-wrap]')) {
     const svg = wrap.querySelector('svg.chart-svg'), target = wrap.querySelector('[data-chart]');
     if (!svg || !target) continue;
-    const box = layoutRect(wrap); // layout px (round 95): under the root zoom a client rect is scaled, and a chart re-issued at the scaled width draws its ticks a size too small
+    const box = layoutRect(wrap); // layout px: under the root zoom a client rect is scaled, and a chart re-issued at the scaled width draws its ticks a size too small
     if (!box.width || !box.height) continue;
     const [, , w, h] = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
     const width = Math.round(box.width), height = Math.round(box.height);
@@ -1519,7 +1519,7 @@ function placeEmpty(root = document) {
     if (shift > 0) e.style.setProperty('--empty-shift', Number(shift.toFixed(4)) + 'px');
   }
 }
-/* A clamped text says so (C2, law 140): `data-clamped` while the clamp hides words, read at the same
+/* A clamped text says so (law 140): `data-clamped` while the clamp hides words, read at the same
  * moments as the scroll edges; its way (`data-clamp-way`, the next element) stands only then, or
  * while the text is open (`data-clamp="open"`) to close it again. */
 function markClamps(root = document) {
@@ -1601,13 +1601,13 @@ function meter(spec) {
   if (kind === 'share') {
     const segments = spec.segments || [], total = spec.total ?? segments.reduce((a, x) => a + (Number(x.n) || 0), 0);
     const width = (n) => total ? Math.max(0, Math.min(100, (Number(n) || 0) / total * 100)).toFixed(2) : '0';
-    // B1: `markLabel` names the mark above it; `ends` says the whole's two ends under it (a gauge of one whole: 0 % and 100 %)
+    // `markLabel` names the mark above it; `ends` says the whole's two ends under it (a gauge of one whole: 0 % and 100 %)
     const at = spec.mark != null ? Number(width(spec.mark * (spec.total ?? 1))) : null;
     const markRow = at !== null && spec.markLabel ? html`<span class="meter-mark-row"><span class="meter-mark-label" style="left:${at}%"${at > 85 ? ' data-edge="end"' : at < 15 ? ' data-edge="start"' : ''}>${spec.markLabel}</span></span>` : '';
     const ends = spec.ends ? html`<span class="meter-ends"><span>${spec.ends[0]}</span><span>${spec.ends[1]}</span></span>` : '';
     return html`<div class="meter meter-share${cls}">${spec.words === '' ? '' : html`<span class="meter-words">${spec.words || segments.map((x, i) => html`${i ? ' · ' : ''}${count(x.n)} ${x.label || ''}`)}</span>`}${markRow}<span class="meter-bar" role="img" aria-label="${label}">${segments.map((x) => html`<i class="${x.tone || 'neutral'}" style="width:${width(x.n)}%"></i>`)}${at !== null ? html`<b class="meter-mark" style="left:${at}%"></b>` : ''}</span>${ends}</div>`;
   }
-  // N6: a composition of counts (the owner's) as well as of weights; `limit` slices before the rest is one (every slice when the legend lists them all)
+  // a composition of counts (the owner's) as well as of weights; `limit` slices before the rest is one (every slice when the legend lists them all)
   const slices = spec.slices || [], counted = spec.format === 'count', limit = spec.limit ?? 6;
   const total=slices.reduce((sum,[,value])=>sum+(Number(value)||0),0), shown=slices.slice(0,limit), tail=slices.slice(limit), rest=tail.reduce((sum,[,value])=>sum+(Number(value)||0),0);
   const other=t('Other {n} sectors',{n:tail.length}), values=rest>0 ? [...shown,[other,rest]] : shown;
@@ -1795,7 +1795,7 @@ const CODE_WORDS = {
   NO_COMMON_INTERSECTION_OR_ZERO_FILL: 'No common intersection or zero filling',
   NO_STATISTICAL_SIGNIFICANCE_OR_SELECTION_CLAIM: 'No statistical significance or selection claim',
   'unstructured document': 'Unstructured document',
-  // Existing bilingual owner states, source metadata, structure and claim limits (U117).
+  // Existing bilingual owner states, source metadata, structure and claim limits.
   "ABANDONED": "Abandoned",
   "ACCEPTED": "Accepted",
   "ACTIVATED": "Activated",
@@ -1864,7 +1864,7 @@ const CODE_WORDS = {
   "SUB_UNCERTAIN": "Uncertain subheading",
   "TASK_CONTROL": "Task Control",
   "TRANSACTIONS": "Transactions",
-  // Remaining closed comparison/report values and exact reference kinds (U117).
+  // Remaining closed comparison/report values and exact reference kinds.
   "CHANGED_ALIGNED": "Changed and aligned",
   "ABSENT_LATER": "Absent in the later filing",
   "UNRESOLVED": "Unresolved",
@@ -2042,7 +2042,7 @@ const CODE_WORDS = {
   WORKSPACE_BACKUPS: "Workspace backups",
   WORKSPACE_PREPARE_READBACK: "Read workspace preparation",
   WORKSPACE_SHOW: "Workspace overview",
-  // U117: declared owner states, relations and kinds; never inferred from spelling.
+  // declared owner states, relations and kinds; never inferred from spelling.
   "VERIFIED_READBACK": "Owner readback checked",
   "VERIFIED_TASK_STATE": "Task state checked",
   "VERIFIED_REFUSAL": "Refusal checked",
@@ -2159,15 +2159,15 @@ const CODE_WORDS = {
   COMPLETE: 'complete', PARTIAL: 'partial', UNIQUE_CURRENT: 'the one current analysis', DEVELOPMENT_RESULT: 'Development result', INSTALLED_RESULT: 'Installed result',
   research_experiment: 'Research experiment', study_verification_sweep: 'Verify saved studies', evidence_install: 'Install Evidence', INVERSE_VOLATILITY_FROM_THE_LINKED_RISK_STUDY: 'Inverse volatility from the linked Risk study', COVARIANCE_FROM_THE_LINKED_RISK_STUDY: 'Covariance from the linked Risk study', ALREADY_PROMOTION: 'Already on the whole universe', 'research_lane.sample_scheme_superseded': 'Sampled under an earlier scheme', 'alpha_research.lifecycle_program_scheme_superseded': 'Sealed under an earlier scheme', 'risk_research.program_scheme_superseded': 'Sealed under an earlier scheme', 'portfolio_research.program_scheme_superseded': 'Sealed under an earlier scheme', 'task_control.queue_full': 'The Task queue is full', REFUSED_QUEUE_FULL: 'The Task queue is full', 'study_verification_sweep.not_admitted': 'Not admitted', 'research_input.manifest_missing': 'Its manifest is missing', 'research_input.bundle_unreadable': 'Its files do not read', workspace_data_update: 'Data update', workspace_prepare: 'Workspace preparation', workspace_preparation: 'Workspace preparation', evidence_review: 'Evidence review', alternative_evidence: 'Alternative evidence',
   'research_workspace.manifest_from_newer_build': 'Written by a newer build', // R13 (B13)
-  'research_authoring.section_key_unknown': 'A key its section does not name', // U18 (V249)
-  // U56 (EX): a formula factor's packet -- what activation adds and does, a trial's outcome and steps, the Alpha study's change, the refusals
+  'research_authoring.section_key_unknown': 'A key its section does not name', // Owner refusal.
+  // a formula factor's packet -- what activation adds and does, a trial's outcome and steps, the Alpha study's change, the refusals
   DAILY_CATALOG_ENTRY: 'a daily catalog entry', DAILY_PANEL_REBUILT_AT_NEXT_DATA_UPDATE: 'the daily Panel is rebuilt at the next data update', FEATURE_NOT_ADMITTED_BY_SCREENING: 'Not admitted by screening', NOT_COMPARED: 'Not compared: no change is claimed',
   FEATURE_BUILD: 'Feature build', FACTOR_STUDY: 'Factor study', CURATION: 'Curation', ALPHA_STUDY: 'Alpha study', PORTFOLIO_STUDY: 'Portfolio study',
   mean_rank_ic: 'Mean rank IC', pooled_oos_r2: 'Pooled out-of-sample R²', mean_gross_decile_spread: 'Mean gross decile spread', fold_coverage_mean: 'Mean fold coverage',
   'feature_extension.preprocessing_recipe_absent': 'No preprocessing recipe named', 'feature_extension.sector_leaf_research_only': 'A Sector-level research formula', 'feature_extension.preprocessing_not_admitted_for_active_panel': 'A research recipe',
   'feature_extension.human_confirmation_required': 'A person activates formula factors', 'feature_extension.contract_failed': 'The contract fails', 'feature_extension.trial_required': 'A completed trial is needed',
   'feature_extension.not_active': 'Not active in this workspace', 'feature_extension.shipped': 'Shipped with the product', 'feature_trial.record_damaged': 'A trial record no longer reads',
-  // U50 (EX): a model's refusals and its contract's findings, in words; a finding's subject follows its words
+  // a model's refusals and its contract's findings, in words; a finding's subject follows its words
   'model_extension.sandbox_required': 'A sandbox trial is needed', 'model_extension.contract_failed': 'The contract fails', 'model_extension.human_confirmation_required': 'A person activates models',
   'model_extension.installed': 'Installed with the product', 'model_extension.not_active': 'Not active in this workspace', CAPABILITY: 'a capability',
   'model_contract.route_mismatch': 'Its route differs from its declaration', 'model_contract.numerical_binding_route_invalid': 'Its binding route is invalid', 'model_contract.axis_point_refused': 'A search axis point is refused',
@@ -2175,22 +2175,22 @@ const CODE_WORDS = {
   'model_contract.predictions_not_deterministic': 'Its predictions are not deterministic', 'model_contract.predictions_malformed': 'Its predictions are malformed', 'model_contract.prediction_reads_other_rows': 'A prediction reads other rows',
   'model_contract.state_route_mismatch': 'Its fitted state names another route', 'model_contract.linear_state_incomplete': 'Its linear state is incomplete', 'model_contract.tree_state_incomplete': 'Its tree state is incomplete',
   'model_contract.import_outside_lock': 'An import outside the lock', 'model_contract.import_not_installed': 'An import not installed',
-  // U57 (A7): the evidence service's reuse counters, since it started
+  // the evidence service's reuse counters, since it started
   excerpt_reuses: 'Excerpts reused', canonical_reuses: 'Canonical texts reused', canonical_revisions_damaged: 'Canonical texts found damaged', selection_reuses: 'Selections reused', generation_releases: 'Index generations released', generation_builds_avoided: 'Index builds avoided',
-  // U54: the artifacts a Task's owner reads back, and why one cannot be
+  // the artifacts a Task's owner reads back, and why one cannot be
   PortfolioResearchResult: 'Portfolio result', ResearchExecutionEvidence: 'Experiment evidence',
   'tasks.artifact_readback_absent': 'Its owner found no artifact', 'tasks.artifact_readback_failed': 'Its owner could not read it back',
-  // U48 (V209): a backup's refusals and its last automatic attempt's failure, in words
+  // a backup's refusals and its last automatic attempt's failure, in words
   'workspace_backup.refused': 'The backup was refused', 'workspace_backup.object_changed_while_copied': 'A file changed while it was copied', 'workspace_backup.root_inside_workspace': 'The backup root is inside the workspace', 'workspace_backup.workspace_id_invalid': 'The workspace identity is invalid', 'workspace_backup.generation_invalid': 'A kept generation is invalid', 'workspace_backup.generations_kept_invalid': 'The kept count is invalid', 'workspace_backup.table_not_held': 'A held table is missing', 'workspace_backup.object_invalid': 'A stored object is invalid',
   LOW: 'low exposure', MEDIUM: 'medium exposure', HIGH: 'high exposure', CRITICAL: 'critical exposure',
   OPENED_OR_INCREASED_BY_POSITIVE_CHANGE: 'opened or increased · positive change', HELD_BY_ENDING_WEIGHT: 'held · ending weight', REDUCED_OR_EXITED_BY_ABSOLUTE_CHANGE: 'reduced or exited · absolute change',
   RECORDED: 'recorded package · no network', LIVE_OFFICIAL: 'live official sources', RECORDED_LOCAL_READ: 'local read', EXPLICITLY_ADMITTED_OFFICIAL_ACQUISITION: 'admitted official acquisition', SEC_EDGAR_OFFICIAL: 'SEC EDGAR (official)', MATERIAL_SECTIONS: 'material sections', FULL_FILING: 'full filing',
   cro_review_dossier: 'CRO review dossier', cro_review_receipt: 'CRO review receipt', cro_review_publication: 'CRO review publication', // the CRO Task's kept artifacts, as their locators name them
-  // the eight topics (round E2; `EvidenceTopic`) and the reasons a cell is not complete (`incomplete[]`)
+  // the eight topics (`EvidenceTopic`) and the reasons a cell is not complete (`incomplete[]`)
   LIQUIDITY_GOING_CONCERN: 'Liquidity & going concern', CAPITAL_DILUTION: 'Capital & dilution', LEGAL_REGULATORY: 'Legal & regulatory', OPERATIONS_SUPPLY: 'Operations & supply', PRODUCT_SAFETY_CYBER: 'Product safety & cyber', GOVERNANCE_CONTROLS: 'Governance & controls', COMMERCIAL_COUNTERPARTY: 'Commercial & counterparty', CORPORATE_ACTION_LISTING: 'Corporate action & listing',
   UNIT_NEEDS_UNREAD: 'Unit needs unread', TABLES_NOT_DEALT: 'Tables not dealt a view', TABLES_DELIVERED_IN_PART: 'Tables delivered in part', TABLES_PROGRESS_UNKNOWN: 'Tables of unknown progress', TABLES_UNRENDERABLE: 'Tables that cannot be rendered', TABLES_WITHOUT_ORIGINAL: 'Tables without an original', CANDIDATES_UNREAD: 'Candidates unread', RESIDUAL_SCOPE_QUEUED: 'Residual search queued', ROUTE_GAP: 'Route gap', SOURCE_GAP: 'Source gap',
   QUEUED: 'Queued', COVERED: 'Covered', BROADER: 'Broader search', NOTHING_RESUMABLE: 'Nothing resumable', REPRESENTATION_GAP: 'Representation gap', NONE: 'None',
-  // a passage's codes (round E3): the method, the placement in an interval, the delivery, the comparison, the statement, the families, the time's basis and precision
+  // a passage's codes: the method, the placement in an interval, the delivery, the comparison, the statement, the families, the time's basis and precision
   UNIT_WINDOW: 'Matter window', RESIDUAL_SEARCH: 'Residual search', TYPED_RULE: 'Typed rule', TABLE_VIEW: 'Table view', STRUCTURAL_SCAN: 'Structural scan',
   IN: 'In the interval', BOUNDARY: 'On the boundary', OUTSIDE: 'Outside the interval', UNKNOWN: 'Unknown', HISTORICAL_CONTEXT: 'Historical context', EXACT_REPEAT: 'Exact repeat',
   DELIVERED: 'Delivered', SERVED_BY_LATER_READING: 'Served by a later reading', WHOLE_VIEW: 'Whole view',
@@ -2198,11 +2198,11 @@ const CODE_WORDS = {
   SOURCE_UNAVAILABLE: 'Source unavailable', ABSENT: 'The company states none', PRESENT: 'Stated', AMBIGUOUS: 'Ambiguous', MIXED: 'Mixed', MITIGATING: 'Mitigating', FAVOURABLE: 'Favourable', NO_CONCLUSION: 'No conclusion', SCOPE_UNRESOLVED: 'Scope unresolved', UNREAD_RELEVANT_STATEMENT: 'A relevant statement unread',
   FINANCING: 'Financing', LITIGATION: 'Litigation', CORPORATE_EVENT: 'Corporate event', CUSTOMER_CONCENTRATION: 'Customer concentration', GOING_CONCERN: 'Going concern', SUPPLY: 'Supply',
   ACCEPTANCE: 'acceptance time', PUBLICATION: 'publication time', DATE: 'date', INSTANT: 'instant', RECORDED_IMPORT_CAPTURE_ACCEPTANCE_UNKNOWN: 'recorded import; acceptance unknown', OFFICIAL_ACCEPTANCE: 'official acceptance',
-  // the review's codes (round E4): a position's transition, an assessment's disposition of a finding, the dossier's delivery
+  // the review's codes: a position's transition, an assessment's disposition of a finding, the dossier's delivery
   NOT_EVALUATED: 'Not evaluated', IN_FLIGHT_RECOVERY: 'In-flight recovery', ACTIVE_LEASE: 'Active lease', USER_PINNED: 'Pinned by you', PROVED: 'Proved', REVIEWS_NOT_COMPARABLE: 'Not comparable', COMPARED: 'Compared', SOURCE_OBJECTS: 'Source objects', VECTOR_OBJECTS: 'Vector objects', INDEXES: 'Indexes', EXACT_HISTORICAL_READBACK: 'Exact historical readback',
   ONGOING: 'Ongoing', RESOLVED: 'Resolved', SUPERSEDED: 'Superseded', SUPPORTED: 'Supported', SINGLE_SOURCE: 'Single source', CONTESTED: 'Contested', UNSUPPORTED: 'Unsupported', REFRESH_EVIDENCE: 'Refresh evidence', RESOLVE_ISSUER_MAPPING: 'Resolve the issuer mapping', HUMAN_REVIEW: 'Human review', DO_NOT_ACTIVATE: 'Do not activate', OPENED: 'Opened', INCREASED: 'Increased', HELD: 'Held', REDUCED: 'Reduced', EXITED: 'Exited', MATERIAL_ISSUE: 'Material issue', NOT_MATERIAL: 'Not material', RESOLVED_WITH_EVIDENCE: 'Resolved with evidence', DEFERRED: 'Deferred', WHOLE_DOSSIER: 'Whole dossier', SEC_EDGAR_OFFICIAL: 'SEC EDGAR (official)',
   UNKNOWN_PROGRESS: 'Unknown progress', SESSION_LIMIT: 'Session limit', WINDOW_LIMIT: 'Window limit', ADVERSE: 'adverse', MATTER: 'matter', STATE: 'state', STRUCTURE: 'structure', TYPED: 'typed',
-  'alternative_evidence.minimum_entity_coverage_not_met': 'Minimum issuer coverage not met', REQUIRED_BASELINE_MISSING: 'Required baseline filing missing', 'alternative_evidence.sec_response_too_large': 'Body over the document cap', // the codes a unit or a resource fails by (round E1)
+  'alternative_evidence.minimum_entity_coverage_not_met': 'Minimum issuer coverage not met', REQUIRED_BASELINE_MISSING: 'Required baseline filing missing', 'alternative_evidence.sec_response_too_large': 'Body over the document cap', // the codes a unit or a resource fails by
   EXACT_HISTORICAL_READBACK: 'Exact historical readback', REVIEW_PUBLISHED: 'Review published', CRO_DOSSIER_READY: 'Dossier ready', EVIDENCE_ANALYST_PACKET_READY: 'Packet ready', NOT_AUTHORIZED: 'not authorized', AUTHORIZED: 'authorized', HUMAN: 'human', OFFICIAL_CLOSE: 'official close',
   EXPERIMENT_PLAN: 'Experiment PLAN', EXPERIMENT_RUN: 'Experiment RUN', EXPERIMENT_REPLAY: 'Experiment replay', EXPERIMENT_CURATE: 'Curation decision saved', EXPERIMENT_FOUNDATION_PREVIEW: 'Foundation preview', EXPERIMENT_FOUNDATION_SEAL: 'Foundation sealed',
   EXPERIMENT_LINK_RISK: 'Risk report linked', EXPERIMENT_PORTFOLIO_DRAFT: 'Portfolio draft', EXPERIMENT_DELIVERY_EXPORT: 'Delivery export', EXPERIMENT_EXPORT: 'Experiment export', EXPERIMENT_RISK_EXPORT: 'Risk export', EXPERIMENT_FOUNDATION_EXPORT: 'Foundation export',
@@ -2212,15 +2212,15 @@ const CODE_WORDS = {
   RESEARCH_PREPARATION: 'Research preparation', DEVELOPMENT_REPLAY: 'Development replay', DISCOVERY_ONLY_SELECTED_OPERATIONS_REVALIDATE: 'Discovery only · selected operations re-validate',
   INITIALIZATION_REQUIRED: 'initialization required', FEATURE_BUILDING: 'Features being built', RESEARCH_READY: 'research-ready', MANIFEST_UPDATE_PENDING: 'membership transition pending', ONBOARDING_IN_PROGRESS: 'onboarding in progress',
   SOURCE_VERIFICATION_BLOCKED: 'source verification blocked', SOURCE_CHECK_REQUIRED: 'source check required', LOCAL_DATA_PRESENT: 'local data present · no research input',
-  // a recorded fold's metrics (round 86): the words the Alpha tables use
+  // a recorded fold's metrics: the words the Alpha tables use
   mae: 'MAE', mse: 'MSE', rank_ic: 'Rank IC', zero_relative_oos_r2: 'OOS R² (vs zero)', gross_decile_spread: 'Decile spread (gross, fraction)', formation_decile_turnover: 'Formation decile turnover',
   comparison_row_count: 'Comparison row count', scored_comparison_row_count: 'Scored comparison row count', coverage: 'Coverage', fold_index: 'Fold index', metrics_hash: 'Metrics hash',
-  // a research case's budget and stages (round 86)
+  // a research case's budget and stages
   maximum_tasks: 'Maximum Tasks', maximum_numerical_calls: 'Maximum numerical calls', maximum_model_calls: 'Maximum model calls',
   DATA_FEATURES: 'Data & Features', FACTOR_FOUNDATION: 'Factor foundation', ALPHA: 'Alpha', RISK: 'Risk', PORTFOLIO: 'Portfolio', EVIDENCE_CRO: 'Evidence & CRO',
 };
-/* Round 63: the failures and next actions the record carries, in words; a state's word is the
- * state table's (round 71). An undeclared word is named as absent; the raw code stays
+/* the failures and next actions the record carries, in words; a state's word is the
+ * state table's. An undeclared word is named as absent; the raw code stays
  * in the exact observations and the tip, never turned into a guessed sentence. */
 Object.assign(CODE_WORDS, {
   insufficient_research_history: 'Insufficient research history',
@@ -2243,16 +2243,16 @@ Object.assign(CODE_WORDS, {
   // the limitations a curation decision acknowledges, said as the acknowledgement
   ALPHA_SCIENTIFIC_STOP_PRESERVED: 'The Alpha scientific stop is preserved', SEALED_HOLDOUT_UNREAD: 'The sealed holdout stays unread', RISK_RESEARCH_NOT_ADMITTED: 'Risk research is not admitted',
   ROLLING: 'rolling', EXPANDING: 'expanding', DAILY: 'daily',
-  // N6 (law 80): the data owner's stops and a unit's refusals, said in words on every data state
+  // law 80: the data owner's stops and a unit's refusals, said in words on every data state
   'data.truth_review_required': 'A data decision is needed', 'data.remediation_wait': 'Waiting, as decided', 'workspace_data_update.retry_not_due': 'The retry time has not come', 'data.fetch_failed': 'The fetch failed',
   UNEXPLAINED_RAW_MOVE: 'An unexplained price move', 'data.unexplained_raw_move': 'Unexplained move', // F2: a data issue's kind, its name's second part
 });
 /* The owners' refusal codes, each said in a sentence beside the code (the review desk's since
- * round 15; shared since round 77): `explainCode` finds the code inside an owner's message. */
+ * shared): `explainCode` finds the code inside an owner's message. */
 const CODE_LINES = {
     'storage.cap_setting_invalid':'The storage cap must be auto or positive whole bytes. Use `alphalattice storage set --cap-bytes auto`.',
     'storage.cap_setting_unreadable':'Cannot read the workspace storage cap. Use Settings or `alphalattice storage set --cap-bytes auto`; retained records stay intact.',
-    // U56 (U28): a damaged trial record, and why the daily Panel does not admit a formula -- the Host's words, its static form
+    // a damaged trial record, and why the daily Panel does not admit a formula -- the Host's words, its static form
     'feature_trial.record_damaged':'This trial\'s record in the workspace no longer reads: it was changed or cut short. Start the trial again with its feature plan and study; the damaged record is kept aside and every step that did not change is reused.',
     'feature_extension.preprocessing_not_admitted_for_active_panel':'The daily Panel preprocesses with ROBUST_SECTOR_NEUTRAL_Z alone; this recipe is a research recipe. Declare the factor again with that recipe to activate it.',
     'feature_extension.preprocessing_recipe_absent':'The research plan names no preprocessing recipe for this factor, so the daily Panel cannot admit it. Declare it again with a recipe to activate it.',
@@ -2263,10 +2263,10 @@ const CODE_LINES = {
     'local_web.service_unreachable':'The service did not answer: nothing was read or sent. It may be stopped or restarting; read again once it answers.',
     'local_web.service_answer_unreadable':'The service answered with something other than its JSON: nothing is inferred from it. Read again once it answers.',
     'product_host.evidence_review_not_configured':'This workspace admits no evidence review authority (issuer registry, listing authority, recorded source package). The book stays readable and can be delivered without a review section; admitting an authority is a workspace setup step, not a page action.',
-    'REFUSED_NO_BOOK_TO_REVIEW':'No book is named, and this workspace has no default one: choose a sealed book on Books, or open one from its Portfolio page.', // U20: the Host's words (V242), true of a workspace with books too
+    'REFUSED_NO_BOOK_TO_REVIEW':'No book is named, and this workspace has no default one: choose a sealed book on Books, or open one from its Portfolio page.', // the Host's words, true of a workspace with books too
     'product_host.evidence_review_experiment_selector_invalid':'The book selector is incomplete: an authored book is named by its Task, its receipt hash and its holdings date together. Open the book from its Portfolio page (Review evidence) or choose it above.',
     'REFUSED_NO_ADMITTED_EVIDENCE_AUTHORITY':'No issuer registry and listing authority are admitted for this workspace; coverage cannot be computed and nothing is invented.',
-    // round E1: the refusals a preparation names, each with the recovery its owner names (the storage keys before the Task's, so a Task failure that carries one reads as that)
+    // the refusals a preparation names, each with the recovery its owner names (the storage keys before the Task's, so a Task failure that carries one reads as that)
     'storage.managed_capacity_exceeded':'Managed storage exceeds the workspace cap. Raise the cap in Settings or plan a cleanup.',
     'storage.disk_space_insufficient':'The disk has too little free space for the preparation\'s writes, so nothing of it was placed. Free space on the disk or through the storage cleanup preview, then prepare again.',
     'alternative_evidence.preparation_superseded':'This packet was prepared under a contract this workspace has since superseded: what it read stays readable by its handles; its reading plan is not continued. Read the source preview again and prepare under the current contract.',
@@ -2279,7 +2279,7 @@ const CODE_LINES = {
     'REQUIRED_BASELINE_MISSING':'A required baseline filing is not held for this issuer under the admitted cap, so the issuer fails by that name; its siblings are unaffected. An oversize body is checked again after its recheck date or under a larger declared cap.',
     'alternative_evidence.sec_response_too_large':'The body exceeds the admitted document cap and was not transferred; it is deferred by name until its recheck date or a larger declared cap.',
     'alternative_evidence.task_failed':'The preparation Task failed and its owner recorded the code; Tasks holds the recovery actions.',
-    'REFUSED_MODEL_AUTHORITY_NOT_ADMITTED':'The product runs no model of its own: an agent answers the Analyst\'s packet and the CRO\'s dossier through its bundle. Saved evidence and reviews stay readable.', // U15: no model of the product's own since AG2
+    'REFUSED_MODEL_AUTHORITY_NOT_ADMITTED':'The product runs no model of its own: an agent answers the Analyst\'s packet and the CRO\'s dossier through its bundle. Saved evidence and reviews stay readable.', // no model of the product's own since AG2
     'REFUSED_NO_ADMITTED_EVIDENCE_RUNTIME':'No evidence runtime is admitted, so there is nothing to prepare sources with.',
     'alternative_evidence.external_analysis_binding_changed':'The answer was bound to a different packet: the prepared Task or its packet changed since the answer was written. Read the packet again and answer that one; nothing was recorded.',
     'unknown_span_reference':'A cited span handle is not among the packet\'s admitted passages. Only listed span handles may be cited; nothing was recorded.',
@@ -2298,7 +2298,7 @@ const CODE_LINES = {
     'workspace_backup.root_inside_workspace':'The backup root lies inside the workspace, so no generation was made. Name a root outside it with ALPHALATTICE_BACKUP_ROOT, then back up again.',
     'workspace_backup.object_changed_while_copied':'A held file changed while it was copied, so no generation was kept. Back up again once the running work settles.',
     'research_workspace.manifest_from_newer_build':'A newer build of the product wrote this workspace: its manifest holds what this build does not know, named after the code. Nothing was changed.',
-    'research_workspace.manifest_unreadable':'The workspace\'s manifest could not be read, so what this workspace holds is not known here. Nothing was changed; the service log names the file.'}; // N6: a refusal the Home, Research inputs and Storage show, in words
+    'research_workspace.manifest_unreadable':'The workspace\'s manifest could not be read, so what this workspace holds is not known here. Nothing was changed; the service log names the file.'}; // a refusal the Home, Research inputs and Storage show, in words
 Object.assign(CODE_LINES, {
   "portfolio_application.pipeline_manifest_unreadable": "The saved result index could not be verified. Its Task and result contents are unknown. Read workspace show and backup list; restore a generation that holds this index into a new directory, then read the result there.",
   "workspace_backup.generation_unreadable": "A backup-root record could not be verified. Its sealed identity, workspace association and suitability for restore are unknown. Read workspace show and backup list; restore an appropriate verified full generation hash with alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>. Do not select an unverified filename prefix.",
@@ -2310,7 +2310,7 @@ Object.assign(CODE_LINES, {
   "task_control.task_not_found": "The named Task is not held by Task Control in this workspace. Read workspace show and backup list; restore a generation that holds it into a new directory, or follow the offered owner action to plan new work.",
 });
 const explainCode = (message) => { const s = String(message || ''); const code = Object.keys(CODE_LINES).find((k) => s.includes(k)); return code ? t(CODE_LINES[code]) : ''; };
-/* U72 (V451, NM1b): LABELS from labels.json owns installed titles and their Chinese form; ids stay in code cell tips/copy. */
+/* LABELS from labels.json owns installed titles and their Chinese form; ids stay in code cell tips/copy. */
 const labelOf = (id) => (typeof LABELS !== 'undefined' && id !== null && id !== undefined && Object.prototype.hasOwnProperty.call(LABELS, String(id)) ? LABELS[String(id)] : null);
 const labelWords = (label) => (typeof I18N !== 'undefined' && I18N.locale === 'zh-CN' ? label.title_zh : label.title);
 const declaredCodeWord = (code) => CODE_WORDS[code] || STATES[String(code ?? '').toLowerCase()]?.word || (typeof MESSAGE_KINDS === 'object' && MESSAGE_KINDS[code]?.[0]) || stageWord(code)?.word || '';
@@ -2330,13 +2330,13 @@ const featureList = (ids, n = 3) => { const list = ids || []; return html`${list
  * (Codex, Claude Code); a subagent keeps its retained name. */
 const ACTORS = {HOST_FALLBACK: 'Host', HUMAN: 'You', EXTERNAL_AUTOMATION: 'Agent · API', INSTALLED_AGENT: 'Installed Agent', SERVICE_AUTOMATION: 'Service', EXTERNAL_CLIENT: 'External client', TASK_CONTROL: 'Task Control'};
 const PRODUCERS = {codex: 'Codex', 'codex-cli': 'Codex', 'openai-codex': 'Codex', 'claude-code': 'Claude Code', claude_code: 'Claude Code', claude: 'Claude Code'};
-/* Round 90: an owner's attribution sentence (`Assessed by HUMAN: local-web-human.`) reads as the role;
+/* an owner's attribution sentence (`Assessed by HUMAN: local-web-human.`) reads as the role;
  * the id stays on hover, and beside the words where the reader asked for facts (`o.facts`). */
 const ATTRIBUTION_ROLES = {HUMAN: 'a human reviewer', EXTERNAL_AUTOMATION: 'an external automation', INSTALLED_AGENT: 'the installed Agent', SERVICE_AUTOMATION: 'the service'};
 const assessedBy = (line) => { const m = String(line).match(/^Assessed by ([A-Z_]+): ([^.]+)\.?$/); return m ? {who: t('Assessed by {who}', {who: t(ATTRIBUTION_ROLES[m[1]] || 'Unidentified')}), id: m[2]} : null; };
 function attributionWords(list, o = {}) {
   const lines = (Array.isArray(list) ? list : [list]).filter(Boolean);
-  if (o.plain) return lines.map((line) => assessedBy(line)?.who || '').filter(Boolean).join(' · '); // the actor's words alone, for a sentence (round F5)
+  if (o.plain) return lines.map((line) => assessedBy(line)?.who || '').filter(Boolean).join(' · '); // the actor's words alone, for a sentence
   const parts = lines.map((line) => {
     const a = assessedBy(line);
     if (!a) return html`${said(line)}`;
@@ -2353,7 +2353,7 @@ const METHOD_WORDS = { // what the label table names (U72: the risk methods, the
   ridge: 'Ridge', lasso: 'Lasso', elastic_net: 'Elastic net',
   dynamic_panel_lightgbm: 'LightGBM', regularized_linear: 'Regularized linear model',
   BENJAMINI_YEKUTIELI_FDR: 'Benjamini–Yekutieli FDR', ABSOLUTE_CORRELATION_CLUSTER: 'absolute-correlation cluster',
-  // a Portfolio study's weight rule and catalog policy (U41, U42): its book's name, its facts and the Lab's choices
+  // a Portfolio study's weight rule and catalog policy: its book's name, its facts and the Lab's choices
   TOP_K_EQUAL_WEIGHT: 'top names, equal weight', TOP_K_MINIMUM_VARIANCE: 'top names, minimum variance', TOP_K_SCORE_RISK_COST: 'top names, score against risk and cost', SECTOR_DEVIATION_PENALTY: 'top names, sector deviation penalty',
   quarantine_listings: 'quarantine affected names', require_complete: 'require complete returns',
 };
@@ -2388,12 +2388,12 @@ function prerequisiteWays(next, input = null) {
 function prerequisitesPanel(pr, input = null) {
   if (!pr || typeof pr !== 'object' || !pr.flow) return '';
   const open = (row) => html`${btn(html`<span class="mono">${short(row.task_id)}</span>`, 'task-result', row.task_id, 'text-btn')}${row.curation_receipt_hashes?.length ? html` ${t('(curated)')}` : ''}`;
-  const held = Object.entries(pr.present || {}).map(([result, rows]) => [t(PREREQ_RESULTS[result] || result), rows.length ? html`<span class="flow">${rows.map((r, i) => html`${i ? html`<span aria-hidden="true">·</span>` : ''}<span>${open(r)}</span>`)}</span>` : t('none on this input')]); // a row that wraps with its gap (TY4: the walk at 375); the dots part the studies, so a mark reads as its study's (U62)
+  const held = Object.entries(pr.present || {}).map(([result, rows]) => [t(PREREQ_RESULTS[result] || result), rows.length ? html`<span class="flow">${rows.map((r, i) => html`${i ? html`<span aria-hidden="true">·</span>` : ''}<span>${open(r)}</span>`)}</span>` : t('none on this input')]); // a row that wraps with its gap (TY4: the walk at 375); the dots part the studies, so a mark reads as its study's
   const missing = (pr.missing || []).length ? [[t('Missing'), pr.missing.map((m) => t(PREREQ_MISSING[m] || m)).join(', ')]] : [];
   const ways = prerequisiteWays(pr.next_requests, input);
   return panel(t('Before it runs'), html`<span class="owner-text">${t(pr.detail || '')}</span>`, html`${kv([...held, ...missing], 'kv-columns')}${ways ? html`<div class="flow">${ways}</div>` : ''}`, '', 'data-prerequisites="' + pr.flow + '"');
 }
-/* A result's standing (U59, V368): what it can claim, one statement a mark in the owner's order (the comparison first),
+/* A result's standing: what it can claim, one statement a mark in the owner's order (the comparison first),
  * each in the owner's words; a mark an owner's code holds says the code in words where the statement names it. */
 const STANDING_MARKS = [['comparison', 'Baseline comparison'], ['execution', 'Run'], ['contract', 'Contract'], ['evidence', 'Evidence'], ['activation', 'Activation']];
 function standingPanel(st) {
@@ -2406,9 +2406,9 @@ function standingPanel(st) {
   };
   return panel(t('Standing'), t('What this result can claim, each mark from its owner.'), kv(STANDING_MARKS.map(([field, word], i) => [field === 'comparison' ? hint(t(word), t('Whether the owner compared this result with a baseline result, the study without the change. A chart\'s benchmark is the market reference, a different thing.')) : t(word), html`<span data-standing="${field}:${st[field]}">${said(field, i)}</span>`]), 'kv-columns'));
 }
-// a code with its subject (`model_contract.import_outside_lock:numpy`): the code in words, the subject as written (U50, U56)
+// a code with its subject (`model_contract.import_outside_lock:numpy`): the code in words, the subject as written
 const codedSubject = (code) => { const s = String(code || ''), at = s.indexOf(':'); return at < 0 ? coded(s) : html`${coded(s.slice(0, at))} <span class="mono">${s.slice(at + 1)}</span>`; };
-/* One tooltip (round 93; Radix's contract in Apple's dress). `data-tip` on the element, `data-tip-key` a
+/* One tooltip (Radix's contract in Apple's dress). `data-tip` on the element, `data-tip-key` a
  * chord. Shown after 400 ms under the pointer, at once from one tipped element to the next within
  * 300 ms, at once on keyboard focus; gone on leave, blur, Esc, any press or a scroll. The tip is the
  * footnote on the overlay surface in the top layer (a popover, so it stands over a dialog), at most
@@ -2430,8 +2430,8 @@ const Tip = (() => {
     tip.innerHTML = html`${words}${target.dataset.tipKey ? html` ${keycap(target.dataset.tipKey)}` : ''}`;
     try { if (!tip.matches(':popover-open')) tip.showPopover(); } catch (e) { /* the top layer refused (an older engine); the tip still positions */ }
     host = target; target.setAttribute('aria-describedby', 'tip');
-    tip.style.left = '0px'; tip.style.top = '0px'; // measured at the origin (round 95, the user's rail still: placed near the right edge it wrapped `Evidence` in two)
-    // layout coordinates (round 95, the user's 125 % text size: the tips flew): the tip lives in the zoomed
+    tip.style.left = '0px'; tip.style.top = '0px'; // measured at the origin (the user's rail still: placed near the right edge it wrapped `Evidence` in two)
+    // layout coordinates (the user's 125 % text size: the tips flew): the tip lives in the zoomed
     // document, so the target's rect and the viewport are read through the root zoom, as every popover's are
     const r = layoutRect(target), w = tip.offsetWidth, h = tip.offsetHeight, gap = param('popover-gap'), vw = viewW(), vh = viewH();
     const near = param('space-2');
@@ -2466,7 +2466,7 @@ const Tip = (() => {
 /* One number grammar. Figures stay in the surrounding weight; units are always the lighter
  * companion. A delta alone owns a sign, and its minus is the mathematical U+2212. */
 const count = (n) => n == null || !Number.isFinite(Number(n)) ? '' : Number(n).toLocaleString('en-US', {maximumFractionDigits: 0});
-/* A byte count in words (round E1): binary units, one decimal under 100, none at or over; the owner's figure, never a promise about space. */
+/* A byte count in words: binary units, one decimal under 100, none at or over; the owner's figure, never a promise about space. */
 const bytesWords = (n) => { if (n == null || !Number.isFinite(Number(n))) return ''; const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']; let x = Number(n), i = 0; while (x >= 1024 && i < units.length - 1) { x /= 1024; i += 1; } return (i ? (x >= 100 ? x.toFixed(0) : x.toFixed(1)) : String(Math.round(x))) + ' ' + units[i]; };
 const unit = (text) => html`<span class="num-unit">${text}</span>`;
 /* ---- the library's constants (Q2; the node harnesses read this section as it is) ---- */
@@ -2481,7 +2481,7 @@ const LIST_PAGE = PARAMETER_VALUES['table-rows'];
 const LEGEND = {fold: 24, shown: 16};
 /* A lobby's group (law 136, the user's word: 6 rows a group): its first rows, then `Show n more`. */
 const LOBBY = {shown: PARAMETER_VALUES['lobby-rows']}; // a group's rows before `Show n more` (design/parameters.json `counts`)
-/* An identity's leading characters (round 79: one owner). A cut never splits a word (the Team review,
+/* An identity's leading characters (one owner). A cut never splits a word (the Team review,
  * 2026-09-24: an agent id `child-unknown-demo` read `child-un`): at a word's end it stays; inside a hex
  * run it is a handle and stays where it is; inside a word, a readable id up to three handles long is kept
  * whole, a longer one to the end of that word. */
@@ -2506,7 +2506,7 @@ function signed(value, kind = 'percent', places = 2) {
   if (kind === 'percent') return html`${sign}${num(magnitude, 'percent')}`;
   return kind === 'pp' || kind === 'bps' ? html`${sign}${text} ${unit(kind)}` : sign + text;
 }
-const pluralText = (n, one, many, args = {}) => t(Number(n) === 1 ? one : many, args); // a noun by its count (round 90: no `(s)` anywhere); the count is in the args or said before
+const pluralText = (n, one, many, args = {}) => t(Number(n) === 1 ? one : many, args); // a noun by its count (no `(s)` anywhere); the count is in the args or said before
 const countText = (n, one, many) => pluralText(n, one, many, {n: count(n)});
 /* Record grammar: the owner's exact date or instant, in UTC -- for Facts alone (law 133). */
 function whenText(iso) {
@@ -2515,7 +2515,7 @@ function whenText(iso) {
   const zone = !m[3] ? '' : m[3] === 'Z' || m[3] === '+00:00' ? ' UTC' : ' UTC' + m[3];
   return m[1] + ' ' + m[2] + zone;
 }
-/* One clock (N3, law 133). An instant reads in the reader's zone -- one the owner wrote without a
+/* One clock (law 133). An instant reads in the reader's zone -- one the owner wrote without a
  * zone is UTC, the owners' convention; a date alone is a date (a market session is never an
  * instant). `instantParts` gives the fields; `dayOf` the reader's day. */
 const pad2 = (n) => String(n).padStart(2, '0');

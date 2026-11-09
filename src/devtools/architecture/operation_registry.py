@@ -782,7 +782,7 @@ def _cli_options() -> dict[tuple[str, str], set[str]]:
 
 
 def named_commands(root: Path) -> list[str]:
-    """Each command or flag a product text names in backticks that the CLI does not have (V124).
+    """Each command or flag a product text names in backticks that the CLI does not have.
 
     A phrase is a command when it starts with a noun the CLI has, with the root command's
     prefix, or with a word and then a flag: refusal words named `capabilities --operation`
@@ -924,7 +924,7 @@ def _goal_records(tree: ast.AST) -> set[int]:
 
 
 def incomplete_offers(root: Path) -> list[str]:
-    """Each next request an owner offers without a field its operation requires (V136).
+    """Each next request an owner offers without a field its operation requires.
 
     A field the reader must choose is written as None, so the CLI shows the request as a
     template naming it; an absent one is a mistake. A request built with ``**`` takes fields
@@ -986,7 +986,7 @@ _TEXT_AS_CODE_ROOTS = (
 def text_served_as_code(root: Path) -> list[str]:
     """Each place an exception's text (``str(error)`` of an ``except ... as error``) is served
     as a failure code: a ``failure_code`` key or keyword, or the code of ``refused(...)``.
-    The owner's code is ``public_failure(error, fallback)`` (V31); a comparison of the text
+    The owner's code is ``public_failure(error, fallback)``; a comparison of the text
     with known codes is not serving it."""
 
     found: list[str] = []
@@ -1095,12 +1095,12 @@ def problems(root: Path) -> list[str]:
             flags = [n for n in named if n != "file"]
             if len(flags) != len(set(flags)):
                 out.append(f"{noun} {verb} ({op}): two fields share one flag")
-    # An exactly-one rule names only the request's own fields (V409).
+    # An exactly-one rule names only the request's own fields.
     for operation, groups in sorted(ALTERNATIVES.items()):
         allowed = PortfolioResearchOperationRequest.field_contract(operation)[1]  # type: ignore[arg-type]
         for name in sorted({name for group in groups for name in group} - set(allowed)):
             out.append(f"{operation}'s alternatives name {name}, which it does not take")
-    # The help lists each object the CLI has once, and its common path only commands (V401).
+    # The help lists each object the CLI has once, and its common path only commands.
     grouped = sorted(noun for _group, nouns in HELP_GROUPS for noun, _purpose in nouns)
     objects = {noun for noun, _verb in (*COMMANDS, *cli.CLIENT_COMMANDS)} | {"serve", "request"}
     if grouped != sorted(objects):
@@ -1177,7 +1177,7 @@ _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]
         ("no Host", ["STATUS"], 0, "OK"),
         ("a missing field", [], 1, "INVALID_INPUT"),
     ],
-    # It restores from the backup root alone (V328), a restore the entry composes as it does
+    # It restores from the backup root alone, a restore the entry composes as it does
     # `serve`; nothing under src imports the Host, so the walk composes neither and the client
     # refuses by name (the backup tests run the real restore).
     ("backup", "restore"): [
@@ -1199,12 +1199,12 @@ _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]
         ("a missing field", [], 1, "INVALID_INPUT"),
     ],
     # The walk runs as a shell outside any agent session (`walk`): there is no session to bind,
-    # so the client refuses by name and writes nothing (V568).
+    # so the client refuses by name and writes nothing.
     ("session", "bind"): [
         ("no agent session", [], 1, "INVALID_INPUT"),
     ],
     # The person's own shell, in the walk's empty folder: no project up from it holds the
-    # product's declarations, so the client refuses by name and removes nothing (V586).
+    # product's declarations, so the client refuses by name and removes nothing.
     ("session", "unbind"): [
         ("no project", [], 2, "REFUSED"),
     ],
@@ -1216,9 +1216,9 @@ def walk(root: Path) -> list[str]:
     """Every command against a workspace no Host serves, and with a required field missing.
 
     It runs as a shell outside any agent session, whichever session runs the gate: a session
-    would bind (`session bind`) and print its bound workspace's commands clean (V568). It runs
+    would bind (`session bind`) and print its bound workspace's commands clean. It runs
     in its empty folder, never the checkout, whose binding the person's `session unbind` would
-    remove (V586).
+    remove.
     """
 
     with contextlib.ExitStack() as outside:

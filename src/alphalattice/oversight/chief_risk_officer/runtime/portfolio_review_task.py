@@ -114,7 +114,7 @@ class PortfolioReviewActorResult:
     provider_usage: ProviderStageUsage | None = None
     """What the Provider reported for this stage, or nothing when it reported none."""
     carried: PortfolioReviewAssessmentSubmission | None = None
-    """The earlier assessment this carries forward, in this dossier's handles (W3)."""
+    """The earlier assessment this carries forward, in this dossier's handles."""
 
     def __post_init__(self) -> None:
         """Require protocol repair accounting within the installed answer-correction bound.
@@ -259,7 +259,7 @@ class SubmittedPortfolioReviewActor:
 
 
 class CarriedPortfolioReviewActor:
-    """The last fresh review of the same basis, carried forward (W3).
+    """The last fresh review of the same basis, carried forward.
 
     Nothing the reviewer read has changed -- the holdings, their bands, the
     findings and the open issues are the ones it assessed -- so its answer is
@@ -648,7 +648,7 @@ class PortfolioReviewTaskAdapter:
         """Every publication the dossier reads at its cutoff is current: one for
         the ordinary dossier, one per unit for a book analysed as several. A
         carried child is an earlier reading of filings still in the window,
-        carried whatever its analysis's own expiry (W3), and is not asked to be
+        carried whatever its analysis's own expiry, and is not asked to be
         current."""
 
         now = self.resources.clock()

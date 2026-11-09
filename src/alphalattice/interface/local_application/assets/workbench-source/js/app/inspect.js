@@ -61,7 +61,7 @@ const Inspect = (() => {
     const r = windowReadings(rows, a, b);
     const tone = (v) => (v === null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '');
     const cell = (label, value, cls = '') => html`<div class="reading"><small>${label}</small><b class="${cls}">${value}</b></div>`;
-    return html`${cell(t('Study'), signed(r.study), tone(r.study))}${cell(t('Benchmark'), signed(r.bench), tone(r.bench))}${cell(t('Excess'), signed(r.excess, 'pp'), tone(r.excess))}${cell(t('Deepest fall'), r.drawdown === null ? '' : num(r.drawdown, 'percent'))}<div class="reading"><small>${t('trading|Sessions')}</small><b>${count(r.sessions)}${infoMark(t(a > 0 || b < rows.length - 1 ? 'Readings of the published rows in this window, {from} — {to}: the index change from just before its first row; the tiles above stay the owner\'s whole-report values.' : 'Readings of the whole published series; the tiles above are the owner\'s whole-report values, not recomputed here.', {from: rows[a].date, to: rows[b].date}))}</b></div>`; // N3: the readings' explanation is their (i)
+    return html`${cell(t('Study'), signed(r.study), tone(r.study))}${cell(t('Benchmark'), signed(r.bench), tone(r.bench))}${cell(t('Excess'), signed(r.excess, 'pp'), tone(r.excess))}${cell(t('Deepest fall'), r.drawdown === null ? '' : num(r.drawdown, 'percent'))}<div class="reading"><small>${t('trading|Sessions')}</small><b>${count(r.sessions)}${infoMark(t(a > 0 || b < rows.length - 1 ? 'Readings of the published rows in this window, {from} — {to}: the index change from just before its first row; the tiles above stay the owner\'s whole-report values.' : 'Readings of the whole published series; the tiles above are the owner\'s whole-report values, not recomputed here.', {from: rows[a].date, to: rows[b].date}))}</b></div>`; // the readings' explanation is their (i)
   }
   /* The whole series in miniature, in a 1000×40 box (stretched to the rail): the study index and
    * the benchmark. Two dozen segments per hundred rows are enough for a strip this small. */
@@ -226,7 +226,7 @@ const Inspect = (() => {
       ? html`${rows.map((r, i) => { const head = r.section !== section ? html`<p class="menu-section">${t(r.section)}</p>` : ''; section = r.section; return html`${head}<button class="quick-result${i === S.commandIndex ? ' active' : ''}" data-action="quick-pick" data-value="${r.id}" id="quickOption${i}" role="option" aria-selected="${i === S.commandIndex}">${icon(r.icon)}<span class="quick-words"><strong>${r.words}</strong>${r.sub ? html`<small>${r.sub}</small>` : ''}</span>${r.key ? keycap(r.key) : ''}</button>`; })}`
       : html`<div class="quick-empty"><strong>${t('Nothing matches.')}</strong><p>${t('Try a page, an action or a record\'s words. No web search is sent.')}</p></div>`;
   }
-  /* where you are: the open object (its name and id) or the page */
+  /* Where you are: the open object (its name and id) or the page */
   function commandContext() {
     const object = SAVED_VIEWS.has(app.page) && $('#main .object-header h1');
     return {eyebrow: t(ROUTES[app.page]?.[0] || 'Workbench'), name: object ? object.textContent.replace(/\s+/g, ' ').trim() : t(ROUTES[app.page]?.[1] || app.page), id: object ? $('#main .object-id code')?.textContent || '' : ''};
@@ -322,7 +322,7 @@ const Inspect = (() => {
     requestAnimationFrame(() => card.classList.add('is-open'));
     return true;
   }
-  /* the floating card (a hover card) closes on its own; the inspector's peek closes the region */
+  /* The floating card (a hover card) closes on its own; the inspector's peek closes the region */
   function closeHover() {
     const el = peekEl();
     if (!el || el.hidden) return false;
@@ -335,7 +335,7 @@ const Inspect = (() => {
     return hovered;
   }
   const peekRowIs = (row) => peekRow === row;
-  /* the peek's Open: the row opens as Enter would open it */
+  /* The peek's Open: the row opens as Enter would open it */
   function openPeeked() { const main = peekRow?.querySelector('.list-row-main, a[href], button[data-action]'); closePeek(); main?.click(); }
   function peekFollow(row) { if (peekOpen() && peekMode === 'peek') peek(row); }
 
@@ -398,7 +398,7 @@ const Inspect = (() => {
     const c = app.listContext;
     // a list shows no stepper: the pair steps between objects, and the list is the whole
     // (2026-09-21, the Studies audit: `3 / 6` stood over a chooser)
-    if (!c || !SAVED_VIEWS.has(app.page) || !routeObjectId() || c.keys.length < 2 || c.index < 0) return null; // N1: a list of one has no neighbour to step to
+    if (!c || !SAVED_VIEWS.has(app.page) || !routeObjectId() || c.keys.length < 2 || c.index < 0) return null; // a list of one has no neighbour to step to
     return {index: c.index, total: c.keys.length, prev: c.index > 0, next: c.index < c.keys.length - 1};
   }
   function step(delta) {
@@ -493,7 +493,7 @@ const Inspect = (() => {
       const tpl = $(`template[data-facts-id="${id}"]`), opener = tpl?.previousElementSibling;
       if (!tpl) return false;
       S.factsId = id;
-      return Window.openInspector({mode: 'facts', readHeader: () => panelHeader('facts'), title: h.title, kind, tabs: tabRow, body: html`<section class="inspector-section"><h3>${tpl.dataset.factsTitle || clean(opener?.textContent)}</h3>${raw(tpl.innerHTML)}</section>`, onClose: () => { S.factsId = ''; }, by: by || ['facts-open', id]}); // N6: a figure that opens facts names them on its template
+      return Window.openInspector({mode: 'facts', readHeader: () => panelHeader('facts'), title: h.title, kind, tabs: tabRow, body: html`<section class="inspector-section"><h3>${tpl.dataset.factsTitle || clean(opener?.textContent)}</h3>${raw(tpl.innerHTML)}</section>`, onClose: () => { S.factsId = ''; }, by: by || ['facts-open', id]}); // a figure that opens facts names them on its template
     }
     const list = factsList();
     if (!list.length) return false;

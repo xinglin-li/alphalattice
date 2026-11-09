@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_every_research_snapshot_reuse_reader_calls_the_cover_owner():
-    """V599/TE12: pin the consumer set, including receipt verification."""
+    """TE12: pin the consumer set, including receipt verification."""
     callers = set()
     for path in (ROOT / "src/alphalattice").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -43,7 +43,7 @@ def test_every_research_snapshot_reuse_reader_calls_the_cover_owner():
 
 
 def test_planning_and_both_network_gates_read_one_provider_work_owner():
-    """V599/TE12: no unconditional gate can return beside the common decision."""
+    """TE12: no unconditional gate can return beside the common decision."""
     callers = set()
     for path in (ROOT / "src/alphalattice/control/product_host").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -60,7 +60,7 @@ def test_planning_and_both_network_gates_read_one_provider_work_owner():
     assert callers == {
         ("WorkspaceDataUpdateApplication", "historical_inputs_cover"),
         ("WorkspaceDataUpdateApplication", "source_access"),
-        # The plan's answer, sealed fresh or the data update's that has not ended (V604).
+        # The plan's answer, sealed fresh or the data update's that has not ended.
         ("WorkspaceDataUpdateApplication", "_plan_answer"),
         ("WorkspaceDataUpdateApplication", "admit"),
         ("WorkspaceDataUpdateApplication", "_step"),
@@ -75,7 +75,7 @@ def test_planning_and_both_network_gates_read_one_provider_work_owner():
         if isinstance(owner, ast.ClassDef)
         for method in owner.body
         if isinstance(method, ast.FunctionDef)
-        and method.name != "resume_stopped"  # V600 checks a kept Task's already named stop.
+        and method.name != "resume_stopped"  # A kept Task's already named stop has its own check.
         and any(
             isinstance(n, ast.Constant)
             and n.value == "workspace_data_update.source_access_not_admitted"
@@ -135,7 +135,7 @@ def test_both_plan_labels_delegate_to_the_gate_owners_provider_boundary():
 
 
 def test_materialization_and_readiness_use_the_same_inclusive_bound_meaning():
-    """V599: complementary missing/ready checks never turn equal into missing."""
+    """complementary missing/ready checks never turn equal into missing."""
     root = ROOT / "src/alphalattice/control/data_platform"
     paths = {
         "maintenance/coordinator.py": {

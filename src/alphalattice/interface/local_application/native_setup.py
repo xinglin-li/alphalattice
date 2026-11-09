@@ -44,6 +44,7 @@ from alphalattice.interface.local_application.client import (
     LocalResearchClientError,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
+from alphalattice.interface.local_application.host_lookup import serving_workspaces
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
     BINDING_NAME,
@@ -150,6 +151,21 @@ def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
 
 
 HOST_DEPENDENCIES = {
+    "serving_workspaces": (
+        str(worded("doctor.serving_workspaces.enables")),
+        str(worded("doctor.serving_workspaces.how")),
+        "AGENT",
+    ),
+    "windows_long_paths": (
+        str(worded("doctor.windows_long_paths.enables")),
+        str(worded("doctor.windows_long_paths.recovery")),
+        "PERSON",
+    ),
+    "model_store_scope": (
+        str(worded("doctor.model_store_scope.enables")),
+        str(worded("doctor.model_store_scope.recovery")),
+        "AGENT",
+    ),
     "python": ("Run locked Python", "Use Python 3.12 and uv sync --locked; disclose it.", "AGENT"),
     "uv": (
         "Install the lock's dependencies",
@@ -441,6 +457,74 @@ def _workbench_build() -> str:
     )
 
 
+def _windows_environment_facts() -> dict[str, Any]:
+    """Read Windows long-path and package identity without changing system settings."""
+    if sys.platform != "win32":
+        return {"applicable": False, "long_paths_enabled": True, "package_family": None}
+    import ctypes  # lazy: Windows package identity only.
+    import winreg  # lazy: the Windows registry is unavailable elsewhere.
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem"
+        ) as key:
+            enabled = bool(winreg.QueryValueEx(key, "LongPathsEnabled")[0])
+        long_reason = None
+    except FileNotFoundError:
+        enabled, long_reason = False, "REGISTRY_VALUE_ABSENT"
+    except OSError as error:
+        enabled, long_reason = None, type(error).__name__
+    try:
+        length = ctypes.c_uint32(0)
+        read = ctypes.windll.kernel32.GetCurrentPackageFamilyName
+        status = read(ctypes.byref(length), None)
+        if status == 15700:  # APPMODEL_ERROR_NO_PACKAGE
+            family, package_reason = None, None
+        elif status == 122 and length.value:  # ERROR_INSUFFICIENT_BUFFER
+            buffer = ctypes.create_unicode_buffer(length.value)
+            status = read(ctypes.byref(length), buffer)
+            family, package_reason = (buffer.value, None) if status == 0 else (None, str(status))
+        else:
+            family, package_reason = None, str(status)
+    except (AttributeError, OSError) as error:
+        family, package_reason = None, type(error).__name__
+    return {
+        "applicable": True,
+        "long_paths_enabled": enabled,
+        "long_paths_reason": long_reason,
+        "package_family": family,
+        "package_reason": package_reason,
+    }
+
+
+def _environment_specs(project: Path, store_root: Path) -> tuple[Any, ...]:
+    """Describe authenticated Hosts and Windows environment facts for doctor."""
+    windows = _windows_environment_facts()
+    serving = serving_workspaces(project, client.LocalResearchClient)
+    return (
+        ("serving_workspaces", None if serving["status"] == "UNREADABLE" else True, serving),
+        (
+            "windows_long_paths",
+            windows.get("long_paths_enabled"),
+            {
+                "LongPathsEnabled": windows.get("long_paths_enabled"),
+                "reason": windows.get("long_paths_reason"),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+        (
+            "model_store_scope",
+            None if windows.get("package_reason") else not bool(windows.get("package_family")),
+            {
+                "package_family": windows.get("package_family"),
+                "reason": windows.get("package_reason"),
+                "model_store": str(store_root),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+    )
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
@@ -477,6 +561,7 @@ def host_readiness(
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
     python_version = str(recorded_environment()["python"])
     specifications = (
+        *_environment_specs(project, default_store_root()),
         (
             "python",
             python_version.split(".")[:2] == ["3", "12"],
@@ -743,7 +828,7 @@ def admitted_session_project(workspace: Path, requested: Path, host: str) -> Pat
     A workspace inside its agent project (``workspaces/`` of a checkout) finds that project
     up from itself, and the client's project must be it. A workspace kept elsewhere -- a
     second drive, an installed wheel's own folder -- finds none; the client's project is then
-    admitted only when it holds this host's configure-owned declaration itself (FLOW-1).
+    admitted only when it holds this host's configure-owned declaration itself.
 
     Args:
         workspace: The Host's own served workspace.
@@ -1054,7 +1139,7 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
 
 
 def continue_here(project: Path, host: str) -> dict[str, Any]:
-    """How the session that installed AlphaLattice continues the research (STOPS-1).
+    """How the session that installed AlphaLattice continues the research.
 
     The installing session reads the guide and Skill by path. The agent checks its own
     subagent tool before each specialist; only a session advertising the role can start it.
@@ -1093,7 +1178,7 @@ def bind_session(
     usage: str = "read",
     roles: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Bind this exact host/Session without replacing another Session's workspace (V568).
+    """Bind this exact host/Session without replacing another Session's workspace.
 
     The CLI and independent usage observer find this exact binding within the project.
 
@@ -1374,7 +1459,7 @@ def _configuration(host: str = "codex") -> None:
 def unbind_session(
     project: Path, *, session_id: str | None, host: str | None = None
 ) -> dict[str, object]:
-    """Detach this Session's own record; other Session bindings and research stay (V586).
+    """Detach this Session's own record; other Session bindings and research stay.
 
     An agent removes only its exact host/Session record. Outside any agent Session,
     a person may detach the sole record; multiple records require an exact owning Session.
@@ -1675,8 +1760,8 @@ def main() -> int:
         result = {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
     except OSError as error:
         # Its files are the checkout's host directories and the workspace's; one it cannot read
-        # or write is said with its way on, never a bare code (V539), and the check its words
-        # name is offered (V590).
+        # or write is said with its way on, never a bare code, and the check its words
+        # name is offered.
         result = {
             **setup_failure(error),
             **files_unavailable(error, project=ROOT, workspace=getattr(args, "workspace", None)),

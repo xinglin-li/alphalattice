@@ -2,6 +2,78 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "cli.output_pipe_closed": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "AlphaLattice: output pipe closed before the answer finished. The work may still have run; read its status or save the full answer with --output.", "zh-CN": "AlphaLattice???????????????????????????????????? --output ???????"}
+    },
+    "cli.serving_workspaces_incomplete": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["subject"],
+      "words": {"en": "The project's workspaces could not all be checked ({subject}); use doctor for details.", "zh-CN": "??????????????{subject}????? doctor ?????"}
+    },
+    "doctor.serving_workspaces.enables": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "Find authenticated Hosts in this project", "zh-CN": "查找此项目中已验证的 Host"}
+    },
+    "doctor.serving_workspaces.how": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "Use the named workspace when it is the one you intend; unverified Hosts are not listed.", "zh-CN": "如果列出的工作区正是你要使用的，请使用它；未经验证的 Host 不会列出。"}
+    },
+    "cli.serving_workspaces": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["subject"],
+      "words": {"en": "Authenticated Hosts in this project's workspaces: {subject}.", "zh-CN": "此项目工作区中已验证的 Host：{subject}。"}
+    },
+    "committee.daily": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {"en": "The person decides whether future daily updates include the committee.", "zh-CN": "是否在未来每日更新中召开委员会由本人决定。"},
+      "scope": {"en": "This workspace's future daily committee setting.", "zh-CN": "本工作区未来每日更新的委员会设置。"},
+      "way_on": {"en": "Relay the person's words with committee daily.", "zh-CN": "通过 committee daily 逐字转达本人的答复。"},
+      "operations": ["COMMITTEE_DAILY_SET"],
+      "ask_operations": ["EXPERIMENT_DELIVERY_EXPORT"],
+      "words": {
+        "en": "Should each daily update also convene the investment committee, about ten more minutes? Without it, the PM gives its view on the reviewed positions.",
+        "zh-CN": "每次每日更新是否也召开投资委员会（约多花十分钟）？如果不召开，PM 会给出对已审核持仓的意见。"
+      }
+    },
+    "goal.delivery.default_slot": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "For ACHIEVED, fill a declared slot with verified references; if none was declared, use result.",
+        "zh-CN": "标记为 ACHIEVED 时，请在已声明的交付项中填写已验证的引用；若未声明交付项，请使用 result。"
+      }
+    },
+    "doctor.windows_long_paths.enables": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Use long workspace paths on Windows", "zh-CN": "在 Windows 上使用较长的工作区路径"}
+    },
+    "doctor.windows_long_paths.recovery": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Ask an administrator to set LongPathsEnabled to 1 and restart the Host, or use a shorter workspace path.",
+        "zh-CN": "请管理员将 LongPathsEnabled 设为 1 并重启 Host，或使用较短的工作区路径。"
+      }
+    },
+    "doctor.model_store_scope.enables": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Keep the agent and Host on the same model store", "zh-CN": "让代理和 Host 使用同一个模型库"}
+    },
+    "doctor.model_store_scope.recovery": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "A packaged shell can redirect its model store away from the Host. Use the same ordinary shell as the Host, or set ALPHALATTICE_MODEL_STORE for both to a shared directory outside redirected storage.",
+        "zh-CN": "打包应用的 shell 可能将模型库重定向到 Host 无法看到的位置。请使用与 Host 相同的普通 shell，或为两者将 ALPHALATTICE_MODEL_STORE 设为重定向存储之外的同一个目录。"
+      }
+    },
     "evidence.unit_stopped": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",
@@ -202,6 +274,15 @@
       "words": {
         "en": "Unless this workspace's Evidence is set up already, the review of the date's positions acquires recent SEC filings within the default budget under the first use's delegation, and downloads the retrieval model at the size its setup states; the agent also installs the locked retrieval packages under this consent without another question: say so in one line now. Then ask the person once, in these words, and carry on without waiting for the answer. On their yes, run each command after the question once, their words verbatim in place of `<their words>`; the delegation never answers it:",
         "zh-CN": "除非此工作区的证据已经设置好，否则对该日期持仓的复核会在首次使用的委托下按默认额度获取近期的 SEC 文件，并按设置所述的大小下载检索模型；智能体还会在此次同意范围内安装已锁定的检索依赖包，无需再次询问。现在用一句话告知用户。随后按以下原话询问用户一次，无需等待回答即可继续执行。用户同意后，将问题之后的每条命令各运行一次，用用户原话逐字替换 `<their words>`；委托本身不回答这个问题："
+      }
+    },
+    "first_use.evidence_setup_notice": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "When Evidence is not set up, reviewing positions may acquire recent SEC filings within the default budget and download the retrieval model needed by its setup.",
+        "zh-CN": "?????????????????????????? SEC ????????????????"
       }
     },
     "native_setup.complete_prerequisites": {
@@ -639,6 +720,69 @@
       "words": {
         "en": "The result cache options are invalid. Supply a mode of off, record, shadow or on and a positive byte cap.",
         "zh-CN": "结果缓存选项无效。请提供 off、record、shadow 或 on 模式，以及正整数字节上限。"
+      }
+    },
+    "host.stop.detail": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This Host is stopping its Tasks at safe points and will keep their completed work for resumption. It joins the workers before releasing the workspace. Read Task status while it finishes; serve it again to resume.",
+        "zh-CN": "此 Host 正在安全位置停止任务，并保留已完成的工作以便继续。释放工作区前会等待工作线程结束；停止期间可查看任务状态，再次启动 Host 后可继续。"
+      }
+    },
+    "host.stop.operation": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Stops this workspace's Host at safe points and retains Tasks for resumption.",
+        "zh-CN": "在安全位置停止此工作区的 Host，并保留任务以便继续。"
+      }
+    },
+    "host.stop.group": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This workspace's Host: stop at safe points and retain Tasks for resumption.",
+        "zh-CN": "此工作区的 Host：在安全位置停止，并保留任务以便继续。"
+      }
+    },
+    "host.stop.status_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "`HOST_STOPPING`: the Host is stopping work at safe points and retaining it for resumption.",
+        "zh-CN": "`HOST_STOPPING`：Host 正在安全位置停止工作，并保留工作以便继续。"
+      }
+    },
+    "host.stop.detail_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "What the stop waits for and what it leaves: work reaches safe points and can resume.",
+        "zh-CN": "停止等待工作达到安全位置，并保留工作以便继续。"
+      }
+    },
+    "host.stop.finishing_meaning": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Tasks still executing when the Host answered, by id; their live status remains readable while they finish.",
+        "zh-CN": "Host 回复时仍在执行的任务 ID；结束前仍可查看它们的实时状态。"
+      }
+    },
+    "host.stop.recovery_detail": {
+      "owner": "alphalattice.control.product_host.composition",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host stopped this Task at a safe point. Verified work is kept; serve the Host again to resume the same Task.",
+        "zh-CN": "Host 已在安全位置停止此任务。已验证的工作会保留；再次启动 Host 即可继续同一任务。"
       }
     }
   }

@@ -12,7 +12,7 @@ consulted; a missing lock is a stop.
 
 Acceptance that needs a real model runs under the interpreter this prints. No
 interpreter is ever guessed: a caller either uses this path or does not. A setup
-that fails answers in words with its way on (V539): uv's own exit, a cache that
+that fails answers in words with its way on: uv's own exit, a cache that
 lacks a pinned package offline, uv missing, or a checkout it cannot write.
 """
 
@@ -178,7 +178,7 @@ def refusal(
     environment: Path = ENVIRONMENT,
     locks: tuple[Path, ...] = (LOCK,),
 ) -> dict[str, object]:
-    """A setup's failure in words, with its way on (V539).
+    """A setup's failure in words, with its way on.
 
     The retrieval environment's and the GPU environment's alike: uv's own exit (offline, a
     pinned package the cache lacks), a committed lock or the checkout missing, uv not found,
@@ -267,7 +267,7 @@ def refusal(
 
 
 def _help_command(kind: str) -> list[str]:
-    """The setup's own help, its only read-only way on, as the person runs it (V590)."""
+    """The setup's own help, its only read-only way on, as the person runs it."""
     if kind == "gpu_environment":
         return [sys.executable, "scripts/create_gpu_environment.py", "--help"]
     return [

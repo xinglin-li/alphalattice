@@ -112,7 +112,7 @@ RISK_NUMERICAL_SOURCE_PATHS = (
 """The numerical code a development run executes: the covariance estimator, the matrix
 identity, the formation axis, the returns and their projection, taken by the rule (each
 entry and what it imports inside the number-deciding packages, as syntax without
-docstrings or comments, LAWS ID3). A study plan binds these bytes (binding plan, P); no
+docstrings or comments, LAWS ID3). A study plan binds these bytes; no
 build file is an entry, and the installed versions are bound where they are read (ID6).
 
 It used to be derived from the frozen production closure, whose pin retired with M01

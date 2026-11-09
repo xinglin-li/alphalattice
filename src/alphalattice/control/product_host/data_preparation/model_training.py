@@ -91,7 +91,7 @@ PUBLICATIONS = "lifecycle-input-publications"
 
 IMPLEMENTATION_ROLE = "product_host.research_component_training_input"
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation() -> str:

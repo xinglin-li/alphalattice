@@ -505,7 +505,7 @@ class SecFilingSelectionDeferral(BaseModel):  # type: ignore[misc]
     plan and deferred because the unit's selections together exceed the
     admitted document set -- a packing outcome, named as such (2026-09-22),
     never the issuer's plan silently cut; `READ_EARLIER`: in the window and
-    read by an earlier current analysis, whose findings carry (W3)."""
+    read by an earlier current analysis, whose findings carry."""
 
 
 class SecFilingSelectionPlan(AlternativeEvidenceContract):

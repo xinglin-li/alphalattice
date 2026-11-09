@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import importlib.util
 import json
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 from alphalattice.interface.local_application.retrieval_environment import (
@@ -112,7 +114,7 @@ def restore(
     generation_hash: str | None,
     root: Path | None,
 ) -> dict[str, object]:
-    """Restore one backup generation from the backup root alone, with no Host (V328)."""
+    """Restore one backup generation from the backup root alone, with no Host."""
     from alphalattice.control.product_host.storage.backup import restore_from_root
 
     return restore_from_root(
@@ -129,13 +131,46 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
     return answer
 
 
+def _closed_output_pipe(error: OSError) -> bool:
+    """Windows may report EINVAL when flushing a pipe whose reader has closed."""
+    if isinstance(error, BrokenPipeError):
+        return True
+    if sys.platform != "win32" or error.errno != errno.EINVAL:
+        return False
+    import ctypes  # lazy: only Windows needs pipe-handle inspection.
+    import msvcrt  # lazy: only Windows has CRT handles.
+
+    try:
+        handle = msvcrt.get_osfhandle(sys.stdout.fileno())  # noqa: TID251  # inspect CLI pipe
+        return bool(
+            ctypes.windll.kernel32.GetFileType(ctypes.c_void_p(handle)) == 3
+        )  # FILE_TYPE_PIPE
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     arguments = sys.argv[1:] if argv is None else argv
     try:
         from alphalattice.interface.local_application.cli import main as root
 
-        return int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
+        result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
+        sys.stdout.flush()  # noqa: TID251  # detect a closed CLI output pipe
+        return result
+    except OSError as error:
+        if not _closed_output_pipe(error):
+            raise
+        # Avoid a second flush of buffered stdout during interpreter shutdown.
+        with suppress(OSError, ValueError, AttributeError), open(os.devnull, "w") as sink:
+            os.dup2(sink.fileno(), sys.stdout.fileno())  # noqa: TID251  # stop shutdown flush
+        from alphalattice.interface.local_application import cli_contract  # lazy: pipe refusal.
+
+        print(  # noqa: T201  # closed-pipe diagnostic
+            cli_contract.worded("cli.output_pipe_closed"),
+            file=sys.stderr,  # noqa: TID251  # CLI stderr
+        )
+        return 1
     except ModuleNotFoundError as error:
         # A runtime dependency this interpreter lacks, named with the locked setup that
         # provides it; a missing product module is a broken tree and is raised as one.
@@ -164,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.5",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.6",
                         ]
                     ),
                     "interpreter": sys.executable

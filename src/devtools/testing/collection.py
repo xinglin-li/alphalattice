@@ -48,10 +48,43 @@ SIZE_TMP_PATH = pytest.StashKey[Path]()
 SIZE_CREATED = pytest.StashKey[tuple[Path, frozenset[Path]] | str]()
 SIZE_RECORDED = pytest.StashKey[bool]()
 SIZE_FAILED = pytest.StashKey[bool]()
+INSTRUCTION_COST = pytest.StashKey[bool]()
 SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
 SIZE_CLOCK = pytest.StashKey[dict[str, float]]()
 SESSION_FOOTPRINT = pytest.StashKey[sizes.SessionFootprint]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
+
+
+def _instruction_cost(config: Any) -> bool:
+    """Only the advisory simulation omits wall-clock test limits, never a gating lane."""
+    if (
+        os.environ.get("ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS") != "1"
+        or os.environ.get("ALPHALATTICE_PIPELINE_STAGE")
+        or os.environ.get("ALPHALATTICE_TEST_LANE")
+    ):
+        return False
+    plugin = config.pluginmanager.get_plugin("codspeed_plugin")
+    return bool(
+        plugin
+        and getattr(plugin, "is_codspeed_enabled", False)
+        and getattr(getattr(plugin, "mode", None), "value", None) == "simulation"
+    )
+
+
+def _instruction_cost_timeouts(config: Any, items: list[Any]) -> None:
+    if _instruction_cost(config):
+        for item in items:
+            item.stash[INSTRUCTION_COST] = True
+            item.add_marker(pytest.mark.timeout(0, func_only=False), append=False)
+            item.user_properties.append(
+                ("test_timeout_mode", "off:codspeed-instruction-simulation")
+            )
+
+
+def pytest_report_header(config: Any) -> str | None:
+    if _instruction_cost(config):
+        return "CodSpeed instruction simulation: test wall-time bounds off; job deadline remains"
+    return None
 
 
 def _family(item: Any) -> str:
@@ -403,6 +436,51 @@ def _size_report(item: Any, report: Any) -> None:
         report.outcome, report.longrepr = "failed", str(error)
 
 
+def _golden_times(item: Any) -> None:
+    """What a case's goldens cost, in its JUnit: a fill holds its nested parents, whose lock waits
+    count as waits, so fill, lock and copy add up. Read from the owner only if a test loaded it."""
+    owner = sys.modules.get("devtools.evaluation.golden_workspaces")
+    if rows := owner.take_acquisitions() if owner else []:
+        locks = sum(row["lock_seconds"] for row in rows)
+        outer = [row for row in rows if not row["nested"]]
+        waited = sum(row["lock_seconds"] for row in rows if row["nested"])
+        fill = max(0.0, sum(row["fill_seconds"] for row in outer) - waited)  # 0 if the fill failed
+        copy = sum(row["copy_seconds"] for row in outer)
+        names = ",".join(f"{row['recipe']}:{'fill' if row['cold'] else 'copy'}" for row in rows)
+        item.user_properties.extend(
+            (
+                ("golden_fill_seconds", round(fill, 3)),
+                ("golden_lock_seconds", round(locks, 3)),
+                ("golden_copy_seconds", round(copy, 3)),
+                ("goldens", names),
+            )
+        )
+
+
+def pytest_terminal_summary(terminalreporter: Any) -> None:
+    """Report measured golden fills in Large tests from their existing teardown records."""
+    fills: list[str] = []
+    for reports in terminalreporter.stats.values():
+        for report in reports:
+            if getattr(report, "when", None) != "teardown":
+                continue
+            properties = dict(getattr(report, "user_properties", ()))
+            value = properties.get("golden_fill_seconds")
+            if (
+                properties.get("test_size") == "large"
+                and isinstance(value, int | float)
+                and isfinite(value)
+                and value > 0
+            ):
+                fills.append(
+                    f"{report.nodeid}: golden fill {value:.3f} s ({properties.get('goldens', '')})"
+                )
+    if fills:
+        terminalreporter.write_sep("=", "Golden fills in Large tests")
+        for line in sorted(fills):
+            terminalreporter.write_line(line)
+
+
 def _timeline(item: Any, report: Any) -> None:
     """The run's timeline in its JUnit: which worker ran each case, from when to when."""
     if report.when == "call":
@@ -411,6 +489,8 @@ def _timeline(item: Any, report: Any) -> None:
     item.user_properties.append((edge[0], round(edge[1], 3)))
     if report.when == "setup":
         item.user_properties.append(("worker", os.environ.get("PYTEST_XDIST_WORKER", "main")))
+    else:
+        _golden_times(item)
     report.user_properties = list(item.user_properties)
 
 
@@ -457,7 +537,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
     limit = dict(item.user_properties)["test_timeout_seconds"]
-    if seconds <= limit:
+    if seconds <= limit or item.stash.get(INSTRUCTION_COST, False):
         return
     report.outcome, report.longrepr = (
         "failed",
@@ -609,12 +689,28 @@ def _start_session_footprint(config: Any) -> None:
 
 def pytest_configure(config: Any) -> None:
     """The producer's optional required nodes override only their own ordinary deselection."""
+    value = os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]")
+    source = "inline list"
+    if value.startswith("@"):
+        path = Path(value[1:])
+        source = str(path)
+        if not path.is_absolute():
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}; name an absolute list file"
+            )
+        try:
+            value = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError) as error:
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}: {error}; "
+                "restore the required list"
+            ) from error
     try:
-        required = requirements.selection(
-            json.loads(os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]"))
-        )
-    except (ValueError, TypeError):
-        raise pytest.UsageError("test_size.required_selection_invalid") from None
+        required = requirements.selection(json.loads(value))
+    except (ValueError, TypeError) as error:
+        raise pytest.UsageError(
+            f"test_size.required_selection_invalid: {source}: {error}; restore the required list"
+        ) from None
     required = _nested_required(required)
     deselect = tuple(config.option.deselect or ()) if required else ()
     if required:
@@ -726,7 +822,7 @@ def framework_fixtures(
     return frozenset(codes)
 
 
-RELEASE_ONLY = "release-lane test: it reads the release archives, so it runs at promotion, not here"
+RELEASE_ONLY = "release lane by rule (test-sizes.json): it runs at each promotion, not here"
 
 
 def _size_attributes(
@@ -771,11 +867,16 @@ def _lane_contract(item: Any, contract: str | None, lane: str) -> bool:
     """Whether a Large rule's lane contract omits the item here; the nightly lists a release-only
     one skipped, with its reason, so it is never a red."""
     if contract == "nightly_only" and lane != "nightly":
-        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
+        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly")
         return True
     if contract == "release_only" and lane == "nightly":
         item.add_marker(pytest.mark.skip(reason=RELEASE_ONLY))
     return False
+
+
+def _stage_admits(stage: str, size: str, layer: str) -> bool:
+    """Commit leaves slow and journey tests to their later scheduled tier."""
+    return stage != "commit" or (size != "large" and layer not in {"e2e", "native"})
 
 
 def _size_included(
@@ -809,7 +910,6 @@ def _record_moved(
     changed: frozenset[str] | None,
     *,
     floor: bool = False,
-    omitted: tuple[Any, ...] = (),
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
     leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
@@ -818,20 +918,12 @@ def _record_moved(
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
         return
-    excluded = {item.nodeid.replace("\\", "/") for item in omitted}
     record = {
         "tier": "commit stage" if floor or changed is not None else "post-merge",
         "moved": found,
-        "ran": [
-            n
-            for n in found
-            if n not in excluded and (changed is None or n.split("::")[0] in changed)
-        ],
+        "ran": [],
     }
-    if floor:
-        config.stash[FLOOR_MOVED] = record
-    else:
-        _write_moved(config, record)
+    config.stash[FLOOR_MOVED] = record
 
 
 def _write_moved(config: Any, record: dict[str, Any]) -> None:
@@ -848,7 +940,7 @@ def _write_moved(config: Any, record: dict[str, Any]) -> None:
 
 
 def pytest_collection_finish(session: Any) -> None:
-    """A floor receipt names the moved guards actually kept after all collection hooks."""
+    """Name the moved guards actually kept after all collection hooks."""
     record = session.config.stash.get(FLOOR_MOVED, None)
     if record is not None:
         kept = {item.nodeid.replace("\\", "/") for item in session.items}
@@ -903,6 +995,9 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
+            if not _stage_admits(stage, size, row.get("layer", "")):
+                omitted.append(item)
+                continue
             contract = _size_attributes(
                 item,
                 config,
@@ -939,10 +1034,11 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             items.clear()
             return
         raise pytest.UsageError(str(error)) from error
-    _record_moved(config, lane, items, policy, changed, floor=floor, omitted=tuple(omitted))
+    _record_moved(config, lane, items, policy, changed, floor=floor)
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept
+    _instruction_cost_timeouts(config, items)
 
 
 def timeout_hints(lines: list[str], failed: set[str]) -> dict[str, float]:

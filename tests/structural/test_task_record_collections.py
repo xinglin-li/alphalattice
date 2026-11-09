@@ -1,4 +1,4 @@
-"""V661: every whole canonical Task reader declares whether it needs complete authority."""
+"""every whole canonical Task reader declares whether it needs complete authority."""
 
 from __future__ import annotations
 

@@ -394,8 +394,8 @@ def prepare_factor_handoff(
                 expected={f"experiment.{key}": value},
             )
         authored[key] = value
-    # The Factor study's universe, or a declared exploration sample of it (binding plan,
-    # B17): an Alpha study may run on fewer names than its Factor evidence, never others.
+    # The Factor study's universe, or a declared exploration sample of it: an Alpha
+    # study may run on fewer names than its Factor evidence, never others.
     factor_universe = original_document["experiment"]["universe_handle"]
     universe = experiment.get("universe_handle", factor_universe)
     if universe_profile(str(universe)) != factor_universe:
@@ -466,7 +466,7 @@ MODEL_CHOICE_WORDS: Final = (
     "research strategy's required Alpha study is planned from strategy controls and needs no "
     "model choice."
 )
-"""Whose decision a handoff's open fields are (FLOW-3)."""
+"""Whose decision a handoff's open fields are."""
 
 
 def preview_factor_handoff(
@@ -543,7 +543,7 @@ def preview_factor_handoff(
         ],
         "task": None,
         "numerical_call_count": 0,
-        # Whose decision the open fields are, in the answer itself (FLOW-3).
+        # Whose decision the open fields are, in the answer itself.
         "choice_owner": "AGENT_DISCLOSES",
     }
     if prepared.missing_fields:

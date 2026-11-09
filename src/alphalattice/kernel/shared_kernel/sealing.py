@@ -1,7 +1,7 @@
 """Sealing a contract record by its content: the hash field holds the canonical hash of the rest.
 
 Every sealer here hashes the record's canonical JSON without its hash field; they differ only in
-what the sealed record is validated from (W2): the given values, that JSON, or the draft's Python
+what the sealed record is validated from: the given values, that JSON, or the draft's Python
 dump. The compatible check reads a sealed record back across an optional field added later.
 Callers pass pydantic contract models.
 """

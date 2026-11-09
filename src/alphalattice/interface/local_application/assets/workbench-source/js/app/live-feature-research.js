@@ -1,9 +1,9 @@
-/* The Features page (U56; R5, U28 and V354 joined; EX, the formula point): the formula factors agents declared in
+/* The Features page: the formula factors agents declared in
  * this workspace's research plans, the Host's page of them at a time, each with its review packet -- the declaration
  * and its recipe, the contract's golden examples, the identity it adds (none moved), its trials and the study each ran
  * against, its build's coverage, the formulas tried beside it, the daily Panel's admission and its activation. A
  * person activates a formula into this workspace's daily catalog, or deactivates it, by the requests the Host offers;
- * the Host refuses an agent's. A trial record that no longer reads is named beside the trials (U28). Factor
+ * the Host refuses an agent's. A trial record that no longer reads is named beside the trials. Factor
  * screening's second tab. A packet computes its golden examples, so it is read once a visit, never on a repaint. */
 const LiveFeatureResearch = (() => {
   const pages = new Set(['feature-research']);
@@ -39,7 +39,7 @@ const LiveFeatureResearch = (() => {
     if (!S.list && !S.listLoading && !S.listError) void readList(S.page); // the damaged records ride on every page of it
     if (a && S.packetKey !== a.key && !S.packetLoading) void readPacket(a);
   }
-  /* U60: with no formula factor declared, what a trial will run against -- the feature controls' block on the newest
+  /* with no formula factor declared, what a trial will run against -- the feature controls' block on the newest
    * available input, read once a visit. */
   const newestInput = () => (Data.inputs?.() || []).filter((v) => v.available).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || null;
   async function readTrialPrereq() {
@@ -63,7 +63,7 @@ const LiveFeatureResearch = (() => {
   }
   const trialWords = (r) => r.trial ? html`${countText(r.trials, '{n} trial', '{n} trials')} · ${t('latest {state} {when}', {state: t(TRIAL[r.trial.state]?.[1] || r.trial.state).toLowerCase(), when: when(r.trial.requested_at)})}` : t('Not tried');
   const row = (r) => { const [state, word] = STATE[r.state] || ['metadata', r.state]; return objectRow({state, name: html`<span class="mono">${r.factor_id}</span>`, to: {action: 'feature-research-open', value: keyOf(r)}}, {key: keyOf(r), word: t(word), props: [html`<span class="mono" data-tip="${r.formula}">${r.formula}</span>`, r.preprocessing_recipe ? coded(r.preprocessing_recipe) : t('No recipe named'), trialWords(r)], actions: act(r, 'menu-row')}); };
-  /* U28: a trial record that no longer reads, named with the owner's words and its way on; outside the boxes (MA2). */
+  /* a trial record that no longer reads, named with the owner's words and its way on; outside the boxes (MA2). */
   function damaged() {
     const d = S.list?.damaged || [];
     if (!d.length) return '';
@@ -121,7 +121,7 @@ const LiveFeatureResearch = (() => {
     return panel(t('Identity'), t('A formula factor is data: activation adds a catalog entry and moves no code identity.'), kv([[t('Implementation'), hashCell(id.implementation_hash)], [t('Methodology'), hashCell(id.methodology_hash)], [t('Numerical specification'), hashCell(id.numerical_spec_hash)],
       [t('Adds'), codeWords(id.adds)], [t('Moves'), (id.moves || []).length ? joinMarkup(id.moves.map((v) => html`<span class="mono">${v}</span>`)) : t('no existing identity')]], 'kv-columns'));
   }
-  /* The trials of this methodology, under any plan: each by its state and the study it ran against (V354); the
+  /* The trials of this methodology, under any plan: each by its state and the study it ran against; the
    * latest completed one's comparison -- the screening's evidence, the correlation with the factors present, and the
    * Alpha study's change with the formula. */
   function trials(x) {
@@ -135,7 +135,7 @@ const LiveFeatureResearch = (() => {
   function comparison(r, factor) {
     const e = (r.out_of_sample_evidence || [])[0], pairs = r.correlation_with_present_factors || [], change = r.alpha_change || null;
     const evidence = e ? [[t('Classification'), coded(e.classification)], [t('Rank IC (mean, oriented)'), exact(e.mean_oriented_rank_ic)], [t('BY q-value'), exact(e.rank_ic_by_q_value)], [t('Pair coverage (fraction)'), exact(e.validation_pair_coverage_mean)]] : [];
-    // V363: studies the owner refused to compare stand on what each scored -- no change is claimed, the owner says why
+    // studies the owner refused to compare stand on what each scored -- no change is claimed, the owner says why
     const refused = r.alpha_standing === 'NOT_COMPARED', moved = change && !refused ? ALPHA.filter((k) => change[k] != null).map((k) => [codeWords(k), signed(change[k], 'ratio', 4)]) : [];
     const standing = refused ? html`<h3>${t('Alpha study, with the formula against without')}</h3>${kv([[t('Comparison'), coded('NOT_COMPARED')], ...(r.alpha_refusal?.failure_code ? [[t('Code'), codedSubject(r.alpha_refusal.failure_code)]] : [])], 'kv-columns')}${r.alpha_refusal?.detail ? html`<p class="caption owner-text">${r.alpha_refusal.detail}</p>` : ''}` : '';
     const other = (p) => p.left_factor_id === factor ? p.right_factor_id : p.left_factor_id; // the pair's other factor
@@ -170,7 +170,7 @@ const LiveFeatureResearch = (() => {
   function confirm(value) {
     const at = value.indexOf(':'), kind = value.slice(0, at), key = value.slice(at + 1);
     const x = S.packet && keyOf(S.packet) === key ? S.packet : (S.list?.factors || []).find((r) => keyOf(r) === key), request = x?.next_requests?.[kind];
-    if (!x || !request || !Data.offers(request.operation) || S.busy) return; // U13: the route the session names
+    if (!x || !request || !Data.offers(request.operation) || S.busy) return; // the route the session names
     S.pending = {kind, name: x.factor_id, path: Data.route(request.operation), payload: Object.fromEntries(Object.entries(request).filter(([k]) => k !== 'operation'))};
     const trial = x.trial || completed(x).at(-1);
     const facts = [[t('Formula factor'), html`<span class="mono">${x.factor_id}</span>`], [t('Formula'), html`<span class="mono">${x.formula ?? x.declaration?.formula}</span>`], [t('Research plan'), idCell(x.feature_plan_hash, SHORT.hash)],

@@ -14757,6 +14757,188 @@
    "successor": "dc59b788c73a42d838443e26955b8802490516e5f9d2830d4f493e9be7b5b53d",
    "change": "The Windows read lease sees a closed rewrite whose modified time was restored",
    "reason": "The lease adds the file's change time and refuses reuse for a file changed within 100 ms, so a cached proof can no longer certify a damaged source when the break event is late. Only source text moved in these closures: it decides when a verification may be reused, never what a role computes. One real replan output of each role and synthetic sealed arrays across two opted-in reads are byte-identical before and after."
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "8b5a16e890540e4fad64af6fc3e04046b024173e4b586e5419e2837c0856ca44",
+   "successor": "2041dc0c3710468c3450c50e7ec29a07064ea818c1064cfa0299c906e99fcdd3",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "4725e81ea1fe1b348b700e8d5e9093155c7f332d20c4ede247dae284c290d734",
+   "successor": "784c133e0b6d8b2d11ccb2114aa405c714c15bde6bd081da1dd8ca9ffb6b8e04",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "0d21377dbaea385c0968787c8599f87fc9d3c47179bf269a1defbfe375ac07bd",
+   "successor": "96dce38dd03f5abd8992b7537983dd3329cfde365e8a9cc6f3b9e9922994530e",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "7eea07541c6e42c5af9f0089ab5de615d65990aa601c2070f07ab11d603b06a6",
+   "successor": "c230a2bcd9f5f7622a7f661ceb78b5151ff46ff77aa308d06aca554e74b48f13",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "successor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "cbb66401ba9589337fa430f7444aa142fc653caf5019593ba16a8038db8a069b",
+   "successor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "cb8ff30b51b537e8d19303f3100c1dc7fd8776d2da3bd18076e7f0eb02511eb8",
+   "successor": "11609a7ad8665fb1269616d5bbbcf8476f1b9e16b17096f76ded8822c44eb55f",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "3bf6a6169b7aa15a9104ddf4c1fbf2ca9fde7aebc443a759f03dc0eb0f193d44",
+   "successor": "d2c15cf18691bd8c34e7b2de937b030687b3c822f21bc4a66f3a16605e4678b9",
+   "change": "Repair long Windows paths and malformed evidence headings",
+   "reason": "Previously valid Evidence headings keep their canonical bytes; a heading that would give a blank or overlong anchor now takes the existing repair parse, so a filing such as PAYX 0000723531-26-000008 builds. Windows reads use extended paths with stored bytes, bindings and confinement unchanged. Historical evidence reads back through these successors."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "7a49e3479c2be95ff0728f5f4fba841faa3fb17df07094a14cadff7f1a20a77b",
+   "successor": "a7dc823689a8285df306facc16a6c1733dfe280e84b81e5596898a7b863a6969",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fbfebae4b1dedb2a5bd6950fad662f3fd64dee4ec81a0d172f26756d66c5b07d",
+   "successor": "546f318487efedae32bce5167cd32c8f408787c9bf88988119b76644fb74fb61",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "40dde8db88c35adb37200c58f7f0448f3c287954b67be9e4662255c4e523aaf2",
+   "successor": "7187ccd3545d7355810f25b556fe8754ae216ef247ecc0251e86d7546a638528",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "06801f1347fcec989208d03e3e978f26e47024472853550fa7b4e9926ea5cdd1",
+   "successor": "b46ec3a84123b33e0b57ada0cd01af74eeebdfc13fb13816b22a1e38376a528d",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "ec20dbf8650a06acc1c4f6c1eba65afd939d2d43af3f0875ae20ad6ce99ff018",
+   "successor": "0c6da0886096fdb32d1314cf714342d89a1acc8d20327b97ff75df476a67d46c",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "21c185d8a31aca1124c600210f0a6352c2e766bedb1a0dd069d075d3612fe744",
+   "successor": "c830dee393ca0cd35126245da20ddb3335b1d985aa129b76aa11aacabf833b79",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "7fb0433764693644f41d217113920c5d5d8ea8c473108880a911f821d3db3f82",
+   "successor": "ac5778064c6d5c7d82b87e74c4aa635c74bf8d0e5a5d4302e675518944fb9311",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "96dce38dd03f5abd8992b7537983dd3329cfde365e8a9cc6f3b9e9922994530e",
+   "successor": "671f350b47e268fa1b7a000162de503add561440ac8c94554bc6c505830e87e2",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "dc59b788c73a42d838443e26955b8802490516e5f9d2830d4f493e9be7b5b53d",
+   "successor": "a153ebd9c93279eb123772fa97447d9edf7cf744ac7a3da714f75a82b2918339",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "1718e7ab0f5dd57057baf8cc199cb1555489e13b1f3f2873e3a40be8abfba926",
+   "successor": "fabe1e346498002b56c88f9388a1ab8251eec5d0f58a1867f51cc7817fb04900",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c230a2bcd9f5f7622a7f661ceb78b5151ff46ff77aa308d06aca554e74b48f13",
+   "successor": "762c7c4e414435f7a68afd54cda106a4807d87a83b61b74f783a394c3b46c241",
+   "change": "Use product wording in public source and test comments",
+   "reason": "Only the explanatory descriptions of feature controls and Host steps changed, into product language; the computations, policies and values they apply are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "successor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "change": "Share workspace database access for panel readers",
+   "reason": "Model development's implementation identity changes because six file-backed readers now open the workspace database through its owner, read-only; their queries, ordering and returned values are unchanged, and no data or result identity moves."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "cd8e1596dbe03dcf6b0dc9c3f94225ed7cb735747c510c20b14ae5f2ab7919ba",
+   "successor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "change": "Share workspace database access for panel readers",
+   "reason": "Model development's implementation identity changes because six file-backed readers now open the workspace database through its owner, read-only; their queries, ordering and returned values are unchanged, and no data or result identity moves."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "671f350b47e268fa1b7a000162de503add561440ac8c94554bc6c505830e87e2",
+   "successor": "6c7a3414549f169177a8473cc7a86e2771e0aab1805305e9c7154cddb9c0b86c",
+   "change": "Fix Windows research-input path handling",
+   "reason": "Reads and checks are unchanged: the owner still reads through the long path with the same binding, digest and lineage checks. Only a missing manifest's file-not-found error now names the file in the ordinary Windows spelling, and the tamper test now changes the source it checks."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "762c7c4e414435f7a68afd54cda106a4807d87a83b61b74f783a394c3b46c241",
+   "successor": "205459793ffcf23441b50202504a7f3b1514dc6e8edd15e0298537188339f5b1",
+   "change": "Fix Windows research-input path handling",
+   "reason": "Reads and checks are unchanged: the owner still reads through the long path with the same binding, digest and lineage checks. Only a missing manifest's file-not-found error now names the file in the ordinary Windows spelling, and the tamper test now changes the source it checks."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "546f318487efedae32bce5167cd32c8f408787c9bf88988119b76644fb74fb61",
+   "successor": "5a8199be255d436751a5215b03432b0adaa756acfddcaf124b818936899227fe",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "7187ccd3545d7355810f25b556fe8754ae216ef247ecc0251e86d7546a638528",
+   "successor": "42607def019712231d54da6d8c8e1c85cc0ef29e4dbf2597f80b4302a432a7e1",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "a153ebd9c93279eb123772fa97447d9edf7cf744ac7a3da714f75a82b2918339",
+   "successor": "9d48a17e068de685adf61bc900cee6087333f7afcbd14ea048e08caa17a6450b",
+   "change": "Cache keys include the inputs that determine their values",
+   "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
   }
  ]
 }

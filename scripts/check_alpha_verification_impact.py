@@ -61,7 +61,12 @@ from devtools.architecture.structural import (  # noqa: E402
     kept_fact,
     kept_facts,
 )
-from devtools.pipeline.stage import DEADLINE_ROOTS, derived_holders  # noqa: E402
+from devtools.pipeline.stage import (  # noqa: E402
+    derived_holders,
+    facet_holders,
+    registered_holders,
+    selection_readers,
+)
 from devtools.testing.layout import placed_tests  # noqa: E402
 
 _PARENT_REVISION = "HEAD"
@@ -1178,6 +1183,45 @@ def _reach_roles(changed: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(roles))
 
 
+def _registered_holders(
+    paths: set[str],
+    *,
+    staged: bool,
+    pairs: list[tuple[list[str], str]],
+    changed: dict[str, str],
+) -> tuple[str, ...]:
+    """The same declared edges as the stage, read from this plan's own input state; ``changed``
+    holds both sides of each changed Python file by object id."""
+    policy_path = "config/registries/test-sizes.json"
+    if staged:
+        policy = read_blobs([":" + policy_path], PLAYPEN_ROOT, timeout=60).get(":" + policy_path)
+        if policy is None:
+            raise ValueError(f"the staged selection registry is unavailable: {policy_path}")
+    else:
+        policy = (PLAYPEN_ROOT / policy_path).read_text(encoding="utf-8")
+    rows = selection_readers(json.loads(policy))
+    needed = {
+        row[key]
+        for row in rows.values()
+        if "census" in row
+        and (
+            any(path.startswith("src/alphalattice/") and path.endswith(".py") for path in paths)
+            or paths.intersection(row["conditional_inputs"])
+        )
+        for key in ("census", "sample")
+    } | {node.split("::", 1)[0] for node, row in rows.items() if "literal_root" in row}
+    if staged:
+        blobs = read_blobs([":" + path for path in sorted(needed)], PLAYPEN_ROOT, timeout=60)
+        sources = {path: blobs[":" + path] for path in needed if ":" + path in blobs}
+    else:
+        sources = {
+            path: (PLAYPEN_ROOT / path).read_text(encoding="utf-8")
+            for path in needed
+            if (PLAYPEN_ROOT / path).is_file()
+        }
+    return (*registered_holders(paths, sources, rows), *facet_holders(pairs, changed, rows))
+
+
 def _declared_holders(
     changed: tuple[str, ...], *, base: str | None, staged: bool
 ) -> tuple[str, ...]:
@@ -1200,9 +1244,7 @@ def _declared_holders(
         raise ValueError("malformed changed-file record")
     entries = {path: header.split() for header, path in zip(fields[::2], fields[1::2], strict=True)}
     paths = set(changed) | entries.keys()
-    candidates = {
-        path for path in paths if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
-    }
+    candidates = {path for path in paths if path.endswith(".py")}
     pairs = [([":000000", "000000", zero, zero, "A"], path) for path in paths - candidates]
     found = {}
     for path in candidates & entries.keys():
@@ -1215,21 +1257,21 @@ def _declared_holders(
             or meta[1] not in {"000000", "100644", "100755"}
             or any(not re.fullmatch(r"[0-9a-f]{40}", oid) for oid in meta[2:4])
         ):
-            raise ValueError(f"changed deadline source is not a regular file: {path}")
+            raise ValueError(f"changed Python source is not a regular file: {path}")
         found[path] = meta
-    missing = candidates - found.keys()
-    if missing and (staged or base):
-        raise ValueError(
-            "changed deadline source missing from Git diff: " + ", ".join(sorted(missing))
-        )
-    for path in missing:
-        found[path] = [":000000", "100644", zero, zero, "A"]
+    # A path the diff does not list is unchanged at both ends, so it holds no changed facts;
+    # only against the index is it an untracked file, new to the working tree.
+    for path in candidates - found.keys():
+        if not (staged or base) and (PLAYPEN_ROOT / path).is_file():
+            found[path] = [":000000", "100644", zero, zero, "A"]
+        else:
+            pairs.append(([":000000", "000000", zero, zero, "A"], path))
     ids = {meta[2] for meta in found.values() if meta[2] != zero}
     if staged:
         ids.update(meta[3] for meta in found.values() if meta[3] != zero)
     blobs = read_blobs(sorted(ids), PLAYPEN_ROOT, timeout=60)
     if set(blobs) != ids:
-        raise ValueError("changed deadline-source blob is unavailable")
+        raise ValueError("changed Python blob is unavailable")
     for path, meta in found.items():
         if not staged and meta[4] != "D":
             source = (PLAYPEN_ROOT / path).read_bytes()
@@ -1237,7 +1279,8 @@ def _declared_holders(
             blobs[oid] = source.decode("utf-8")
             meta[3] = oid
         pairs.append((meta, path))
-    return derived_holders(pairs, blobs)
+    declared = _registered_holders(paths, staged=staged, pairs=pairs, changed=blobs)
+    return tuple(sorted({*derived_holders(pairs), *declared}))
 
 
 def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:

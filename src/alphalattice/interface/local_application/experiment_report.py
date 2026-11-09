@@ -231,7 +231,7 @@ def render_goal(body: dict[str, Any]) -> str:
     record = body.get("record") or {}
     if record.get("conversation"):
         # What the product recorded of the goal's Sessions' work, each row with its Session
-        # (GR2, FLOW-1); messages filed before FLOW-1 keep their recipient and reply.
+        # (GR2); previously filed messages keep their recipient and reply.
         parts.append("<h2>Conversation</h2>")
         for message in record["conversation"]:
             recipient = (
@@ -361,7 +361,7 @@ def research_timing_section(timing: dict[str, Any] | None) -> str:
 
 
 def temporal_scope_section(scope: dict[str, Any] | None) -> str:
-    """Render what the window can claim about time: its statements, then the marks (V347)."""
+    """Render what the window can claim about time: its statements, then the marks."""
     if not scope or scope.get("status") != "RECORDED":
         return ""
     marks = {
@@ -762,7 +762,7 @@ def alpha_report_section(body: dict[str, Any]) -> str:
     """
     if "alpha_qualification" in body:
         # A family's qualification concludes over every attempted candidate; it holds no
-        # development result, which the section below reads (V494).
+        # development result, which the section below reads.
         qualification = body["alpha_qualification"]
         return (
             "<h1>Alpha family qualification</h1>"

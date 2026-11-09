@@ -15,6 +15,36 @@
       "layer": "integration",
       "seconds": 5
     },
+    "alternative_evidence.absent_consent_uses_the_default": {
+      "description": "An absent Evidence source consent reads as the default while an unreadable record does not.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "alternative_evidence.historical_identity_excludes_current_and_known": {
+      "description": "Observed Evidence history excludes current and supported bindings while retaining each unknown tuple once.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "alternative_evidence.host_stop_preserves_coverage_run": {
+      "description": "A Host stop during a coverage unit leaves no sealed unit failure and the same Task resumes after the Host restarts.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "alternative_evidence.review_rerun_joins_its_preparation": {
+      "description": "A repeated book review joins the preparation in flight at any cutoff, reads no filing index beside it, and a parked one is handed back without a person.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30
+    },
+    "alternative_evidence.review_stands_on_its_answers": {
+      "description": "A later run of the same positions that no analysis answers does not take a book's review from the run its analyses answer, and a run that carried them keeps it.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 1
+    },
     "alternative_evidence.runtime_identity_binds_what_decides_selection": {
       "description": "If the Evidence runtime's identity left out an owner of selection or a capability, reviews could reuse retrieval from a different runtime.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -69,6 +99,18 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.achieved_goal_has_a_deliverable": {
+      "description": "An achieved Goal must deliver a verified reference even when the original declaration named no deliverable slot.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "composition.cli_names_a_closed_output_pipe": {
+      "description": "The command reports an output pipe that closes before its answer finishes and returns failure.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5
+    },
     "composition.keyed_analyst_submissions_keep_first_outcome": {
       "description": "Concurrent keyed Analyst submissions receive definite outcomes, filed outcomes replay exactly, and refusals that filed nothing are retryable.",
       "owner": "alphalattice.control.product_host.composition",
@@ -81,6 +123,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "composition.only_a_finished_first_use_owns_its_last_delegated_network_state": {
+      "description": "A network cleanup belongs only to a finished first-use Goal and follows its last delegated network choice.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The Goal composition owner imports Host facilities that the unit layer cannot load."
+    },
     "composition.sealed_review_update_verified_once": {
       "description": "Concurrent readers of one sealed review update share one verification, each with its own copy, and a failed verification is never kept.",
       "owner": "alphalattice.control.product_host.composition",
@@ -92,6 +141,13 @@
       "owner": "alphalattice.control.product_host.composition",
       "layer": "integration",
       "seconds": 30
+    },
+    "composition.unstarted_evidence_task_reports_its_requested_cutoff": {
+      "description": "An Evidence Task without a run reports the cutoff from its sealed request.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The Evidence composition owner imports Host facilities that the unit layer cannot load."
     },
     "composition.workspace_binding_usage_unknown": {
       "description": "An unreadable workspace-owned Session binding makes usage unavailable without hiding other readable Session results or treating the binding as absent.",
@@ -142,6 +198,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_leg_stop_owns_process_tree": {
+      "description": "A requested native leg stop ends only its recorded driver and descendants, completes its own teardown and records any unproved cleanup.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10
+    },
     "evaluation.native_leg_stops_by_name": {
       "description": "One command starts, resumes and collects a native leg of either host, and every stop carries a named reason and its evidence.",
       "owner": "devtools.evaluation",
@@ -178,6 +240,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.closure_pointer_requires_a_full_content_identity": {
+      "description": "Feature closure pointers reject a partial or noncanonical content identity before looking up a head.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.closure_store_takes_only_derived_identities": {
       "description": "If the coordinator handed the store identities it never derived, a Feature store could hold its data under another closure's name.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -208,6 +276,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.materialized_source_identity_binds_missing_positions": {
+      "description": "A materialized source identity distinguishes missing observations from numerical zero at each session.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.panel_chunks_stay_bound_to_their_writer": {
       "description": "If a panel chunk's bytes or hash drifted from the binding that wrote it, a reader would accept data under an identity it never had.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -219,6 +293,13 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 5
+    },
+    "local_application.a_disconnected_waiter_reports_the_task_continues": {
+      "description": "When a Host stays unavailable through the wait cap the answer reports that the Task continues.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The real local client imports process and Host facilities that the unit layer cannot load."
     },
     "local_application.configure_offers_a_workspace": {
       "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
@@ -232,11 +313,23 @@
       "layer": "integration",
       "seconds": 10
     },
+    "local_application.doctor_names_windows_long_path_setting": {
+      "description": "The doctor and no-Host refusal identify authenticated project Hosts; the Windows doctor reports long-path support and a packaged shell's potentially redirected model store.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
+    },
     "local_application.first_use_offers_delegated_network": {
       "description": "A first-use plan offers its delegated network action immediately without waiting for the separate coded daily-consent answer.",
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.first_use_question_only_while_unanswered": {
+      "description": "An exact first-use Goal retry asks the daily question while unanswered and stops offering it after the person answers.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5
     },
     "local_application.native_tool_setup_uses_writable_scratch": {
       "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",
@@ -249,6 +342,13 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 1.313
+    },
+    "local_application.only_reconnects_named_host_failures": {
+      "description": "A waiter propagates an unrelated client refusal instead of treating it as a restart.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The real local client imports process and Host facilities that the unit layer cannot load."
     },
     "local_application.playwright_setup_refuses_unowned_installation_aliases": {
       "description": "Playwright setup refuses linked or unverifiable installation paths before mutating them while preserving independently owned physical installations.",
@@ -341,7 +441,7 @@
       "seconds": 10
     },
     "pipeline.cost_receipt_contains_required_nodes": {
-      "description": "A cost commit stage runs required named test families, including Large, and records their bounded outcomes without changing ordinary selection.",
+      "description": "A cost commit stage runs required Small and Medium test families and records their bounded outcomes; slow tests run separately.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 15
@@ -489,11 +589,24 @@
       "layer": "integration",
       "seconds": 60
     },
+    "portfolio_strategy_lab.advancement_refuses_an_index_for_another_program": {
+      "description": "An advancement receipt index for one program cannot name another program.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "unit",
+      "seconds": 1
+    },
     "portfolio_strategy_lab.finalization_ledger_closes_each_package_once": {
       "description": "If finalization repeated a step, closed a permit twice or released another package's receipt, a protected result could publish without its own ledger.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
       "seconds": 5
+    },
+    "portfolio_strategy_lab.finalization_requires_a_registered_candidate": {
+      "description": "A finalization cannot reopen a candidate that was never committed in its own ledger.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The finalization store's real dependencies include Host facilities that the unit layer cannot load."
     },
     "portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering": {
       "description": "If a persisted ledger index could not tell a lost child from a bad index, recovery would rerun tampered work or refuse honest loss.",
@@ -507,6 +620,19 @@
       "layer": "integration",
       "seconds": 5
     },
+    "product_host.held_data_update_names_provider_work": {
+      "description": "A plan using held market data says that no provider work is needed.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The maintenance owner imports Host facilities that the unit layer cannot load."
+    },
+    "product_host.host_stop_keeps_finishing_visible": {
+      "description": "A stopping Host retains its lease and read-only status while its active work finishes and leaves queued work for resumption.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 20
+    },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -518,6 +644,24 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.dead_worker_reads_failed": {
+      "description": "A Task whose command raised and whose failure write died with it stops reading RUNNING at the Supervisor's next pass.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 20
+    },
+    "task_control.frozen_requests_refuse_content_address_changes": {
+      "description": "A frozen Task request must not be recovered from a file whose name does not bind its admitted content.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "task_control.host_stop_preserves_recovery": {
+      "description": "A Host stop finishes the current safe work, retains verified stages and resumes the same Task without treating the stop as a failed attempt.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10
     },
     "testing.codspeed_marks_every_selected_test": {
       "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
@@ -531,14 +675,32 @@
       "layer": "integration",
       "seconds": 1
     },
+    "testing.fast_whole_tree_guard_runs_when_its_tree_changed": {
+      "description": "A deferred whole-tree guard runs in the commit stage when the tree it declares it reads changed; one recorded as slow still waits for post-merge, and without the rule nothing moves.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 1
+    },
     "testing.find_matches_requirements_and_unregistered_tests": {
       "description": "One search returns the registered requirements and the unregistered tests whose words match, best first, with each requirement's lifecycle and holders.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 5
     },
+    "testing.integration_share_only_falls": {
+      "description": "A change that raises an area's integration share of test functions is refused by name, and a row added above unit says why a lower layer cannot prove it.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.layer_contract": {
       "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "testing.narrow_fixture_scratch_goes_with_it": {
+      "description": "A fixture narrower than the session removes the temporary roots it made once its own teardown is done, unless a test failed while it lived; a session fixture keeps its roots to the session's end.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 10
@@ -579,6 +741,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.test_placement_and_structural_scope": {
+      "description": "New test files must declare their owner and source, and a deferred structural test must have a valid scope before selection.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "lower_layer": "The selection checks read and construct registered policy files, which a unit test cannot access.",
+      "seconds": 6.248
+    },
     "testing.unplaced_workers_warn_by_name": {
       "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
       "owner": "devtools.testing",
@@ -595,7 +764,8 @@
       "description": "Whole-file test relocation restores bytes and registered references, preserves consumed fixture scope and refuses path, export and fixture-name clashes.",
       "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 6.248
+      "seconds": 6.248,
+      "retired": "2026-11-08: the completed one-time test mover was retired; placement and structural scope checks stay."
     },
     "testing.windows_worker_without_wmi": {
       "description": "A Windows pytest worker obtains platform information without issuing a WMI query.",
@@ -605,6 +775,18 @@
     },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "workspace_runtime.host_stop_reaches_parallel_work_items": {
+      "description": "A Host stop reaches each concurrent work-item thread and leaves the admitted Task recoverable after its workers return.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "workspace_runtime.seal_record_survives_a_held_file": {
+      "description": "A file another process holds neither stops a store's open while the hold is brief nor kills a worker at its close.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 10

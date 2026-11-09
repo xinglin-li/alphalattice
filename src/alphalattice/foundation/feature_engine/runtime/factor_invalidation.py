@@ -167,7 +167,7 @@ def compile_panel_plan(
     no compatible partition for, or one whose recorded provenance cannot be
     resolved. They are requested for every factor, exactly as a Panel without
     any base is; the listing plans still carry only what the source changed.
-    A catalog change scoped to the columns a catalog only adds (V92) requests
+    A catalog change scoped to the columns a catalog only adds requests
     those columns on every session over a reusable base, and every factor
     without one.
     """

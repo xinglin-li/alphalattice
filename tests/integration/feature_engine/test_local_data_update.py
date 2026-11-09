@@ -476,7 +476,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
     made = ChildCalls.make
 
     # A listing's Feature computation, as the build hands it to a Host worker (W10), with the
-    # sessions of the input frame the worker projects from the stored inputs (V92).
+    # sessions of the input frame the worker projects from the stored inputs.
     def counted(self, arguments, **shipped):
         if "source" in arguments:
             calls.append(
@@ -742,7 +742,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         (issue,) = [item for item in issues["issues"] if item["status"] == "AWAITING_CHOICE"]
         case = issue["case"]
         # Every case named in a line beside the whole page, and the pending view offered
-        # first; one page holds them all, so none follows (V236, V237, V172).
+        # first; one page holds them all, so none follows.
         assert issues["case_count"] == len(issues["case_index"]) == len(issues["issues"])
         assert issues["case_index"][0]["case_token"] == case["case_token"]
         assert issues["next_requests"]["pending"] == {"operation": "PENDING_DECISIONS"}
@@ -789,7 +789,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         assert status["latest_failure_code"] == "data.remediation_wait", status
         waiting = _json(live, "/api/data-update")
         assert waiting["retry_after_at"] is not None
-        # V375: the deferred update says why, that the published inputs stand, and which
+        # the deferred update says why, that the published inputs stand, and which
         # request resumes it: the same plan again once its time has passed.
         assert waiting["next_requests"]["resume"] == {
             "operation": "DATA_UPDATE_RUN",

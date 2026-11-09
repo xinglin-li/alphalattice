@@ -127,7 +127,7 @@ def test_the_host_seals_publishes_and_replays_the_analysis(tmp_path: Path) -> No
     assert package.structure(handle).state is EvidenceStructureState.SINGLE_SOURCE
     assert package.structure(handle).supporting_document_count == 1
     # The one current report is what the window holds: a topic it does not
-    # serve is no gap (no periodic report is a baseline since W1), so the
+    # serve is no gap (no periodic report is a baseline), so the
     # package names nothing missing -- and whatever it names is an issuer and
     # topic line.
     assert package.missing_evidence == ()
@@ -616,7 +616,7 @@ def test_a_stage_failure_names_the_owners_own_code(
         assert resources is not None
         first = resources.recorded_documents[0]
         bad = (
-            first.model_copy(update={"text": "# Good\nbody\n## \u00a0\nBroken excerpt.\n"})
+            first.model_copy(update={"text": "# Good\nbody\nBroken excerpt.\n"})
             if untyped == "citation"
             else first
         )
@@ -627,6 +627,20 @@ def test_a_stage_failure_names_the_owners_own_code(
             ),
         )
         monkeypatch.setattr(authority.evidence_runtime, "whole_delivery", lambda *_: False)
+        if untyped == "citation":
+            from hashlib import sha256
+
+            from alphalattice.kernel.knowledge import retrieval
+
+            citation = retrieval.KnowledgeCitation
+            bad_content = sha256(bad.text.encode("utf-8")).hexdigest()
+
+            def invalid_citation(**fields: object) -> object:
+                if fields["content_sha256"] == bad_content:
+                    fields["heading_path"] = ("",)
+                return citation(**fields)
+
+            monkeypatch.setattr(retrieval, "KnowledgeCitation", invalid_citation)
         if untyped == "need":
             from alphalattice.evidence.alternative_evidence.analysis.contracts import (
                 EvidenceNeedRecord,
@@ -634,6 +648,53 @@ def test_a_stage_failure_names_the_owners_own_code(
 
             def invalid_need(**kwargs: object) -> object:
                 reference = kwargs["document_set"].documents[0]
+                from alphalattice.evidence.alternative_evidence.runtime.failure_diagnostics import (
+                    failure_detail,
+                )
+
+                base = {
+                    "document_handle": reference.semantic_handle,
+                    "kind": "REGION_STATEMENT",
+                    "status": "PENDING_ALLOWANCE",
+                }
+                cases = (
+                    ({"status": "PROVIDED"}, "status_requires_span"),
+                    (
+                        {
+                            "kind": "LEAD",
+                            "matter_handle": "M-AAPL-1-001",
+                            "target_state": "LOCATED",
+                        },
+                        "target_only_reference",
+                    ),
+                    (
+                        {
+                            "kind": "REFERENCE",
+                            "status": "PROVIDED",
+                            "span_handle": "SPAN-M01-R0001",
+                            "target_state": "LOCATED",
+                        },
+                        "target_matches_status",
+                    ),
+                    (
+                        {"kind": "REFERENCE", "target_state": "DELIVERED"},
+                        "pending_target_located_or_partially_read",
+                    ),
+                    ({"character_start": 10}, "character_range_paired_and_ordered"),
+                    (
+                        {"character_start": 10, "character_end": 10},
+                        "character_range_paired_and_ordered",
+                    ),
+                    ({"kind": "LEAD"}, "matter_required"),
+                    ({"matter_handle": "M-AAPL-1-001"}, "region_statement_has_no_matter"),
+                )
+                for changes, invariant in cases:
+                    with pytest.raises(ValueError) as caught:
+                        EvidenceNeedRecord(**(base | changes))
+                    detail = failure_detail(
+                        caught.value, "select_evidence_spans", lambda: kwargs["document_set"]
+                    )
+                    assert f"invariant={invariant}" in detail
                 return EvidenceNeedRecord(
                     document_handle=reference.semantic_handle,
                     kind="REGION_STATEMENT",
@@ -672,6 +733,7 @@ def test_a_stage_failure_names_the_owners_own_code(
             field = "heading_path" if untyped == "citation" else "EvidenceNeedRecord"
             assert field in state["exception_message"]
             if untyped == "need":
+                assert "invariant=status_requires_span" in state["exception_message"]
                 assert "status=PROVIDED" in state["exception_message"]
                 assert "span_handle=None" in state["exception_message"]
             completed = run_one(service, {"operation": "STATUS", "task_id": task.task_id})

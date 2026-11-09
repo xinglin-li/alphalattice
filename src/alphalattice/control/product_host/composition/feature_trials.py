@@ -1,4 +1,4 @@
-"""Try a feature in one step (binding plan, B18).
+"""Try a feature in one step.
 
 One request names a planned research feature and a finished study to try it against (an
 Alpha study handed off from a Factor study, or the Portfolio study built on one). The Host

@@ -348,7 +348,7 @@ class ResolvedResearchAuthority(_Contract):
         default=None, exclude_if=lambda v: v is None
     )
     """How ``ordered_listing_ids`` was sampled from the Panel's names, for an exploration
-    sample: each Sector's share (binding plan, decision 4). Absent for the whole Panel, and
+    sample: each Sector's share. Absent for the whole Panel, and
     from a sample drawn before samples kept each Sector's share."""
     authority_hash: str = Field(pattern=_HASH)
 

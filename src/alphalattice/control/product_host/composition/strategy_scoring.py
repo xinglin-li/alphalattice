@@ -96,7 +96,7 @@ from alphalattice.kernel.shared_kernel.source_identity import source_rule_closur
 
 PLAN_FIELDS = ("score_inputs",)
 """The manifest fields a plan reads: the score inputs it prepares scores for. A plan binds them,
-never the whole manifest, so a publication of fields it does not read leaves it applicable (V223,
+never the whole manifest, so a publication of fields it does not read leaves it applicable (
 OW10)."""
 
 TASK_KIND = "strategy_score_preparation"
@@ -105,7 +105,7 @@ STAGES = ("verify_frozen_inputs", "materialize_features", "score_models", "publi
 
 IMPLEMENTATION_ROLE = "product_host.strategy_scoring"
 """The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation_hash() -> str:
@@ -297,13 +297,12 @@ class StrategyScoringApplication:
             task_kind=TASK_KIND, preview="STRATEGY_SCORE_PLAN", admitting="STRATEGY_SCORE_RUN"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
     additional_publications: Callable[[], tuple[FrozenComponentScoreSnapshot, ...]] | None = None
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
+        """The workspace manifest, read from the one holder the Host refreshes."""
         return self._manifests.current
 
     @property
@@ -333,7 +332,7 @@ class StrategyScoringApplication:
         self.store = AlphaCurrentArtifactStore(session.workspace / "artifacts")
         self.last_plan: StrategyScorePlan | None = None
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
+        # from any of them, after a restart too, reopens it and checks it again.
         self._plans: PreviewRegistry[StrategyScorePlan] = PreviewRegistry(
             model=StrategyScorePlan,
             clock=self.clock,
@@ -364,7 +363,7 @@ class StrategyScoringApplication:
             and (component_id is None or item.component_id == component_id)
         ]
         if len(choices) > 1:
-            # A package of several components scores them one at a time (V332).
+            # A package of several components scores them one at a time.
             raise ValueError(
                 "strategy_score.component_required:"
                 + ",".join(sorted(str(value.component_id) for value in choices))
@@ -512,7 +511,7 @@ class StrategyScoringApplication:
                 and authority.authority.can_prepare(formation)
             )
         ):
-            # The refusal names the formation it chose and the epoch the lifecycle admits (V335).
+            # The refusal names the formation it chose and the epoch the lifecycle admits.
             admitted = authority.authority
             start = getattr(admitted, "formation_start", None)
             end = getattr(admitted, "formation_end", None)
@@ -523,7 +522,7 @@ class StrategyScoringApplication:
         if isinstance(authority, AdmittedRenewingInference):
             authority.authority.planned_refits(self.store, (formation,), allow_preparation=True)
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between (V534).
+        # may have replaced in between.
         planned = StrategyScorePlan.create(
             workspace_id=self.manifest.workspace_id,
             workspace_manifest_hash=manifest_fields_hash(self.manifest, PLAN_FIELDS),
@@ -547,7 +546,7 @@ class StrategyScoringApplication:
             else "Construct inputs, predict with admitted models, publish score. Zero fits.",
             "limitation": "INPUT_TO_SCORE_QA_NOT_PORTFOLIO_RECOMMENDATION",
             # The same plan again from this answer, its day and component kept; a plan with no
-            # day still takes the newest (V562).
+            # day still takes the newest.
             "next_requests": {
                 "run": {"operation": "STRATEGY_SCORE_RUN", "score_plan_hash": planned.plan_hash},
                 "replan": _replan(planned),

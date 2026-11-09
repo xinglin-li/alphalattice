@@ -120,6 +120,34 @@ def _network(live: Any) -> bool:
     return network_access(live.workspace, environment={}, now=live.clock()).allowed
 
 
+@pytest.mark.proves("local_application.first_use_question_only_while_unanswered")
+def test_a_reopened_first_use_only_asks_while_the_daily_answer_is_missing(tmp_path: Path) -> None:
+    from alphalattice.control.workspace_runtime.network_access import set_network_access
+    from alphalattice.interface.local_application.goals import first_use_asks
+
+    now = datetime(2026, 11, 6, tzinfo=UTC)
+    app = GoalApplication(
+        GoalStore(tmp_path, "workspace"),
+        lambda: now,
+        lambda *_: {},
+        lambda _: now,
+        lambda _: None,
+        workspace=tmp_path,
+    )
+    request = Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE)
+    opened = app.operate(request, "HUMAN")
+    retry = app.operate(request, "HUMAN")
+    assert opened["person_questions"][0]["code"] == "network.daily_updates"
+    assert retry["person_questions"][0]["code"] == "network.daily_updates"
+    set_network_access(tmp_path, enabled=True, relayed=("agent", "Yes", DAILY_NETWORK_ASK), now=now)
+    answered = app.operate(request, "HUMAN")
+    assert answered["status"] == "REUSED_EXACT" and not answered.get("person_questions")
+    notices = first_use_asks(None, ["alphalattice"], [], [])["ask_now"]
+    assert DAILY_NETWORK_ASK not in notices
+    assert any("default budget" in text and "retrieval model" in text for text in notices)
+    assert all("delegation" not in text for text in notices)
+
+
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
     live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -160,7 +188,7 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     assert code == 2 and _code(storage) == "storage.human_confirmation_required"
     code, shown = command("goal", "show", opened["goal_id"])
     # The goal offers no revision of the person's sentence (the review at 118f6378), and its
-    # record says its delegation and its end (U70).
+    # record says its delegation and its end.
     assert "revise" not in shown["next_requests"]
     assert shown["record"]["delegation"]["active"] is True
     assert set(shown["record"]["delegation"]["steps"]) >= {"NETWORK_ACCESS_SET"}
@@ -392,13 +420,13 @@ def test_the_daily_yes_relayed_as_offered_outlives_the_first_use(
     first = _cli(live, "first-use", "prepare", "--sentence", "A book.", "--date", "2026-10-09")[1]
     assert first["first_use"]["person_questions"][0]["code"] == "network.daily_updates"
     _watch, _said, _asked, network_on, consent = first["first_use"]["ask_now"]
-    code, delegated = _cli(live, *shlex.split(network_on)[1:-4])
+    code, delegated = _cli(live, *shlex.split(network_on)[1:-6])
     assert code == 0 and "daily_question" in delegated, delegated
     for offered, operation in zip(
         (network_on, consent), ("NETWORK_ACCESS_SET", "EVIDENCE_CONSENT_SET"), strict=True
     ):
         line = shlex.split(offered.replace("<their words>", "Yes, keep it on."))[1:]
-        assert _cli(live, *line, "--question-code", "network.daily_updates")[0] == 0, line
+        assert _cli(live, *line)[0] == 0, line  # the offered line names its code itself
         row = _json(live, "/api/activity")["items"][-1]
         assert row["payload"]["operation"] == operation
         question = row["person_questions"][0]
@@ -761,7 +789,7 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
 def test_a_first_use_is_the_one_before_the_first_preparation(
     live: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (V452): a workspace already prepared has had its first use, so a first-use
+    """requirement: a workspace already prepared has had its first use, so a first-use
     goal is refused there and the person decides each step."""
 
     succeeded = SimpleNamespace(lifecycle=SimpleNamespace(value="SUCCEEDED"))

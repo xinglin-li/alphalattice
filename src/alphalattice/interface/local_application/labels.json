@@ -1,7 +1,7 @@
 {
  "schema": "alphalattice.labels",
  "version": 1,
- "note": "The product's names for what it installs: each strategy, component, recipe, policy, risk method and rule, by the id the code and the workspaces keep, with a title and a summary in English and Chinese. Read by the CLI, the Workbench and the docs; outside every identity closure, so a title or summary changes no number and no identity (LAWS.md ID10). The ids that still carry a stage code are the spellings workspaces store; they move to meaningful ids when the release's corpora are prepared fresh (NM2, V451), and a title here never waits for that.",
+ "note": "The product's names for what it installs: each strategy, component, recipe, policy, risk method and rule, by the id the code and the workspaces keep, with a title and a summary in English and Chinese. Read by the CLI, the Workbench and the docs; outside every identity closure, so a title or summary changes no number and no identity (LAWS.md ID10). The ids that still carry a stage code are the spellings workspaces store; they move to meaningful ids when the release's corpora are prepared fresh, and a title here never waits for that.",
  "labels": [
   {
    "kind": "strategy",

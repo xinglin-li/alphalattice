@@ -24,14 +24,22 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import psutil  # type: ignore[import-untyped]
 
-from devtools.architecture.git_inputs import read_blobs, staged_changes, table_moves, unique_moves
+from devtools.architecture.git_inputs import (
+    CostIdentity,
+    read_blobs,
+    staged_changes,
+    table_moves,
+    unique_moves,
+)
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
+from devtools.pipeline.facets import FACETS, facet_changed
 from devtools.pipeline.receipt import Writer, _now, verify
-from devtools.testing.requirements import edited_families, file_holders, selection
+from devtools.testing.requirements import edited_families, file_holders, layer, selection
+from devtools.testing.sizes import classify
 
 
 def _changed_test_files(pairs: list[tuple[list[str], str]]) -> list[tuple[list[str], str]]:
@@ -79,64 +87,331 @@ DERIVED_OWNERS = (
         "test_every_capped_client_waiter_has_its_cap_rule_reviewed",
     ),
 )
-DEADLINE_ROOTS = (
-    "src/alphalattice/interface/local_application/",
-    "src/alphalattice/control/product_host/",
-    "src/alphalattice/control/workspace_runtime/",
-)
-DEADLINE_HOLDER = (
-    "tests/structural/test_wait_caps.py::"
-    "test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed"
-)
 
 
-def deadline_names(source: str) -> set[str]:
-    """The deadline holder's exact function discovery, reused for changed-file selection."""
-    found = set()
-    for function in ast.walk(ast.parse(source)):
-        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        args = {
-            arg.arg
-            for arg in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-        }
-        assigned = {
-            target.id
+def _evidence_named_paths(tree: ast.Module, sample: str | None) -> set[str]:
+    owners = next(
+        (
+            node.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "OWNERS" for target in node.targets
+            )
+        ),
+        None,
+    )
+    if not isinstance(owners, ast.Dict) or not all(
+        isinstance(key, ast.Constant) and isinstance(key.value, str) for key in owners.keys
+    ):
+        raise ValueError("the Evidence sentence census must name its producer paths")
+    named = {
+        "src/alphalattice/" + cast(str, key.value)
+        for key in owners.keys
+        if isinstance(key, ast.Constant)
+    }
+    if sample:
+        sample_tree = ast.parse(sample)
+        function = next(
+            (
+                node
+                for node in sample_tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "generated_evidence_sentences"
+            ),
+            None,
+        )
+        if function is None:
+            raise ValueError("the Evidence sentence sample reader is unavailable")
+        named.update(
+            "src/alphalattice/" + node.value
             for node in ast.walk(function)
-            if isinstance(node, (ast.Assign, ast.AnnAssign))
-            for target in ([node.target] if isinstance(node, ast.AnnAssign) else node.targets)
-            if isinstance(target, ast.Name)
-        }
-        if "deadline" in args | assigned or "max_wait" in args:
-            found.add(function.name)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.endswith(".py")
+        )
+    return named
+
+
+def _reader_path(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and not Path(value).is_absolute()
+        and ":" not in value
+        and ".." not in Path(value).parts
+        and not any(char in value for char in "\\\n\r\x00")
+    )
+
+
+def _facet_row(row: dict[str, Any]) -> None:
+    """A facet row names a known facet and the files its census reads."""
+    within = row["within"]
+    if row["facet"] not in FACETS or not isinstance(within, list) or not within:
+        raise ValueError("test_size.required_selection_invalid")
+    if not all(_reader_path(path) for path in within):
+        raise ValueError("test_size.required_selection_invalid")
+
+
+def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
+    """Read declared reader edges from the same projected registry as the lane policy."""
+    if not isinstance(policy, dict) or not isinstance(policy.get("selection_readers", {}), dict):
+        raise ValueError("test_size.required_selection_invalid")
+    rows = policy.get("selection_readers", {})
+    selection(tuple(rows))
+    for row in rows.values():
+        if not isinstance(row, dict) or set(row) not in (
+            {"inputs"},
+            {"inputs", "literal_root"},
+            {"inputs", "census", "sample", "conditional_inputs"},
+            {"facet", "within"},
+        ):
+            raise ValueError("test_size.required_selection_invalid")
+        if "facet" in row:
+            _facet_row(row)
+            continue
+        lists = [row["inputs"], *([row["conditional_inputs"]] if "census" in row else [])]
+        paths = [*lists, *([row["census"], row["sample"]] if "census" in row else [])]
+        paths += [row["literal_root"]] if "literal_root" in row else []
+        if (
+            any(not isinstance(value, list) for value in lists)
+            or not isinstance(row.get("literal_root", ""), str)
+            or (
+                "census" in row
+                and any(not isinstance(row[key], str) for key in ("census", "sample"))
+            )
+            or any(
+                not _reader_path(path)
+                for value in paths
+                for path in (value if isinstance(value, list) else [value])
+            )
+        ):
+            raise ValueError("test_size.required_selection_invalid")
+    return cast(dict[str, dict[str, Any]], rows)
+
+
+def registered_holders(
+    paths: set[str], sources: Mapping[str, str], rows: Mapping[str, dict[str, Any]]
+) -> tuple[str, ...]:
+    """Resolve direct inputs, the paths a reader's own source names under its declared root, and
+    each declared producer census without private path literals."""
+    found = set()
+    for node, row in rows.items():
+        if paths.intersection(row.get("inputs", ())):
+            found.add(node)
+        if sources and "literal_root" in row:
+            own = node.split("::", 1)[0]
+            if own not in sources:
+                raise ValueError(f"the reader's source is unavailable: {own}")
+            if paths.intersection(
+                row["literal_root"] + part.value
+                for part in ast.walk(ast.parse(sources[own], filename=own))
+                if isinstance(part, ast.Constant) and isinstance(part.value, str)
+            ):
+                found.add(node)
+        if "census" not in row or not (
+            any(p.startswith("src/alphalattice/") and p.endswith(".py") for p in paths)
+            or paths.intersection(row["conditional_inputs"])
+        ):
+            continue
+        source = sources.get(row["census"])
+        if source is None:
+            raise ValueError(f"the producer census is unavailable: {row['census']}")
+        tree = ast.parse(source, filename=row["census"])
+        named = _evidence_named_paths(tree, sources.get(row["sample"]))
+        conditional = paths.intersection(row["conditional_inputs"])
+        if paths.intersection(named) or any(
+            isinstance(part, ast.Constant) and part.value in conditional for part in ast.walk(tree)
+        ):
+            found.add(node)
+    return tuple(sorted(found))
+
+
+def _helper_imports(nodes: list[ast.AST], package: str) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.asname or alias.name.split(".")[0]
+                found[name] = alias.name if alias.asname else name
+        elif isinstance(node, ast.ImportFrom):
+            base = ("." * node.level) + (node.module or "")
+            if node.level:
+                base = importlib.util.resolve_name(base, package)
+            for alias in node.names:
+                if alias.name != "*":
+                    found[alias.asname or alias.name] = f"{base}.{alias.name}".strip(".")
     return found
 
 
-def derived_holders(pairs: list[tuple[list[str], str]], blobs: dict[str, str]) -> tuple[str, ...]:
-    """Select only declared file owners and changed old/new deadline owners."""
-    selected = {
-        holder
-        for _meta, path in pairs
-        for patterns, holder in DERIVED_OWNERS
-        if any(fnmatchcase(path, pattern) for pattern in patterns)
+def _helper_functions(
+    sources: Mapping[str, str],
+) -> dict[str, tuple[str, ast.AST, dict[str, str]]]:
+    modules = {
+        relative.removesuffix(".py").replace("/", ".").removesuffix(".__init__"): (
+            relative,
+            ast.parse(source, filename=relative),
+        )
+        for relative, source in sources.items()
     }
-    for meta, path in pairs:
-        if not path.endswith(".py") or not path.startswith(DEADLINE_ROOTS):
+
+    functions: dict[str, tuple[str, ast.AST, dict[str, str]]] = {}
+
+    def collect(
+        body: list[ast.stmt], module: str, path: str, aliases: dict[str, str], prefix: str = ""
+    ) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                functions[f"{module}.{prefix}{node.name}"] = (path, node, aliases)
+                collect(node.body, module, path, aliases, prefix + node.name + ".")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                functions[f"{module}.{prefix}{node.name}"] = (path, node, aliases)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        functions[f"{module}.{prefix}{target.id}"] = (path, node, aliases)
+
+    for module, (path, tree) in modules.items():
+        package = module if path.endswith("/__init__.py") else module.rpartition(".")[0]
+        global_imports = _helper_imports(list(tree.body), package)
+        collect(tree.body, module, path, global_imports)
+    return functions
+
+
+def _helper_references(path: str, function: ast.AST, global_imports: dict[str, str]) -> set[str]:
+    module = path.removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+    package = module if path.endswith("/__init__.py") else module.rpartition(".")[0]
+    descendants = list(ast.walk(function))
+    local_imports = _helper_imports(descendants, package)
+    aliases = {**global_imports, **local_imports}
+    used = {n.id for n in descendants if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        used.update(
+            a.arg
+            for a in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        )
+    references = {aliases[n] for n in used if n in aliases}
+    references.update(local_imports.values())
+    references.update(f"{module}.{n}" for n in used)
+    for node in descendants:
+        if not isinstance(node, ast.Attribute):
             continue
-        if (
-            len(meta) != 5
-            or meta[0][1:] not in {"000000", "100644", "100755"}
-            or meta[1] not in {"000000", "100644", "100755"}
+        parts = []
+        current: ast.AST = node
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+        if isinstance(current, ast.Name) and current.id in aliases:
+            references.add(".".join((aliases[current.id], *reversed(parts))))
+    return references
+
+
+def _helper_selected(
+    functions: dict[str, tuple[str, ast.AST, dict[str, str]]],
+    edges: dict[str, set[str]],
+    seeds: set[str],
+) -> tuple[str, ...]:
+    reached = set(seeds)
+    while True:
+        expanded = reached | {name for name, refs in edges.items() if refs & reached}
+        if expanded == reached:
+            break
+        reached = expanded
+
+    def selector(path: str, name: str) -> str:
+        module = path.removesuffix(".py").replace("/", ".")
+        return f"{path}::{name.removeprefix(module + '.').replace('.', '::')}"
+
+    return tuple(
+        sorted(
+            selector(path, name)
+            for name, (path, node, _aliases) in functions.items()
+            if name in reached
+            and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("test_")
+            and any(ref in reached for ref in edges[name])
+            and Path(path).name.startswith("test_")
+        )
+    )
+
+
+def helper_holders(
+    root: Path, changed: set[str], *, sources: Mapping[str, str] | None = None
+) -> tuple[str, ...]:
+    """Find test families reaching a changed module through imported test helpers.
+
+    Imports inside functions count. Track symbols through helpers rather than forcing
+    every test that happens to share a file with one, and leave direct imports to
+    the ordinary budgeted selector.
+    """
+    targets = {
+        path.removeprefix("src/").removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+        for path in changed
+        if path.endswith(".py") and path.startswith(("src/", "scripts/", "tests/"))
+    }
+    if not targets:
+        return ()
+    if sources is None:
+        sources = {
+            path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+            for folder in ("tests", "scripts")
+            for path in (root / folder).rglob("*.py")
+        }
+    functions = _helper_functions(sources)
+    edges: dict[str, set[str]] = {}
+    seeds: set[str] = set()
+    for name, (path, function, global_imports) in functions.items():
+        references = _helper_references(path, function, global_imports)
+        edges[name] = {ref for ref in references if ref in functions}
+        if any(
+            ref == target or ref.startswith(target + ".")
+            for ref in references
+            for target in targets
         ):
-            raise ValueError(f"changed deadline source is not a regular file: {path}")
-        for oid in meta[2:4]:
-            if set(oid) == {"0"}:
+            seeds.add(name)
+
+    return _helper_selected(functions, edges, seeds)
+
+
+def derived_holders(pairs: list[tuple[list[str], str]]) -> tuple[str, ...]:
+    """Select the declared file owners of the changed paths."""
+    return tuple(
+        sorted(
+            {
+                holder
+                for _meta, path in pairs
+                for patterns, holder in DERIVED_OWNERS
+                if any(fnmatchcase(path, pattern) for pattern in patterns)
+            }
+        )
+    )
+
+
+def facet_holders(
+    pairs: list[tuple[list[str], str]],
+    blobs: Mapping[str, str],
+    rows: Mapping[str, dict[str, Any]],
+) -> tuple[str, ...]:
+    """Each census whose facet a changed file under its ``within`` holds differently at base
+    and head (``facets``); ``blobs`` holds both sides of each changed Python file by object id."""
+    found = set()
+    for node, row in rows.items():
+        for meta, path in pairs if "facet" in row else ():
+            if not any(fnmatchcase(path, glob) for glob in row["within"]):
                 continue
-            if oid not in blobs:
-                raise ValueError(f"changed deadline source is unavailable: {path}")
-            if deadline_names(blobs[oid]):
-                selected.add(DEADLINE_HOLDER)
-    return tuple(sorted(selected))
+            if (
+                len(meta) != 5
+                or meta[0][1:] not in {"000000", "100644", "100755"}
+                or meta[1] not in {"000000", "100644", "100755"}
+            ):
+                raise ValueError(f"a changed census source is not a regular file: {path}")
+            sides = ["" if set(oid) == {"0"} else blobs.get(oid) for oid in meta[2:4]]
+            if None in sides:
+                raise ValueError(f"a changed census source is unavailable: {path}")
+            if facet_changed(row["facet"], *cast(list[str], sides)):
+                found.add(node)
+                break
+    return tuple(sorted(found))
 
 
 def _carried_moves(root: Path, pairs: list[tuple[list[str], str]]) -> dict[str, str]:
@@ -326,6 +601,54 @@ def _cost_configuration(root: Path, name: str, host: str) -> dict[str, str]:
     return cost_configuration
 
 
+def _helper_sources(root: Path, head: str) -> dict[str, str]:
+    """Read the helper graph from the exact head, never the checkout's loose files."""
+    names = [path for path in CostIdentity._files(root, head) if path.endswith(".py")]
+    script_tree = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--full-tree", head, "--", "scripts/"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    ).stdout
+    for entry in script_tree.split(b"\0"):
+        if not entry:
+            continue
+        meta, raw_path = entry.split(b"\t", 1)
+        mode, kind, _oid = meta.decode("ascii").split()
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if kind == "blob" and mode in {"100644", "100755"} and path.endswith(".py"):
+            names.append(path)
+    specs = {f"{head}:{path}": path for path in names}
+    sources = read_blobs(list(specs), root, timeout=60)
+    if set(sources) != set(specs):
+        raise ValueError("a test-helper blob is missing")
+    return {specs[key]: value for key, value in sources.items()}
+
+
+def _commit_selection(
+    required: tuple[str, ...], groups: tuple[tuple[str, ...], ...], policy: dict[str, Any]
+) -> tuple[tuple[str, ...], ...]:
+    """Keep registered slow nodes out of the commit's forced families."""
+    try:
+
+        def admitted(node: str) -> bool:
+            return layer(node) not in {"e2e", "native"} and classify(node, (), policy)[0] != "large"
+
+        refused = [node for node in required if not admitted(node)]
+        selected = tuple(tuple(filter(admitted, group)) for group in groups)
+    except (KeyError, TypeError, ValueError) as error:
+        raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
+    if refused:
+        raise DefinitionError(
+            "pipeline.stage_invalid",
+            f"slow required tests cannot run in commit: {refused}; "
+            "run them separately at this head",
+        )
+    return selected
+
+
 def _size_selection(
     name: str, workspace: dict[str, Any], required: tuple[str, ...], root: Path
 ) -> tuple[tuple[str, ...], dict[str, Any] | None]:
@@ -343,24 +666,48 @@ def _size_selection(
             {
                 oid
                 for meta, path in pairs
-                if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
+                if path.endswith(".py")
                 for oid in meta[2:4]
                 if set(oid) != {"0"}
             }
         )
-        blobs = read_blobs(ids, root, timeout=60)
-        if set(ids) != set(blobs):
-            raise ValueError("a changed deadline-source blob is missing")
-        derived = selection(derived_holders(pairs, blobs))
+        policy_spec = f"{head}:config/registries/test-sizes.json"
+        blobs = read_blobs([*ids, policy_spec], root, timeout=60)
+        if set(blobs) != {*ids, policy_spec}:
+            raise ValueError("a changed Python blob is missing")
+        policy = json.loads(blobs.pop(policy_spec))
+        rows = selection_readers(policy)
+        paths = {path for _meta, path in pairs}
+        helpers: tuple[str, ...] = ()
+        sources: dict[str, str] = {}
+        if any(
+            paths.intersection(row.get("conditional_inputs", ())) for row in rows.values()
+        ) or any(
+            path.endswith(".py") and path.startswith(("src/", "scripts/", "tests/"))
+            for path in paths
+        ):
+            sources = _helper_sources(root, head)
+            helpers = selection(helper_holders(root, paths, sources=sources))
+        derived = selection(
+            (
+                *derived_holders(pairs),
+                *registered_holders(paths, sources, rows),
+                *facet_holders(pairs, blobs, rows),
+            )
+        )
+
     except (OSError, ValueError, SyntaxError, UnicodeError, subprocess.SubprocessError) as error:
         raise DefinitionError("pipeline.size_selection_unmeasured", str(error)) from error
+    edited, derived, helpers = _commit_selection(required, (edited, derived, helpers), policy)
     record = {
         "base": workspace["base"],
         "head": workspace["head"],
         "families": list(edited),
+        "derived": list(derived),
+        "helpers": list(helpers),
         "seconds": perf_counter() - started,
     }
-    return tuple(dict.fromkeys((*required, *edited, *derived))), record
+    return tuple(dict.fromkeys((*required, *edited, *derived, *helpers))), record
 
 
 def _write_size_selection(out: Path, record: dict[str, Any] | None) -> None:

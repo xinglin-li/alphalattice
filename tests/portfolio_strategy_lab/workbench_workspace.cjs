@@ -1,7 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_workspace');
-const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
+const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes:');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 const percentRule=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- percentages for reading');const b=src.indexOf('const pctFraction');const e=src.indexOf('\n',b);return src.slice(a,e+1)+';globalThis.pctNumber=pctNumber;globalThis.pctText=pctText;globalThis.pctFraction=pctFraction;globalThis.short=short;globalThis.mono=mono;globalThis.roundDecimalText=roundDecimalText;globalThis.CODE_WORDS=CODE_WORDS;globalThis.codeWords=codeWords;globalThis.coded=coded;globalThis.methodWords=methodWords;globalThis.countText=countText;globalThis.pluralText=pluralText;globalThis.pluralText=pluralText;globalThis.whenText=whenText;';};
 const root=process.argv[2],reads=[],posts=[],tasks=[],drafts=[];
 const bodies={
@@ -93,7 +93,7 @@ c.objectRow=publicBuilders.objectRow;
     finish();return;
   }
   c.Data.decisions=()=>null;
-  // V661 recovery: the first Storage read has no retained inventory. Backups are an
+  // the first Storage read has no retained inventory. Backups are an
   // independent owner, so its exact restore command stays reachable after this refusal.
   {
     const read=c.Data.read,table=c.table,tr=c.tr,panel=c.panel,oldPage=c.app.page,oldWorkspace=c.app.workspace;
@@ -253,7 +253,7 @@ c.objectRow=publicBuilders.objectRow;
   const readback=(status,extra={})=>({status,source_mode:'ACQUIRE_DECLARED_SOURCES_AFTER_CONFIRMATION',next_action:status==='INITIALIZATION_REQUIRED'?'WORKSPACE_PREPARE_PLAN':null,execution_binding_changed:false,task_id:null,plan_hash:null,failure_code:null,inputs:[],profile:'us-current-index-research',sources:['yfinance','SP500: https://example.test/sp500'],limits:['CURRENT_UNIVERSE_RESEARCH_ONLY','NO_DATA_API_KEY','NO_FOUNDATION_OR_STRATEGY_ACTIVATION'],progress:null,work_progress:null,...extra});
   const page=async()=>{await w.refresh('welcome');return w.page();};
   c.app.page='welcome';
-  // U77 (V481): a workspace prepared before the renames is refused by name; the first use reads the door's words, the
+  // a workspace prepared before the renames is refused by name; the first use reads the door's words, the
   // spelling it holds carried, its way on a new workspace -- never a restore of its manifest
   const door="This workspace was prepared before the 2026-10-02 renames, which this release does not read: it holds `dynamic_panel_v1`, a spelling the renames retired. Nothing in it is changed; start a new workspace, as the guide says, and prepare its data and research there.";
   const firstRead=c.Data.read;c.Data.read=async p=>{reads.push(p);throw Error('research_workspace.prepared_before_renames:dynamic_panel_v1: '+door);};
@@ -322,14 +322,14 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(!markup.includes('Start command') && !markup.includes('serve --no-browser'),'the operator hold offers no start command');
   assert.ok(!markup.includes('start it again') && !markup.includes('LINK:Allow network access'),'the operator hold offers no restart or Settings action');
   for(const old of ['run_local_research','NETWORK_DISABLED=0','required_policy'])assert.ok(!markup.includes(old),'the older launcher and its switch are never named: '+old);
-  // V620 (U93): a hold the person cannot lift here reads in the network owner's words (who lifts it, how); the page
+  // a hold the person cannot lift here reads in the network owner's words (who lifts it, how); the page
   // recreates no permission advice for it
   assert.ok(markup.includes('<span data-tip="OPERATOR_OFFLINE_SWITCH">owner words</span>'),'the operator\'s switch in its owner\'s words');
   bodies['/api/workspace/preparation/plan']=netRefused('RUN_HELD_OFFLINE');await w.preview('prepare');markup=w.page();
   assert.ok(markup.includes('<span data-tip="RUN_HELD_OFFLINE">owner words</span>'),'a run\'s offline hold in its owner\'s words');
   const switchSaid=String(w.networkWords({network_allowed:false,decided_by:'OPERATOR_OFFLINE_SWITCH',detail:'ALPHALATTICE_NETWORK_DISABLED=1 keeps this process offline.'}));
   assert.ok(switchSaid.includes('<code class="literal">ALPHALATTICE_NETWORK_DISABLED=1</code> keeps this process offline.'),'the switch the owner names is the literal a person types: '+switchSaid);
-  // U70 (V452): an opening the first-use goal made holds until its own time, named in the control (`set_by`); once it
+  // an opening the first-use goal made holds until its own time, named in the control (`set_by`); once it
   // lapsed the control says the first use ended; the operator's switch still decides first
   const LATER=new Date(Date.now()+3600000).toISOString(),EARLIER=new Date(Date.now()-3600000).toISOString();
   const delegated=(allowed,until,by='WORKSPACE_CONTROL')=>String(w.networkWords({network_allowed:allowed,decided_by:by,set_by:{delegation:'first-use-goal:g1',until}}));
@@ -598,7 +598,7 @@ c.objectRow=publicBuilders.objectRow;
   beforeContinuation=posts.length;modal=null;await w.preview('continue-preparation');
   assert.equal(modal,null,'an absent owner request opens no confirmation');
   assert.equal(posts.length,beforeContinuation,'an absent owner request sends no assembled mutation');
-  // U63 (V375): a preparation the provider deferred says why in the owner's words and when it resumes; Resume is the owner's
+  // a preparation the provider deferred says why in the owner's words and when it resumes; Resume is the owner's
   // own request, held until its time
   const said='The market data provider limited the requests or did not answer, which is the provider\'s state, not the workspace\'s. Every listing already fetched is kept and the work resumes from them: send the same plan again once `retry_after_at` has passed.';
   const deferred=(at)=>readback('DEFERRED',{task_id:TASK,plan_hash:'plan-1',failure_code:'data.rate_limited',progress:{phase:'prepare_data',candidates:120,raw_ready:60,quality_eligible:60,failed:0,retry_after_at:at},detail:said,retry_after_at:at,next_requests:{resume:{operation:'WORKSPACE_PREPARE_CONFIRM',preparation_plan_hash:'plan-1'}}});
@@ -634,7 +634,7 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(String(w.notice()).includes('Preparation needs attention') && String(w.notice()).includes('TASK_EXECUTION_INTERRUPTED'));
   c.Data.preparation=()=>readback('SUCCEEDED',{task_id:TASK,inputs:[{input_id:'f',binding_hash:'b'}]});assert.equal(String(w.notice()),'','a prepared workspace has no notice');
   c.app.page='welcome';c.Data.preparation=()=>readback('INITIALIZATION_REQUIRED');assert.equal(String(w.notice()),'','never on the scene itself');
-  // --- round E5: the storage page's Evidence category, from the readback's `evidence` block
+  // --- the storage page's Evidence category, from the readback's `evidence` block
   {
     const evidence={summary:{source_object_bytes:1048576,source_blob_bytes:524288,vector_payload_bytes:262144,vector_object_count:12,index_payload_bytes:131072,sealed_artifact_bytes:65536,staging_bytes:0,task_state_bytes:4096},
       indexes:[{index_id:'1111aaaa2222bbbb3333cccc',generation_format:'hybrid-v2',corpus_hash:'c'.repeat(64),database_bytes:131072,availability:'AVAILABLE',payload_bytes:131072,payload_available:true,payload_proof:'PROVED',record_count:340,protected_by:['ACTIVE_LEASE'],eligible:false,available_actions:['PIN']},{index_id:'4444dddd5555eeee6666ffff',generation_format:'hybrid-v2',corpus_hash:'d'.repeat(64),database_bytes:0,availability:'EVICTED_BY_RETENTION',payload_bytes:0,payload_available:false,payload_proof:'storage.evidence_index_payload_absent',record_count:0,protected_by:[],eligible:false,available_actions:['REBUILD']},{index_id:'7777aaaa8888bbbb9999cccc',generation_format:'legacy-v1',corpus_hash:'e'.repeat(64),database_bytes:0,availability:'EVICTED_BY_RETENTION',payload_bytes:0,payload_available:false,payload_proof:'storage.evidence_index_payload_absent',record_count:0,protected_by:[],eligible:false,available_actions:[],rebuild_limit:'This legacy index has no committed vector payload and cannot be rebuilt. Start a new Evidence preparation.'}],
@@ -645,11 +645,11 @@ c.objectRow=publicBuilders.objectRow;
     assert.ok(page.includes('Originals')&&/1\.00[^K]*MiB/.test(page)&&page.includes('Vectors')&&page.includes('12 objects')&&page.includes('Sealed records'),'the Evidence category reads its summary as physical bytes: '+page.slice(page.indexOf('Originals')-40,page.indexOf('Originals')+300));
     assert.ok(page.includes('1111aaaa2222')&&/[Aa]vailable/.test(page)&&page.includes('Active lease')&&page.includes('proved'),'an available index names its protection and its proof: '+page.slice(page.indexOf('1111aaaa'),page.indexOf('1111aaaa')+500));
     assert.ok(page.includes('4444dddd5555')&&/[Ee]victed/.test(page)&&page.includes('Rebuild'),'an evicted index offers Rebuild: '+page.slice(page.indexOf('4444dddd'),page.indexOf('4444dddd')+500));
-    // U4 (V199): each row offers the actions the Host names for it, in its order, and nothing of the page's own
+    // U4: each row offers the actions the Host names for it, in its order, and nothing of the page's own
     const rowOf=(id)=>page.slice(page.indexOf(id),page.indexOf('</tr>',page.indexOf(id)));
     assert.ok(rowOf('1111aaaa2222').includes('Pin')&&!rowOf('1111aaaa2222').includes('Rebuild')&&!rowOf('1111aaaa2222').includes('Unpin'),'the available index: Pin alone: '+rowOf('1111aaaa2222'));
     assert.ok(!rowOf('4444dddd5555').includes('Pin'),'the evicted index is offered no pin');
-    // U80 (V560): a legacy index that cannot be rebuilt says so where its Rebuild would stand, the owner's words its hover
+    // a legacy index that cannot be rebuilt says so where its Rebuild would stand, the owner's words its hover
     assert.ok(rowOf('7777aaaa8888').includes('Cannot be rebuilt')&&!rowOf('7777aaaa8888').includes('Rebuild'),'a legacy index says it cannot be rebuilt: '+rowOf('7777aaaa8888'));
     c.table=tableStub;c.tr=trStub;
     assert.ok(page.includes('Unreferenced')&&page.includes('Source objects 2')&&page.includes('Vector objects 1')&&!page.includes('Indexes 0'),'the unreferenced objects are counted by kind, zeros left out: '+page.slice(page.indexOf('Unreferenced'),page.indexOf('Unreferenced')+200));
@@ -670,7 +670,7 @@ c.objectRow=publicBuilders.objectRow;
     bodies['/api/workspace/storage']={status:'AVAILABLE',display:{},inputs:[],pending_cleanup:[]};c.app.page='storage';await w.refresh();page=String(w.page()).replace(/\s+/g,' ');
     assert.ok(!page.includes('data-storage="evidence"'),'a readback without the category draws no Evidence section (N3, law 81)');
   }
-  // --- U48 (V209): the held state's backups beside the inventory -- read on an explicit read of Storage,
+  // --- U48: the held state's backups beside the inventory -- read on an explicit read of Storage,
   // made only on the person's confirmation, restored by the client's own command (named, never run)
   {
     const gen=(h,reason,at)=>({generation_hash:h.repeat(64),created_at:at,reason,files:12,tables:9,listed:3,absent:['market-data.duckdb/universe_history']});
@@ -727,7 +727,7 @@ c.objectRow=publicBuilders.objectRow;
     assert.ok(page.includes('workspace_backup.object_changed_while_copied')&&page.includes('This retained backup generation cannot be read.')&&page.includes('LINK:Storage and backups@storage')&&!page.includes('No backup is kept'),'an all-refused backup listing is not presented as empty: '+page.slice(page.indexOf('REFUSAL('),page.indexOf('REFUSAL(')+650));
     c.table=tableStub;c.tr=trStub;c.panel=panelStub;
   }
-  // U13: an owner-composed request goes to the route the session names; one the session does not name is refused by
+  // an owner-composed request goes to the route the session names; one the session does not name is refused by
   // its code and nothing is sent to a guessed path
   {
     c.app.page='issues';await w.refresh();w.changed('case','quarantine');

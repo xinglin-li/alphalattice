@@ -53,6 +53,8 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         (".github/ISSUE_TEMPLATE/feature_request.yml", "PUBLIC", "PUBLIC_DOC"),
         (".github/PULL_REQUEST_TEMPLATE.md", "PUBLIC", "PUBLIC_DOC"),
         (".github/workflows/ci.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".github/workflows/supply-chain.yml", "PUBLIC", "PUBLIC_BUILD"),
+        (".github/gitleaks.toml", "PUBLIC", "PUBLIC_BUILD"),
         (".test_durations", "PUBLIC", "PUBLIC_BUILD"),
         (".github/workflows/internal.yml", "UNSETTLED", None),
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
@@ -68,6 +70,9 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("tests/integration/evaluation/test_unlisted_scope_contract.py", "PUBLIC", "PUBLIC_TEST"),
         ("tests/structural/test_catalog_gate.py", "PRIVATE", "PRIVATE_TEST"),
         ("src/devtools/evaluation/forms.py", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/package.json", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/package-lock.json", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/test-shape-tools/node_modules/jscpd/run-jscpd.js", "UNSETTLED", None),
         ("tests/integration/evaluation/test_forms.py", "PUBLIC", "PUBLIC_TEST"),
         (
             "tests/integration/local_application/test_native_answer_route_class.py",
@@ -798,7 +803,7 @@ def test_private_browser_dependencies_keep_their_callers_private(path, reason):
         assert found[2] == reason
 
 
-def test_every_test_path_the_public_ci_runs_exists_and_is_public():
+def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     """A renamed or split test file cannot leave the public CI running a path that is gone, and
     the nightly full run is split by durations that name no private test."""
     root = Path(__file__).resolve().parents[2]
@@ -830,6 +835,17 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert "public-tests-junit-${{ matrix.os }}-${{ matrix.group }}" in workflow
     assert "public-tests-result-${{ matrix.os }}-${{ github.run_id }}" in workflow
     assert "--durations-path .test_durations" in workflow
+    # every workflow's actions are pinned to a full commit, never a tag or branch
+    uses = [
+        found
+        for path in sorted((root / ".github/workflows").glob("*.yml"))
+        for found in re.findall(r"^\s*-?\s*uses:\s*(\S+)", path.read_text("utf-8"), re.M)
+    ]
+    assert (
+        uses
+        and [found for found in uses if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", found)]
+        == []
+    )
     # Each OS marker follows the matching shard-evidence verifier and is never emitted on failure.
     checked = workflow.index("      - name: Total and verify this operating system's shards\n")
     marker = workflow.index(
@@ -844,6 +860,120 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public():
     assert files and all(type(seconds) is float and seconds >= 0 for seconds in durations.values())
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
+
+    import ast
+    import os
+    import time
+
+    import yaml
+
+    jobs = yaml.safe_load(workflow)["jobs"]
+    for name in ("checkout", "public-tests-shard"):
+        job = jobs[name]
+        assert "npm_config_cache" not in job.get("env", {})
+        install = next(
+            step for step in job["steps"] if step.get("name") == "Install the locked clone detector"
+        )
+        assert "npm ci --prefix scripts/test-shape-tools" in install["run"]
+        consumer = next(
+            step
+            for step in job["steps"]
+            if step.get("name")
+            == (
+                "Run the commit stage of config/pipeline.toml"
+                if name == "checkout"
+                else "Run this shard of every public test"
+            )
+        )
+        for step in (install, consumer):
+            assert step["env"]["npm_config_cache"] == "${{ runner.temp }}/jscpd-npm-cache"
+    cost = jobs["test-cost"]
+    assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
+    assert cost.get("strategy", {}).get("matrix", {}).get("shard") == [1, 2, 3, 4]
+    assert cost["strategy"]["fail-fast"] is False
+    assert cost["env"]["PYTHONUNBUFFERED"] == "1"
+    assert not jobs["checkout"].get("continue-on-error", False)
+    steps = cost["steps"]
+    collect = next(step for step in steps if step.get("name") == "Check the pilot slice")
+    measure = next(
+        step for step in steps if step.get("name") == "Measure each test of the pilot slice"
+    )
+    paths = [
+        "tests/integration/evaluation",
+        "tests/unit/evaluation",
+        "tests/integration/feature_engine/test_factor_arithmetic_identity.py",
+    ]
+    assert all(path in measure["with"]["run"] for path in paths)
+    assert "--test-group=${{ matrix.shard }} --test-group-count=4" in measure["with"]["run"]
+    assert "-vv" in measure["with"]["run"]
+    warm = next(step for step in steps if step.get("name") == "Prepare the pilot fixtures")
+    assert "--setup-only" in warm["run"] and "--codspeed" not in warm["run"]
+    assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
+    assert all("timeout-minutes" in step for step in steps)
+    code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    loop = next(node for node in ast.walk(ast.parse(code)) if isinstance(node, ast.For))
+    assert list(ast.literal_eval(loop.iter)) == paths
+    for directory in paths[:2]:
+        (tmp_path / directory).mkdir(parents=True)
+        (tmp_path / directory / "test_sample.py").write_text(
+            "def test_sample(): pass\n", encoding="utf-8"
+        )
+    target = tmp_path / paths[2]
+    target.parent.mkdir(parents=True)
+    target.write_text("def test_sample(): pass\n", encoding="utf-8")
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", ALPHALATTICE_NETWORK_DISABLED="1")
+
+    def collect_fixture():
+        return subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    assert collect_fixture().returncode == 0
+    samples = [tmp_path / path / "test_sample.py" for path in paths[:2]] + [target]
+    for path, sample in zip(paths, samples, strict=True):
+        sample.write_text("# no tests\n", encoding="utf-8")
+        empty = collect_fixture()
+        assert (
+            empty.returncode != 0 and path in empty.stdout and "selected no tests" in empty.stdout
+        )
+        sample.write_text("def test_sample(): pass\n", encoding="utf-8")
+    budget = next(step for step in steps if step.get("id") == "budget")["run"]
+    git = Path(
+        subprocess.run(
+            ["git", "--exec-path"],
+            capture_output=True,
+            text=True,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout.strip()
+    )
+    shell = git.parents[2] / "bin/bash.exe" if sys.platform == "win32" else Path("bash")
+    output = tmp_path / "github-output"
+    shell_output = (
+        f"/{output.drive[0].lower()}/{output.as_posix()[3:]}"
+        if sys.platform == "win32"
+        else str(output)
+    )
+    for elapsed, success in ((60, True), (12 * 60, False)):
+        script = budget.replace(
+            "${{ steps.clock.outputs.started }}", str(int(time.time()) - elapsed)
+        )
+        result = subprocess.run(
+            [str(shell), "-c", script],
+            env=dict(env, GITHUB_OUTPUT=shell_output),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        assert (result.returncode == 0) == success
+    assert "minutes=" in output.read_text("utf-8")
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
