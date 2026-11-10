@@ -1,5 +1,15 @@
 {
 "entries": {
+"retrieval_environment.changed": {"owner": "local_client", "category": "FAILED_PRECONDITION", "classification_note": "The held retrieval environment or its dependency inputs changed; restart the Host before use."},
+"retrieval_environment.in_use": {"owner": "local_client", "category": "RESOURCE_EXHAUSTED", "classification_note": "Another setup or a Host owns the retrieval environment; wait for setup or stop the Host."},
+"retrieval_environment.stale": {"owner": "local_client", "category": "FAILED_PRECONDITION", "classification_note": "The retrieval environment's recorded dependencies cannot be established; rebuild it from the checkout locks."},
+"retrieval_environment.unprotected": {"owner": "local_client", "category": "FAILED_PRECONDITION", "classification_note": "Retrieval dependencies were imported before the environment was protected; restart the Host from the checkout environment."},
+"local_client.retrieval_environment_in_use": {"owner": "local_client", "category": "RESOURCE_EXHAUSTED", "classification_note": "The retrieval environment is held by another setup or Host; wait for setup or stop the Host."},
+"local_client.retrieval_environment_unprotected": {"owner": "local_client", "category": "FAILED_PRECONDITION", "classification_note": "The Host was started without a protected retrieval-environment handoff; start it from the checkout environment."},
+"retrieval_environment.locks_changed": {
+"owner": "local_client",
+"category": "FAILED_PRECONDITION"
+},
 "agent_bundle.admission_busy": {"owner": "agent_bundle", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded workspace admission is occupied; this answer was not filed and can be retried."},
 "agent_bundle.answer_replay_inconsistent": {"owner": "agent_bundle", "category": "FAILED_PRECONDITION", "classification_note": "A retained keyed response does not match its filed answer; inspect the stored evidence before retrying."},
 "pipeline.size_overhead_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot retain its measurement-cost observation."},
@@ -8880,6 +8890,10 @@
 "category": "INVALID_ARGUMENT"
 },
 "local_client.retrieval_environment_required": {
+"owner": "local_client",
+"category": "FAILED_PRECONDITION"
+},
+"local_client.retrieval_environment_stale": {
 "owner": "local_client",
 "category": "FAILED_PRECONDITION"
 },

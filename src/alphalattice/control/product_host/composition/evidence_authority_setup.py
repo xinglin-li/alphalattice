@@ -124,7 +124,13 @@ from alphalattice.evidence.alternative_evidence.sources.recorded import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
-from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell, worded
+from alphalattice.interface.local_application.cli_contract import (
+    join,
+    refusal_words,
+    shell,
+    terminal_serve_command,
+    worded,
+)
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.read_views import emit_owner
@@ -1902,7 +1908,19 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
     """A refusal's commands: what fills a retrieval runtime that is not ready, else the mode's
     check. An acquisition's read-only preflight keeps its exact binding, scope and
     explicit consent; a recorded import's way on is its own check, offline."""
-    if str(error) in _RUNTIME_REFUSALS:
+    if str(error).startswith(
+        ("retrieval_environment.changed:", "retrieval_environment.unprotected:")
+    ):
+        return {
+            "stop": join(
+                [*command_prefix(), "--workspace", str(arguments.workspace), "host", "stop"],
+                shell(),
+            ),
+            "serve": join(terminal_serve_command(arguments.workspace), shell()),
+        }
+    if str(error) in _RUNTIME_REFUSALS or str(error).startswith(
+        ("retrieval_environment.stale:", "retrieval_environment.in_use:")
+    ):
         # Never the same check again: the runtime's fill and the packs' status come first.
         return {
             "environment": join(fill_command(), shell()),

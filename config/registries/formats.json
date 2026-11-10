@@ -1,5 +1,12 @@
 {
 "entries": {
+"schema:alphalattice.retrieval-locks.v1": {
+"owner": "schema:alphalattice",
+"description": "Detects changes to the retrieval environment's two dependency sets: uv_lock_sha256 is SHA-256 of the exact uv.lock bytes and requirements_sha256 is SHA-256 of the exact config/requirements-retrieval.lock bytes, each in lowercase hexadecimal; stale_reason compares the versioned record before the environment serves.",
+"readers": ["src/alphalattice/interface/local_application/retrieval_environment.py"],
+"upgraders": [],
+"version": ["alphalattice.retrieval-locks.v1"]
+},
 "schema:alphalattice.import-hygiene": {
 "owner": "schema:alphalattice",
 "description": "Records the non-growing count of retained function imports in config/import-hygiene.json by source path, scope and normalized import for the structural guard.",

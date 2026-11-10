@@ -274,12 +274,26 @@ def test_an_installed_package_is_served_before_the_runtime_it_replaced_closes(tm
 
 
 def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
-    tmp_path, monkeypatch, acquisition
+    tmp_path, monkeypatch, acquisition, request
 ):
     """requirement: a Host without the retrieval runtime blocks its install by name, the package
     bound before stays bound, and the declared environment filled afterwards is read in place;
     the same request sent again continues the blocked Task, which then reads as resolved."""
-    from alphalattice.interface.local_application import retrieval_environment
+    from alphalattice.control.product_host.composition import evidence_authority_setup
+    from alphalattice.interface.local_application import retrieval_environment as owner
+
+    spec = importlib.util.spec_from_file_location("retrieval_fixture_owner", owner.__file__)
+    assert spec is not None and spec.loader is not None
+    retrieval_environment = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(retrieval_environment)
+    monkeypatch.setattr(evidence_authority_setup, "load", retrieval_environment.load)
+    monkeypatch.setattr(
+        retrieval_environment,
+        "atexit",
+        SimpleNamespace(
+            register=lambda callback, *args: request.addfinalizer(lambda: callback(*args))
+        ),
+    )
 
     environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
     site = environment / (
@@ -287,6 +301,7 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     )
     found = importlib.util.find_spec
     monkeypatch.setattr(retrieval_environment, "ENVIRONMENT", environment)
+    monkeypatch.setattr(retrieval_environment, "PLAYPEN", tmp_path)
     monkeypatch.setattr(sys, "path", [*sys.path])
     monkeypatch.setattr(
         importlib.util,
@@ -303,7 +318,23 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     (site / "fastembed" / "__init__.py").write_text("", encoding="utf-8")
     config = f"version_info = {major}.{minor}\n"  # as uv writes it, with no patch number
     (environment / "pyvenv.cfg").write_text(config, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"retrieval_environment\.stale"):
+        retrieval_environment.load()
+    (environment / retrieval_environment.RECORD).write_text(
+        json.dumps({**retrieval_environment.lock_record(), "generation": "a" * 32})
+    )
+    monkeypatch.setitem(
+        sys.modules, "_retrieval_probe", SimpleNamespace(__file__=str(site / "old.py"))
+    )
+    with pytest.raises(ValueError, match=r"retrieval_environment\.unprotected"):
+        retrieval_environment.load()
+    monkeypatch.delitem(sys.modules, "_retrieval_probe")
     assert retrieval_environment.load() and str(site) == sys.path[-1]
+    with monkeypatch.context() as cached:
+        cached.setattr(
+            retrieval_environment, "lock_record", lambda: pytest.fail("rehashed a held environment")
+        )
+        assert retrieval_environment.load()
     # regression (the person's fresh-checkout first use, 2026-10-16): the blocked Task stayed
     # under Blocked though the same install, sent again, succeeded.
     from alphalattice.control.product_host.composition.application_session import (
@@ -331,6 +362,9 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     assert read["next_requests"] == {
         "successor": {"operation": "STATUS", "task_id": str(again.task_id)}
     }
+    (environment / retrieval_environment.RECORD).write_text("{}")
+    with pytest.raises(ValueError, match=r"retrieval_environment\.changed"):
+        retrieval_environment.load()
 
 
 def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
@@ -1155,10 +1189,13 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
 
 
 def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, monkeypatch, capsys):
+    import hashlib
+
     from alphalattice.control.product_host.composition import entry as run_alphalattice
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
+    from alphalattice.interface.local_application import retrieval_environment
 
     binding, _registry = _package(tmp_path)
     publish_research_workspace_manifest(
@@ -1167,7 +1204,35 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     interpreter = tmp_path / "declared-python.exe"
     interpreter.write_bytes(b"selector-test-only")
+    lock, additions = tmp_path / "uv.lock", tmp_path / "requirements-retrieval.lock"
+    lock.write_bytes(b"project lock")
+    additions.write_bytes(b"retrieval lock")
+    record = tmp_path / "retrieval-locks.json"
+    record.write_text(
+        json.dumps(
+            {
+                "schema": "alphalattice.retrieval-locks.v1",
+                "uv_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+                "requirements_sha256": hashlib.sha256(additions.read_bytes()).hexdigest(),
+                "generation": "a" * 32,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(retrieval_environment, "LOCK", lock)
+    monkeypatch.setattr(retrieval_environment, "ADDITIONS", additions)
+    monkeypatch.setattr(retrieval_environment, "ENVIRONMENT", tmp_path)
+    monkeypatch.setattr(retrieval_environment, "PLAYPEN", tmp_path)
     monkeypatch.setattr(run_alphalattice, "interpreter_path", lambda: interpreter)
+    from alphalattice.control.product_host.composition import web_launcher
+
+    with monkeypatch.context() as unprotected:
+        unprotected.setattr(sys, "prefix", str(tmp_path))
+        unprotected.delenv(retrieval_environment.GENERATION_ENV, raising=False)
+        assert web_launcher.main(["--workspace", str(tmp_path), "--detach"]) == 2
+        assert json.loads(capsys.readouterr().out)["failure_code"] == (
+            "local_client.retrieval_environment_unprotected"
+        )
     # Patch imported functions at the consumer, and module attributes at their module.
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
@@ -1198,7 +1263,37 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     detached = []
     monkeypatch.setattr(run_alphalattice, "start", lambda a, **kw: detached.append(kw) or 0)
     assert run_alphalattice.serve([*args[:-1], "--detach"]) == 0
-    assert detached == [{"host_interpreter": interpreter, "new_research": False}]
+    assert detached == [
+        {"host_interpreter": interpreter, "new_research": False, "retrieval_generation": "a" * 32}
+    ]
+    with retrieval_environment.environment_lock(exclusive=True):
+        assert run_alphalattice.serve([*args[:-1], "--detach"]) == 2
+        assert json.loads(capsys.readouterr().out)["failure_code"] == (
+            "local_client.retrieval_environment_in_use"
+        )
+    matching_record = record.read_text(encoding="utf-8")
+    for invalid in (b"changed project lock", None):
+        if invalid is None:
+            record.unlink()
+        else:
+            lock.write_bytes(invalid)
+        assert run_alphalattice.serve([*args[:-1], "--detach"]) == 2
+        refusal = json.loads(capsys.readouterr().out)
+        assert refusal["failure_code"] == "local_client.retrieval_environment_stale"
+        assert "create_retrieval_environment" in str(refusal["setup_command"])
+        assert len(detached) == 1
+    with monkeypatch.context() as current:
+        current.setattr(
+            importlib.util,
+            "find_spec",
+            lambda _name: SimpleNamespace(origin=str(tmp_path / "fastembed.py")),
+        )
+        assert run_alphalattice.serve([*args[:-1], "--detach"]) == 2
+        assert json.loads(capsys.readouterr().out)["failure_code"] == (
+            "local_client.retrieval_environment_stale"
+        )
+    lock.write_bytes(b"project lock")
+    record.write_text(matching_record, encoding="utf-8")
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
     # Run the actual module from outside the checkout with that child's source
     # binding: dependency-only environments and hostile sibling paths both work.

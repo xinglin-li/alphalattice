@@ -40,6 +40,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from alphalattice.interface.local_application import retrieval_environment
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE as ANSWER_LANGUAGE,
 )
@@ -260,7 +261,9 @@ def attached_child(command: list[str], *, env: dict[str, str]) -> int:
         )
 
 
-def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[bytes]:
+def _spawn_detached(
+    command: list[str], log: Any, key: str, *, retrieval_generation: str | None = None
+) -> subprocess.Popen[bytes]:
     """Start the Host apart from this process: its own process group (session), no console
     window and no standard input, and out of this process's Job where the Job allows it (a
     Codex turn ends its shell's children, by its tree or its Job).
@@ -276,6 +279,8 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
         "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
     }
+    if retrieval_generation is not None:
+        environment[retrieval_environment.GENERATION_ENV] = retrieval_generation
     common: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": log,
@@ -348,7 +353,10 @@ def _workspace_refusal(workspace: Path) -> int | None:
 
 
 def _detach(
-    arguments: argparse.Namespace, host_interpreter: Path | None = None, new_research: bool = False
+    arguments: argparse.Namespace,
+    host_interpreter: Path | None = None,
+    new_research: bool = False,
+    retrieval_generation: str | None = None,
 ) -> int:
     """Start a detached Host and return once it serves, as a daemon's start does.
 
@@ -382,7 +390,11 @@ def _detach(
     ]
     try:
         with log_path.open("wb") as log:
-            host = _spawn_detached(command, log, key)
+            host = (
+                _spawn_detached(command, log, key)
+                if retrieval_generation is None
+                else _spawn_detached(command, log, key, retrieval_generation=retrieval_generation)
+            )
     except PermissionError as error:
         from alphalattice.interface.local_application import client
 
@@ -540,13 +552,7 @@ def _failed_start(
     )
 
 
-def main(
-    argv: list[str] | None = None,
-    *,
-    host_interpreter: Path | None = None,
-    new_research: bool = False,
-) -> int:
-    """Run the declared command and return its exit status."""
+def _arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument(
@@ -568,9 +574,56 @@ def main(
         help="Start the Host as its own process, apart from this shell and its Job, and return "
         "once it serves; `alphalattice host stop` stops it.",
     )
-    arguments = parser.parse_args(argv)
+    return parser.parse_args(argv)
+
+
+def _retrieval_guard() -> int | None:
+    if Path(sys.prefix).resolve() == retrieval_environment.ENVIRONMENT.resolve():
+        generation = os.environ.get(retrieval_environment.GENERATION_ENV)
+        if generation is None:
+            return _refusal(
+                "local_client.retrieval_environment_unprotected",
+                "Start the Host through the checkout's main alphalattice command, then rebuild "
+                "the retrieval environment if it is stale.",
+                "START_FROM_THE_CHECKOUT_ENVIRONMENT",
+            )
+    try:
+        if Path(sys.prefix).resolve() == retrieval_environment.ENVIRONMENT.resolve():
+            retrieval_environment.retain_for_process(generation)
+        retrieval_environment.check_host_dependencies()
+    except (OSError, RuntimeError, ValueError) as error:
+        busy = str(error).startswith("retrieval_environment.in_use:")
+        restart = str(error).startswith(
+            ("retrieval_environment.unprotected:", "retrieval_environment.changed:")
+        )
+        return _refusal(
+            "local_client.retrieval_environment_in_use"
+            if busy
+            else "local_client.retrieval_environment_stale",
+            str(error),
+            "WAIT_FOR_RETRIEVAL_SETUP_OR_STOP_HOST"
+            if busy
+            else "RESTART_THE_HOST"
+            if restart
+            else "REBUILD_DECLARED_RETRIEVAL_ENVIRONMENT",
+        )
+    return None
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    host_interpreter: Path | None = None,
+    new_research: bool = False,
+    retrieval_generation: str | None = None,
+) -> int:
+    """Run the declared command and return its exit status."""
+    arguments = _arguments(argv)
+    if (refused := _retrieval_guard()) is not None:
+        return refused
+
     if arguments.detach:
-        return _detach(arguments, host_interpreter, new_research)
+        return _detach(arguments, host_interpreter, new_research, retrieval_generation)
     handed = LAUNCH_KEY_VARIABLE in os.environ
 
     from alphalattice.control.product_host.composition.local_web_session import (

@@ -1589,9 +1589,16 @@ def agent_setup() -> dict[str, dict[str, Any]]:
     `alphalattice` command its specialists run (`tool_setup`) and the retrieval runtime.
     """
     retrieval: dict[str, Any] = {"present": True}
-    if not load():
+    failure = None
+    try:
+        present = load()
+    except (OSError, RuntimeError, ValueError) as error:
+        present = False
+        failure = str(error).partition(":")[0]
+    if not present:
         retrieval = {
             "present": False,
+            **({"failure_code": failure} if failure else {}),
             "who_decides": "AGENT",
             "commands": [join(fill_command(), shell())],
             "network_commands": [join(fill_command(offline=False), shell())],
