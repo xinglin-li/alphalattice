@@ -14939,6 +14939,27 @@
    "successor": "9d48a17e068de685adf61bc900cee6087333f7afcbd14ea048e08caa17a6450b",
    "change": "Cache keys include the inputs that determine their values",
    "reason": "Reuse keys now cover the executable constants inside nested producer code, and a file's facts are re-read when the file changes, so a changed input can no longer reuse a stale result; outputs for unchanged inputs are unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5a8199be255d436751a5215b03432b0adaa756acfddcaf124b818936899227fe",
+   "successor": "799cccf4f416c7e553000a68a16e1e679c926193f73fdd1e41e369fa8002df0a",
+   "change": "Verified reads keep their leases; the lease watcher no longer spins",
+   "reason": "Performance only in the workspace content store: the verified-source lease bound rises from 512 to 4096 so one Goal read's working set stays leased, and the lease break watcher rebuilds its wait batches only when a lease is issued or closed. No computed value, result path or control changes; the three Host roles moved because their identity includes this module's source."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "42607def019712231d54da6d8c8e1c85cc0ef29e4dbf2597f80b4302a432a7e1",
+   "successor": "ca33531a03f5528543561da148b7536d9da184463ca15adad9493454958e0919",
+   "change": "Verified reads keep their leases; the lease watcher no longer spins",
+   "reason": "Performance only in the workspace content store: the verified-source lease bound rises from 512 to 4096 so one Goal read's working set stays leased, and the lease break watcher rebuilds its wait batches only when a lease is issued or closed. No computed value, result path or control changes; the three Host roles moved because their identity includes this module's source."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "9d48a17e068de685adf61bc900cee6087333f7afcbd14ea048e08caa17a6450b",
+   "successor": "591056d477bdbbac8d4e49e9f5fd9d1e67a3de532eafc95db3ef0c1737ff5af2",
+   "change": "Verified reads keep their leases; the lease watcher no longer spins",
+   "reason": "Performance only in the workspace content store: the verified-source lease bound rises from 512 to 4096 so one Goal read's working set stays leased, and the lease break watcher rebuilds its wait batches only when a lease is issued or closed. No computed value, result path or control changes; the three Host roles moved because their identity includes this module's source."
   }
  ]
 }

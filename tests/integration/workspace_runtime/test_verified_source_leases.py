@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.control.workspace_runtime import content_store
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     verified_array_read_scope,
@@ -1003,22 +1004,23 @@ def test_every_source_in_a_proof_is_watched_and_mutable_results_are_not_retained
     assert len(mutable_calls) == 2
 
 
-def test_source_leases_are_bounded_and_evicted_sources_verify_again(tmp_path):
+def test_source_leases_are_bounded_and_evicted_sources_verify_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(content_store, "VERIFIED_SOURCE_LEASE_LIMIT", 8)  # the bound, not its size
     read, calls = _reader(tmp_path / "oldest.bin")
     read()
     readers = []
-    for index in range(511):
+    for index in range(7):
         newer, newer_calls = _reader(tmp_path / f"source-{index}.bin")
         assert newer() == b"sealed"
         readers.append((newer, newer_calls))
-    # All 512 leases fit; reading this source moves it to the newest LRU position.
+    # All 8 leases fit; reading this source moves it to the newest LRU position.
     assert read() == b"sealed"
     assert len(calls) == (1 if os.name == "nt" else 2)
     extra, _ = _reader(tmp_path / "overflow.bin")
     extra()
     evicted, evicted_calls = readers[0]
     assert evicted() == b"sealed"
-    assert len(evicted_calls) == 2  # the 513th lease evicted the least recently used source
+    assert len(evicted_calls) == 2  # the ninth lease evicted the least recently used source
 
 
 def test_restart_verifies_bytes_changed_while_the_host_process_was_down(tmp_path):
