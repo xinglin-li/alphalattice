@@ -70,7 +70,7 @@ data-live = [
 # Explicitly admitted live evidence acquisition; network stays off by default.
 live-evidence = [
     "httpx>=0.28,<1",
-    "trafilatura==2.3.1",
+    "trafilatura==2.1.0",
 ]
 # Alpha, Risk, Sector, Portfolio, and Validation numerics.
 quant = [

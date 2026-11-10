@@ -152,7 +152,7 @@ requires-dist = [
     { name = "statsmodels", marker = "extra == 'quant'", specifier = ">=0.14.6,<0.15" },
     { name = "threadpoolctl", marker = "extra == 'quant'", specifier = ">=3.6,<4" },
     { name = "tiktoken", specifier = ">=0.13,<1" },
-    { name = "trafilatura", marker = "extra == 'live-evidence'", specifier = "==2.3.1" },
+    { name = "trafilatura", marker = "extra == 'live-evidence'", specifier = "==2.1.0" },
     { name = "tzdata", marker = "extra == 'data'", specifier = ">=2026.3,<2027" },
     { name = "xxhash", specifier = ">=3.7,<4" },
     { name = "yfinance", marker = "extra == 'data-live'", specifier = ">=1.5,<2" },
@@ -2719,7 +2719,7 @@ wheels = [
 
 [[package]]
 name = "trafilatura"
-version = "2.3.1"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -2730,9 +2730,9 @@ dependencies = [
     { name = "lxml" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/e7/d359fcf887675c4305fb1f4548372484a2d8f0bc793dc6f2da3a748c1253/trafilatura-2.3.1.tar.gz", hash = "sha256:2e5557aeab32d33b9da7ff0debbb677a676c5b648a927e50d91b8277011e1105", size = 350794, upload-time = "2026-10-06T19:30:26.202Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/19/24833e905df2d80e3bb67424f95febcc17709a1f61a522120bc438afca70/trafilatura-2.1.0.tar.gz", hash = "sha256:f689e2116fc89c7bc0b9a296d01dcfe2eb0b5455f8c371a77dc0db1f06a05643", size = 263876, upload-time = "2026-06-07T17:43:31.829Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/20/e95d135c417aceaa3d34d1b4dff9aceb85e98800480eca1b033933717169/trafilatura-2.3.1-py3-none-any.whl", hash = "sha256:f86bad2ee36f82884e14dee84c83aae0f0ac0127da5c65764e82f3846716b822", size = 158660, upload-time = "2026-10-06T19:30:24.385Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/78/4ad99d79aee2784f49f20fd0a29058ce4c032fe4439047924c43521cd211/trafilatura-2.1.0-py3-none-any.whl", hash = "sha256:0eded5207a806445ddebbe36eae30b9035fe6a2f233c36f6fe82663fca8b9d30", size = 134600, upload-time = "2026-06-07T17:43:28.404Z" },
 ]
 
 [[package]]
