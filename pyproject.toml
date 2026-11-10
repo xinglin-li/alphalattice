@@ -92,8 +92,8 @@ quant = [
 # `config/requirements-retrieval.lock` and `scripts/create_retrieval_environment.py`.
 semantic = [
     "numpy>=2.5,<3",
-    "onnxruntime==1.30.0",
-    "sentencepiece==0.2.3",
+    "onnxruntime==1.27.0",
+    "sentencepiece==0.2.1",
     "sqlite-vec==0.1.9",
 ]
 

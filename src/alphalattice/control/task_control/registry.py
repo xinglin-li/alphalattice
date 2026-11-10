@@ -642,10 +642,10 @@ class DuckDbTaskControlRegistry:
         *,
         observed_at: datetime,
         lifecycle: TaskLifecycle | None = None,
-        active_work_item_id: str | None | object = ...,
-        latest_execution_id: UUID | None | object = ...,
-        started_at: datetime | None | object = ...,
-        failure_code: str | None | object = ...,
+        active_work_item_id: str | object | None = ...,
+        latest_execution_id: UUID | object | None = ...,
+        started_at: datetime | object | None = ...,
+        failure_code: str | object | None = ...,
     ) -> TaskRecord:
         identity = current.model_dump(mode="python", exclude={"record_hash"})
         identity["lifecycle"] = lifecycle or current.lifecycle
@@ -669,9 +669,9 @@ class DuckDbTaskControlRegistry:
         lifecycle: WorkItemLifecycle,
         attempt_count: int | None = None,
         evidence: tuple[TaskEvidence, ...] | None = None,
-        failure_code: str | None | object = ...,
+        failure_code: str | object | None = ...,
         failure_cause: StageFailureCause | None = None,
-        started_at: datetime | None | object = ...,
+        started_at: datetime | object | None = ...,
     ) -> WorkItemState:
         identity = current.model_dump(mode="python", exclude={"state_hash"})
         identity["lifecycle"] = lifecycle

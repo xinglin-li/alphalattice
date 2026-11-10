@@ -84,7 +84,7 @@ def _unsupported_resolution(
 
 def _to_argument_value(value: JsonValue) -> tuple[bool, ArgumentValue]:
     if isinstance(value, list):
-        items: list[None | bool | int | float | str] = []
+        items: list[bool | int | float | str | None] = []
         for item in value:
             if isinstance(item, dict | list) or (
                 item is not None and not isinstance(item, bool | int | float | str)

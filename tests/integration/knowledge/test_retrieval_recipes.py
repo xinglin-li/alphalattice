@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -59,6 +60,17 @@ BOUND_CAPABILITY_HASH = "508b3cd1b9c3910c499c7b3f16b66cce01f648151946f6fe10c210d
 
 def test_the_retained_recipe_keeps_its_hashes() -> None:
     spec = HybridIndexSpec.fixed_v2()
+    root = Path(__file__).resolve().parents[3]
+    locked = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    versions = {row["name"]: row["version"] for row in locked["package"]}
+    assert versions["onnxruntime"] == spec.onnx_runtime_version
+    assert versions["sentencepiece"] == spec.sentencepiece_version
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    semantic = project["project"]["optional-dependencies"]["semantic"]
+    assert f"onnxruntime=={spec.onnx_runtime_version}" in semantic
+    assert f"sentencepiece=={spec.sentencepiece_version}" in semantic
+    retrieval = (root / "config/requirements-retrieval.lock").read_text(encoding="utf-8")
+    assert f"onnxruntime=={spec.onnx_runtime_version}" in retrieval.splitlines()
     assert spec.policy_id == RECIPE_MINILM_CPU
     assert spec.logical_hash == V2_SPEC_HASH
     assert HybridIndexSpec.for_recipe(RECIPE_MINILM_CPU).logical_hash == V2_SPEC_HASH

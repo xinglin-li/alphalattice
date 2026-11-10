@@ -2,6 +2,14 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
+    "tests/integration/knowledge/test_retrieval_recipes.py::test_the_retained_recipe_keeps_its_hashes": {
+      "inputs": [
+        "uv.lock",
+        "pyproject.toml",
+        "config/requirements-retrieval.lock",
+        "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
+      ]
+    },
     "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py"

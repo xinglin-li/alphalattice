@@ -393,9 +393,12 @@ def _path_bindings(tree: ast.Module) -> dict[str, list[ast.expr]]:
             target = node.targets[0]
             if isinstance(target, ast.Name):
                 bindings.setdefault(target.id, []).append(node.value)
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            if isinstance(node.target, ast.Name):
-                bindings.setdefault(node.target.id, []).append(node.value)
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and node.value is not None
+            and isinstance(node.target, ast.Name)
+        ):
+            bindings.setdefault(node.target.id, []).append(node.value)
     return bindings
 
 
