@@ -549,7 +549,7 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/evaluation/test_forms.py*",
+      "pattern": "tests/unit/evaluation/test_forms.py*",
       "owner": "tests.evaluation",
       "size": "medium"
     },

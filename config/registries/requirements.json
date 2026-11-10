@@ -229,6 +229,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.person_ask_posts_each_question_as_one_bounded_process": {
+      "description": "The scenario person's ASK posts each question as one bounded process with its record and question filled in, and records the exit and words, or the start failure, beside the record; no ASK command posts nothing.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The poster's whole job is starting one bounded process and recording its exit, and the unit layer refuses a module that imports subprocess."
+    },
     "evaluation.release_gates_run_as_one_inspect_task": {
       "description": "The native release gates run as one Inspect AI task over each host's one prepared leg, with every gate's verdict and the scenario person's questions in its log.",
       "owner": "devtools.evaluation",
