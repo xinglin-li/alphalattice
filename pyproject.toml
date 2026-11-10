@@ -103,6 +103,11 @@ dev = [
     "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
+    # The release gates' shared environment (devtools.evaluation) runs on Inspect AI's structure.
+    "inspect-ai==0.3.288",
+    # inspect-ai 0.3.288 imports acp.helpers, which agent-client-protocol 1.0.0 removed, and its own
+    # requirement has no upper bound: hold below 1 until an Inspect AI release supports 1.x.
+    "agent-client-protocol>=0.12,<1",
     # Preserve the product environment while the docs tools use mdformat's <4 range.
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",

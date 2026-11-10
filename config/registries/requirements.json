@@ -192,6 +192,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_gate_verdicts_follow_the_release_lane_rules": {
+      "description": "Each native release gate's verdict comes from one leg's own graded results, and a result the leg did not grade is a failed gate.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
+      "seconds": 1
+    },
     "evaluation.native_hosts_stop_with_their_run": {
       "description": "A native acceptance run stops its own recorded workspace Hosts and proves each listener and process ended, or names the unproved stop.",
       "owner": "devtools.evaluation",
@@ -210,11 +216,31 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.one_leg_serves_every_native_gate": {
+      "description": "A finished native leg runs the upgrade axis over its own recorded grades without changing its state, takes the scenario's settled date, and names a scenario person's stop.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The native leg's driver and the upgrade entry import process facilities that the unit layer cannot load."
+    },
     "evaluation.persistent_golden_root_follows_its_setting": {
       "description": "The persistent golden cache root is the operator's shared setting when present and the checkout's own folder when absent.",
       "owner": "devtools.evaluation",
       "layer": "integration",
       "seconds": 5
+    },
+    "evaluation.release_gates_run_as_one_inspect_task": {
+      "description": "The native release gates run as one Inspect AI task over each host's one prepared leg, with every gate's verdict and the scenario person's questions in its log.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The task runs Inspect AI's evaluation loop and a leg process, which the unit layer cannot load."
+    },
+    "evaluation.scenario_person_answers_and_grades_asking": {
+      "description": "The scenario person answers from the script, the fact sheet or a bounded ask, says it does not know past the bound, stops by name only on a Host question not named nonblocking, and records every question when asked.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
+      "seconds": 1
     },
     "evaluation.sessionless_first_use_question_identity": {
       "description": "A sessionless first-use question is attributed only when its authenticated Host record matches the sole verified workspace and goal identity.",

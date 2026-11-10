@@ -1739,7 +1739,8 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
 
 
 def evaluation_imports(sources: Mapping[str, str], entry: str) -> list[tuple[str, int, str]]:
-    """Evaluation imports past its forms, stdlib, YAML and the `module:name` entry; dynamic ones."""
+    """Evaluation imports past its forms, stdlib, YAML, Inspect AI (the release gates' runner,
+    adopted 2026-11-09) and the `module:name` entry; dynamic ones."""
     (module, _, name), failures = entry.partition(":"), []
     for path, text in sources.items():
         for node in ast.walk(ast.parse(text)):
@@ -1752,7 +1753,7 @@ def evaluation_imports(sources: Mapping[str, str], entry: str) -> list[tuple[str
                 names = [node.module or ""]
             for imported in names:
                 if not (
-                    imported.split(".")[0] in sys.stdlib_module_names | {"yaml"}
+                    imported.split(".")[0] in sys.stdlib_module_names | {"yaml", "inspect_ai"}
                     or imported.startswith("devtools.evaluation.")
                 ):
                     failures.append((path, getattr(node, "lineno", 0), imported))
