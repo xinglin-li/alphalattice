@@ -7,6 +7,7 @@
         "uv.lock",
         "pyproject.toml",
         "config/requirements-retrieval.lock",
+        "config/requirements-gpu.lock",
         "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
       ]
     },

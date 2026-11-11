@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import re
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,13 +59,87 @@ LEGACY_V2_EMBEDDING_CONTEXT = "2fdc2c5f41264c41"
 BOUND_CAPABILITY_HASH = "508b3cd1b9c3910c499c7b3f16b66cce01f648151946f6fe10c210de4dcc412c"
 
 
-def test_the_retained_recipe_keeps_its_hashes() -> None:
+# Each recipe field that declares an exact package version, by the package it names. The list
+# lives here, not in hybrid_contracts.py, whose bytes a sealed Evidence binding hashes.
+DECLARED_PACKAGES = {
+    "onnx_runtime_version": "onnxruntime",
+    "sentencepiece_version": "sentencepiece",
+    "vector_extension_version": "sqlite-vec",
+    "reranker_runtime_version": "fastembed",
+    "reranker_tokenizer_runtime_version": "tokenizers",
+    "encoder_torch_version": "torch",
+    "encoder_transformers_version": "transformers",
+    "reranker_torch_version": "torch",
+    "reranker_transformers_version": "transformers",
+}
+# Version fields that name no package: the payload's schema, and CUDA, which torch's own pin
+# carries (its +cu130 local version).
+NOT_PACKAGES = {"schema_version", "encoder_cuda_version", "reranker_cuda_version"}
+# The locks that pin the recipes' packages: the workspace's, and the retrieval and GPU additions.
+LOCKS = ("uv.lock", "config/requirements-retrieval.lock", "config/requirements-gpu.lock")
+_PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)", re.MULTILINE)
+
+
+def _pins(root: Path, lock: str) -> dict[str, str]:
+    text = (root / lock).read_text(encoding="utf-8")
+    if lock == "uv.lock":
+        return {row["name"]: row["version"] for row in tomllib.loads(text)["package"]}
+    return {name.lower().replace("_", "-"): version for name, version in _PIN.findall(text)}
+
+
+def declared_drift(root: Path) -> list[str]:
+    """Each exact version a supported recipe declares, against every lock that pins its package:
+    one line per drift, led by the package's name; a package no lock pins, and a version field
+    this list does not name, are drifts too."""
+    declared: dict[str, set[str]] = {}
+    drift = []
+    for recipe in SUPPORTED_RECIPES:
+        dumped = HybridIndexSpec.for_recipe(recipe).model_dump(mode="python")
+        for field, value in sorted(dumped.items()):
+            if field.endswith("_version") and value is not None and field not in NOT_PACKAGES:
+                if field not in DECLARED_PACKAGES:
+                    drift.append(f"{field}: {recipe} declares {value}; name its package")
+                    continue
+                declared.setdefault(DECLARED_PACKAGES[field], set()).add(value)
+    pins = {lock: _pins(root, lock) for lock in LOCKS}
+    for package, versions in sorted(declared.items()):
+        held = {lock: found[package] for lock, found in pins.items() if package in found}
+        drift += (
+            [] if held else [f"{package}: the recipes declare {sorted(versions)}; no lock pins it"]
+        )
+        drift += [
+            f"{package}: {lock} pins {pinned}; the recipes declare {sorted(versions)}"
+            for lock, pinned in held.items()
+            if {pinned} != versions
+        ]
+    return drift
+
+
+def _drifted(root: Path, into: Path, package: str) -> int:
+    """Copies the locks into `into` with `package`'s pin moved in every lock that pins it."""
+    moved = 0
+    for lock in LOCKS:
+        text = (root / lock).read_text(encoding="utf-8")
+        if lock == "uv.lock":
+            pattern = rf'(name = "{re.escape(package)}"\nversion = "[^"]+)"'
+            text, count = re.subn(pattern, r'\1.post9"', text)
+        else:
+            pattern = rf"(?m)^({re.escape(package)}==[^\s;\\]+)"
+            text, count = re.subn(pattern, r"\1.post9", text)
+        moved += count
+        (into / lock).parent.mkdir(parents=True, exist_ok=True)
+        (into / lock).write_text(text, encoding="utf-8")
+    return moved
+
+
+def test_the_retained_recipe_keeps_its_hashes(tmp_path: Path) -> None:
     spec = HybridIndexSpec.fixed_v2()
     root = Path(__file__).resolve().parents[3]
-    locked = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
-    versions = {row["name"]: row["version"] for row in locked["package"]}
-    assert versions["onnxruntime"] == spec.onnx_runtime_version
-    assert versions["sentencepiece"] == spec.sentencepiece_version
+    assert declared_drift(root) == []
+    for package in sorted(set(DECLARED_PACKAGES.values())):  # each one's drift, refused by its name
+        assert _drifted(root, tmp_path / package, package), package
+        found = declared_drift(tmp_path / package)
+        assert found and all(line.startswith(f"{package}: ") for line in found), found
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     semantic = project["project"]["optional-dependencies"]["semantic"]
     assert f"onnxruntime=={spec.onnx_runtime_version}" in semantic
