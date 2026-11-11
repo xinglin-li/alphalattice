@@ -868,6 +868,16 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
+    assert not jobs["public-tests-shard"].get("continue-on-error", False)
+    assert not jobs["public-tests"].get("continue-on-error", False)
+    supply = yaml.safe_load((root / ".github/workflows/supply-chain.yml").read_text("utf-8"))
+    sbom = supply["jobs"]["sbom"]
+    upload = supply["jobs"]["sbom-release"]
+    assert sbom.get("permissions", {}).get("contents", "read") == "read"
+    assert upload["permissions"]["contents"] == "write"
+    assert upload["needs"] == "sbom" and "release" in upload["if"]
+    assert all("gh release upload" not in step.get("run", "") for step in sbom["steps"])
+    assert any("gh release upload" in step.get("run", "") for step in upload["steps"])
     for name in ("checkout", "public-tests-shard"):
         job = jobs[name]
         assert "npm_config_cache" not in job.get("env", {})

@@ -219,7 +219,6 @@ jobs:
     needs: public-tests-plan
     if: ${{ needs.public-tests-plan.outputs.run == 'true' }}
     runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ matrix.os == 'linux' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -509,7 +508,6 @@ jobs:
     needs: [public-tests-plan, public-tests-shard]
     if: ${{ always() && needs.public-tests-plan.outputs.run == 'true' }}
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.os == 'linux' }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
