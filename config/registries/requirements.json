@@ -192,6 +192,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_first_use_keeps_the_hosts_shipped_session": {
+      "description": "Native first use starts the Claude host with its session persistence and the ordinary agent's shipped tools and guidance, and offers PowerShell only on Windows.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The host argv builder lives in the intent provider, which imports subprocess, and the unit layer refuses a module that imports subprocess."
+    },
     "evaluation.native_gate_verdicts_follow_the_release_lane_rules": {
       "description": "Each native release gate's verdict comes from one leg's own graded results, and a result the leg did not grade is a failed gate.",
       "owner": "devtools.evaluation",
@@ -215,6 +222,19 @@
       "owner": "devtools.evaluation",
       "layer": "integration",
       "seconds": 5
+    },
+    "evaluation.native_snapshot_tolerates_process_exit": {
+      "description": "A native activity snapshot continues when an observed process exits or becomes inaccessible before sampling, preserving other observed processes.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "evaluation.native_turn_cleanup_wait_is_finite": {
+      "description": "A native turn refuses a zero, infinite or undefined cleanup wait by name before it starts a process or writes a receipt.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The native turn monitor imports subprocess and psutil, and the unit layer refuses a module that imports subprocess."
     },
     "evaluation.one_leg_serves_every_native_gate": {
       "description": "A finished native leg runs the upgrade axis over its own recorded grades without changing its state, takes the scenario's settled date, and names a scenario person's stop.",

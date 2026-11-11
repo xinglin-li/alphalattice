@@ -319,6 +319,7 @@ PRODUCT_OPERATION_FIELDS = frozenset(
     {
         "clock_ref",
         "clock_drift",
+        "clock_domain",
         "operation",
         "caller",
         "phase",

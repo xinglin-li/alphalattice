@@ -58,6 +58,8 @@ def clock_metadata(clock: object) -> dict[str, Any]:
         match getattr(clock, "phase_metadata", lambda: {})():
             case {"clock_ref": str() as reference, "clock_drift": bool() as drift}:
                 return {"clock_ref": reference, "clock_drift": drift}
+        if getattr(clock, "clock_domain", None) == "UTC":
+            return {"clock_domain": "UTC"}
     except Exception:
         pass
     return {}
