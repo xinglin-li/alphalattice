@@ -948,6 +948,20 @@ def pytest_collection_finish(session: Any) -> None:
         _write_moved(session.config, record)
 
 
+@pytest.hookimpl(wrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_collection(session: Any) -> Any:
+    """Name an xdist worker's collection refusal in the run's log. pytest sends the worker's
+    collection to the controller in a finally, so a UsageError then ends the worker silently: the
+    controller, which never collects, reports only a crash on a test that never ran."""
+    try:
+        return (yield)
+    except pytest.UsageError as error:
+        worker = getattr(session.config, "workerinput", {}).get("workerid")
+        if worker:
+            print(f"ERROR: [{worker}] {error}", file=sys.stderr, flush=True)
+        raise
+
+
 def pytest_itemcollected(item: Any) -> None:
     """Under CodSpeed every selected test is measured as its cost: it deselects unmarked tests."""
     if os.environ.get("CODSPEED_ENV") is not None or item.config.getoption("codspeed", False):

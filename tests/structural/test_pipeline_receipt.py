@@ -1682,43 +1682,7 @@ MASSED = [  # one setup error on 20 nodes: the environment, as on the 433-error 
 ASSERTED = [  # one assertion failing 20 parameter rows: as consistent with a shared defect as any
     FIRST | {"node": f"t::p[{i}]", "failure": {"message": "assert 1 == 2"}} for i in range(20)
 ]
-STALE_RETRIEVAL = json.dumps(
-    {"failure_code": "local_client.retrieval_environment_stale", "worktree": "/checkout"}
-)
 RED_CLASSES = {  # node results, rows and an overrun -> the stage's causes and its one class
-    "tooling: stale retrieval environment": (
-        [FIRST | {"failure": {"message": "AssertionError: " + STALE_RETRIEVAL}}],
-        [("tests", ROW)],
-        False,
-        {"tooling": 1},
-        "tooling",
-    ),
-    "unclassified: stale marker without worktree": (
-        [
-            FIRST
-            | {
-                "failure": {
-                    "message": json.dumps(
-                        {"failure_code": "local_client.retrieval_environment_stale"}
-                    )
-                }
-            }
-        ],
-        [("tests", ROW)],
-        False,
-        {"unclassified": 1},
-        "unclassified",
-    ),
-    "defect: stale environment followed by a different solo failure": (
-        [
-            FIRST | {"failure": {"message": STALE_RETRIEVAL}},
-            ALONE | {"status": "FAILED", "failure": {"message": "AssertionError: unrelated"}},
-        ],
-        [("tests", ROW)],
-        False,
-        {"defect": 1},
-        "defect",
-    ),
     "defect": (
         [FIRST, ALONE | {"status": "FAILED"}],
         [("tests", ROW)],

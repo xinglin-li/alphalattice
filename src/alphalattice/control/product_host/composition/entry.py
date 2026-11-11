@@ -9,20 +9,13 @@ import json
 import os
 import sys
 from contextlib import suppress
-from importlib.machinery import ModuleSpec
 from pathlib import Path
 
 from alphalattice.interface.local_application.retrieval_environment import (
-    GENERATION_ENV,
     LOCKED_SETUP_DISCLOSURE,
     LOCKED_SETUP_WORDS,
-    current_generation,
-    environment_lock,
     fill_command,
     interpreter_path,
-)
-from alphalattice.interface.local_application.retrieval_environment import (
-    stale_reason as retrieval_environment_stale_reason,
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
@@ -31,82 +24,6 @@ from .web_launcher import attached_child
 from .web_launcher import main as start
 
 ROOT: Path = resolve_playpen_root(Path(__file__))
-
-
-def _declared_retrieval_used(
-    checkout: bool, interpreter: Path, fastembed: ModuleSpec | None
-) -> bool:
-    if not checkout or not interpreter.is_file():
-        return False
-    if fastembed is None or Path(sys.executable).resolve() == interpreter.resolve():
-        return True
-    return fastembed.origin is not None and Path(fastembed.origin).resolve().is_relative_to(
-        interpreter.parent.parent.resolve()
-    )
-
-
-def _retrieval_refusal(detail: str, *, busy: bool = False) -> int:
-    print(  # noqa: T201  # bootstrap/lifecycle
-        json.dumps(
-            {
-                "status": "REFUSED",
-                "failure_code": "local_client.retrieval_environment_in_use"
-                if busy
-                else "local_client.retrieval_environment_stale",
-                "worktree": str(ROOT),
-                "detail": detail,
-                "next_action": "WAIT_FOR_RETRIEVAL_SETUP_OR_STOP_HOST"
-                if busy
-                else "REBUILD_DECLARED_RETRIEVAL_ENVIRONMENT",
-                "setup_command": [
-                    sys.executable,
-                    str(ROOT / "scripts/create_retrieval_environment.py"),
-                ],
-            }
-        )
-    )
-    return 2
-
-
-def _serve_with_retrieval(arguments: list[str], interpreter: Path, new_research: bool) -> int:
-    lease = environment_lock(exclusive=False)
-    entered = False
-    try:
-        lease.__enter__()
-        entered = True
-        generation = current_generation()
-    except (OSError, RuntimeError, ValueError) as error:
-        if entered:
-            lease.__exit__(*sys.exc_info())
-        return _retrieval_refusal(
-            str(error), busy=str(error).startswith("retrieval_environment.in_use:")
-        )
-    try:
-        # Keep setup excluded until the child has acquired its own lease or exited.
-        if "--detach" in arguments:
-            return start(
-                arguments,
-                host_interpreter=interpreter,
-                new_research=new_research,
-                retrieval_generation=generation,
-            )
-        environment = dict(os.environ)
-        source, inherited_path = str(ROOT / "src"), environment.get("PYTHONPATH")
-        environment["PYTHONPATH"] = (
-            source + os.pathsep + inherited_path if inherited_path else source
-        )
-        environment[GENERATION_ENV] = generation
-        return attached_child(
-            [
-                str(interpreter),
-                "-m",
-                "alphalattice.control.product_host.composition.web_launcher",
-                *arguments,
-            ],
-            env=environment,
-        )
-    finally:
-        lease.__exit__(None, None, None)
 
 
 def serve(arguments: list[str]) -> int:
@@ -136,22 +53,11 @@ def serve(arguments: list[str]) -> int:
     interpreter = interpreter_path()
     checkout = (ROOT / "pyproject.toml").is_file()
     packaged = manifest is not None and manifest.evidence_review is not None
-    fastembed = importlib.util.find_spec("fastembed")
-    if (
-        checkout
-        and interpreter.is_file()
-        and Path(sys.executable).resolve() == interpreter.resolve()
-    ):
-        return _serve_with_retrieval(arguments, interpreter, selected.new_research)
-    if (
-        fastembed is not None
-        and _declared_retrieval_used(checkout, interpreter, fastembed)
-        and (reason := retrieval_environment_stale_reason())
-    ):
-        return _retrieval_refusal(reason)
     # The Host runs in the declared retrieval environment whenever it exists, so an Evidence
     # package installed while it runs is served by it; a package with none to run in refuses.
-    if fastembed is None and (packaged or (checkout and interpreter.is_file())):
+    if importlib.util.find_spec("fastembed") is None and (
+        packaged or (checkout and interpreter.is_file())
+    ):
         if not checkout or not interpreter.is_file():
             print(  # noqa: T201  # bootstrap/lifecycle
                 json.dumps(
@@ -168,7 +74,31 @@ def serve(arguments: list[str]) -> int:
                 )
             )
             return 2
-        return _serve_with_retrieval(arguments, interpreter, selected.new_research)
+        # Detach before a venv trampoline adds its own Job; that Job can mask the caller's.
+        if "--detach" in arguments:
+            return start(
+                arguments, host_interpreter=interpreter, new_research=selected.new_research
+            )
+        # Inherit cwd/stdin/env. The workspace and input file arguments retain
+        # their caller-relative meaning; no source is loaded from a sibling tree.
+        # The checkout shim's sys.path bootstrap does not reach a new interpreter.
+        # Give that child the same checkout source, even when its environment has
+        # dependencies installed without an editable package installation.
+        environment = dict(os.environ)
+        source = str(ROOT / "src")
+        inherited_path = environment.get("PYTHONPATH")
+        environment["PYTHONPATH"] = (
+            source + os.pathsep + inherited_path if inherited_path else source
+        )
+        return attached_child(
+            [
+                str(interpreter),
+                "-m",
+                "alphalattice.control.product_host.composition.web_launcher",
+                *arguments,
+            ],
+            env=environment,
+        )
     return (
         start(arguments, new_research=selected.new_research)
         if "--detach" in arguments

@@ -806,6 +806,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.worker_collection_refusal_is_named": {
+      "description": "An xdist worker that refuses its collection names itself and the refusal in the run's log before it ends, so a stage never reports only a crash on a test that never ran.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
       "owner": "alphalattice.control.workspace_runtime",

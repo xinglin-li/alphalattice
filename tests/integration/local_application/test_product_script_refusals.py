@@ -154,20 +154,6 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         subprocess.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
-    failed_checkout = tmp_path / "failed-checkout"
-    failed_checkout.mkdir()
-    (failed_checkout / "pyproject.toml").touch()
-    failed_lock = failed_checkout / "uv.lock"
-    failed_lock.touch()
-    failed_additions = failed_checkout / "requirements-retrieval.lock"
-    failed_additions.touch()
-    failed_environment = failed_checkout / ".venv-retrieval"
-    failed_environment.mkdir()
-    monkeypatch.setattr(setup, "PLAYPEN", failed_checkout)
-    monkeypatch.setattr(setup, "LOCK", failed_lock)
-    monkeypatch.setattr(setup, "ADDITIONS", failed_additions)
-    monkeypatch.setattr(setup, "ENVIRONMENT", failed_environment)
-
     def exits(command: tuple[str, ...], **_options: object) -> None:
         raise subprocess.CalledProcessError(1, command)
 
@@ -178,7 +164,6 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     assert refusal["failure_code"] == "retrieval_environment.setup_failed:uv sync exited 1"
     assert refusal["next_action"] == "RUN_LOCKED_DEPENDENCY_SETUP"
     assert refusal["next_commands"]["setup"] == setup.fill_command()
-    assert (failed_environment / "retrieval-locks.json").read_text(encoding="utf-8") == "{}"
     assert gpu.main() == 2
     assert _refusal(capsys)["failure_code"] == "gpu_environment.setup_failed:uv sync exited 1"
 
@@ -196,22 +181,12 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
 def test_retrieval_setup_uses_checkout_scratch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts import create_retrieval_environment as declared_setup
-
-    spec = importlib.util.spec_from_file_location(
-        "retrieval_scratch_owner", declared_setup.__file__
-    )
-    assert spec is not None and spec.loader is not None
-    setup = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(setup)
+    from scripts import create_retrieval_environment as setup
 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     (checkout / "pyproject.toml").touch()
     (checkout / "uv.lock").touch()
-    additions = checkout / "requirements-retrieval.lock"
-    additions.write_text("pinned\n", encoding="utf-8")
-    (checkout / ".venv-retrieval").mkdir()
     seen = []
     blocked_temp = tmp_path / "not-a-directory"
     blocked_temp.write_text("not a temporary directory", encoding="utf-8")
@@ -232,24 +207,11 @@ def test_retrieval_setup_uses_checkout_scratch(
     with monkeypatch.context() as local:
         local.setattr(setup, "PLAYPEN", checkout)
         local.setattr(setup, "LOCK", checkout / "uv.lock")
-        local.setattr(setup, "ADDITIONS", additions)
         local.setattr(setup, "ENVIRONMENT", checkout / ".venv-retrieval")
         local.setattr(setup.subprocess, "run", checked)
         setup.create(offline=True)
-        assert setup.stale_reason() is None
         assert len(seen) == 2 and seen[0] == seen[1] and not seen[0].exists()
         assert os.environ["TEMP"] == str(blocked_temp)
-        with (
-            setup.environment_lock(exclusive=False),
-            pytest.raises(RuntimeError, match=r"retrieval_environment\.in_use"),
-        ):
-            setup.create(offline=True)
-        assert setup.stale_reason() is None
-        with (
-            setup.environment_lock(exclusive=True),
-            pytest.raises(RuntimeError, match=r"retrieval_environment\.in_use"),
-        ):
-            setup.retain_for_process()
 
         def failed(command: tuple[str, ...], **options: Any) -> None:
             checked(command, **options)
@@ -258,7 +220,6 @@ def test_retrieval_setup_uses_checkout_scratch(
         local.setattr(setup.subprocess, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             setup.create(offline=True)
-        assert setup.stale_reason() is not None
     assert len(seen) == 3 and not seen[-1].exists()
 
     from alphalattice.interface.local_application import native_setup

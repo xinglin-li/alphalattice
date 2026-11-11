@@ -257,10 +257,6 @@ CRASH = re.compile(r"worker 'gw[0-9]+' crashed while running")
 """A node killed with its worker: the timeout's kill, or the runner's."""
 CASCADE = "incomplete session workspace:"
 """A node failed by the workspace a crashed worker left half-built: a cause only beside a crash."""
-STALE_RETRIEVAL = re.compile(
-    r'"failure_code"\s*:\s*"local_client\.retrieval_environment_stale".*"worktree"\s*:\s*"[^"\r\n]+"'
-)
-"""A Host explicitly refused the named worktree's stale retrieval environment."""
 DEFECT_ROWS = frozenset({"fast-guard", "public-scan", "card-budget"})
 """Rows whose exit 1 is the change's own lint, type, guard, content or budget refusal."""
 TOOLING_EXITS = {2: "interrupted", 3: "internal error", 4: "usage error", 5: "no tests collected"}
@@ -309,26 +305,18 @@ def _valid_bound(value: Any) -> bool:
     return type(value) in (int, float) and isfinite(value) and value > 0
 
 
-def _admission_defect(first: dict[str, Any], admission_defect: bool) -> bool:
-    return (
-        admission_defect
-        and first["status"] == "ERROR"
-        and first.get("phase") == "collection"
-        and (first.get("failure") or {}).get("type") == "test_size.large_contract"
-    )
-
-
 def _node_class(
     tries: list[dict[str, Any]], shared: Counter[str], crashed: bool, *, admission_defect: bool
 ) -> str:
     """One red node's class from its first and last attempts (see ``red_classes``)."""
     first, last = tries[0], tries[-1]
-    if _admission_defect(first, admission_defect):
-        return "defect"
-    if all(
-        result["status"] in RED and STALE_RETRIEVAL.search(_message(result)) for result in tries
+    if (
+        admission_defect
+        and first["status"] == "ERROR"
+        and first.get("phase") == "collection"
+        and (first.get("failure") or {}).get("type") == "test_size.large_contract"
     ):
-        return "tooling"
+        return "defect"
     solo = len(tries) > 1 and last.get("solo")
     if solo and last["status"] == "FAILED":
         return "defect"
