@@ -99,6 +99,19 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.wait_baseline_only_falls": {
+      "description": "A commit is refused when a staged source holds more wait findings than the baseline, or when the baseline rose above its parent.",
+      "lower_layer": "The refusal reads staged blobs and the parent's baseline through Git, which a unit test cannot hold.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "architecture.wait_rules_refuse_each_anti_pattern": {
+      "description": "Each wait rule refuses its unbounded wait or loop by name with its repair, and passes that repair and the wait primitive itself.",
+      "owner": "devtools.architecture",
+      "layer": "unit",
+      "seconds": 1
+    },
     "composition.achieved_goal_has_a_deliverable": {
       "description": "An achieved Goal must deliver a verified reference even when the original declaration named no deliverable slot.",
       "owner": "alphalattice.control.product_host.composition",
@@ -696,6 +709,12 @@
     },
     "shared_kernel.a_wait_ends_at_its_bound": {
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "shared_kernel.a_wait_ends_by_its_deadline_or_its_stop": {
+      "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "unit",
       "seconds": 1

@@ -109,10 +109,12 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("docs/images/research-conversation-dark.png", "PUBLIC", "PUBLIC_ASSET"),
         ("docs/generate_reference.py", "PUBLIC", "PUBLIC_DOC"),
         ("scripts/run_alphalattice.py", "PUBLIC", "PUBLIC_USER_SCRIPT"),
+        ("config/some-rule-baseline-private.json", "PRIVATE", "PRIVATE_ALLOWANCE"),
         ("scripts/unexamined.py", "UNSETTLED", None),
         ("config/unexamined.yaml", "UNSETTLED", None),
         ("src/alphalattice/unreached.py", "UNSETTLED", None),
     ],
+    ids=str,
 )
 def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind, rule):
     decision = classify(path, set(), set(), set())

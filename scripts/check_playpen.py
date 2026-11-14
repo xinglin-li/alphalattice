@@ -696,6 +696,26 @@ def _check_docstrings() -> bool:
     return result.returncode == 0
 
 
+def _check_waits(*, staged: bool) -> bool:
+    """Refuse an unbounded wait or loop above ``config/wait-baseline.json``: the staged sources
+    for the hook, every tracked source otherwise (scripts/check_waits.py)."""
+
+    started = perf_counter()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "check_waits.py"),
+            "--staged" if staged else "--all",
+        ],
+        cwd=ROOT,
+        check=False,
+        timeout=600,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    print(f"PLAYPEN_GATE_TIMING wait-rules {perf_counter() - started:.3f}s", flush=True)
+    return result.returncode == 0
+
+
 def _check_test_shape(*, staged: bool, base_ref: str = "develop") -> bool:
     """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
     for the hook, the committed head against its merge base with `base_ref` for the stage."""
@@ -1070,6 +1090,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("boundaries", lambda: _check_boundaries(staged=args.staged)),
         ("import-contracts", _check_import_contracts),
         ("docstrings", _check_docstrings),
+        ("wait-rules", lambda: _check_waits(staged=args.staged)),
         ("test-shape", lambda: _check_test_shape(staged=args.staged, base_ref=args.base)),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
     ]

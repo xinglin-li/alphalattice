@@ -137,6 +137,12 @@ RULES = [
         "reason": "the reuse audit's tool and its pin serve an internal release record",
     },
     {
+        "rule": "PRIVATE_ALLOWANCE",
+        "kind": "PRIVATE",
+        "patterns": ["config/*-baseline-private.json"],
+        "reason": "a commit rule's allowance for private files names them, so it stays with them",
+    },
+    {
         "rule": "PRIVATE_TEST",
         "kind": "PRIVATE",
         "patterns": [
