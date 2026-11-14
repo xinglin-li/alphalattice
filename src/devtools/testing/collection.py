@@ -515,9 +515,18 @@ def _size_report(item: Any, report: Any) -> None:
             )
         policy = item.config.stash[SIZE_POLICY]
         size = dict(item.user_properties)["test_size"]
-        admission_limit(item.nodeid, size, sum(phases.values()), footprint[0], policy)
+        seconds = sum(phases.values())
+        bound = policy.get("admission_limits", {}).get(size, {})
+        admission_limit(item.nodeid, size, seconds, footprint[0], policy)
     except (KeyError, TypeError, ValueError) as error:
         report.outcome, report.longrepr = "failed", str(error)
+        if (
+            str(error).startswith("test_size.admission_limit:")
+            and footprint[0] <= bound["tmp_bytes"]
+        ):
+            # Over its seconds only: the gate measures it alone, as a timeout (lead_check retry).
+            limit = bound["seconds"]
+            report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "admission")
 
 
 def _golden_times(item: Any) -> None:
@@ -630,21 +639,27 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             "share setup or move the test to integration"
         ),
     )
-    event = dict(
-        event="TIMEOUT",
-        nodeid=item.nodeid,
-        phase="teardown",
-        limit_seconds=limit,
-        elapsed_seconds=seconds,
-        cause="unit-own-phases",
-    )
+    report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "unit-own-phases")
+
+
+def _retry_evidence(item: Any, phase: str, limit: float, seconds: float, cause: str) -> str:
+    """A node failed on its seconds: a TIMEOUT event in the run's log asks the gate to run it
+    alone, which judges it again; an unwritable log is named in the failure."""
+    event = dict(event="TIMEOUT", nodeid=item.nodeid, phase=phase, limit_seconds=limit)
+    event.update(elapsed_seconds=seconds, cause=cause)
     log_file = item.config.getoption("log_file") or item.config.getini("log_file")
     if log_file:
         try:
+            if receipts := item.config.pluginmanager.get_plugin("pytest_receipts"):
+                slot = (
+                    receipts.heavy_slot
+                )  # the shared places, read as its own TIMEOUT event reads them
+                event["heavy_place_holders"] = slot._read(slot.HOLDERS, None)
             with Path(log_file).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(event) + "\n")
         except OSError as error:
-            report.longrepr += f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+            return f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+    return ""
 
 
 def gate(

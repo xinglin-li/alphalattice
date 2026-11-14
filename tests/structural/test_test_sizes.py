@@ -281,6 +281,7 @@ def _memory_checks_read_no_host():
         (tmp_path / "size_fixture.py").write_text(extra, encoding="utf-8")
         phase_args = (
             ["-p", "size_fixture", "-p", "devtools.pipeline.receipt"]
+            + ["--log-file", str(tmp_path / "events.log")]
             + (["-s"] if case.startswith("size-live-large-") else [])
             + (
                 ["-p", "xdist.plugin", "-n", "2", "--max-worker-restart=0"]
@@ -299,6 +300,12 @@ def _memory_checks_read_no_host():
                 encoding="utf-8",
             )
             phase_args += ["-p", "size_phase"]
+            (tmp_path / "pytest_receipts.py").write_text(  # the harness plugin's shared places
+                "from types import SimpleNamespace\nheavy_slot = SimpleNamespace(HOLDERS='h', "
+                "_read=lambda path, default: [{'line': 'probe', 'path': path}])\n",
+                encoding="utf-8",
+            )
+            phase_args += ["-p", "pytest_receipts"]
     if case == "observe-sidecar-unavailable":
         for worker in ("main", "gw0", "gw1"):
             (tmp_path / f"node-observations-{worker}.jsonl").mkdir()
@@ -593,8 +600,11 @@ def _memory_checks_read_no_host():
         cases = list(ET.parse(tmp_path / "child.xml").iter("testcase"))
         assert len(cases) == 1
         assert sum(len(c.findall("error")) + len(c.findall("failure")) for c in cases) == 1
-    if case == "own-over":
-        assert '"event": "TIMEOUT"' in (tmp_path / "events.log").read_text("utf-8")
+    if case in {"own-over", "size-live-time-over", "size-live-over"}:  # over on seconds only
+        logged = (tmp_path / "events.log").read_text("utf-8")
+        assert ('"event": "TIMEOUT"' in logged) == (case != "size-live-over"), logged
+        if case == "size-live-time-over":
+            assert '"heavy_place_holders": [{"line": "probe", "path": "h"}]' in logged, logged
     if case == "numpy-save":
         assert "file outside temporary root" in output
     if case in {"native-file", "native-local", "native-memmap"}:
