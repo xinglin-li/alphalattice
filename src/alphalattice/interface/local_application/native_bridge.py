@@ -1567,53 +1567,85 @@ def fresh_path() -> str | None:
 
 TRUST_STEP: Final = "native_bridge.codex_project_untrusted"
 MARKED_UNTRUSTED: Final = "native_bridge.codex_project_marked_untrusted"
+CONFIG_UNREADABLE: Final = "native_bridge.codex_config_unreadable"
+CodexLayer = tuple[Path, dict[str, Any]]
 
 
-def _codex_layers(environ: Mapping[str, str]) -> tuple[list[dict[str, Any]], Path, Path | None]:
+def codex_system_config(environ: Mapping[str, str]) -> Path:
+    """Codex's system configuration file, the layer below the person's own.
+
+    Args:
+        environ: The environment; on Windows its `ProgramData` names the folder.
+
+    Returns:
+        `/etc/codex/config.toml`, or on Windows `OpenAI/Codex/config.toml` under `ProgramData`.
+    """
+    if os.name == "nt":
+        return Path(environ.get("ProgramData") or "C:/ProgramData") / "OpenAI/Codex/config.toml"
+    return Path("/etc/codex/config.toml")
+
+
+def _codex_layers(environ: Mapping[str, str]) -> tuple[list[CodexLayer], Path, Path | None]:
     """Codex's system then user configuration, each read as TOML; a missing file is no layer.
 
     Returns:
-        The layers, lowest first; the user configuration's path; the first unreadable one's.
+        Each layer with its path, lowest first; the user configuration's path; the first
+        unreadable one's.
     """
     user = Path(environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
-    system = Path("/etc/codex/config.toml")
-    if os.name == "nt":
-        system = Path(environ.get("ProgramData") or "C:/ProgramData") / "OpenAI/Codex/config.toml"
-    layers = []
-    for path in (p for p in (system, user) if p.exists()):
+    layers: list[CodexLayer] = []
+    for path in (p for p in (codex_system_config(environ), user) if p.exists()):
         try:
             with path.open("rb") as stream:
-                layers.append(tomllib.load(stream))
+                layers.append((path, tomllib.load(stream)))
         except (OSError, tomllib.TOMLDecodeError):
             return layers, user, path
     return layers, user, None
 
 
-def _codex_root(project: Path, layers: list[dict[str, Any]]) -> Path | None:
-    """The nearest folder up holding a `project_root_markers` entry (`.git` unless set); None
-    for a malformed setting."""
-    markers = next(
-        (c["project_root_markers"] for c in reversed(layers) if "project_root_markers" in c),
-        [".git"],
+def _codex_root(project: Path, layers: list[CodexLayer]) -> tuple[Path | None, Path | None]:
+    """The nearest folder up holding a `project_root_markers` entry (`.git` unless set).
+
+    A malformed setting gives no root and the layer that holds it.
+    """
+    held, markers = next(
+        (
+            (p, c["project_root_markers"])
+            for p, c in reversed(layers)
+            if "project_root_markers" in c
+        ),
+        (None, [".git"]),
     )
     if not isinstance(markers, list) or not all(isinstance(m, str) for m in markers):
-        return None
+        return None, held
     here = project.resolve()
-    return next((c for c in (here, *here.parents) if any((c / m).exists() for m in markers)), here)
+    found = (c for c in (here, *here.parents) if any((c / m).exists() for m in markers))
+    return next(found, here), None
 
 
-def _codex_trust_level(layers: list[dict[str, Any]], root: Path) -> str | None:
-    """The highest layer's `trust_level` for the root: its exact path, or on Windows case-folded."""
+def _codex_trust_level(layers: list[CodexLayer], root: Path) -> tuple[str | None, Path | None]:
+    """The highest layer's `trust_level` for the root, with the layer that holds it.
+
+    The key is the root's exact path, or on Windows its case-folded form.
+    """
     folded = os.path.normcase(str(root))
-    for layer in reversed(layers):
+    for path, layer in reversed(layers):
         projects = layer.get("projects")
         for key, entry in projects.items() if isinstance(projects, dict) else ():
             matches = key == str(root) or (
                 os.name == "nt" and os.path.normcase(os.path.realpath(key)) == folded
             )
             if matches and isinstance(entry, dict) and isinstance(entry.get("trust_level"), str):
-                return str(entry["trust_level"])
-    return None
+                return str(entry["trust_level"]), path
+    return None, None
+
+
+def _trust_words(message: str, **values: str) -> str:
+    """The message's words with each `{name}` replaced by its value."""
+    words = str(worded(message))
+    for name, value in values.items():
+        words = words.replace("{" + name + "}", value)
+    return words
 
 
 def codex_project_trust(project: Path, environ: Mapping[str, str]) -> dict[str, Any]:
@@ -1628,33 +1660,35 @@ def codex_project_trust(project: Path, environ: Mapping[str, str]) -> dict[str, 
         environ: The environment naming `CODEX_HOME`, and on Windows `ProgramData`.
 
     Returns:
-        `present` True when trusted; False with the person's one step; None when a
-        configuration cannot be read, named by its path.
+        `present` True when trusted; False with the person's one step; None (unknown) when a
+        configuration cannot be read, with words naming its path. A marked entry names the
+        layer that holds it; no entry names the user configuration, where the step records it.
     """
     layers, user, unreadable = _codex_layers(environ)
-    root = None if unreadable else _codex_root(project, layers)
+    root, malformed = (None, unreadable) if unreadable else _codex_root(project, layers)
     if root is None:
+        config = str(unreadable or malformed)
         return {
             "present": None,
             "reason": "CODEX_CONFIG_UNREADABLE",
-            "config": str(unreadable or user),
+            "config": config,
+            "words": _trust_words(CONFIG_UNREADABLE, config=config),
         }
-    level = _codex_trust_level(layers, root)
+    level, held = _codex_trust_level(layers, root)
     if level == "trusted":
         return {"present": True, "project_root": str(root)}
     command = join(["codex", "exec", "--trust", "-C", str(root), "Reply OK."], shell())
     marked = level == "untrusted"
-    words = str(worded(MARKED_UNTRUSTED if marked else TRUST_STEP))
-    for name, value in (("root", str(root)), ("config", str(user)), ("command", command)):
-        words = words.replace("{" + name + "}", value)
+    config = str(held if marked and held else user)
+    message = MARKED_UNTRUSTED if marked else TRUST_STEP
     return {
         "present": False,
         "who_decides": "PERSON",
         "project_root": str(root),
         "trust_level": level,
-        "config": str(user),
+        "config": config,
         "commands": [] if marked else [command],
-        "words": words,
+        "words": _trust_words(message, root=str(root), config=config, command=command),
     }
 
 
@@ -1673,8 +1707,8 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
         answer = attachment_preflight(project, binding, session[0])
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
     if session is not None and session[0] == "codex":
-        trust = codex_project_trust(project, os.environ)
-        answer.update({"project_trust": trust} if trust["present"] is False else {})
+        trust = codex_project_trust(project, os.environ)  # missing gates; unknown never does
+        answer.update({} if trust["present"] is True else {"project_trust": trust})
     return answer
 
 

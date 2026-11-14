@@ -150,7 +150,8 @@ On Codex it also checks that Codex trusts this project: an untrusted project loa
 neither its `.codex/config.toml` nor the specialists, and Codex warns that untrusted
 project-local configuration is disabled. `project_trust` is the person's item: relay its
 `words` and one step in one line, `codex exec --trust` in the project, and never change
-their Codex settings yourself.
+their Codex settings yourself. A `project_trust` whose `present` is null is unknown: a Codex
+configuration it names cannot be read; first use continues, and you relay its `words`.
 Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line). Download and install
 `config/requirements-retrieval.lock` packages as your act, without repeating first-use

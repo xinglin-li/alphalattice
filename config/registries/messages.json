@@ -342,6 +342,15 @@
         "zh-CN": "Codex 在 {config} 中将此项目（{root}）标为不受信任，因此不会加载项目配置，也不会加载 AlphaLattice 的专家。该设置属于用户：请询问用户是否将该项目的 trust_level 改为 trusted；然后重新运行首次使用。"
       }
     },
+    "native_bridge.codex_config_unreadable": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["config"],
+      "words": {
+        "en": "Codex's configuration {config} cannot be read, so whether Codex trusts this project is unknown. First use continues; if Codex then loads no AlphaLattice specialist, tell the person that file needs repair; it is theirs.",
+        "zh-CN": "无法读取 Codex 配置 {config}，因此不知道 Codex 是否信任此项目。首次使用会继续；如果 Codex 随后没有加载任何 AlphaLattice 专家，请告诉用户该文件需要修复；该文件属于用户。"
+      }
+    },
     "native_setup.specialist_route": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",
