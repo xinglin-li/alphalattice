@@ -973,6 +973,7 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         os.environ,
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
         ALPHALATTICE_NETWORK_DISABLED="1",
+        SHARD="1",
         PYTHONPATH=str(
             root / "src"
         ),  # the job runs at the repository root, where src is on the path
@@ -1554,8 +1555,9 @@ def _pilot_slice(code: str) -> tuple[str, ...]:
 
 @pytest.mark.proves("testing.codspeed_slice_names_a_repeat_unsafe_test")
 def test_the_pilot_slice_check_names_a_test_whose_body_fails_when_run_again(tmp_path):
-    """The cost job's slice check calls each body twice, as CodSpeed does: a body that passes once
-    and fails again is named, with its repair, before any measurement."""
+    """The cost job's slice check calls each body of its shard's group twice, as CodSpeed does: a
+    body that passes once and fails again is named, with its repair, before any measurement, by the
+    one shard that measures it."""
     import os
 
     import yaml
@@ -1578,14 +1580,19 @@ def test_the_pilot_slice_check_names_a_test_whose_body_fails_when_run_again(tmp_
         encoding="utf-8",
     )
     env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(root / "src"))
-    done = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    # Collected in order: slice_0's test_clean, test_rows, slice_1's and the file's test_clean.
+    other, done = (
+        subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=tmp_path,
+            env=dict(env, SHARD=shard),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        for shard in ("1", "2")
     )
+    assert other.returncode == 0, other.stdout  # shard 1 checks only its own group
     assert done.returncode != 0 and "test_rows" in done.stdout and "test_clean" not in done.stdout
     assert "runs twice" in done.stdout and "repeat: this body passed once" in done.stdout

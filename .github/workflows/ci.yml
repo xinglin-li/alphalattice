@@ -274,6 +274,7 @@ jobs:
           import os
           import re
           import sys
+          import time
           from pathlib import Path
 
           import pytest
@@ -301,7 +302,7 @@ jobs:
           def _event(kind, **fields):
               if _stream is not None:
                   try:
-                      _stream.write(json.dumps({"event": kind, **fields}) + "\n")
+                      _stream.write(json.dumps({"event": kind, "at": round(time.time(), 3), **fields}) + "\n")
                       _stream.flush()
                   except (OSError, TypeError, ValueError) as error:
                       print(f"worker diagnostics unavailable: {type(error).__name__}", file=sys.stderr)
@@ -605,14 +606,17 @@ jobs:
       - name: Build Local Web
         timeout-minutes: 1
         run: uv run python scripts/build_local_web_ui.py --product
-      # Each slice path collects, and the slice passes with each body called twice, as CodSpeed
-      # calls it, so a repeat-unsafe test is named here, not read as a red shard.
+      # Each slice path collects, and this shard's group passes with each body called twice, as
+      # CodSpeed calls it, so a repeat-unsafe test is named here, not read as a red shard.
       - name: Check the pilot slice
         timeout-minutes: 3
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           uv run python - <<'PY'
-          import subprocess, sys
+          import os, subprocess, sys
           SLICE = ("tests/integration/evaluation", "tests/unit/evaluation", "tests/integration/feature_engine/test_factor_arithmetic_identity.py")
+          nodes = []
           for path in SLICE:
               result = subprocess.run([sys.executable, "-m", "pytest", path, "--collect-only", "-q", "-m", "not real_evidence", "-p", "no:cacheprovider"], capture_output=True, text=True)
               if result.returncode:
@@ -620,8 +624,10 @@ jobs:
                   reason = "selected no tests" if result.returncode == 5 else "failed collection"
                   print(f"::error::CodSpeed slice {path} {reason} (exit {result.returncode})", flush=True)
                   sys.exit(result.returncode)
-          twice = subprocess.run([sys.executable, "-m", "pytest", *SLICE, "-q", "-rf", "-m", "not real_evidence", "-p", "no:cacheprovider", "-p", "devtools.testing.repeat"])
-          if twice.returncode:
+              nodes += [line for line in result.stdout.split("\n\n", 1)[0].splitlines() if "::" in line]
+          group = nodes[int(os.environ["SHARD"]) - 1::4]  # as --test-group splits the slice: each test in one shard
+          twice = group and subprocess.run([sys.executable, "-m", "pytest", *group, "-q", "-rf", "-p", "no:cacheprovider", "-p", "devtools.testing.repeat"])
+          if twice and twice.returncode:
               print(f"::error::CodSpeed slice: a test gives another result when its body runs twice; each is named above (exit {twice.returncode})", flush=True)
               sys.exit(twice.returncode)
           PY
