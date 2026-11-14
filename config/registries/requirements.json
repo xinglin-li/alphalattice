@@ -832,6 +832,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "testing.worker_crash_evidence_is_named": {
+      "description": "A dead pytest worker records its actual exit, running test and fault output, and missing evidence remains unknown.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
       "owner": "alphalattice.control.workspace_runtime",

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -135,6 +138,87 @@ def pytest_configure_node(node: Any) -> None:
         node.workerinput["alphalattice_size_scope"] = families is not None
         if families is not None:
             node.workerinput["alphalattice_size_families"] = list(families)
+
+
+def worker_crash_evidence(worker: Any, node: str | None, directory: Path) -> dict[str, Any]:
+    """Read the worker exit and fault stream; an absent value stays unknown."""
+    worker_id = worker.gateway.id
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None:
+        raise ValueError("testing.worker_identity_unknown: invalid xdist worker identity")
+    record: dict[str, Any] = {"worker": worker_id, "node": node, "exit": None, "stack": None}
+    try:
+        process = worker.gateway._io.popen
+        exit_code = process.wait(timeout=2)
+        if type(exit_code) is not int:
+            raise ValueError("process did not provide an exit code")
+        record["exit"] = exit_code
+    except (AttributeError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        record["exit_error"] = f"worker exit unavailable: {type(error).__name__}: {error}"
+    try:
+        stack = (directory / f"worker-{worker_id}.fault.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        if not stack:
+            raise ValueError("fault stream is empty")
+        record["stack"] = stack
+    except (OSError, ValueError) as error:
+        record["stack_error"] = f"fault stream unavailable: {error}"
+    return record
+
+
+@pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
+def pytest_sessionstart(session: Any) -> None:
+    """Put each managed suite worker's native fault output in its attempt directory."""
+    config = session.config
+    worker = getattr(config, "workerinput", None)
+    if not os.environ.get("WK_SUITE_ATTEMPT") or not isinstance(worker, dict):
+        return
+    worker_id = worker.get("workerid")
+    xml = getattr(config.option, "xmlpath", None)
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None or not xml:
+        raise pytest.UsageError(
+            "testing.worker_capture_unavailable: worker identity or JUnit path missing"
+        )
+    try:
+        stream = (Path(xml).parent / f"worker-{worker_id}.fault.log").open("x", encoding="utf-8")
+        faulthandler.enable(file=stream, all_threads=True)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise pytest.UsageError(f"testing.worker_capture_unavailable: {error}") from error
+    config._worker_fault_stream = stream
+
+
+@pytest.hookimpl(optionalhook=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_testnodedown(node: Any, error: Any) -> None:
+    """Remember each xdist process and capture a crash before its scheduler entry goes away."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    config = node.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is None:
+        workers = config._worker_capture_nodes = {}
+    scheduler = getattr(config.pluginmanager.getplugin("dsession"), "sched", None)
+    pending = getattr(scheduler, "node2pending", {}).get(node, ())
+    collection = getattr(scheduler, "collection", None)
+    running = collection[pending[0]] if error is not None and pending and collection else None
+    workers[node.gateway.id] = (node, running, error is not None)
+    xml = getattr(config.option, "xmlpath", None)
+    if error is not None and xml:
+        node._worker_crash_evidence = worker_crash_evidence(node, running, Path(xml).parent)
+
+
+@pytest.hookimpl(optionalhook=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_handlecrashitem(crashitem: str, report: Any, sched: Any) -> None:
+    """Carry the actual exit and fault stream in the failed node's existing JUnit record."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    record = getattr(getattr(report, "node", None), "_worker_crash_evidence", None)
+    if not isinstance(record, dict) or record.get("node") != crashitem:
+        report.longrepr = f"{report.longrepr}\nworker capture unmeasured: node identity unavailable"
+        return
+    exit_value = record.get("exit")
+    stack = record.get("stack") or record.get("stack_error", "fault stream unavailable")
+    exit_text = exit_value if exit_value is not None else "unknown"
+    report.longrepr = f"{report.longrepr}\nworker {record['worker']} exit {exit_text}\n{stack}"
 
 
 def ordered_requeue() -> type:
@@ -749,6 +833,27 @@ def pytest_configure(config: Any) -> None:
 @pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
 def pytest_sessionfinish(session: Any) -> None:
     """Retain component costs once per process; missing evidence cannot prove the stage budget."""
+    config = session.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is not None and os.environ.get("WK_SUITE_ATTEMPT"):
+        try:
+            directory = Path(config.option.xmlpath).parent
+            records = [
+                worker_crash_evidence(node, running, directory)
+                for node, running, _ in workers.values()
+            ]
+            data = {
+                "schema": "alphalattice.pytest-workers.v1",
+                "attempt": os.environ["WK_SUITE_ATTEMPT"],
+                "source_sha": os.environ.get("WK_SUITE_SOURCE_SHA"),
+                "workers": records,
+            }
+            with (directory / "worker-exits.json").open("x", encoding="utf-8") as stream:
+                json.dump(data, stream, allow_nan=False)
+                stream.write("\n")
+        except (OSError, ValueError, AttributeError, KeyError) as error:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            print(f"testing.worker_capture_unavailable: {error}", file=sys.stderr)
     observer = session.config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:
@@ -774,6 +879,10 @@ def pytest_sessionfinish(session: Any) -> None:
 
 
 def pytest_unconfigure(config: Any) -> None:
+    stream = getattr(config, "_worker_fault_stream", None)
+    if stream is not None:
+        faulthandler.disable()
+        stream.close()
     observer = config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:

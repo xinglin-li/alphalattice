@@ -114,6 +114,16 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert done.returncode == (1 if scenario == "fixture-error" else 0), done.stdout + done.stderr
+    if workers and scenario == "normal":
+        captured = json.loads((tmp_path / "worker-exits.json").read_text(encoding="utf-8"))
+        assert captured["attempt"] == "f" * 32
+        assert captured["source_sha"] == "a" * 40
+        assert {row["worker"] for row in captured["workers"]} == {"gw0", "gw1"}
+        assert all(row["exit"] == 0 and row["node"] is None for row in captured["workers"])
+        assert all(
+            (tmp_path / f"worker-{row['worker']}.fault.log").is_file()
+            for row in captured["workers"]
+        )
     if scenario == "golden-summary":
         summary = done.stdout.partition("Golden fills in Large tests")[2]
         assert all(value in summary for value in ("test_seed", "1.250", "probe:fill"))
