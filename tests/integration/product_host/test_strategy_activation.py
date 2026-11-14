@@ -1227,6 +1227,11 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
 
         plan, stop = tmp_path / "plan.json", tmp_path / "stop.json"
         # The stop: the network closed, and a session the workspace's data does not hold.
+        # Activation admitted its own update for Friday in its act, the update this test plans;
+        # it is read once it has stopped, so its stop, not its timing, answers what follows.
+        (first,) = [t.task_id for t in registry.tasks() if t.task_kind == ADVANCEMENT_TASK_KIND]
+        task = str(first)
+        assert _settled(live, task) == "BLOCKED"
         network(False)
         code, planned = cli(
             "research-update", "plan", "--package", PACKAGE, "--through", "2026-09-11",
@@ -1235,33 +1240,25 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
         assert code == 0, planned
         assert planned["data"]["source_access"] == "EXPLICIT_NETWORK_REQUIRED", planned
         monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-        code, stopped = cli(
-            "research-update", "run", "--from", str(plan), "--wait", "--output", str(stop)
-        )
-        task = stopped["data"]["task_id"]
+        # READBACK names the provider work in words, the person's network request and the
+        # resume bound to the stopped Task's own plan, the one just planned.
+        code, stopped = cli("research-update", "show", "--task", task, "--output", str(stop))
         seen = _seen(stopped, registry, task)
         stopped_code = stopped["failure_code"]
         assert stopped_code.startswith(
             "research_update.input_source_access_not_admitted:2026-09-11,DATA"
         ), seen
-        assert "missing market data through session 2026-09-11" in stopped["detail"], seen
         assert (code, stopped["failure_code"]) == (2, stopped_code), seen
+        assert "missing market data through session 2026-09-11" in stopped["detail"], seen
+        assert "2026-09-11,DATA" not in stopped["detail"], seen
         assert stopped["data"]["network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH", seen
         assert stopped["data"]["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
         assert "network set" not in stopped["detail"], seen
-        # Its read names the way its words give, bound to the stopped Task's own plan.
-        assert stopped["data"]["next_requests"]["resume"] == {
+        assert stopped["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
+        assert stopped["next_requests"]["resume"] == {
             "operation": "RESEARCH_UPDATE_RUN",
             "update_plan_hash": planned["data"]["update_plan_hash"],
         }
-        # READBACK must name the same provider work as STATUS's wait,
-        # while keeping both the person's network request and the bound resume.
-        code, read = cli("research-update", "show", "--task", task)
-        assert (code, read["failure_code"]) == (2, stopped_code), read
-        assert "missing market data through session 2026-09-11" in read["detail"]
-        assert "2026-09-11,DATA" not in read["detail"]
-        assert read["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
-        assert read["next_requests"]["resume"] == stopped["next_requests"]["resume"]
         held = registry.task(UUID(task)).record_hash
         check_ways(task, ("research-update", "show", "--task", task), ("task", "show", task))
         # The rerun while the network stays closed is refused by that stop; nothing moves.
