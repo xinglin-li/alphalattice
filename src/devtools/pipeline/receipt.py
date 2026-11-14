@@ -208,20 +208,29 @@ class Configuration(_Strict):
     lane: Literal["merge", "candidate", "nightly"] | None = None
 
 
+SKIPS = ("SKIPPED_BY_HOST", "SKIPPED_DOCUMENTS")
+"""A row another host runs, and a row its provider judged needless for a change of documents."""
+
+
 class Step(_Strict):
-    status: Literal["PASS", "FAIL", "ERROR", "SKIPPED_BY_HOST"]
+    status: Literal["PASS", "FAIL", "ERROR", "SKIPPED_BY_HOST", "SKIPPED_DOCUMENTS"]
     exit: int | None
     seconds: Seconds
     provider: Text
     stopped: Literal["bound", "launch"] | None = (
         None  # why an exit-less row ended: its runner knows
     )
+    documents: list[Text] | None = None  # the changed documents a SKIPPED_DOCUMENTS row names
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def _exit_agrees(self) -> Step:
-        legal = {"PASS": self.exit == 0, "SKIPPED_BY_HOST": self.exit is None}
+        legal = {"PASS": self.exit == 0} | {skip: self.exit is None for skip in SKIPS}
         if not legal.get(self.status, self.exit != 0):
             raise PydanticCustomError("receipt_inconsistent", "a step's status and exit disagree")
+        if (self.status == SKIPS[1]) != bool(self.documents):
+            raise PydanticCustomError(
+                "receipt_inconsistent", "a row skipped for documents names them, and only it"
+            )
         return self
 
 
@@ -357,7 +366,7 @@ def red_class(
     failed = over_bound
     for row, step in steps:
         status, code = step["status"], step["exit"]
-        if status in ("PASS", "SKIPPED_BY_HOST"):
+        if status == "PASS" or status in SKIPS:
             continue
         if code is None:
             stopped = step.get("stopped")

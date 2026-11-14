@@ -501,6 +501,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.a_row_skipped_for_documents_names_them": {
+      "description": "A provider may record a row as skipped for a change of documents only by naming those documents, and such a row classes no red.",
+      "owner": "devtools.pipeline",
+      "layer": "unit",
+      "seconds": 1
+    },
     "pipeline.code_health_reports_every_row": {
       "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
       "owner": "devtools.pipeline",
