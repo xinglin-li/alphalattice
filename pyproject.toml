@@ -164,6 +164,17 @@ mutation = [
 package = true
 default-groups = ["dev"]
 conflicts = [[{ group = "docs" }, { group = "dev" }]]
+# semgrep 1.185.0 (its latest) pins packages with known vulnerabilities, and nothing else here needs them. Each
+# override lifts one pin to its lowest fixed release; drop it once a semgrep release pins a fixed version itself.
+# The opentelemetry family moves together: its other members follow these through their own exact pins.
+override-dependencies = [
+    "mcp>=1.30.0,<2",  # CVE-2026-59951, CVE-2026-116684, CVE-2026-116685, CVE-2026-116686
+    "opentelemetry-api>=1.45.2,<2",  # CVE-2026-114603, CVE-2026-126360
+    "opentelemetry-sdk>=1.45.2,<2",  # moves with opentelemetry-api, which it pins exactly
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",  # moves with opentelemetry-sdk, which it pins
+    "opentelemetry-instrumentation-requests>=0.66b2,<1",  # the 1.45.2 train's instrumentation
+    "opentelemetry-instrumentation-threading>=0.66b2,<1",  # the 1.45.2 train's instrumentation
+]
 
 [tool.ruff]
 target-version = "py312"
