@@ -866,19 +866,24 @@ class DecisionAdvancementApplication:
 
         Returns:
             Existing uncancelled matching task admission, a stopped one a rerun resumes reopened,
-            or a newly admitted durable task.
+            one whose stop still holds as it stands, or a newly admitted durable task.
 
         Raises:
             ValueError: Plan authority/freshness or captured workspace inputs changed before
-                admission, or the network a stopped Task's stop names is still closed.
+                admission.
         """
         self._require(plan)
         envelope, goal, workflow = task_contract(plan)
         for task in self.session.task_control_registry.tasks():
             if task.input == envelope and task.lifecycle is not TaskLifecycle.CANCELLED:
-                # Its data stage's stop a rerun resumes reopens it, as the data update's own does,
-                # and a rerun while its network stays closed is refused by that stop.
-                task = self.data.resume_stopped(task, plan.data_plan)
+                # Its data stage's stop a rerun resumes reopens it, as the data update's own does.
+                # While the network that stop names stays closed, the stop holds and the Task is
+                # answered as it stands: its own read words the stop and names its resume.
+                try:
+                    task = self.data.resume_stopped(task, plan.data_plan)
+                except ValueError as error:
+                    if str(error) != task.failure_code:
+                        raise
                 return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         self._fresh(plan)
         if (

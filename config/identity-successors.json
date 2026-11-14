@@ -14974,6 +14974,13 @@
    "successor": "033f4b3cecd20dbad9ebd6cb8aaecde58877bc07dd9175fe8049f82f018d92ca",
    "change": "Read Evidence source documents stored compressed",
    "reason": "Equal value: evidence source objects keep the same identity (original length and SHA-256); stored objects read back byte-identical, a compressed form is accepted only when it expands to exactly that identity, and tampered objects are still refused"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "799cccf4f416c7e553000a68a16e1e679c926193f73fdd1e41e369fa8002df0a",
+   "successor": "f1114a0d7986c42eefb85616801d1fb0b380a9b2e19d37699830b96b73b99bc1",
+   "change": "Explain a stopped research update's rerun in words, with its resume",
+   "reason": "Lawful change: admission of a plan whose matching Task stopped on a still-closed network now answers with that stopped Task (its id and lifecycle) instead of raising the Task's failure code, so the person reads the stop and its resume in the Task's own words; no decision computation, input or output value changes, and any other refusal still raises"
   }
  ]
 }

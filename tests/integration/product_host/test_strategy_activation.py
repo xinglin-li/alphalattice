@@ -1267,6 +1267,12 @@ def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
         code, refused = cli("research-update", "run", "--from", str(plan))
         assert (code, refused["failure_code"]) == (2, stopped_code), refused
         assert registry.task(UUID(task)).record_hash == held
+        # Answered by the stopped Task's own read: its id, its stop's words, its resume.
+        assert (refused.get("task_id"), refused["data"].get("lifecycle")) == (task, "BLOCKED"), (
+            refused
+        )
+        assert refused["detail"].partition(". ")[0] == stopped["detail"].partition(". ")[0]
+        assert refused["next_requests"]["resume"] == stopped["next_requests"]["resume"], refused
         # A person allows the network: the offered resume takes up the same Task, and the wait
         # follows it rather than ending at its admission.
         monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
