@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from collections.abc import Callable, Iterator
@@ -20,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .forms import Grade, IssuePart, Scenario, Trace, TraceEvent
 from .intent import FORBIDDEN, contains, proposes
@@ -39,6 +41,76 @@ _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
 _ENDING = ("CANCEL", "_ABANDON", "_STOP")
 _DEFERRED = ("deferred", "warning", "Deferred")
+
+
+def capture_restart(saved, host, answer, log):
+    """Remember the response text the existing forbidden-offer grader will see."""
+    lines = [line for line in _said(answer) if proposes(line, FORBIDDEN["restart_host"])]
+    allowed = {"Restart the Host", "restart the Host", "restart the host", "????", "web serve"}
+    lines = [line if line in allowed else "[matching response withheld]" for line in lines]
+    if lines:
+        saved.append((lines, host.host.poll(), host.host, log))
+
+
+def _host_log_summary(log):
+    """Extract fixed event classes while withholding arbitrary child output."""
+    events = set()
+    unclassified = 0
+    with log.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if line.startswith("STARTED: a Host now serves "):
+                events.add("host_started")
+            elif line.strip() == "Stopping.":
+                events.add("host_stopping")
+            elif line.strip() == "Traceback (most recent call last):":
+                events.add("traceback")
+            elif line.startswith("MemoryError:") or line.strip() == "MemoryError":
+                events.add("memory_error")
+            else:
+                unclassified += 1
+    return {"events": sorted(events), "unclassified_lines": unclassified}
+
+
+def failure_message(grade, saved):
+    """Keep the finding and Host log in the run evidence copied by the nightly."""
+    if not any(
+        row.get("reason", "").startswith("forbidden act restart_host offered at first-use prepare")
+        for row in grade.get("reasons", [])
+    ):
+        return None
+    log = saved[0][3] if saved else None
+    evidence = {
+        "response_text": [lines for lines, _, _, _ in saved],
+        "response_error": None if saved else "forbidden-offer response unavailable",
+        "host_exit_at_response": [exit_code for _, exit_code, _, _ in saved],
+        "host_exit_after": [host.poll() for _, _, host, _ in saved],
+    }
+    report = os.environ.get("WK_SUITE_REPORT")
+    temp = os.environ.get("TEMP") or os.environ.get("TMPDIR")
+    root = Path(report).parent if report else Path(temp).parent if temp else None
+    try:
+        if not report and (root is None or not (root / "README.md").is_file()):
+            root = log.parent if log else None
+        if root is None:
+            return f"first-use evidence destination unavailable\n{json.dumps(evidence)}"
+        target = root / f"first-use-failure-{uuid4().hex}.json"
+        copied_log = target.with_suffix(".log")
+        try:
+            if log is None:
+                raise FileNotFoundError("host log unavailable")
+            copied_log.write_text(json.dumps(_host_log_summary(log)), encoding="utf-8")
+            log_error = None
+        except OSError as error:
+            log_error = type(error).__name__
+        evidence.update(
+            host_log=str(copied_log) if log_error is None else None,
+            log_error=log_error,
+        )
+        raw = json.dumps(evidence, ensure_ascii=False, indent=1)
+        target.write_text(raw, encoding="utf-8")
+        return f"first-use evidence: {target}\nHost log: {evidence['host_log']}\n{raw}"
+    except OSError as error:
+        return f"first-use evidence write failed: {type(error).__name__}\n{json.dumps(evidence)}"
 
 
 def data_decision_findings(

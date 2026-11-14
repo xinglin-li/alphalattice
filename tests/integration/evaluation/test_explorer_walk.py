@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from devtools.evaluation import explorer as explorer_module
 from devtools.evaluation.explorer import Explorer, mutations
 from devtools.evaluation.forms import Scenario
 
@@ -37,7 +39,9 @@ def test_alias_mistakes_change_the_alias_and_keep_the_members_words() -> None:
     assert reply["committee_message"] == {**message, "reply_to": "M9999"}
 
 
-def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path: Path) -> None:
+def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(
+    tmp_path: Path, monkeypatch
+) -> None:
     """requirement: a refused offer, a self-offer that fails the same way, a forbidden act and
     an unreached route are each named once, with the loop part it broke in."""
     start = {
@@ -71,6 +75,65 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path:
         "route": "system",
     }
     assert not grade["passed"] and trace.events[0].attributes["alphalattice.offers"] == ["replan"]
+
+    capture = getattr(explorer_module, "capture_restart", lambda *args: None)
+    render = getattr(explorer_module, "failure_message", lambda result, saved: None)
+    owned = tmp_path / "run"
+    (owned / "temp").mkdir(parents=True)
+    (owned / "README.md").write_text("State: active\n", encoding="utf-8")
+    monkeypatch.setenv("TEMP", str(owned / "temp"))
+    output = owned / "pytest" / "invocation-12345678"
+    output.mkdir(parents=True)
+    monkeypatch.setenv("WK_SUITE_REPORT", str(output / "suite-observation.json"))
+    log = tmp_path / "host.log"
+    secret = "private" + "-sentinel"
+    log.write_text(
+        f"STARTED: a Host now serves {secret}\nTraceback (most recent call last):\n"
+        f"MemoryError: {secret}\n{secret}\n",
+        encoding="utf-8",
+    )
+    for detail, exit_code, failed in (
+        (f"Restart the Host {secret}", 17, True),
+        ("Restart the Host", None, True),
+        ("Continue", 0, False),
+    ):
+        saved = []
+        process = SimpleNamespace(poll=lambda code=exit_code: code)
+        host = SimpleNamespace(host=process)
+        response = {"outcome": "OK", "detail": detail, "data": {"route": "first-use"}}
+        route = Scenario(
+            "first_use",
+            "first use",
+            "2026-10-10T15:00:00+00:00",
+            (),
+            (("first-use",),),
+            "agent",
+            ("restart_host",),
+        )
+        walk = Explorer(
+            lambda _, result=response: result,
+            lambda _: {},
+            route,
+            tmp_path,
+            observe=lambda answer, items=saved, server=host: capture(items, server, answer, log),
+        )
+        result, _ = walk.explore([["first-use", "prepare"]])
+        before = set(output.glob("first-use-failure-*.json"))
+        message = render(result, saved)
+        added = set(output.glob("first-use-failure-*.json")) - before
+        if failed:
+            assert not result["passed"] and len(added) == 1
+            evidence = json.loads(added.pop().read_text(encoding="utf-8"))
+            kept_log = Path(evidence["host_log"]).read_text(encoding="utf-8")
+            assert secret not in kept_log and secret not in message
+            assert json.loads(kept_log)["events"] == ["host_started", "memory_error", "traceback"]
+            assert evidence["response_text"] == [
+                ["[matching response withheld]" if secret in detail else "Restart the Host"]
+            ]
+            assert evidence["host_exit_at_response"] == [exit_code]
+            assert evidence["host_log"] in message and json.dumps(exit_code) in message
+        else:
+            assert result["passed"] and not added and message is None
 
 
 @pytest.mark.parametrize(
