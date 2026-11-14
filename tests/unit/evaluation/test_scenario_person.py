@@ -17,7 +17,7 @@ SHEET = {
 }
 
 
-def person(tmp_path, monkeypatch, *, reply=None, posted=0):
+def person(out, *, reply=None, posted=0):
     ticks = iter(range(0, 1000, 10))
     calls = []
 
@@ -27,9 +27,7 @@ def person(tmp_path, monkeypatch, *, reply=None, posted=0):
             record.with_name(record.stem + ".answer.txt").write_text(reply, encoding="utf-8")
         return not posted
 
-    made = ScenarioPerson(
-        SHEET, tmp_path, ask=post, clock=lambda: next(ticks), sleep=lambda s: None
-    )
+    made = ScenarioPerson(SHEET, out, ask=post, clock=lambda: next(ticks), sleep=lambda s: None)
     return made, calls
 
 
@@ -50,32 +48,35 @@ def person(tmp_path, monkeypatch, *, reply=None, posted=0):
         ("Convene the committee?", "committee.daily", None, 0, UNKNOWN, "unknown"),
         ("Keep the network on?", "network.daily_updates", None, 0, None, "stop"),
     ],
+    ids=["sheet", "asked", "unknown", "refused-post", "nonblocking", "stop"],
 )
 def test_the_person_answers_by_source(
-    tmp_path, monkeypatch, question, code, reply, posted, words, source
+    tmp_path_factory, question, code, reply, posted, words, source
 ):
-    made, calls = person(tmp_path, monkeypatch, reply=reply, posted=posted)
+    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    made, calls = person(out, reply=reply, posted=posted)
     answer = made.answer(question, code=code, session="s1")
     assert (answer.words, answer.source) == (words, source)
     assert answer.stop == (
         f"scenario_person.product_question_unanswered:{code}" if source == "stop" else None
     )
     assert len(calls) == (0 if source == "sheet" else 1)
-    rows = [json.loads(line) for line in (tmp_path / "questions.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (out / "questions.jsonl").read_text().splitlines()]
     assert rows[0] | dict(at=None) == dict(
         event="asked", at=None, id=rows[0]["id"], question=question, code=code, session="s1"
     )
     assert rows[-1]["event"] == "answered" and rows[-1]["source"] == source
-    assert (tmp_path / "sheet-proposals.jsonl").exists() is (source == "asked")
+    assert (out / "sheet-proposals.jsonl").exists() is (source == "asked")
 
 
-def test_asking_is_graded_and_an_unset_ask_asks_no_one(tmp_path):
-    made = ScenarioPerson(SHEET, tmp_path)
+def test_asking_is_graded_and_an_unset_ask_asks_no_one(tmp_path_factory):
+    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    made = ScenarioPerson(SHEET, out)
     made.scripted("Keep the network on?", "Yes.", code="network.daily_updates", session="s")
     made.answer("Which universe should I use?")
     made.answer("Write in English?")
     assert made.answer("Keep the network on?", code="network.daily_updates").stop
-    graded = asking(tmp_path)
+    graded = asking(out)
     assert graded | dict(waited_s=0) == dict(
         questions=4,
         by_source=dict(script=1, sheet=1, unknown=1, stop=1),
@@ -83,7 +84,7 @@ def test_asking_is_graded_and_an_unset_ask_asks_no_one(tmp_path):
         waited_s=0,
         stops=["scenario_person.product_question_unanswered:network.daily_updates"],
     )
-    assert asking(tmp_path / "absent") == dict(
+    assert asking(out / "absent") == dict(
         questions=0, by_source={}, avoidable=0, waited_s=0, stops=[]
     )
 
@@ -152,11 +153,13 @@ def test_the_ask_command_is_a_json_argv_or_refused_by_name(raw, argv):
         ),  # a pending Host question owns the agent's words
         ("acted", "Continue.", False, None, None),
     ],
+    ids=["scripted", "product", "nonblocking", "agent", "relayed", "acted"],
 )
 def test_a_native_turns_questions_go_to_the_person(
-    tmp_path, monkeypatch, case, prompt, terminal, stop, source
+    tmp_path_factory, case, prompt, terminal, stop, source
 ):
-    made, _ = person(tmp_path, monkeypatch, reply="Yes, in English.")
+    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    made, _ = person(out, reply="Yes, in English.")
     made.nonblocking = {"net.daily"} if case == "nonblocking" else set()
     made.ask = made.ask if case == "agent" else None
     answered, offered = set(), {"net.daily"}
@@ -183,7 +186,7 @@ def test_a_native_turns_questions_go_to_the_person(
         session="s",
     )
     assert got == (prompt, terminal, stop)
-    graded = asking(tmp_path)
+    graded = asking(out)
     assert graded["by_source"] == ({source: 1} if source else {}) and graded["stops"] == (
         [stop] if stop else []
     )
