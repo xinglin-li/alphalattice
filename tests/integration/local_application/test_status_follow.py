@@ -1680,11 +1680,8 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
-    codex = tmp_path / "codex-home"  # this session's Codex, which trusts no project yet
-    codex.mkdir()
+    codex = Path(os.environ["CODEX_HOME"])  # this test's own Codex, which trusts no project yet
     (tmp_path / ".git").mkdir()  # the project root Codex trusts
-    monkeypatch.setenv("CODEX_HOME", str(codex))
-    monkeypatch.setenv("ProgramData", str(tmp_path / "no-system-layer"))
     monkeypatch.setattr(native_bridge, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
