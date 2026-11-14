@@ -2507,9 +2507,8 @@ class _Chain:
                 },
             )
             return self.stop(step, registered)
-        deadline = self.deadline
-        remaining = max(0.1, deadline - time.monotonic())
-        ended = _follow(self.client, body, remaining, deadline=deadline, receipt=self.receipt)
+        # The chain's own deadline bounds the follow; no --max-wait is re-derived from it.
+        ended = _follow(self.client, body, None, deadline=self.deadline, receipt=self.receipt)
         self.steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
         self.followed_answer = ended
         return None if outcome_of(ended) == "OK" else self.stop(step, ended)

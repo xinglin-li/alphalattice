@@ -86,9 +86,9 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             "_follow",
             "_wait_for_goal",
             "_wait",
-            # the chained verbs: one deadline bounds every follow of a verb's Tasks.
+            # the chained verbs: one deadline bounds every follow of a verb's Tasks, and each
+            # follow takes that deadline as it is.
             "_chain",
-            "followed",
             "_committee_wait",
         )
     }
