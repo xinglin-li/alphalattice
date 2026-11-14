@@ -108,7 +108,6 @@ kind = "pytest"
 owner = "devtools.pipeline"
 reason = "The structural, mandatory, changed and affected tests, within the selection budget."
 hosts = ["workshop", "public"]
-selection = { budget_test_seconds = 3600 }
 plugins = ["receipt-events"]
 public = [
   "tests/integration/product_host/test_local_web_service.py",
