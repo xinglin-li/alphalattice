@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import sys
 from ctypes import wintypes
 
 
@@ -37,6 +38,8 @@ class ChildJob:
     @staticmethod
     def current_limit_flags() -> int | None:
         """Read this process's current Job limits; unknown facts remain unknown."""
+        if sys.platform != "win32":
+            return None
         try:
             kernel = ctypes.WinDLL("kernel32", use_last_error=True)
             kernel.QueryInformationJobObject.argtypes = [
@@ -58,6 +61,8 @@ class ChildJob:
 
     def __init__(self, *, affinity: int | None = None, priority: int | None = None) -> None:
         """Create this parent's Job with its caller's optional affinity and priority."""
+        if sys.platform != "win32":
+            raise OSError("Windows Jobs are unavailable")
         self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         self.kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
         self.kernel.CreateJobObjectW.restype = wintypes.HANDLE
@@ -89,17 +94,23 @@ class ChildJob:
 
     def assign(self, process: int) -> None:
         """Assign the caller-owned process handle to this Job."""
+        if sys.platform != "win32":
+            raise OSError("Windows Jobs are unavailable")
         if not self.kernel.AssignProcessToJobObject(self.handle, process):
             raise ctypes.WinError(ctypes.get_last_error())
 
     def assign_and_resume(self, process: int, thread: int) -> None:
         """Admit the suspended child before it can run any Host code."""
+        if sys.platform != "win32":
+            raise OSError("Windows Jobs are unavailable")
         self.assign(process)
         if self.kernel.ResumeThread(thread) == 0xFFFFFFFF:
             raise ctypes.WinError(ctypes.get_last_error())
 
     def close(self) -> None:
         """Release only this owner's handle, ending any remaining descendants."""
+        if sys.platform != "win32":
+            raise OSError("Windows Jobs are unavailable")
         import _winapi
 
         if self.handle:

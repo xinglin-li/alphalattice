@@ -51,43 +51,10 @@ SIZE_TMP_PATH = pytest.StashKey[Path]()
 SIZE_CREATED = pytest.StashKey[tuple[Path, frozenset[Path]] | str]()
 SIZE_RECORDED = pytest.StashKey[bool]()
 SIZE_FAILED = pytest.StashKey[bool]()
-INSTRUCTION_COST = pytest.StashKey[bool]()
 SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
 SIZE_CLOCK = pytest.StashKey[dict[str, float]]()
 SESSION_FOOTPRINT = pytest.StashKey[sizes.SessionFootprint]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
-
-
-def _instruction_cost(config: Any) -> bool:
-    """Only the advisory simulation omits wall-clock test limits, never a gating lane."""
-    if (
-        os.environ.get("ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS") != "1"
-        or os.environ.get("ALPHALATTICE_PIPELINE_STAGE")
-        or os.environ.get("ALPHALATTICE_TEST_LANE")
-    ):
-        return False
-    plugin = config.pluginmanager.get_plugin("codspeed_plugin")
-    return bool(
-        plugin
-        and getattr(plugin, "is_codspeed_enabled", False)
-        and getattr(getattr(plugin, "mode", None), "value", None) == "simulation"
-    )
-
-
-def _instruction_cost_timeouts(config: Any, items: list[Any]) -> None:
-    if _instruction_cost(config):
-        for item in items:
-            item.stash[INSTRUCTION_COST] = True
-            item.add_marker(pytest.mark.timeout(0, func_only=False), append=False)
-            item.user_properties.append(
-                ("test_timeout_mode", "off:codspeed-instruction-simulation")
-            )
-
-
-def pytest_report_header(config: Any) -> str | None:
-    if _instruction_cost(config):
-        return "CodSpeed instruction simulation: test wall-time bounds off; job deadline remains"
-    return None
 
 
 def _family(item: Any) -> str:
@@ -630,7 +597,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
     limit = dict(item.user_properties)["test_timeout_seconds"]
-    if seconds <= limit or item.stash.get(INSTRUCTION_COST, False):
+    if seconds <= limit:
         return
     report.outcome, report.longrepr = (
         "failed",
@@ -1086,12 +1053,6 @@ def pytest_collection(session: Any) -> Any:
         raise
 
 
-def pytest_itemcollected(item: Any) -> None:
-    """Under CodSpeed every selected test is measured as its cost: it deselects unmarked tests."""
-    if os.environ.get("CODSPEED_ENV") is not None or item.config.getoption("codspeed", False):
-        item.add_marker(pytest.mark.benchmark)
-
-
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
@@ -1176,7 +1137,6 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept
-    _instruction_cost_timeouts(config, items)
 
 
 def timeout_hints(lines: list[str], failed: set[str]) -> dict[str, float]:

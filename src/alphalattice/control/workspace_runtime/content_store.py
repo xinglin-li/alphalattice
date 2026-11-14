@@ -17,6 +17,7 @@ import json
 import marshal
 import os
 import shutil
+import sys
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -106,6 +107,68 @@ _VERIFIED_PROOF_CACHE: OrderedDict[tuple[object, ...], None] = OrderedDict()
 _VERIFIED_PROOF_CACHE_LOCK = Lock()
 
 
+def _windows_kernel() -> Any:
+    if sys.platform != "win32":
+        raise OSError("Windows read leases are unavailable")
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    declarations = {
+        "CreateFileW": (
+            [
+                wintypes.LPCWSTR,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.HANDLE,
+            ],
+            wintypes.HANDLE,
+        ),
+        "CreateEventW": (
+            [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR],
+            wintypes.HANDLE,
+        ),
+        "DeviceIoControl": (
+            [
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            wintypes.BOOL,
+        ),
+        "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
+        "GetFileInformationByHandleEx": (
+            [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
+            wintypes.BOOL,
+        ),
+        "GetFinalPathNameByHandleW": (
+            [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
+            wintypes.DWORD,
+        ),
+        "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
+        "WaitForMultipleObjects": (
+            [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
+            wintypes.DWORD,
+        ),
+        "CancelIoEx": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
+        "GetOverlappedResult": (
+            [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, wintypes.BOOL],
+            wintypes.BOOL,
+        ),
+        "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
+    }
+    for name, (arguments, result) in declarations.items():
+        function = getattr(kernel, name)
+        function.argtypes = arguments
+        function.restype = result
+    return kernel
+
+
 class _WindowsReadLease:
     """A file-level read-handle oplock with a same-handle path identity check.
 
@@ -176,62 +239,7 @@ class _WindowsReadLease:
         self.lock = Lock()
         self.file_id_type = FileIdInformation
         self.information_type = FileInformation
-        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        declarations = {
-            "CreateFileW": (
-                [
-                    wintypes.LPCWSTR,
-                    wintypes.DWORD,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    wintypes.DWORD,
-                    wintypes.HANDLE,
-                ],
-                wintypes.HANDLE,
-            ),
-            "CreateEventW": (
-                [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR],
-                wintypes.HANDLE,
-            ),
-            "DeviceIoControl": (
-                [
-                    wintypes.HANDLE,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                ],
-                wintypes.BOOL,
-            ),
-            "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-            "GetFileInformationByHandleEx": (
-                [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
-                wintypes.BOOL,
-            ),
-            "GetFinalPathNameByHandleW": (
-                [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
-                wintypes.DWORD,
-            ),
-            "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
-            "WaitForMultipleObjects": (
-                [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
-                wintypes.DWORD,
-            ),
-            "CancelIoEx": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-            "GetOverlappedResult": (
-                [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, wintypes.BOOL],
-                wintypes.BOOL,
-            ),
-            "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
-        }
-        for name, (arguments, result) in declarations.items():
-            function = getattr(self.kernel, name)
-            function.argtypes = arguments
-            function.restype = result
+        self.kernel = _windows_kernel()
         self.identity = self._lease_identity()
         self.handle = None
         self.event = None
@@ -275,7 +283,9 @@ class _WindowsReadLease:
                 ctypes.byref(returned),
                 ctypes.byref(self.overlapped),
             )
-            self.pending = not completed and ctypes.get_last_error() == 997
+            self.pending = (
+                not completed and sys.platform == "win32" and ctypes.get_last_error() == 997
+            )
             if not self.pending:
                 raise OSError("OS read lease unavailable")
         except BaseException:

@@ -117,6 +117,8 @@ _THREAD_POOLS: tuple[tuple[int, ...], Any] | None = None
 @cache
 def _module_lister() -> Any:
     """kernel32's module enumeration with its declared signature (pointer-sized handles)."""
+    if sys.platform != "win32":
+        raise OSError("Windows module enumeration is unavailable")
     import ctypes
     from ctypes import wintypes
 

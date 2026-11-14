@@ -14981,6 +14981,62 @@
    "successor": "f1114a0d7986c42eefb85616801d1fb0b380a9b2e19d37699830b96b73b99bc1",
    "change": "Explain a stopped research update's rerun in words, with its resume",
    "reason": "Lawful change: admission of a plan whose matching Task stopped on a still-closed network now answers with that stopped Task (its id and lifecycle) instead of raising the Task's failure code, so the person reads the stop and its resume in the Task's own words; no decision computation, input or output value changes, and any other refusal still raises"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "1323032bbeb47b81553d9188f0ab0df9cd8ff9edeb82beb476dc1e11e44a52c0",
+   "successor": "d988ce47555817709d8a422f003c3ddccd79718ab8015538ac6c9260997a50e3",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f1114a0d7986c42eefb85616801d1fb0b380a9b2e19d37699830b96b73b99bc1",
+   "successor": "739fff03778aad9ac9cf662c7c75df0175cb505ced55b8d4daf6a101d780e547",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ca33531a03f5528543561da148b7536d9da184463ca15adad9493454958e0919",
+   "successor": "3a3505dc3c4da713f1b5e293cd3312e807895130f0c4fc2fae157eaa9df36661",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "7d700fafe9bd532a898f4a4eb4f1eb88fb1cf0a76f363acd49d7a28a651f6ef1",
+   "successor": "9980ca7bd25e2955d72732a54a1e5715e47e78ecb46452a14ee552e0897c4e08",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "591056d477bdbbac8d4e49e9f5fd9d1e67a3de532eafc95db3ef0c1737ff5af2",
+   "successor": "964b4fd4b1b08ec1f17b89e73b60396b6098145312ab08f2110a409dc6a8840e",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "successor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "95acc4115398ad7c4de94840e8fe8c686d555de4884247781ee29ee5b8cb6a41",
+   "successor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "8df9f7d6535b6f115819847f401d8644484f5ad9676b13da076c6e15f6acfa13",
+   "successor": "552d62654276f4c7cb7929988832227026c43ad328d5b9dba2b26a0dc2d80add",
+   "change": "Make the development fast guard portable across platforms",
+   "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
   }
  ]
 }

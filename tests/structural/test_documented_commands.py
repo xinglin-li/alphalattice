@@ -94,7 +94,9 @@ def test_the_frozen_surface_and_release_retirements_match_the_owners() -> None:
     assert any("exchange:CORRECTION" in problem for problem in surface_problems(manifest, missing))
 
 
-def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:
+def test_a_command_a_text_names_is_one_the_cli_has(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A product text names only commands and flags the CLI admits."""
     text = tmp_path / "case-study" / "README.md"
     text.parent.mkdir()
@@ -120,6 +122,37 @@ def test_a_command_a_text_names_is_one_the_cli_has(tmp_path: Path) -> None:
     ]
     named = [line.split("`")[1] for line in found if line.startswith("AGENTS.md")]
     assert named == ["WORKSPACE_PREPARE_PLANZ", "capabilities"]
+
+    # Only the declared context may echo the workspace; a path in another field is refused,
+    # including a Windows path escaped by the JSON writer.
+    import os
+    from types import SimpleNamespace
+
+    from alphalattice.interface.local_application import operations
+    from devtools.architecture import operation_registry as registry
+
+    monkeypatch.setattr(operations, "COMMANDS", {})
+    leak = False
+
+    def answer(arguments: list[str], **_: object) -> int:
+        print(
+            json.dumps(
+                {
+                    **dict.fromkeys(registry._ENVELOPE),
+                    "outcome": "NO_HOST",
+                    "detail": os.getcwd() if leak else "",
+                    "context": {"workspace": arguments[1]},
+                }
+            )
+        )
+        return 4
+
+    client = SimpleNamespace(CLIENT_COMMANDS={}, OFFLINE_COMMANDS={}, main=answer)
+    assert registry._walk(tmp_path, client) == []
+    leak = True
+    assert registry._walk(tmp_path, client) == [
+        "request  (no Host): the answer carries a traceback or a path"
+    ]
 
 
 def test_every_documented_command_line_parses(

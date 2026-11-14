@@ -53,7 +53,7 @@ def person(out, *, reply=None, posted=0):
 def test_the_person_answers_by_source(
     tmp_path_factory, question, code, reply, posted, words, source
 ):
-    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    out = tmp_path_factory.mktemp("person")  # each call's own rows
     made, calls = person(out, reply=reply, posted=posted)
     answer = made.answer(question, code=code, session="s1")
     assert (answer.words, answer.source) == (words, source)
@@ -70,7 +70,7 @@ def test_the_person_answers_by_source(
 
 
 def test_asking_is_graded_and_an_unset_ask_asks_no_one(tmp_path_factory):
-    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    out = tmp_path_factory.mktemp("person")  # each call's own rows
     made = ScenarioPerson(SHEET, out)
     made.scripted("Keep the network on?", "Yes.", code="network.daily_updates", session="s")
     made.answer("Which universe should I use?")
@@ -158,7 +158,7 @@ def test_the_ask_command_is_a_json_argv_or_refused_by_name(raw, argv):
 def test_a_native_turns_questions_go_to_the_person(
     tmp_path_factory, case, prompt, terminal, stop, source
 ):
-    out = tmp_path_factory.mktemp("person")  # each call's own rows: CodSpeed repeats a body
+    out = tmp_path_factory.mktemp("person")  # each call's own rows
     made, _ = person(out, reply="Yes, in English.")
     made.nonblocking = {"net.daily"} if case == "nonblocking" else set()
     made.ask = made.ask if case == "agent" else None

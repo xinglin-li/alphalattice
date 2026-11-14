@@ -141,11 +141,6 @@ dev = [
 order = [
     "pytest-randomly>=5,<6",
 ]
-# Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
-codspeed = [
-    "pytest-codspeed==5.0.4",
-    "pytest-test-groups==1.2.1",
-]
 # The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
 supply-chain = [
     "cyclonedx-bom==7.6.0",

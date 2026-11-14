@@ -245,7 +245,7 @@ def _windows_process_usage(process_id: int) -> tuple[float, int] | None:
     kernel32 = loader("kernel32", use_last_error=True)
     handle = kernel32.OpenProcess(0x0400 | 0x0010, False, process_id)
     if not handle:
-        if ctypes.get_last_error() == _ERROR_INVALID_PARAMETER:
+        if sys.platform == "win32" and ctypes.get_last_error() == _ERROR_INVALID_PARAMETER:
             raise _ProcessExited
         return None
     try:

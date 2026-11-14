@@ -36,6 +36,9 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_VARIABLES,
     SCHEMA_VERSION,
     Outcome,
+    client_refusal,
+    host_checked,
+    worded,
 )
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
@@ -1232,6 +1235,29 @@ def walk(root: Path) -> list[str]:
         return _walk(root, cli)
 
 
+def _unexpected_diagnostic_path(
+    text: str, answer: dict[str, Any], outcome: str, empty: str
+) -> bool:
+    """Allow only the owner's checked-workspace context and exact no-Host recovery words."""
+    checked = dict(answer)
+    context = answer.get("context")
+    if isinstance(context, dict) and context.get("workspace") == empty:
+        checked["context"] = {k: v for k, v in context.items() if k != "workspace"}
+    failure_code = answer.get("failure_code")
+    if outcome == "NO_HOST" and isinstance(failure_code, str):
+        detail = host_checked(str(worded(client_refusal(failure_code).detail)), Path(empty))
+        if answer.get("detail") == detail:
+            checked["detail"] = ""
+    remaining = json.dumps(checked)
+    previous = "\n".join(text.strip().splitlines()[:-1])
+    return (
+        "Traceback" in text
+        or empty in previous
+        or empty in remaining
+        or json.dumps(empty)[1:-1] in remaining
+    )
+
+
 def _walk(root: Path, cli: Any) -> list[str]:
     from alphalattice.interface.local_application.operations import (
         COMMANDS,
@@ -1260,7 +1286,8 @@ def _walk(root: Path, cli: Any) -> list[str]:
             for op in ops
         ),
     ]
-    with tempfile.TemporaryDirectory() as empty, contextlib.chdir(empty):
+    with tempfile.TemporaryDirectory() as folder, contextlib.chdir(folder):
+        empty = os.getcwd()  # the physical spelling agrees with the CLI's resolved workspace
         for noun, verb, given in commands:
             cases = [("no Host", given, 4, "NO_HOST")]
             if given:
@@ -1291,7 +1318,7 @@ def _walk(root: Path, cli: Any) -> list[str]:
                     out.append(
                         f"{noun} {verb} ({label}): the envelope lacks {_ENVELOPE - answer.keys()}"
                     )
-                elif "Traceback" in text or empty in text:
+                elif _unexpected_diagnostic_path(text, answer, outcome, empty):
                     out.append(f"{noun} {verb} ({label}): the answer carries a traceback or a path")
     return out
 

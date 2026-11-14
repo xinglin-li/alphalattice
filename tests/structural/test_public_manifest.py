@@ -901,9 +901,6 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
 
-    import os
-    import time
-
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
@@ -936,102 +933,7 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         )
         for step in (install, consumer):
             assert step["env"]["npm_config_cache"] == "${{ runner.temp }}/jscpd-npm-cache"
-    cost = jobs["test-cost"]
-    assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
-    assert cost.get("strategy", {}).get("matrix", {}).get("shard") == [1, 2, 3, 4]
-    assert cost["strategy"]["fail-fast"] is False
-    assert cost["env"]["PYTHONUNBUFFERED"] == "1"
     assert not jobs["checkout"].get("continue-on-error", False)
-    steps = cost["steps"]
-    collect = next(step for step in steps if step.get("name") == "Check the pilot slice")
-    measure = next(
-        step for step in steps if step.get("name") == "Measure each test of the pilot slice"
-    )
-    paths = [
-        "tests/integration/evaluation",
-        "tests/unit/evaluation",
-        "tests/integration/feature_engine/test_factor_arithmetic_identity.py",
-    ]
-    assert all(path in measure["with"]["run"] for path in paths)
-    assert "--test-group=${{ matrix.shard }} --test-group-count=4" in measure["with"]["run"]
-    assert "-vv" in measure["with"]["run"]
-    warm = next(step for step in steps if step.get("name") == "Prepare the pilot fixtures")
-    assert "--setup-only" in warm["run"] and "--codspeed" not in warm["run"]
-    assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
-    assert all("timeout-minutes" in step for step in steps)
-    code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    assert list(_pilot_slice(code)) == paths
-    for directory in paths[:2]:
-        (tmp_path / directory).mkdir(parents=True)
-        (tmp_path / directory / f"test_sample_{directory.split('/')[1]}.py").write_text(
-            "def test_sample(): pass\n", encoding="utf-8"
-        )
-    target = tmp_path / paths[2]
-    target.parent.mkdir(parents=True)
-    target.write_text("def test_sample(): pass\n", encoding="utf-8")
-    env = dict(
-        os.environ,
-        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-        ALPHALATTICE_NETWORK_DISABLED="1",
-        SHARD="1",
-        PYTHONPATH=str(
-            root / "src"
-        ),  # the job runs at the repository root, where src is on the path
-    )
-
-    def collect_fixture():
-        return subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=tmp_path,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-
-    assert collect_fixture().returncode == 0
-    samples = [tmp_path / path / f"test_sample_{path.split('/')[1]}.py" for path in paths[:2]] + [
-        target
-    ]
-    for path, sample in zip(paths, samples, strict=True):
-        sample.write_text("# no tests\n", encoding="utf-8")
-        empty = collect_fixture()
-        assert (
-            empty.returncode != 0 and path in empty.stdout and "selected no tests" in empty.stdout
-        )
-        sample.write_text("def test_sample(): pass\n", encoding="utf-8")
-    budget = next(step for step in steps if step.get("id") == "budget")["run"]
-    git = Path(
-        subprocess.run(
-            ["git", "--exec-path"],
-            capture_output=True,
-            text=True,
-            check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        ).stdout.strip()
-    )
-    shell = git.parents[2] / "bin/bash.exe" if sys.platform == "win32" else Path("bash")
-    output = tmp_path / "github-output"
-    shell_output = (
-        f"/{output.drive[0].lower()}/{output.as_posix()[3:]}"
-        if sys.platform == "win32"
-        else str(output)
-    )
-    for elapsed, success in ((60, True), (12 * 60, False)):
-        script = budget.replace(
-            "${{ steps.clock.outputs.started }}", str(int(time.time()) - elapsed)
-        )
-        result = subprocess.run(
-            [str(shell), "-c", script],
-            env=dict(env, GITHUB_OUTPUT=shell_output),
-            capture_output=True,
-            text=True,
-            timeout=10,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        assert (result.returncode == 0) == success
-    assert "minutes=" in output.read_text("utf-8")
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
@@ -1541,58 +1443,3 @@ def test_a_disclosure_review_follows_only_its_proved_line_content(
             finding["review_key"][-1]
             == hashlib.sha256(text.replace("\r\n", "\n").split("\n")[1].encode()).hexdigest()
         )
-
-
-def _pilot_slice(code: str) -> tuple[str, ...]:
-    """The cost job's slice, as its pilot-slice step's code names it."""
-    import ast
-
-    named = (n for n in ast.walk(ast.parse(code)) if isinstance(n, ast.Assign))
-    return ast.literal_eval(
-        next(n.value for n in named if getattr(n.targets[0], "id", None) == "SLICE")
-    )
-
-
-@pytest.mark.proves("testing.codspeed_slice_names_a_repeat_unsafe_test")
-def test_the_pilot_slice_check_names_a_test_whose_body_fails_when_run_again(tmp_path):
-    """The cost job's slice check calls each body of its shard's group twice, as CodSpeed does: a
-    body that passes once and fails again is named, with its repair, before any measurement, by the
-    one shard that measures it."""
-    import os
-
-    import yaml
-
-    root = Path(__file__).resolve().parents[2]
-    steps = yaml.safe_load((root / ".github/workflows/ci.yml").read_text("utf-8"))["jobs"][
-        "test-cost"
-    ]["steps"]
-    run = next(step for step in steps if step.get("name") == "Check the pilot slice")["run"]
-    code = run.split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    for n, path in enumerate(_pilot_slice(code)):
-        target = tmp_path / path if path.endswith(".py") else tmp_path / path / f"test_slice_{n}.py"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("def test_clean(): pass\n", encoding="utf-8")
-    (tmp_path / "tests/unit/evaluation/test_rows.py").write_text(
-        "def test_rows(tmp_path):\n"
-        "    with (tmp_path / 'rows').open('a') as rows:\n"
-        "        rows.write('x')\n"
-        "    assert (tmp_path / 'rows').read_text() == 'x'\n",
-        encoding="utf-8",
-    )
-    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(root / "src"))
-    # Collected in order: slice_0's test_clean, test_rows, slice_1's and the file's test_clean.
-    other, done = (
-        subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=tmp_path,
-            env=dict(env, SHARD=shard),
-            capture_output=True,
-            text=True,
-            timeout=60,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        for shard in ("1", "2")
-    )
-    assert other.returncode == 0, other.stdout  # shard 1 checks only its own group
-    assert done.returncode != 0 and "test_rows" in done.stdout and "test_clean" not in done.stdout
-    assert "runs twice" in done.stdout and "repeat: this body passed once" in done.stdout

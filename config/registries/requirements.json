@@ -792,14 +792,16 @@
       "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
       "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-14: CodSpeed was retired from the product (the person's decision); its cost job and checks were deleted with it."
     },
     "testing.codspeed_slice_names_a_repeat_unsafe_test": {
       "description": "The cost job's pilot-slice check calls each test body twice over its fixtures, as CodSpeed does, and names a body that passes once and fails again, with its repair.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 15,
-      "lower_layer": "The proof runs the workflow step's own code as a child pytest process over a planted slice, which a unit test cannot start."
+      "lower_layer": "The proof runs the workflow step's own code as a child pytest process over a planted slice, which a unit test cannot start.",
+      "retired": "2026-11-14: CodSpeed was retired from the product (the person's decision); its cost job and checks were deleted with it."
     },
     "testing.crash_requeue_keeps_longest_first": {
       "description": "Under load distribution, a crashed worker's prefetched cases return to their place in the longest-first collection order, never after every other case.",

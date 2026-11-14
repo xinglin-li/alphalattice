@@ -16,6 +16,7 @@ import logging  # only a withheld failure is logged; a call's imports are its co
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Mapping
 from copy import deepcopy
 from hashlib import sha256
@@ -142,7 +143,7 @@ def setup_failure(error: Exception) -> dict[str, object]:
                 cause = {"kind": "OS", "exception": name}
                 if current.errno is not None:
                     cause.update(errno=current.errno, message=os.strerror(current.errno))
-                if getattr(current, "winerror", None) is not None:
+                if sys.platform == "win32" and current.winerror is not None:
                     cause["winerror"] = current.winerror
             elif isinstance(current, (ValueError, KeyError, TypeError)):
                 code = f"setup.input_invalid:{name}"

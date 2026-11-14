@@ -76,6 +76,8 @@ STOPPING: dict[str, object] = {
 
 
 def _windows_stdin(descriptor: int) -> tuple[Any, Any, int]:
+    if sys.platform != "win32":
+        raise OSError("Windows stdin inspection is unavailable")
     import ctypes
     import msvcrt
     from ctypes import wintypes
@@ -399,13 +401,17 @@ def _detach(
         )
         panel = os.name == "nt" and capability.get("availability") == "probed"
         message_id = "host.start.breakaway_denied" + (".panel" if panel else "")
+        if sys.platform == "win32":
+            win32_error = error.winerror
+        else:
+            win32_error = None
         return _refusal(
             "local_web.detached_breakaway_denied",
             str(worded(message_id)),
             "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
             message_id=message_id,
             launch_context={
-                "win32_error": error.winerror if sys.platform == "win32" else None,
+                "win32_error": win32_error,
                 "job_limit_flags": ChildJob.current_limit_flags()
                 if sys.platform == "win32"
                 else None,
