@@ -636,6 +636,11 @@ def read_in_place(relative: str, size: int) -> bool:
     )
 
 
+def volume(path: Path) -> int:
+    """The volume a path lives on; a hard link joins two names only on one."""
+    return path.stat().st_dev
+
+
 def copy_payload(
     workspace: Path,
     target: Path,
@@ -651,7 +656,8 @@ def copy_payload(
     Windows the read-only attribute, shared by every link, refusing every writer even after
     the acquiring process exits. The cost, on Windows only: a plain unlink cannot remove the
     link, so pytest's tmp cleanup leaves it (it ignores errors) and the run's remover, which
-    removes read-only names, takes it with the run. Without `link`, nothing is linked.
+    removes read-only names, takes it with the run. Without `link`, nothing is linked, and a
+    target on another volume than the golden (a hard link cannot cross one) takes copies.
     """
     workspace, target = payload_path(workspace), payload_path(target)
     created = False
@@ -675,6 +681,7 @@ def copy_payload(
         # remains under its build lock without a completion marker until sealed.
         target.mkdir()
         created = True
+        link = link and volume(target) == volume(workspace)
 
         def copy_one(path: Path) -> str:
             info = path.stat()
