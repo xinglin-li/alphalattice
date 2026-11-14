@@ -150,6 +150,198 @@ def test_census_refuses_surviving_child_of_vanished_parent():
     assert [process.pid for process in current] == [2]
     assert "pid=1 error=Gone stage=lineage" in error
 
+    from devtools.evaluation.host_resource import HostSeen
+
+    dead, denied, births = set(), set(), {1: 1.0, 2: 2.0, 3: 3.0}
+    parents = {1: 0, 2: 1, 3: 2}
+
+    class Process:
+        def __init__(self, pid):
+            if pid in dead:
+                raise Gone()
+            if pid in denied:
+                raise Denied()
+            self.pid = pid
+
+        def create_time(self):
+            return births[self.pid]
+
+        def ppid(self):
+            return parents.get(self.pid, 0)
+
+    api = SimpleNamespace(
+        Process=Process,
+        NoSuchProcess=Gone,
+        Error=(Gone, Denied),
+        _psplatform=SimpleNamespace(ppid_map=lambda: dict(parents)),
+    )
+    seen = HostSeen()
+    current, error = process_census(None, None, lambda: [Process(1)], seen, api)
+    assert error is None and {p.pid for p in current} == {1, 2, 3}
+    assert current.host_snapshot.parents[3] == 2
+    dead.add(2)
+    parents.clear()
+    parents.update({1: 0, 3: 0})  # the surviving grandchild has already been reparented
+    current, error = process_census(None, None, lambda: [Process(1)], seen, api)
+    assert error is None and {p.pid for p in current} == {1, 3}
+    assert current.host_snapshot.exited == {2} and current.host_snapshot.parents[3] == 2
+    assert current.host_snapshot.identities[2] == 2.0 and not current.host_snapshot.errors
+
+    births[3] = 4.0  # the same PID now names a different process
+    current, error = process_census(None, None, lambda: [Process(1)], seen, api)
+    assert any("pid=3 error=IdentityChanged" in row for row in current.host_snapshot.errors)
+    assert 3 not in {p.pid for p in current}
+
+    births[3] = 3.0
+    dead.clear()
+    denied.add(3)
+    parents.update({2: 1, 3: 2})
+    current, error = process_census(None, None, lambda: [Process(1)], HostSeen(), api)
+    assert any("pid=3 error=Denied stage=birth" in row for row in current.host_snapshot.errors)
+
+    denied.clear()
+    dead.add(2)  # no last birth observation exists for this intermediate
+    current, error = process_census(None, None, lambda: [Process(1)], HostSeen(), api)
+    assert any("pid=2 error=IdentityUnmeasured" in row for row in current.host_snapshot.errors)
+
+    parents.clear()
+    parents.update({1: 0, 3: 0})
+    ambiguous = HostSeen()
+    ambiguous.update({1: 1.0, 2: 2.0, 3: 3.0})  # legacy census knew births but no parent edges
+    current, error = process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    assert any("pid=1 error=PriorLineageUnmeasured" in row for row in current.host_snapshot.errors)
+    assert any(
+        "pid=3 error=PriorMembershipUnmeasured" in row for row in current.host_snapshot.errors
+    )
+    current, error = process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    assert any(
+        "pid=3 error=PriorMembershipUnmeasured" in row for row in current.host_snapshot.errors
+    )
+    denied.add(3)
+    current, error = process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    assert any(
+        "pid=3 error=Denied stage=previous_census" in row for row in current.host_snapshot.errors
+    )
+    denied.clear()
+    births[3] = 4.0
+    current, error = process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    assert any(
+        "pid=3 error=IdentityChanged stage=previous_census" in row
+        for row in current.host_snapshot.errors
+    )
+    births[3] = 3.0
+    ambiguous = HostSeen()
+    ambiguous.update({1: 1.0, 2: 2.0, 3: 3.0})
+    process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    dead.add(3)
+    current, error = process_census(None, None, lambda: [Process(1)], ambiguous, api)
+    assert not current.host_snapshot.errors
+
+    def unavailable():
+        raise OSError("snapshot unavailable")
+
+    api.Error = Exception
+    api._psplatform.ppid_map = unavailable
+    current, error = process_census(None, None, lambda: [Process(1)], HostSeen(), api)
+    assert any("OSError stage=parent_snapshot" in row for row in current.host_snapshot.errors)
+
+
+@pytest.mark.parametrize("case", ["replacement", "unresolved", "unresolved-child"])
+def test_census_retains_only_proved_bound_host_lineage(tmp_path, case):
+    from devtools.evaluation.host_resource import HostSeen, process_census, sample_memory
+    from devtools.evaluation.resource_budget import peak
+
+    parents = {1: 0, 2: 1, 3: 0}
+    denied, dead = set(), set()
+
+    class Process:
+        def __init__(self, pid):
+            if pid in dead:
+                raise Gone()
+            if pid in denied:
+                raise Denied()
+            self.pid = pid
+
+        def create_time(self):
+            return float(self.pid)
+
+        def ppid(self):
+            return parents[self.pid]
+
+        def is_running(self):
+            return True
+
+        def memory_info(self):
+            return SimpleNamespace(rss=100, private=100)
+
+        def cmdline(self):
+            return []
+
+        def name(self):
+            return "host"
+
+    api = SimpleNamespace(
+        Process=Process,
+        NoSuchProcess=Gone,
+        Error=(Gone, Denied),
+        _psplatform=SimpleNamespace(ppid_map=lambda: dict(parents)),
+    )
+    state = HostSeen()
+    selected = [1, "old"]
+
+    def roots():
+        roots.binding = (selected[0], 1234, selected[1], float(selected[0]))
+        return [Process(selected[0])]
+
+    def sample():
+        observed, _ = process_census(None, None, roots, state, api)
+        return sample_memory(
+            observed,
+            workspaces=[tmp_path],
+            bindings_of=lambda endpoints, pids: [
+                {"pid": selected[0], "port": 1234, "instance": selected[1]}
+            ],
+            processes_api=api,
+            connection_type=SimpleNamespace(
+                read=lambda _: SimpleNamespace(url="http://127.0.0.1:1234", instance=selected[1])
+            ),
+            connection_error=OSError,
+        )
+
+    if case == "replacement":
+        assert sample()["host_private_commit_bytes"] == 200
+        parents[2] = 0
+        assert sample()["host_private_commit_bytes"] == 200
+        selected[:] = [1, "new-instance"]
+        assert sample()["host_private_commit_bytes"] == 100
+        selected[:] = [3, "new"]
+        result = sample()
+        assert result["host_tree_complete"] and result["host_private_commit_bytes"] == 100
+        selected[:] = [1, "old"]
+        assert sample()["host_private_commit_bytes"] == 200
+    else:
+        if case == "unresolved-child":
+            parents[3] = 2
+        denied.add(2)
+        assert "pid=2 error=Denied" in sample()["host_tree_error"]
+        assert "pid=2" in sample()["host_tree_error"]
+        denied.clear()
+        parents[2] = 0
+        result = sample()
+        assert not result["host_tree_complete"] and "pid=2" in result["host_tree_error"]
+        assert peak(None, rows=[result]) is None
+        dead.add(2)
+        parents.pop(2)
+        result = sample()
+        if case == "unresolved-child":
+            assert not result["host_tree_complete"] and "pid=2" in result["host_tree_error"]
+            dead.add(3)
+            parents.pop(3)
+            result = sample()
+            assert not result["host_tree_complete"]  # the final exit remains unproved this interval
+            result = sample()
+        assert result["host_tree_complete"] and result["host_private_commit_bytes"] == 100
+
 
 @pytest.mark.parametrize("surviving_descendant", [False, True])
 def test_inventory_preserves_unknown_lineage_for_census(tmp_path, surviving_descendant):
@@ -208,6 +400,137 @@ def test_inventory_preserves_unknown_lineage_for_census(tmp_path, surviving_desc
     assert peak(None, rows=[sample]) == (None if surviving_descendant else 100)
 
 
+def _captured_snapshot_checks(tmp_path, Process, Error, NoSuchProcess, connection):
+    from devtools.evaluation.host_resource import sample_memory
+    from devtools.evaluation.resource_budget import peak
+
+    class Captured(list):
+        host_snapshot = SimpleNamespace(
+            roots={1},
+            parents={1: 0, 2: 1, 3: 2},
+            members={1, 2, 3},
+            exited={2},
+            identities={1: 1.0, 2: 2.0, 3: 3.0},
+            binding=(1, 1234, "i", 1.0),
+            errors=[],
+        )
+
+    checked_api = SimpleNamespace(
+        Error=Error,
+        NoSuchProcess=NoSuchProcess,
+        Process=lambda pid: Process(pid, {1: 0, 3: 2}[pid]),
+    )
+    captured = sample_memory(
+        Captured([Process(1, 0), Process(2, 1), Process(3, 2)]),
+        workspaces=[tmp_path],
+        bindings_of=lambda endpoints, pids: [{"pid": 1, "port": 1234, "instance": "i"}],
+        processes_api=checked_api,
+        connection_type=connection,
+        connection_error=OSError,
+    )
+    assert captured["host_tree_complete"] is True
+    assert captured["host_private_commit_bytes"] == 200
+    assert peak(None, rows=[captured]) == 200
+    assert captured["host_exits"] == [{"pid": 2, "birth": 2.0, "parent": 1}]
+
+    class ExitedAgent(Process):
+        def ppid(self):
+            raise NoSuchProcess()
+
+    separate = sample_memory(
+        Captured([Process(1, 0), Process(3, 2), ExitedAgent(9, 0)]),
+        workspaces=[tmp_path],
+        bindings_of=lambda endpoints, pids: [{"pid": 1, "port": 1234, "instance": "i"}],
+        processes_api=checked_api,
+        connection_type=connection,
+        connection_error=OSError,
+    )
+    assert separate["host_tree_complete"] and separate["host_private_commit_bytes"] == 200
+    assert "pid=9 error=NoSuchProcess stage=ppid" in separate["activity_tree_error"]
+
+    for binding, reason in (
+        (None, "HostBindingUnmeasured"),
+        ((1, 1234, "different-instance", 1.0), "HostIdentityChanged"),
+        ((1, 1234, "i", 9.0), "HostIdentityChanged"),
+    ):
+        Captured.host_snapshot.binding = binding
+        changed = sample_memory(
+            Captured([Process(1, 0), Process(3, 2)]),
+            workspaces=[tmp_path],
+            bindings_of=lambda endpoints, pids: [{"pid": 1, "port": 1234, "instance": "i"}],
+            processes_api=checked_api,
+            connection_type=connection,
+            connection_error=OSError,
+        )
+        assert not changed["host_tree_complete"] and reason in changed["host_tree_error"]
+    Captured.host_snapshot.binding = (1, 1234, "i", 1.0)
+
+    checked_api.Process = lambda pid: SimpleNamespace(create_time=lambda: 99.0)
+    reused = sample_memory(
+        Captured([Process(1, 0), Process(3, 2)]),
+        workspaces=[tmp_path],
+        bindings_of=lambda endpoints, pids: [{"pid": 1, "port": 1234, "instance": "i"}],
+        processes_api=checked_api,
+        connection_type=connection,
+        connection_error=OSError,
+    )
+    assert reused["host_tree_complete"] is False
+    assert "IdentityChanged stage=birth_before" in reused["host_tree_error"]
+
+    checks = []
+
+    def open_identity(pid):
+        if pid == 3:
+            checks.append(pid)
+        return SimpleNamespace(
+            create_time=lambda: 99.0 if len(checks) > 1 and pid == 3 else float(pid)
+        )
+
+    checked_api.Process = open_identity
+    reused_after = sample_memory(
+        Captured([Process(1, 0), Process(3, 2)]),
+        workspaces=[tmp_path],
+        bindings_of=lambda endpoints, pids: [{"pid": 1, "port": 1234, "instance": "i"}],
+        processes_api=checked_api,
+        connection_type=connection,
+        connection_error=OSError,
+    )
+    assert not reused_after["host_tree_complete"]
+    assert "pid=3 error=IdentityChanged stage=birth_after" in reused_after["host_tree_error"]
+
+    from devtools.evaluation.host_resource import BoundHostMeter, HostSeen, process_census
+
+    pinned_api = SimpleNamespace(
+        Error=Error,
+        NoSuchProcess=NoSuchProcess,
+        Process=lambda pid: Process(pid, 0),
+        _psplatform=SimpleNamespace(ppid_map=lambda: {1: 0}),
+    )
+
+    def binding_reader(endpoints, pids=None):
+        return [{"pid": 1, "port": 1234, "instance": "i"}]
+
+    def client(workspace, timeout):
+        return SimpleNamespace(
+            connection=SimpleNamespace(instance="i"), activity=lambda limit: None
+        )
+
+    meter = BoundHostMeter(
+        lambda: tmp_path, binding_reader, pinned_api, connection, client, OSError
+    )
+    observed, error = process_census(None, None, meter.roots, HostSeen(), pinned_api)
+    measured = sample_memory(
+        observed,
+        workspaces=meter.workspaces(),
+        bindings_of=binding_reader,
+        processes_api=pinned_api,
+        connection_type=connection,
+        connection_error=OSError,
+    )
+    assert error is None and measured["host_tree_complete"]
+    assert measured["host_tree_observed"] and measured["host_private_commit_bytes"] == 100
+
+
 @pytest.mark.parametrize(
     ("failure", "survivor_parent", "complete"),
     [("gone", 1, True), ("gone", 2, False), ("denied", 1, False)],
@@ -235,6 +558,9 @@ def test_host_sample_distinguishes_exited_processes_from_unknown_membership(
         def check(self, where):
             if self.pid == 2 and stage == where:
                 raise NoSuchProcess() if failure == "gone" else AccessDenied()
+
+        def create_time(self):
+            return float(self.pid)
 
         def memory_info(self):
             self.check("memory_info")
@@ -272,6 +598,8 @@ def test_host_sample_distinguishes_exited_processes_from_unknown_membership(
     assert result["host_private_commit_bytes"] == (200 if complete else None)
     assert peak(None, rows=[result]) == (200 if complete else None)
     assert 2 not in {p["pid"] for p in result["processes"]}
+    if failure == "gone" and survivor_parent == 2 and stage == "ppid":
+        _captured_snapshot_checks(tmp_path, Process, Error, NoSuchProcess, connection)
     if not complete:
         assert "2" in result["host_tree_error"]
         assert ("NoSuchProcess" if failure == "gone" else "AccessDenied") in result[

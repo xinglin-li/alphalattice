@@ -1,6 +1,8 @@
 """Observe the bound workspace Host and its process tree."""
 
 from pathlib import Path
+from time import time
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -114,8 +116,175 @@ def _discover_processes(
     return observed, owned_pids
 
 
-def process_census(owned, parent, observed_roots, seen, processes_api):
-    """Keep every observable descendant and carry any incomplete discovery to its sample."""
+class HostSeen(dict):
+    """Separate the owned agent census from previously identity-bound Host members."""
+
+    def __init__(self):
+        super().__init__()
+        self.hosts = {}
+        self.unresolved = {}
+        self.unresolved_roots = set()
+
+
+class HostObservation(list):
+    def __init__(self, processes, snapshot):
+        super().__init__(processes)
+        self.host_snapshot = snapshot
+
+
+def _pin_roots(roots, processes_api, identities, errors):
+    pinned = {}
+    for root in roots:
+        try:
+            pinned[root.pid] = root.create_time()
+            identities[root.pid] = pinned[root.pid]
+        except processes_api.Error as error:
+            errors.append(f"pid={root.pid} error={type(error).__name__} stage=root_birth")
+    return pinned
+
+
+def _parent_graph(processes_api):
+    # psutil's native Windows ppid_map uses the OS process snapshot. Its portable
+    # Python fallback is a series of reads and cannot establish one lineage boundary.
+    snapshot = processes_api._psplatform.ppid_map
+    started = time()
+    parents = snapshot()
+    if not isinstance(parents, dict) or any(
+        type(pid) is not int or type(ppid) is not int or pid < 0 or ppid < 0
+        for pid, ppid in parents.items()
+    ):
+        raise ValueError("process parent snapshot is not a mapping")
+    return parents, started
+
+
+def _host_members(parents, pinned, previous, unknown):
+    members = set(pinned) | set(previous) | set(unknown)
+    # A previous member stays attributable after reparenting while its birth matches.
+    for pid, (_, prior_parent) in previous.items():
+        if pid not in parents or parents[pid] not in members:
+            parents[pid] = prior_parent
+    while True:
+        expanded = members | {
+            pid for pid, ppid in parents.items() if ppid in members and pid != ppid
+        }
+        if expanded == members:
+            return members
+        members = expanded
+
+
+def _live_members(
+    members, parents, pinned, previous, unknown, processes_api, started, identities, errors
+):
+    live, exited = [], set()
+    next_seen = dict(previous)
+    for pid in members:
+        try:
+            process = processes_api.Process(pid)
+            birth = process.create_time()
+            expected = pinned.get(pid, previous.get(pid, (birth, None))[0])
+            if (
+                birth != expected
+                or (pid in previous and birth != previous[pid][0])
+                or birth > started
+            ):
+                errors.append(f"pid={pid} error=IdentityChanged stage=birth")
+                next_seen.pop(pid, None)
+                unknown.setdefault(pid, set())
+                continue
+            if pid not in parents:
+                errors.append(f"pid={pid} error=LineageUnmeasured stage=parent_snapshot")
+                unknown.setdefault(pid, set())
+                continue
+            next_seen[pid] = (birth, parents[pid])
+            identities[pid] = birth
+            live.append(process)
+        except processes_api.Error as error:
+            if isinstance(error, processes_api.NoSuchProcess):
+                exited.add(pid)
+                next_seen.pop(pid, None)
+                if pid not in previous and any(
+                    parents.get(child) == pid for child in members - {pid}
+                ):
+                    errors.append(f"pid={pid} error=IdentityUnmeasured stage=parent_snapshot")
+            else:
+                errors.append(f"pid={pid} error={type(error).__name__} stage=birth")
+                if pid not in previous:
+                    unknown.setdefault(pid, set())
+    return live, exited, next_seen
+
+
+def _lineage_errors(live, members, pinned, parents, identities, errors):
+    for process in live:
+        pid, visited = process.pid, set()
+        while pid in members and pid not in pinned:
+            if pid in visited:
+                errors.append(f"pid={pid} error=LineageCycle stage=parent_snapshot")
+                break
+            visited.add(pid)
+            ppid = parents.get(pid)
+            if ppid in identities and pid in identities and identities[pid] < identities[ppid]:
+                errors.append(f"pid={pid} error=IdentityChanged stage=lineage")
+                break
+            pid = ppid
+
+
+def _unresolved_members(unknown, parents, processes_api, errors):
+    for pid, dependents in list(unknown.items()):
+        dependents.update(_host_members(dict(parents), {pid: None}, {}, {}))
+        dependents.discard(pid)
+        alive = set()
+        for member in {pid, *dependents}:
+            try:
+                processes_api.Process(member)
+            except processes_api.NoSuchProcess:
+                dependents.discard(member)
+            except processes_api.Error:
+                alive.add(member)
+            else:
+                alive.add(member)
+        if not alive:
+            unknown.pop(pid)
+        if pid in unknown:
+            errors.append(f"pid={pid} error=PriorMembershipUnmeasured stage=parent_snapshot")
+
+
+def _host_snapshot(roots, previous, unknown, processes_api):
+    """Pin roots, then retain a single native parent graph and birth-checked live members."""
+    errors, exited, live = [], set(), []
+    identities = {pid: birth for pid, (birth, _) in previous.items()}
+    pinned = _pin_roots(roots, processes_api, identities, errors)
+    try:
+        parents, started = _parent_graph(processes_api)
+    except (AttributeError, OSError, RuntimeError, ValueError, processes_api.Error) as error:
+        errors.append(f"pid=unknown error={type(error).__name__} stage=parent_snapshot")
+        return live, SimpleNamespace(
+            roots=set(pinned),
+            parents={},
+            members=set(),
+            exited=exited,
+            identities=identities,
+            errors=errors,
+        )
+
+    members = _host_members(parents, pinned, previous, unknown)
+    live, exited, next_seen = _live_members(
+        members, parents, pinned, previous, unknown, processes_api, started, identities, errors
+    )
+    _unresolved_members(unknown, parents, processes_api, errors)
+    _lineage_errors(live, members, pinned, parents, identities, errors)
+    previous.clear()
+    previous.update(next_seen)
+    return live, SimpleNamespace(
+        roots=set(pinned),
+        parents=parents,
+        members=members,
+        exited=exited,
+        identities=identities,
+        errors=errors,
+    )
+
+
+def _ordinary_census(owned, parent, observed_roots, seen, processes_api):
     errors, vanished = [], {}
 
     def record(error, pid="unknown", stage="inventory"):
@@ -167,6 +336,72 @@ def process_census(owned, parent, observed_roots, seen, processes_api):
     return current, ", ".join(errors) or None
 
 
+def _prior_lineage(seen, host, snapshot, processes_api):
+    """Do not turn a pre-snapshot identity-only observation into a lineage fact."""
+    live_host = {process.pid for process in host}
+    for pid, birth in list(seen.unresolved.items()):
+        if pid in live_host and snapshot.identities.get(pid) == birth:
+            seen.unresolved.pop(pid)
+            continue
+        try:
+            if processes_api.Process(pid).create_time() != birth:
+                snapshot.errors.append(f"pid={pid} error=IdentityChanged stage=previous_census")
+                seen.unresolved.pop(pid)
+        except processes_api.NoSuchProcess:
+            seen.unresolved.pop(pid)
+        except processes_api.Error as error:
+            snapshot.errors.append(f"pid={pid} error={type(error).__name__} stage=previous_census")
+    if seen.unresolved:
+        for pid in sorted(seen.unresolved_roots):
+            snapshot.errors.append(f"pid={pid} error=PriorLineageUnmeasured stage=previous_census")
+        for pid in sorted(seen.unresolved):
+            snapshot.errors.append(
+                f"pid={pid} error=PriorMembershipUnmeasured stage=previous_census"
+            )
+    else:
+        seen.unresolved_roots.clear()
+
+
+def process_census(owned, parent, observed_roots, seen, processes_api):
+    """Keep every observable descendant and carry any incomplete discovery to its sample."""
+    if not isinstance(seen, HostSeen) or observed_roots is None:
+        return _ordinary_census(owned, parent, observed_roots, seen, processes_api)
+    try:
+        roots = observed_roots()
+        provider = getattr(observed_roots, "__self__", observed_roots)
+        binding = getattr(provider, "binding", None)
+        key = (
+            binding
+            if isinstance(binding, tuple)
+            and len(binding) == 4
+            and all(isinstance(value, (int, float, str)) for value in binding)
+            else None
+        )
+        previous, unknown = seen.hosts.setdefault(key, ({}, {}))
+        late = {root.pid for root in roots if root.pid in seen and root.pid not in previous}
+        if late:
+            seen.unresolved_roots.update(late)
+            seen.unresolved.update({pid: birth for pid, birth in seen.items() if pid not in late})
+        host, snapshot = _host_snapshot(roots, previous, unknown, processes_api)
+        snapshot.binding = binding
+        _prior_lineage(seen, host, snapshot, processes_api)
+    except (processes_api.Error, OSError, ValueError) as error:
+        host, snapshot = (
+            [],
+            SimpleNamespace(
+                roots=set(),
+                parents={},
+                members=set(),
+                exited=set(),
+                identities={},
+                binding=None,
+                errors=[f"pid=unknown error={type(error).__name__} stage=roots"],
+            ),
+        )
+    agent, snapshot.agent_error = _ordinary_census(owned, parent, None, seen, processes_api)
+    return HostObservation({p.pid: p for p in [*agent, *host]}.values(), snapshot), None
+
+
 class BoundHostMeter:
     """Find only the authenticated listener for this run's bound workspace."""
 
@@ -179,9 +414,11 @@ class BoundHostMeter:
         self.client_error = client_error
         self.measured = []
         self.verified = set()
+        self.binding = None
 
     def roots(self):
         self.measured.clear()
+        self.binding = None
         workspace = self.workspace()
         if workspace is None:
             return []
@@ -212,19 +449,23 @@ class BoundHostMeter:
             client.activity(limit=1)
             self.verified.add(identity)
         self.measured.append(workspace)
+        self.binding = (process.pid, port, connection.instance, identity[2])
         return [process]
 
     def workspaces(self):
         return list(self.measured)
 
 
-def _process_rows(observed, processes_api, workspaces):
-    observed = list(observed)
-    processes, failures = [], []
+def _process_parents(observed, processes_api, parent_snapshot, failures):
     parents = {}
     for process in observed:
+        if parent_snapshot is not None and process.pid not in parent_snapshot:
+            failures.append((process.pid, "LineageUnmeasured", "parent_snapshot"))
+            continue
         try:
-            parents[process.pid] = process.ppid()
+            parents[process.pid] = (
+                parent_snapshot[process.pid] if parent_snapshot is not None else process.ppid()
+            )
         except processes_api.Error as error:
             failures.append((process.pid, error, "ppid"))
     for process in observed:
@@ -236,50 +477,86 @@ def _process_rows(observed, processes_api, workspaces):
         except processes_api.Error as error:
             parents.pop(process.pid)
             failures.append((process.pid, error, "parent_snapshot"))
-    for process in observed:
-        if process.pid not in parents:
-            continue
+    return parents
+
+
+def _process_row(process, parent, processes_api, workspaces, identities, failures):
+    if identities is not None and process.pid not in identities:
+        failures.append((process.pid, "IdentityUnmeasured", "birth"))
+        return None
+    stage = "memory_info"
+    try:
+        if identities is not None:
+            stage = "birth_before"
+            if processes_api.Process(process.pid).create_time() != identities[process.pid]:
+                failures.append((process.pid, "IdentityChanged", stage))
+                return None
         stage = "memory_info"
-        try:
-            memory = process.memory_info()
-            stage = "cmdline"
-            command = process.cmdline()
-            for index, arg in enumerate(command):
-                value = (
-                    command[index + 1]
-                    if arg == "--workspace" and index + 1 < len(command)
-                    else arg.removeprefix("--workspace=")
-                    if arg.startswith("--workspace=")
-                    else None
-                )
-                if value:
-                    path = Path(value)
-                    stage = "cwd"
-                    workspaces.add(
-                        (path if path.is_absolute() else Path(process.cwd()) / path).resolve()
-                    )
-            stage = "name"
-            name = process.name()
-            processes.append(
-                dict(
-                    pid=process.pid,
-                    parent=parents[process.pid],
-                    name=name,
-                    host=False,
-                    rss=memory.rss,
-                    private=getattr(memory, "private", None),
-                    peak_working_set=getattr(memory, "peak_wset", None),
-                )
+        memory = process.memory_info()
+        stage = "cmdline"
+        command = process.cmdline()
+        for index, arg in enumerate(command):
+            value = (
+                command[index + 1]
+                if arg == "--workspace" and index + 1 < len(command)
+                else arg.removeprefix("--workspace=")
+                if arg.startswith("--workspace=")
+                else None
             )
-        except processes_api.Error as error:
-            failures.append((process.pid, error, stage))
+            if value:
+                path = Path(value)
+                stage = "cwd"
+                workspaces.add(
+                    (path if path.is_absolute() else Path(process.cwd()) / path).resolve()
+                )
+        stage = "name"
+        name = process.name()
+        if identities is not None:
+            stage = "birth_after"
+            if processes_api.Process(process.pid).create_time() != identities[process.pid]:
+                failures.append((process.pid, "IdentityChanged", stage))
+                return None
+        return dict(
+            pid=process.pid,
+            parent=parent,
+            name=name,
+            host=False,
+            rss=memory.rss,
+            private=getattr(memory, "private", None),
+            peak_working_set=getattr(memory, "peak_wset", None),
+        )
+    except processes_api.Error as error:
+        failures.append((process.pid, error, stage))
+        return None
+
+
+def _process_rows(
+    observed, processes_api, workspaces, parent_snapshot=None, exited=None, identities=None
+):
+    observed = list(observed)
+    processes, failures = [], []
+    parents = _process_parents(observed, processes_api, parent_snapshot, failures)
+    for process in observed:
+        if process.pid in parents:
+            row = _process_row(
+                process, parents[process.pid], processes_api, workspaces, identities, failures
+            )
+            if row is not None:
+                processes.append(row)
     surviving_parents = {parents[row["pid"]] for row in processes}
+    if exited is not None:
+        exited.update(
+            pid for pid, error, _ in failures if isinstance(error, processes_api.NoSuchProcess)
+        )
     errors = [
-        f"pid={pid} error={type(error).__name__} stage={stage}"
+        f"pid={pid} error={type(error).__name__ if isinstance(error, BaseException) else error} "
+        f"stage={stage}"
         for pid, error, stage in failures
         if not isinstance(error, processes_api.NoSuchProcess)
-        or stage in {"ppid", "parent_snapshot"}
-        or pid in surviving_parents
+        or (
+            parent_snapshot is None
+            and (stage in {"ppid", "parent_snapshot"} or pid in surviving_parents)
+        )
     ]
     return processes, errors
 
@@ -322,13 +599,75 @@ def _host_tree(processes, hosts):
     return private, errors
 
 
+def _sample_processes(observed, processes_api, workspaces, snapshot):
+    if snapshot is None:
+        processes, errors = _process_rows(observed, processes_api, workspaces)
+        other_errors = []
+    else:
+        host = [p for p in observed if p.pid in snapshot.members and p.pid not in snapshot.exited]
+        other = [p for p in observed if p.pid not in snapshot.members]
+        processes, errors = _process_rows(
+            host, processes_api, workspaces, snapshot.parents, snapshot.exited, snapshot.identities
+        )
+        other_rows, other_errors = _process_rows(other, processes_api, workspaces)
+        processes.extend(other_rows)
+        errors.extend(snapshot.errors)
+    return processes, errors, other_errors
+
+
+def _snapshot_details(snapshot, other_errors):
+    if snapshot is None:
+        return {}
+    details = {
+        "host_exits": [
+            dict(pid=pid, birth=snapshot.identities.get(pid), parent=snapshot.parents.get(pid))
+            for pid in sorted(snapshot.exited)
+        ]
+    }
+    activity_errors = list(filter(None, [getattr(snapshot, "agent_error", None), *other_errors]))
+    if activity_errors:
+        details["activity_tree_error"] = "; ".join(activity_errors)
+    return details
+
+
+def _binding_errors(snapshot, hosts, bindings):
+    if snapshot is None:
+        return []
+    errors = []
+    if hosts != snapshot.roots:
+        errors.append("pid=unknown error=HostIdentityChanged stage=listener_bindings")
+    binding = getattr(snapshot, "binding", None)
+    if (snapshot.roots and binding is None) or (
+        binding is not None
+        and (
+            not isinstance(binding, tuple)
+            or len(binding) != 4
+            or type(binding[0]) is not int
+            or type(binding[1]) is not int
+            or not isinstance(binding[2], str)
+            or type(binding[3]) not in (int, float)
+        )
+    ):
+        errors.append("pid=unknown error=HostBindingUnmeasured stage=listener_bindings")
+    elif binding is not None and (
+        binding[0] not in snapshot.roots
+        or snapshot.identities.get(binding[0]) != binding[3]
+        or not any((b["pid"], b["port"], b["instance"]) == binding[:3] for b in bindings)
+    ):
+        errors.append("pid=unknown error=HostIdentityChanged stage=listener_bindings")
+    return errors
+
+
 def sample_memory(
     observed, *, workspaces=(), bindings_of, processes_api, connection_type, connection_error
 ) -> dict:
     """Read private commit once per process; identify Hosts by their declared listeners."""
     explicit = {Path(path).resolve() for path in workspaces}
     workspaces = set(explicit)
-    processes, errors = _process_rows(observed, processes_api, workspaces)
+    snapshot = getattr(observed, "host_snapshot", None)
+    processes, errors, other_errors = _sample_processes(
+        observed, processes_api, workspaces, snapshot
+    )
     endpoints, required_ports, endpoints_complete = _workspace_endpoints(
         workspaces, explicit, connection_type, connection_error
     )
@@ -336,6 +675,8 @@ def sample_memory(
         errors.append("pid=unknown error=WorkspaceUnmeasured stage=workspace_connection")
     try:
         pids = {p["pid"] for p in processes}
+        if snapshot is not None:
+            pids &= snapshot.roots
         bindings = bindings_of(endpoints, pids) if endpoints else []
     except processes_api.Error as error:
         bindings = []
@@ -343,7 +684,12 @@ def sample_memory(
     if not required_ports <= {binding["port"] for binding in bindings}:
         errors.append("pid=unknown error=ListenerUnmeasured stage=listener_bindings")
     hosts = {b["pid"] for b in bindings}
+    errors.extend(_binding_errors(snapshot, hosts, bindings))
     private, tree_errors = _host_tree(processes, hosts)
+    if snapshot is not None:
+        private, tree_errors = _host_tree(processes, snapshot.members)
+        for row in processes:
+            row["host"] = row["pid"] in hosts
     errors.extend(tree_errors)
     complete = not errors
     return dict(
@@ -353,5 +699,6 @@ def sample_memory(
         host_private_commit_bytes=sum(private) if complete else None,
         host_tree_complete=complete,
         host_tree_observed=bool(hosts),
+        **_snapshot_details(snapshot, other_errors),
         **({"host_tree_error": "; ".join(errors)} if errors else {}),
     )
