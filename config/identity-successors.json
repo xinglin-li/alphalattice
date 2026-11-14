@@ -14967,6 +14967,13 @@
    "successor": "55aa0e8de56f92c1c76ef390943083124cc21882498218ba48b437ab9225a7cd",
    "change": "Evidence search indexes are rebuilt on demand instead of kept",
    "reason": "Lawful change: an evidence index is now a cache. It is retired after its selection is sealed and restored from its committed contents the next time it is opened, within the workspace's storage limit, so a day of research no longer grows the disk past its budget. Ranking and scoring are unchanged, and earlier publications still verify through their successor record. Pin integrity, the storage-limit refusal and pin-before-retire ordering are tested."
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "2041dc0c3710468c3450c50e7ec29a07064ea818c1064cfa0299c906e99fcdd3",
+   "successor": "033f4b3cecd20dbad9ebd6cb8aaecde58877bc07dd9175fe8049f82f018d92ca",
+   "change": "Read Evidence source documents stored compressed",
+   "reason": "Equal value: evidence source objects keep the same identity (original length and SHA-256); stored objects read back byte-identical, a compressed form is accepted only when it expands to exactly that identity, and tampered objects are still refused"
   }
  ]
 }
