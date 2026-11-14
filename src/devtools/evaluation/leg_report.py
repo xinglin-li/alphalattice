@@ -7,8 +7,66 @@ Read by the native leg's report and the release gates' Inspect task; nothing her
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+
+def product_reason(text: str) -> str | None:
+    """Only the product's registered refusals can be identified from untyped text."""
+    try:
+        root = Path(__file__).resolve().parents[3]
+        refusals = json.loads((root / "config/registries/refusals.json").read_bytes())["entries"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "native_leg.refusals_unavailable"
+    return text if text in refusals else None
+
+
+def native_failure(out: Path) -> str | None:
+    """The latest native process's own failed result, never a filename from the transcript."""
+    streams = sorted(
+        out.glob("native-*-stdout.jsonl"),
+        key=lambda p: int(p.name.split("-")[1]) if p.name.split("-")[1].isdigit() else -1,
+    )
+    if streams:
+        try:
+            result = {}
+            with streams[-1].open(encoding="utf-8") as stream:
+                for line in stream:
+                    row = json.loads(line)
+                    if isinstance(row, dict) and row.get("type") == "result":
+                        result = row
+            if result.get("is_error") is True:
+                status = result.get("api_error_status")
+                if type(status) is int and 400 <= status <= 599:
+                    kind = (
+                        "provider_authentication"
+                        if "authenticat" in str(result.get("result", "")).lower()
+                        else "provider_error"
+                    )
+                    return f"native_leg.{kind}:{status}"
+                code = str(result.get("result", "")).split(":", 1)[0]
+                return product_reason(code) or "native_leg.native_result_error"
+        except (OSError, ValueError):
+            return "native_leg.native_result_unreadable"
+    return None
+
+
+def log_failure(log: Path) -> str:
+    """Name a registered refusal or an exception type from a failed step's log."""
+    tail = log.read_text(encoding="utf-8", errors="replace")[-2000:] if log.exists() else ""
+    codes = re.findall(
+        r"^\w+(?:Error|Exception):\s*([a-z][a-z0-9_]*\.[a-z][a-z0-9_:-]*)(?=\s|$)", tail, re.M
+    )
+    named = [reason for code in codes if (reason := product_reason(code))]
+    errors = re.findall(r"^(\w+(?:Error|Exception))\b", tail, re.M)
+    return (
+        named[-1]
+        if named
+        else f"native_leg.step_failed:{errors[-1]}"
+        if errors
+        else "native_leg.goal_incomplete"
+    )
 
 
 def timing(out: Path) -> dict[str, Any] | None:
