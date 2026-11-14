@@ -190,6 +190,7 @@
       "description": "A native run's live read keeps every Task it has seen current past the Host's per-page watch cap, so a leg sees its goal end.",
       "owner": "devtools.evaluation",
       "layer": "integration",
+      "lower_layer": "The live reader joins paginated Host activity with task state and its persisted cursor, which an isolated decision cannot prove.",
       "seconds": 5
     },
     "evaluation.native_first_use_keeps_the_hosts_shipped_session": {

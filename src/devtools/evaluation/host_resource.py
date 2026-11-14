@@ -1,11 +1,49 @@
 """Observe the bound workspace Host and its process tree."""
 
 import re
+import socket
 from pathlib import Path
-from time import time
+from time import sleep, time
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
+
+
+def settle_host_read(read, facts, alive, liveness):
+    """Keep failed Host reads through liveness retries, including the last unproved read."""
+    gaps, failures = [], []
+    if str(facts.get("unavailable")).startswith("fresh_folder."):
+        return facts, gaps
+    for attempt in range(liveness.get("failures", 0) if alive else 0):
+        if not facts.get("unavailable") or alive() is False:
+            break
+        gaps = ["HOST_READ_FAILED"]
+        if detail := facts.get("host_read_failure"):
+            failures.append(detail)
+        liveness.get("sleep", sleep)(liveness["period"] * 2**attempt)
+        facts = read()
+    if gaps and facts.get("unavailable") and (detail := facts.get("host_read_failure")):
+        failures.append(detail)
+    unproved = facts.get("unavailable") and gaps and alive() is not False
+    facts = facts | dict(unavailable=None, host_read_unresolved=True) if unproved else facts
+    return (facts | dict(host_read_failures=failures) if failures else facts), gaps
+
+
+def host_is_alive(workspace, connection_type, connection_error):
+    """Read the Host descriptor and probe its port; uncertainty is never a proven loss."""
+    if workspace is None:
+        return None
+    try:
+        connection = connection_type.read(workspace)
+        target = urlsplit(connection.url)
+        socket.create_connection((target.hostname, target.port), timeout=2).close()
+    except ConnectionRefusedError:
+        return None
+    except connection_error as error:
+        return None if "service_not_running" in str(error) else "unknown"
+    except Exception:
+        return "unknown"
+    return connection.instance
 
 
 def listener_bindings(
