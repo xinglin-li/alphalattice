@@ -14960,6 +14960,13 @@
    "successor": "591056d477bdbbac8d4e49e9f5fd9d1e67a3de532eafc95db3ef0c1737ff5af2",
    "change": "Verified reads keep their leases; the lease watcher no longer spins",
    "reason": "Performance only in the workspace content store: the verified-source lease bound rises from 512 to 4096 so one Goal read's working set stays leased, and the lease break watcher rebuilds its wait batches only when a lease is issued or closed. No computed value, result path or control changes; the three Host roles moved because their identity includes this module's source."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "784c133e0b6d8b2d11ccb2114aa405c714c15bde6bd081da1dd8ca9ffb6b8e04",
+   "successor": "55aa0e8de56f92c1c76ef390943083124cc21882498218ba48b437ab9225a7cd",
+   "change": "Evidence search indexes are rebuilt on demand instead of kept",
+   "reason": "Lawful change: an evidence index is now a cache. It is retired after its selection is sealed and restored from its committed contents the next time it is opened, within the workspace's storage limit, so a day of research no longer grows the disk past its budget. Ranking and scoring are unchanged, and earlier publications still verify through their successor record. Pin integrity, the storage-limit refusal and pin-before-retire ordering are tested."
   }
  ]
 }

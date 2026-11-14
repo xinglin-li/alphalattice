@@ -1444,9 +1444,9 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         returned: committed records at the current retrieval binding and
         index spec name this corpus's index and agree on one commitment
         (`generation_anchor`, which refuses two truths as the build would);
-        the index is held on disk under its identity and not evicted
-        (presence only: an absent or evicted index is restored by the build
-        as before); a sealed receipt of this content under the current
+        the index is restorable with no model run (on disk, or retired after
+        its use with its payload retained: presence only; a lost index is
+        restored by the build as before); a sealed receipt of this content under the current
         policy names a span set that is the one it delivered
         (`SealedSelections.find`, which refuses a named set that is not and
         never treats it as a miss); and the document set's revisions and the
@@ -1626,6 +1626,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             generation=generation,
             evidence_as_of=evidence_as_of,
             original_for=self.original_reader(document_set),
+            admit=self.storage_admission,
+            block_for=self.vector_block_source(document_set),
             pair_scores=self.pair_score_admission(
                 since=datetime.now(UTC)
                 - timedelta(
@@ -1826,9 +1828,27 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 span_set_hash=span_set.span_set_hash,
                 pair_score_commitment_hash=commitment_hash,
             )
+        self._seal_selection(span_set, receipt, document_set, generation)
+        return receipt, spans
+
+    def _seal_selection(
+        self,
+        span_set: AlternativeEvidenceResolvedSpanSet | None,
+        receipt: AlternativeEvidenceRetrievalAccessReceipt,
+        document_set: AlternativeEvidenceDocumentSet,
+        generation: RetrievalGenerationRecord,
+    ) -> None:
+        """Publish a selection, keep it for reuse, and retire the index it read.
+
+        The sealed receipt and span set are all a later use of this selection
+        reads; the generation's index is derived data that a later open
+        rebuilds, so it is not kept past its use.
+        """
         self._publish_selection(span_set, receipt)
         self.sealed_selections.add(receipt, document_set=document_set, generation=generation)
-        return receipt, spans
+        self.retrieval.retire_generation(
+            generation, authority=receipt.receipt_hash, retired_at=datetime.now(UTC)
+        )
 
     def _seal_span_set(
         self,

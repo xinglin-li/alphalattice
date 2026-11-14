@@ -208,6 +208,9 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         damaged_set = original_set.replace(b'"spans":[', b'"spans":[ ', 1)
         assert damaged_set != original_set
         set_path.write_bytes(damaged_set)
+        # The first process's sealed selection retired the index; it is restored first,
+        # so the admissions below are the publication's alone.
+        later.rebuild_retrieval(str(generation.index_id))
         admitted.clear()
         later.storage_admission = admitted.append
         with pytest.raises(AlternativeEvidencePublicationError, match="artifact_identity_reused"):

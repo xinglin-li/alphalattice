@@ -15,7 +15,7 @@ from alphalattice.kernel.knowledge.hybrid import (
     WorkspaceHybridKnowledgeIndex,
     WorkspaceHybridKnowledgeRetriever,
     committed_database_relative,
-    committed_index_held,
+    committed_index_restorable,
     corpus_logical_hash,
     index_identity_of_database,
 )
@@ -26,6 +26,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     HybridIndexSpec,
     PairScoreAdmission,
 )
+from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 
 from ..contracts import seal_contract
@@ -33,6 +34,7 @@ from ..documents.contracts import AlternativeEvidenceDocumentSet
 from ..documents.workspace import AlternativeEvidenceDocumentPublisher
 from ..publication.contracts import RETRIEVAL_BINDING_ROLE
 from .contracts import (
+    RETRIEVAL_GENERATION_FORMAT,
     AlternativeEvidenceRetrievalGeneration,
     RetrievalGenerationRecord,
 )
@@ -93,6 +95,14 @@ class AlternativeEvidenceRetrievalService:
         self._index_factory = index_factory or _index
         self._retriever_factory = retriever_factory or _retriever
         self._pending_generations: dict[str, Any] = {}
+        self.generation_retirement: Callable[[str, Callable[[], object]], bool] = _retire_unpinned
+        """Runs a retirement unless the person pinned the index, under the Host's
+        mutation gate so a pin cannot land between its check and the removal
+        (`InputReferences.retire_evidence_index`); False when kept."""
+        self.generation_retire_count = 0
+        """Indexes retired after their selection sealed (`retire_generation`)."""
+        self.generation_retire_kept_count = 0
+        """Retirements that kept the index: held, pinned, or not released by the file system."""
         # One lease registry for every hold this process has on a generation:
         # a build in progress (its identity known before the model runs), a
         # built index waiting for its session, and every open session until
@@ -198,6 +208,40 @@ class AlternativeEvidenceRetrievalService:
                 raise ValueError("alternative_evidence.retrieval_index_in_use")
             index = self._index_factory(self.workspace, self.model_root)
             return int(index.evict(database_relative, plan_hash=plan_hash, evicted_at=evicted_at))
+
+    def retire_generation(self, generation: Any, *, authority: str, retired_at: datetime) -> bool:
+        """Retire a generation's index once the selection that read it is sealed.
+
+        The index is derived data: the library snapshot and the sealed vector
+        payload rebuild it, with no model, to the same manifest
+        (`rebuild_from_commitment`), and a later reader does so on open. So it
+        is kept only while it is used: while any hold in this process names
+        it -- a build, a waiting lease, an open session -- or while the person
+        pinned it, it stays. Otherwise the Workspace removes it and leaves the
+        eviction marker naming `authority`, the sealed receipt that used it
+        last. A file the system will not release (another process reads it)
+        stays, with no marker. Returns whether it was retired; it never
+        refuses the caller.
+        """
+        if getattr(generation, "generation_format", None) != RETRIEVAL_GENERATION_FORMAT:
+            return False
+        database_relative = committed_database_relative(
+            generation.corpus_hash, self.index_spec.logical_hash
+        )
+        try:
+            retired = self.generation_retirement(
+                str(generation.index_id),
+                lambda: self.evict_generation(
+                    database_relative, plan_hash=authority, evicted_at=retired_at
+                ),
+            )
+        except (ValueError, OSError, KnowledgeRetrievalError):  # GateBusy is an OSError
+            retired = False
+        if not retired:
+            self.generation_retire_kept_count += 1
+            return False
+        self.generation_retire_count += 1
+        return True
 
     def rebuild_generation(
         self,
@@ -398,11 +442,11 @@ class AlternativeEvidenceRetrievalService:
         """Resolve the index identity committed for a document set.
 
         The identity of the index this document set's corpus resolves to
-        under this spec, and whether that index is held on disk under it
-        (present and not evicted). Presence, never proof: a reader proves the
-        projection when it opens, and a caller that opens nothing (a
-        selection reused whole from a sealed receipt) learns only that the
-        build would find the index in place rather than restore it.
+        under this spec, and whether that index is on disk or retired (after
+        its use, or by a cleanup): `committed_index_restorable`, since a reader
+        rebuilds a retired index from its commitment on open. Presence, never
+        proof: a caller that opens nothing (a selection reused whole from a
+        sealed receipt) learns only that the index is not lost.
         """
         snapshot = self.publisher.library.read_snapshot(
             _snapshot_id(document_set.workspace_snapshot_id)
@@ -412,7 +456,7 @@ class AlternativeEvidenceRetrievalService:
         )
         index_id = index_identity_of_database(relative)
         assert index_id is not None
-        return index_id, committed_index_held(self.workspace.root, relative)
+        return index_id, committed_index_restorable(self.workspace.root, relative)
 
     def release_without_session(
         self,
@@ -440,6 +484,8 @@ class AlternativeEvidenceRetrievalService:
         evidence_as_of: datetime,
         original_for: OriginalReader | None = None,
         pair_scores: PairScoreAdmission | None = None,
+        admit: StorageAdmission | None = None,
+        block_for: VectorBlockSource | None = None,
     ) -> AlternativeEvidenceRetrievalSession:
         """Open a leased read session over a verified generation.
 
@@ -448,6 +494,8 @@ class AlternativeEvidenceRetrievalService:
         `pair_scores`, a reader that serves the committed pair-score blocks
         the admission names and seals new ones under its storage
         admission (without it, the reader keeps its in-process cache only).
+        A retired index is rebuilt first, under `admit` and from `block_for`,
+        as the explicit rebuild is.
         """
         self.verify_lineage(document_set, generation)
         token = str(uuid4())
@@ -460,6 +508,11 @@ class AlternativeEvidenceRetrievalService:
             self.generation_handoff_count += 1
         else:
             self.independent_generation_reopen_count += 1
+            try:
+                self._restore_retired(document_set, generation, admit, block_for)
+            except BaseException:
+                self._release_session(token)
+                raise
             retriever = self._retriever_factory(self.workspace, self.model_root, self.index_spec)
         if pair_scores is not None and hasattr(retriever, "pair_score_admission"):
             retriever.pair_score_admission = pair_scores
@@ -473,6 +526,34 @@ class AlternativeEvidenceRetrievalService:
             on_close=lambda: self._release_session(token),
             original_for=original_for,
         )
+
+    def _restore_retired(
+        self,
+        document_set: AlternativeEvidenceDocumentSet,
+        generation: RetrievalGenerationRecord,
+        admit: StorageAdmission | None,
+        block_for: VectorBlockSource | None,
+    ) -> None:
+        """Bring back a retired index before a session reads it.
+
+        An index retired after its use, or by a cleanup, is rebuilt from the
+        commitment the record seals, under this session's hold, as the owner's
+        explicit rebuild does: with no model while its payload is retained,
+        and the committed digest reproduced exactly when it is not.
+        """
+        if not isinstance(generation, AlternativeEvidenceRetrievalGeneration):
+            return
+        relative = committed_database_relative(generation.corpus_hash, self.index_spec.logical_hash)
+        if (self.workspace.root / relative).is_file():
+            return
+        self.rebuild_generation(
+            document_set=document_set, generation=generation, admit=admit, block_for=block_for
+        )
+
+
+def _retire_unpinned(_index_id: str, retire: Callable[[], object]) -> bool:
+    retire()
+    return True
 
 
 def _snapshot_id(value: str) -> Any:

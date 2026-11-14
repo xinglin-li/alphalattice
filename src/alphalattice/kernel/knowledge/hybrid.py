@@ -405,29 +405,27 @@ def _database_path(corpus_hash: str, spec: HybridIndexSpec) -> str:
     return committed_database_relative(corpus_hash, spec.logical_hash)
 
 
-def committed_index_held(root: Path, database_relative: str) -> bool:
-    """Inspect committed generation presence without treating disk presence as proof.
+def committed_index_restorable(root: Path, database_relative: str) -> bool:
+    """Say whether a committed generation's index is on disk or was retired.
 
-    Whether a committed generation's index is on disk under its identity
-    and no approved eviction removed it: presence, never proof. A reader
-    proves the projection when it opens; a caller that will not open it (a
-    selection reused whole from a sealed receipt, record section Y) learns
-    only that the normal build would find the index in place rather than
-    restore it. An invalid marker refuses as it would at open.
+    A retired index (after its use or by a cleanup) comes back from
+    its committed payload on the next open or build. Presence, never proof: a
+    caller that will not open it (a selection reused whole, record section Y)
+    learns only that the index is not lost.
 
     Args:
         root: Workspace root.
         database_relative: Confined committed-generation database path.
 
     Returns:
-        True only when the database exists and no approved eviction marker removed it.
+        True when the database exists or an eviction marker retired it.
 
     Raises:
         KnowledgeRetrievalError: An eviction marker is invalid.
     """
     return (
         resolve_confined(root, database_relative).is_file()
-        and _read_eviction_marker(root, database_relative) is None
+        or _read_eviction_marker(root, database_relative) is not None
     )
 
 
@@ -2240,7 +2238,11 @@ class WorkspaceHybridKnowledgeIndex:
             marker_path = resolve_confined(self.workspace.root, marker_relative)
             released = target.stat().st_size
             marker_path.write_bytes(canonical_json_bytes(marker))
-            target.unlink()
+            try:
+                target.unlink()
+            except OSError:  # another process reads it: kept, so no marker
+                marker_path.unlink(missing_ok=True)
+                raise
             return released
 
     def release_vector_object(self, relative: str) -> int:
@@ -3606,7 +3608,7 @@ __all__ = [
     "KnowledgeInventoryWindow",
     "WorkspaceHybridKnowledgeIndex",
     "WorkspaceHybridKnowledgeRetriever",
-    "committed_index_held",
+    "committed_index_restorable",
     "corpus_logical_hash",
     "probe_hybrid_retrieval_capabilities",
 ]

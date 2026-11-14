@@ -15,7 +15,9 @@ and reproduce the committed digest.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import threading
 import urllib.parse
 from datetime import timedelta
 from pathlib import Path
@@ -39,7 +41,13 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceRetrievalAccessReceipt,
 )
-from alphalattice.evidence.alternative_evidence.retrieval.contracts import PairScoreCommitmentRecord
+from alphalattice.evidence.alternative_evidence.documents.contracts import (
+    AlternativeEvidenceDocumentSet,
+)
+from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
+    AlternativeEvidenceRetrievalGeneration,
+    PairScoreCommitmentRecord,
+)
 from alphalattice.evidence.alternative_evidence.runtime.policy import AdmittedEvidencePolicy
 from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
@@ -48,7 +56,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
     AlternativeEvidenceDocumentTaskResources,
 )
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.protocols.actor_execution import ActorKind
 from tests.alternative_evidence_desk.issuer_listing import (
     ISSUER_TOPICS,
@@ -140,6 +147,23 @@ def _index_rows(service: _Service) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], _evidence(service)["indexes"])
 
 
+def _restored_after_use(service: _Service) -> dict[str, Any]:
+    """Once its selection is sealed, a generation's index is retired: derived data, kept
+    only while used. Its payload is kept, and the owner's explicit
+    rebuild restores it with no model run, so the storage cases start from an index on disk."""
+    (retired,) = _index_rows(service)
+    assert (
+        retired["availability"] == "EVICTED_BY_RETENTION" and retired["payload_available"] is True
+    )
+    rebuilt = service.post(
+        "/api/workspace/storage/evidence-rebuild", {"evidence_index_id": retired["index_id"]}
+    )
+    assert rebuilt["status"] == "REBUILT" and rebuilt["passage_embedding_pass"] is False
+    (row,) = _index_rows(service)
+    assert row["availability"] == "AVAILABLE"
+    return row
+
+
 def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -199,6 +223,20 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
         )
         lineage = analysis.lineage
 
+        _restored_after_use(service)
+        # A live reader never loses its generation: retirement keeps an index
+        # an open session reads, and says so.
+        reader = runtime.retrieval.open_session(
+            document_set=lineage.document_set, generation=lineage.generation, evidence_as_of=now[0]
+        )
+        try:
+            kept = runtime.retrieval.retire_generation(
+                lineage.generation, authority="1" * 64, retired_at=now[0]
+            )
+            assert kept is False and reader.search(query="operating", top_k=3).hits
+        finally:
+            reader.close()
+        assert _index_rows(service)[0]["availability"] == "AVAILABLE"
         # Accounted apart: one index, its payload, the blobs and the artifacts.
         view = _evidence(service)
         (row,) = view["indexes"]
@@ -242,6 +280,14 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
         assert pinned["status"] == "PINNED" and pinned["index_id"] == index_id
         (row,) = _index_rows(service)
         assert row["protected_by"] == ["USER_PINNED"] and row["eligible"] is False
+        # The person's pin reaches retirement too: a pinned index is not retired after use.
+        assert (
+            runtime.retrieval.retire_generation(
+                lineage.generation, authority="1" * 64, retired_at=now[0]
+            )
+            is False
+        )
+        assert database.is_file()
         refused = service.post(
             "/api/workspace/storage/confirm", {"storage_plan_hash": plan["plan_hash"]}
         )
@@ -254,6 +300,55 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
         service.post(
             "/api/workspace/storage/pin", {"input_binding_hash": index_id, "input_pinned": False}
         )
+        # A pin record that cannot be proved keeps the index as a pin does: its receipt
+        # no longer matches the record.
+        governance = service.session.operations.storage.owner.governance_root  # type: ignore[union-attr]
+        record = json.loads((governance / "input-pins.json").read_text(encoding="utf-8"))
+        receipt = governance / "input-pin-receipts" / f"{record['receipt_hash']}.json"
+        proved = receipt.read_bytes()
+        receipt.write_text('{"forged": 1}', encoding="utf-8")
+        retire = {"authority": "1" * 64, "retired_at": now[0]}
+        assert runtime.retrieval.retire_generation(lineage.generation, **retire) is False
+        assert database.is_file()
+        receipt.write_bytes(proved)
+        # A pin cannot land between retirement's pin check and its removal: both hold the
+        # mutation gate, so a pin made meanwhile waits, then finds the index retired.
+        removing, finish = threading.Event(), threading.Event()
+        evict = runtime.retrieval.evict_generation
+
+        def held_evict(*args: Any, **kwargs: Any) -> int:
+            removing.set()
+            assert finish.wait(30)
+            return evict(*args, **kwargs)
+
+        monkeypatch.setattr(runtime.retrieval, "evict_generation", held_evict)
+        outcome: dict[str, Any] = {}
+        retiring = threading.Thread(
+            target=lambda: outcome.update(
+                retired=runtime.retrieval.retire_generation(lineage.generation, **retire)
+            )
+        )
+        retiring.start()
+        assert removing.wait(30)
+        pinning = threading.Thread(
+            target=lambda: outcome.update(
+                pin=service.request(
+                    "/api/workspace/storage/pin",
+                    method="POST",
+                    payload={"input_binding_hash": index_id, "input_pinned": True},
+                )
+            )
+        )
+        pinning.start()
+        pinning.join(1.0)
+        assert pinning.is_alive(), "the pin waits for the retirement's gate"
+        finish.set()
+        retiring.join(30)
+        pinning.join(60)
+        assert outcome["retired"] is True and not database.is_file()
+        assert outcome["pin"] == (400, {"refused": "storage.input_pin_unavailable"}), outcome
+        monkeypatch.undo()
+        row = _restored_after_use(service)
 
         # A vector object no sealed generation composes -- a block a build
         # placed before it died -- is a candidate, released through the
@@ -380,40 +475,34 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
         assert service.get(packet_query) == packet
         assert adapter.prepared_packet(prepared_id, now=now[0], unit_id=ONE_UNIT).spans
 
-        # A cold open of the evicted generation refuses by the plan's name.
-        with pytest.raises(KnowledgeRetrievalError) as refused_open:
-            session = runtime.retrieval.open_session(
-                document_set=lineage.document_set,
-                generation=lineage.generation,
-                evidence_as_of=now[0],
-            )
-            try:
-                session.search(query="operating", top_k=3)
-            finally:
-                session.close()
-        assert refused_open.value.failure.code == "retrieval.index_evicted"
-        assert plan["plan_hash"][:12] in str(refused_open.value)
-        assert runtime.retrieval.passage_embedding_pass_count == 1
+        # A cold open of the evicted generation rebuilds it from its committed
+        # payload under the workspace budget: no model run, the marker gone, its
+        # hits served (a later reader never loses a generation).
+        session = runtime.open_session(
+            document_set=lineage.document_set,
+            generation=lineage.generation,
+            evidence_as_of=now[0],
+        )
+        try:
+            reopened = session.search(query="operating", top_k=3).hits
+        finally:
+            session.close()
+        assert reopened and runtime.retrieval.passage_embedding_pass_count == 1
+        assert database.is_file()
+        assert not database.with_name(database.name + ".evicted.json").is_file()
 
         # The next preparation of the same corpus -- a new cutoff, its own Task
-        # -- restores the index from the committed payload: no model run, the
-        # marker gone, the same generation identity under a second record.
+        # -- uses the same generation with no model run and, its selection
+        # sealed, retires the index again: the same identity, a second record.
         now[0] = _NOW + timedelta(hours=2)
         later = service.post("/api/evidence/prepare", selected)
         assert later["disposition"] == "ADMITTED" and later["task_id"] != str(prepared_id)
         service.drain()
         assert service.registry.task(UUID(later["task_id"])).lifecycle is TaskLifecycle.SUCCEEDED
         assert runtime.retrieval.passage_embedding_pass_count == 1
-        # The evicted index is restored by a build (the one generation reuse
-        # so far: the bare preparation above reused its selection whole and
-        # built nothing).
-        assert runtime.retrieval.generation_reuse_count == 1
-        assert runtime.generation_builds_avoided == 1
-        assert database.is_file()
-        assert not database.with_name(database.name + ".evicted.json").is_file()
         (row,) = _index_rows(service)
-        assert row["availability"] == "AVAILABLE" and row["record_count"] == 2
-        assert row["index_id"] == index_id
+        assert row["record_count"] == 2 and row["index_id"] == index_id
+        row = _restored_after_use(service)
 
         # Evict again, then the explicit rebuild: zero model, receipted, and a
         # cold open serves the same hits it served before.
@@ -526,7 +615,7 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         first_id, status = _prepare(service, selected)
         assert status["lifecycle"] == "SUCCEEDED"
         assert runtime.retrieval.passage_embedding_pass_count == 1
-        (row,) = _index_rows(service)
+        row = _restored_after_use(service)
         database = workspace / Path(*row["relative_path"].split("/"))
         source_sets = sorted((runtime.artifacts.root / "source-document-sets").glob("*.json"))
         source_set_bytes = max(path.stat().st_size for path in source_sets)
@@ -596,6 +685,24 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         assert not database.is_file()
         (row,) = _index_rows(service)
         assert row["availability"] == "EVICTED_BY_RETENTION" and row["payload_available"] is True
+        # A cold open rebuilds under the same budget: refused while the index cannot
+        # fit, placing nothing and keeping the marker.
+        (record,) = (runtime.artifacts.root / "retrieval-generations").glob("*.json")
+        generation = AlternativeEvidenceRetrievalGeneration.model_validate_json(record.read_bytes())
+        document_set = runtime.artifacts.load(
+            "document-sets", generation.document_set_hash, AlternativeEvidenceDocumentSet
+        )
+        set_cap(_used_bytes(workspace) + 1024)
+        with pytest.raises(RuntimeError) as refused_open:
+            runtime.open_session(
+                document_set=document_set, generation=generation, evidence_as_of=now[0]
+            )
+        assert getattr(refused_open.value, "failure_code", None) == (
+            "storage.managed_capacity_exceeded"
+        )
+        assert not database.is_file()
+        assert database.with_name(database.name + ".evicted.json").is_file()
+        assert not runtime.retrieval.active_index_ids(), "the refused session holds nothing"
         records = sorted((runtime.artifacts.root / "retrieval-generations").glob("*.json"))
         # The request's own small artifacts include its run's record (every
         # book is a coverage run).
@@ -605,6 +712,9 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         )
         set_cap(_used_bytes(workspace) + source_set_bytes + run_record_bytes + 64 * 1024)
         now[0] = _NOW + timedelta(hours=2)
+        # The normal build: with its marker gone the index is lost, not retired,
+        # so the preparation must place it again (a retired one is reused whole).
+        database.with_name(database.name + ".evicted.json").unlink()
         refused_id, status = _prepare(service, selected)
         assert status["lifecycle"] == "BLOCKED"
         assert (
@@ -612,7 +722,6 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
             == "alternative_evidence.task_failed:storage.managed_capacity_exceeded"
         )
         assert not database.is_file(), "a refused build placed nothing"
-        assert database.with_name(database.name + ".evicted.json").is_file()
         assert not list((store / ".system" / "staging").glob("*")), "no staged remains"
         assert sorted((runtime.artifacts.root / "retrieval-generations").glob("*.json")) == records
         assert runtime.retrieval.passage_embedding_pass_count == 1, "no model was run for it"
@@ -639,8 +748,11 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
         now[0] = _NOW + timedelta(hours=3)
         _restored_id, status = _prepare(service, selected)
         assert status["lifecycle"] == "SUCCEEDED"
-        assert database.is_file() and runtime.retrieval.passage_embedding_pass_count == 1
+        # The lost index is restored by the build from the kept payload, with no
+        # model run, and retired again once the selection is sealed.
+        assert not database.is_file() and runtime.retrieval.passage_embedding_pass_count == 1
         assert runtime.retrieval.generation_reuse_count == 1
+        assert runtime.generation_builds_avoided == 0
 
         # Shared bytes count once: with room for the request's artifacts only
         # -- its source set, its receipt and its span set, the durable writes
@@ -728,7 +840,7 @@ def test_open_readers_and_unsealed_builds_hold_their_generation(
         lineage = adapter.published_analysis(
             UUID(refreshed["task_id"]), now=now[0], unit_id=ONE_UNIT
         ).lineage
-        (row,) = _index_rows(service)
+        row = _restored_after_use(service)
         database = workspace / Path(*row["relative_path"].split("/"))
         assert row["protected_by"] == [] and row["eligible"] is True
 
@@ -816,6 +928,9 @@ def test_open_readers_and_unsealed_builds_hold_their_generation(
             publish(category, identity, model)
 
         monkeypatch.setattr(runtime.artifacts, "publish", plans_before_sealing)
+        # The normal build: with its marker gone the index is lost, not retired,
+        # so the build restores it (a retired one would be reused whole).
+        database.with_name(database.name + ".evicted.json").unlink()
         now[0] = _NOW + timedelta(hours=1)
         _task_id, status = _prepare(service, selected)
         monkeypatch.undo()
@@ -824,6 +939,9 @@ def test_open_readers_and_unsealed_builds_hold_their_generation(
         assert observed["targets"] == {}
         assert observed["active"] == [row["index_id"]]
         assert observed["protected"] == [("AVAILABLE", ["ACTIVE_LEASE"])]
+        # Its selection sealed, the build's index is retired again.
+        assert not database.is_file()
+        row = _restored_after_use(service)
         assert database.is_file()
 
         # A Task still owed its work holds the generation it built: the
@@ -853,9 +971,10 @@ def test_open_readers_and_unsealed_builds_hold_their_generation(
         assert service.session.resumed_task_ids == (owed,)
         service.drain()
         assert service.registry.task(owed).lifecycle is TaskLifecycle.SUCCEEDED
+        # The hold ends with the Task, and its sealed selection retires the index.
         (row,) = _index_rows(service)
-        assert row["protected_by"] == [] and row["eligible"] is True
-        assert row["relative_path"] in service.post("/api/workspace/storage/plan")["targets"]
+        assert row["protected_by"] == [] and row["availability"] == "EVICTED_BY_RETENTION"
+        assert not database.is_file() and row["payload_available"] is True
     finally:
         service.session.stop()
 
@@ -889,7 +1008,7 @@ def test_an_unprovable_vector_reference_graph_refuses_vector_cleanup(
         now[0] = _NOW + timedelta(hours=1)
         _second_id, status = _prepare(service, selected)
         assert status["lifecycle"] == "SUCCEEDED"
-        (row,) = _index_rows(service)
+        row = _restored_after_use(service)
         assert row["record_count"] == 2 and row["payload_available"] is True
         assert row["payload_proof"] == "PROVED"
         vector_root = workspace / "runtime" / "evidence-knowledge" / ".system" / "knowledge-vectors"

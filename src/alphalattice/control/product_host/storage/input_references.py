@@ -168,6 +168,45 @@ class ResearchInputStorage:
         self.clock = clock or (lambda: datetime.now(UTC))
         self._capacity_sampled = False
 
+    def evidence_index_pinned(self, index_id: str) -> bool:
+        """Say whether the person pinned a generation's index (`storage pin`).
+
+        A pinned index is not retired after its use; an unreadable pin record keeps it and
+        never reads as unpinned.
+
+        Args:
+            index_id: The generation's index identity.
+
+        Returns:
+            True when the index is pinned or the pin record cannot be read.
+        """
+        try:
+            return f"{EVIDENCE_PIN_PREFIX}{index_id}" in self._all_pins()
+        except (OSError, ValueError, KeyError, TypeError, StorageRetentionError):
+            return True
+
+    def retire_evidence_index(self, index_id: str, retire: Callable[[], object]) -> bool:
+        """Retire a generation's index unless the person pinned it, under the mutation gate.
+
+        `pin` checks and writes under the same gate, so a pin never lands between this check
+        and the removal.
+
+        Args:
+            index_id: The generation's index identity.
+            retire: The index owner's removal, run only when the index is not pinned.
+
+        Returns:
+            False when the index is pinned or its pin record cannot be read; True once retired.
+
+        Raises:
+            GateBusy: A foreground caller found the gate held throughout its wait.
+        """
+        with self.session.mutation_gate.hold():
+            if self.evidence_index_pinned(index_id):
+                return False
+            retire()
+            return True
+
     def _all_pins(self) -> dict[str, int]:
         path = self.owner.governance_root / "input-pins.json"
         if not path.exists():

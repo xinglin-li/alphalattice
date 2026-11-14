@@ -5658,17 +5658,17 @@ class PortfolioResearchOperations:
         )
 
     def _bind_evidence_storage_admission(self) -> None:
-        """Every evidence write is admitted by the workspace's own storage budget, and a
-        preparation's counts reach the workspace's progress projection.
+        """Admit every evidence write by the workspace's storage budget, and report its counts.
 
-        The evidence runtime is composed before the storage owner exists; the admission is bound
-        here, once both do, so a source set, canonical blob, vector payload or index is refused
-        by the rule that refuses a Data or Factor write at the workspace's cap.
+        The evidence runtime is composed before the storage owner, so its admission (the cap's
+        rule for a Data or Factor write) and the person's pins are bound here, once both
+        exist.
         """
 
         adapter = None if self.review is None else self.review.evidence_task_adapter
         if adapter is not None:
             adapter.runtime.storage_admission = self.storage.admit_evidence_bytes
+            adapter.runtime.retrieval.generation_retirement = self.storage.retire_evidence_index
             # A preparation's counts reach the workspace's progress projection, as a
             # data preparation's do (the stage, its count and unit, the unit it is).
             publisher = WorkspaceProgressPublisher(self.workspace_session.workspace / "artifacts")
