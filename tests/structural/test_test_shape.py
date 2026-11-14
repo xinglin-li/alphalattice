@@ -103,6 +103,38 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -
     assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
+    # an added or changed test names each parametrize case and grows no Ruff PT finding
+    unnamed = "@pytest.mark.parametrize('flag', [True, False])\ndef test_a(flag):\n    'One.'\n"
+    named = unnamed.replace("[True, False]", "[True, False], ids=['on', 'off']")
+    assert problems(PATH, None, unnamed) == [
+        f"{PATH}::test_a: line 1 parametrize('flag') leaves its cases unnamed; "
+        "give each case pytest.param(..., id=...) or ids= (rule 5)"
+    ]
+    assert not problems(PATH, unnamed, unnamed)  # a kept test keeps its standing
+    assert problems(PATH, unnamed, unnamed.replace("One.", "Two."))  # a changed one is judged
+    assert not problems(PATH, None, named)
+    assert problems(PATH, None, named.replace("'off'", "None"))  # None asks for the value id
+    case = "[pytest.param(True, id='on'), pytest.param(False, id=None)]"
+    assert problems(PATH, None, unnamed.replace("[True, False]", case))
+    assert not problems(PATH, None, unnamed.replace("[True, False]", case.replace("None", "'off'")))
+    raises = 'def test_a():\n    """One."""\n    with pytest.raises(ValueError):\n        f()\n'
+    old = "import pytest\n" + raises
+    twice = "@pytest.mark.parametrize('a', [1, 1], ids=['x', 'y'])\n" + raises
+    snapshots = {
+        "old": old,
+        "new": old + raises.replace("test_a", "test_b") + twice.replace("test_a", "test_c"),
+        "moved": old.replace("import pytest\n", "import pytest\n\n\n"),
+    }
+    found = shape.ruff_test_findings(snapshots)
+    assert found["old"] == (("PT011", 4),)
+    assert problems(PATH, old, snapshots["new"], (found["old"], found["new"])) == [
+        f"{PATH}::test_b: Ruff PT011 findings grow 0 -> 1; "
+        "give pytest.raises a match= for the expected message",
+        f"{PATH}::test_c: Ruff PT011 findings grow 0 -> 1; "
+        "give pytest.raises a match= for the expected message",
+        f"{PATH}::test_c: Ruff PT014 findings grow 0 -> 1; drop the duplicate parametrize case",
+    ]
+    assert not problems(PATH, old, snapshots["moved"], (found["old"], found["moved"]))
 
 
 @pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")
@@ -326,6 +358,7 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
 def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkeypatch) -> None:
     """Only staged content is checked, and inherited parent violations do not block a merge."""
     monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
+    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     state = {"merge": False}
@@ -463,6 +496,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
 def test_the_stage_judges_the_committed_head_against_its_merge_base(monkeypatch) -> None:
     """With a base, the committed head is judged against its merge base, never the index."""
     monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
+    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     texts = {"HEAD:" + path: bad, ":" + path: "", "fork:" + path: ""}

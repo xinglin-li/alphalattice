@@ -130,6 +130,9 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 
 - Parameterize a dimension only when it is the requirement; multiply only the work that reads it.
 - Move parameter-independent checks out of the parametrized function.
+- Name each parametrized case with `ids=` or `pytest.param(..., id=...)`; `scripts/check_test_shape.py`
+  refuses an unnamed case in an added or changed test, and any growth of a test's Ruff PT011, PT012,
+  PT014, PT015 or PT017 findings.
 - Build an expensive environment, export, history, workspace, Host or model once in a shared module/session fixture.
 - Share setup read-only; isolate each case's mutations.
 - Give each function one behavior; split chained checks so workers can run them in parallel.

@@ -136,8 +136,18 @@ def _metrics(node: ast.AST, ruff: dict[int, int] | None = None) -> tuple[int, in
     return (node.end_lineno or node.lineno) - node.lineno + 1, decisions
 
 
-def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
-    """Measure each staged Python snapshot with one locked Ruff invocation."""
+# Ruff's pytest-style rules a test change may not grow, with the fix each names
+PT_FIXES = {
+    "PT011": "give pytest.raises a match= for the expected message",
+    "PT012": "keep one simple statement inside pytest.raises",
+    "PT014": "drop the duplicate parametrize case",
+    "PT015": "use pytest.fail for an assertion that always fails",
+    "PT017": "assert the exception through pytest.raises",
+}
+
+
+def _ruff(snapshots: dict[str, str], *options: str) -> dict[str, list[dict]]:
+    """Ruff's JSON rows for each snapshot, from one locked invocation."""
     if not snapshots:
         return {}
     with tempfile.TemporaryDirectory(prefix="test-shape-") as folder:
@@ -156,10 +166,7 @@ def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
                 "--ignore-noqa",
                 "--target-version",
                 "py312",
-                "--select",
-                "C901",
-                "--config",
-                "lint.mccabe.max-complexity=0",
+                *options,
                 "--output-format",
                 "json",
                 str(root),
@@ -172,17 +179,37 @@ def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
         )
         if done.returncode not in (0, 1):
             raise ValueError("ruff could not read the staged snapshots")
-        result = {key: {} for key in snapshots}
+        result = {key: [] for key in snapshots}
         for row in json.loads(done.stdout):
+            result[names[Path(row["filename"]).name]].append(row)
+        return result
+
+
+def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
+    """Measure each staged Python snapshot with one locked Ruff invocation."""
+    rows = _ruff(snapshots, "--select", "C901", "--config", "lint.mccabe.max-complexity=0")
+    result = {key: {} for key in rows}
+    for key, found in rows.items():
+        for row in found:
             match = re.search(r"\((\d+) > 0\)$", row["message"])
             if row["code"] != "C901" or not match:
                 raise ValueError("ruff could not measure a staged snapshot")
-            key = names[Path(row["filename"]).name]
             line = row["location"]["row"]
             if line in result[key]:
                 raise ValueError("ruff returned an ambiguous function location")
             result[key][line] = int(match.group(1)) - 1
-        return result
+    return result
+
+
+def ruff_test_findings(snapshots: dict[str, str]) -> dict[str, tuple[tuple[str, int], ...]]:
+    """Each staged test snapshot's PT findings as (rule, line), from one Ruff invocation."""
+    rows = _ruff(snapshots, "--select", ",".join(PT_FIXES))
+    if any(row["code"] not in PT_FIXES for found in rows.values() for row in found):
+        raise ValueError("ruff returned a rule outside its PT selection")
+    return {
+        key: tuple(sorted((row["code"], row["location"]["row"]) for row in found))
+        for key, found in rows.items()
+    }
 
 
 def _sql(node: ast.AST, values: dict[str, str]) -> str:
@@ -647,11 +674,95 @@ def _docstring_lines(text: str) -> dict[str, int]:
     }
 
 
+def _given(value: ast.AST | None) -> bool:
+    return value is not None and not (isinstance(value, ast.Constant) and value.value is None)
+
+
+def _names_every_case(ids: ast.AST | None) -> bool:
+    """ids= names each case; a literal list with a None entry leaves pytest's value id there."""
+    if isinstance(ids, ast.List | ast.Tuple):
+        return bool(ids.elts) and all(_given(entry) for entry in ids.elts)
+    return _given(ids)
+
+
+def _named(case: ast.AST) -> bool:
+    return (
+        isinstance(case, ast.Call)
+        and getattr(case.func, "attr", getattr(case.func, "id", "")) == "param"
+        and any(word.arg == "id" and _given(word.value) for word in case.keywords)
+    )
+
+
+def _unnamed(node: ast.AST) -> list[str]:
+    """A test's parametrize sites whose cases are not each named by ids= or pytest.param id=."""
+    sites = []
+    for mark in getattr(node, "decorator_list", ()):
+        if not (isinstance(mark, ast.Call) and getattr(mark.func, "attr", "") == "parametrize"):
+            continue
+        given = {word.arg: word.value for word in mark.keywords}
+        cases = mark.args[1] if len(mark.args) > 1 else given.get("argvalues")
+        names = mark.args[0] if mark.args else given.get("argnames")
+        listed = isinstance(cases, ast.List | ast.Tuple) and cases.elts
+        if not _names_every_case(given.get("ids")) and not (
+            listed and all(_named(case) for case in cases.elts)
+        ):
+            sites.append(f"line {mark.lineno} parametrize({ast.unparse(names) if names else ''})")
+    return sites
+
+
+def _tests(tree: ast.AST) -> dict[str, ast.AST]:
+    return {
+        name: node
+        for name, node in _definitions(tree)
+        if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_")
+    }
+
+
+def _owners(tree: ast.AST, found: tuple[tuple[str, int], ...]) -> Counter:
+    """Each PT finding counted under the innermost function holding its line, decorators
+    included, else the module."""
+    spans = [
+        (min([node.lineno] + [mark.lineno for mark in node.decorator_list]), node.end_lineno, name)
+        for name, node in _definitions(tree)
+        if isinstance(node, FUNCTION_TYPES)
+    ]
+    counts = Counter()
+    for rule, line in found:
+        holding = [span for span in spans if span[0] <= line <= span[1]]
+        counts[(max(holding)[2] if holding else "<module>", rule)] += 1
+    return counts
+
+
+def _test_problems(
+    path: str, old: str | None, new: str, ruff: tuple[tuple, tuple] | None
+) -> list[str]:
+    """An added or changed test names each parametrize case; no function grows a PT finding."""
+    before, after = _tree(old or ""), _tree(new)
+    was, found = _tests(before), []
+    for name, node in _tests(after).items():
+        if name in was and ast.dump(was[name]) == ast.dump(node):
+            continue
+        found += [
+            f"{path}::{name}: {site} leaves its cases unnamed; "
+            "give each case pytest.param(..., id=...) or ids= (rule 5)"
+            for site in _unnamed(node)
+        ]
+    if ruff is not None:
+        held, now = _owners(before, ruff[0]), _owners(after, ruff[1])
+        found += [
+            f"{path}::{name}: Ruff {rule} findings grow {held[(name, rule)]} -> {count}; "
+            f"{PT_FIXES[rule]}"
+            for (name, rule), count in sorted(now.items())
+            if count > held[(name, rule)]
+        ]
+    return found
+
+
 def problems(
     path: str,
     old: str | None,
     new: str,
-    ruff: tuple[dict[int, int], dict[int, int]] | None = None,
+    ruff: tuple[dict[int, int], dict[int, int]] | tuple[tuple, tuple] | None = None,
 ) -> list[str]:
     """Growth a staged source or test change refuses; existing debt only shrinks."""
     if path in GENERATED:
@@ -714,6 +825,7 @@ def problems(
                 )
     if not path.endswith(".py"):
         return found
+    found += _test_problems(path, old, new, ruff)
     if path.startswith("tests/unit/"):
         found.extend(
             row for row in _lint(path, _tree(new)) if row.startswith("testing.layer_contract:")
@@ -952,8 +1064,13 @@ def main(argv: list[str] | None = None) -> int:
     specs = [head + path for path in python_sources] + [
         parent + ":" + origin[path] for path in python_sources for parent in parents
     ]
+    test_sources = [p for p in selected if p.startswith("tests/") and p.endswith(".py")]
+    test_specs = [head + path for path in test_sources] + [
+        parent + ":" + origin[path] for path in test_sources for parent in parents
+    ]
     try:
         scores = ruff_decisions({spec: texts[spec] for spec in specs if spec in texts})
+        scores.update(ruff_test_findings({s: texts[s] for s in test_specs if s in texts}))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(
             f"TEST-LAYOUT Ruff measurement unavailable: {error}; restore Ruff and retry",
@@ -970,6 +1087,8 @@ def main(argv: list[str] | None = None) -> int:
                 measurement = (
                     (scores.get(parent + ":" + origin[path], {}), scores[head + path])
                     if path in python_sources
+                    else (scores.get(parent + ":" + origin[path], ()), scores[head + path])
+                    if path in test_sources
                     else None
                 )
                 try:
