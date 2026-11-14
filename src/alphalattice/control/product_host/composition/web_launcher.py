@@ -54,6 +54,7 @@ from alphalattice.interface.local_application.web import (
     OPEN_THE_WORKBENCH,
 )
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.shared_kernel.waiting import pause
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files
@@ -441,7 +442,7 @@ def _detach(
                     )
         if host.poll() is not None:
             return _failed_start(arguments.workspace, host, text, log_path)
-        time.sleep(0.2)
+        pause(0.2)
     return _refusal(
         "local_web.detached_host_not_ready",
         f"The detached Host (process {host.pid}) has not reported serving after "

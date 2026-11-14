@@ -1051,6 +1051,16 @@
   "detail": "The Task the cursor named is no longer in this listing; read its first page again.",
   "next_action": "READ_THE_FIRST_PAGE"
  },
+ "wait.stopped": {
+  "message_id": "shared.wait.stopped",
+  "detail": "shared.wait.stopped",
+  "next_action": "SEND_THE_REQUEST_AGAIN"
+ },
+ "wait.timeout": {
+  "message_id": "shared.wait.timeout",
+  "detail": "shared.wait.timeout",
+  "next_action": "READ_ITS_STATUS_AND_WAIT_AGAIN"
+ },
  "workspace_backup.root_unwritable": {
   "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
   "next_action": "SERVE_WITH_A_WRITABLE_BACKUP_ROOT"

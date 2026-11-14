@@ -2,6 +2,18 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "shared.wait.stopped": {
+      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The wait was stopped before its bound, as its owner asked; nothing it waited for was changed. Send the request again when it is wanted.", "zh-CN": "等待在到达上限前按其所有者的要求停止；所等待的内容没有任何改变。需要时请再次发送该请求。"}
+    },
+    "shared.wait.timeout": {
+      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The wait reached its bound before what it waited for; that work may still finish. Read its status, then wait again.", "zh-CN": "等待在所等待的内容出现前到达了上限；该工作仍可能完成。请读取它的状态，然后再次等待。"}
+    },
+    "cli.max_wait_invalid": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "--max-wait is the waiter's only timer, in seconds above 0 and at most an hour (3600); omitted, it is the hour. A wait that reaches its cap ends and its work continues.", "zh-CN": "--max-wait 是等待者唯一的计时器，以秒计，大于 0 且至多一小时（3600 秒）；省略时即为一小时。到达上限的等待会结束，其工作继续进行。"}
+    },
     "cli.output_pipe_closed": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "AlphaLattice: output pipe closed before the answer finished. The work may still have run; read its status or save the full answer with --output.", "zh-CN": "AlphaLattice???????????????????????????????????? --output ???????"}

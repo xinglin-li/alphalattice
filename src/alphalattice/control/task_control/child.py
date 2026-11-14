@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import importlib
 import multiprocessing
+import multiprocessing.connection
 import os
 import pickle
 import tempfile
 import threading
-import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from concurrent import futures
@@ -49,8 +49,6 @@ from alphalattice.kernel.shared_kernel.spans import (
 
 POLL_SECONDS = 0.5
 """How often the waiting parent reads the call's answer and the Task's cancellation."""
-PARENT_WATCH_SECONDS = 2.0
-"""How often the worker looks for its parent; a worker whose parent is gone ends at once."""
 
 KEPT_WORKER_IDLE_SECONDS = 180.0
 """How long a kept worker waits with no call before it retires; the next call starts it again.
@@ -460,11 +458,12 @@ def _numerical_threads(threads: int | None) -> Iterator[None]:
 
 
 def _watch_parent() -> None:
+    """End this worker when its parent ends: block on the parent's sentinel, the standard
+    library's portable wait for a process to end, so no loop watches."""
     parent = multiprocessing.parent_process()
-    while True:
-        time.sleep(PARENT_WATCH_SECONDS)
-        if parent is None or not parent.is_alive():
-            os._exit(3)
+    if parent is not None:
+        multiprocessing.connection.wait([parent.sentinel])
+    os._exit(3)
 
 
 __all__ = [

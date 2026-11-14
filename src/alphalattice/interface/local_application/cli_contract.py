@@ -1565,8 +1565,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             "SET_MAX_WAIT_ABOVE_0_SECONDS_OR_OMIT_IT",
-            "--max-wait is the waiter's only timer, in seconds above 0, for a command run under "
-            "a cap; omit it to wait until the work ends or needs a decision.",
+            "cli.max_wait_invalid",
         ),
     ),
     (

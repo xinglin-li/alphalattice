@@ -694,6 +694,12 @@
       "layer": "integration",
       "seconds": 20
     },
+    "shared_kernel.a_wait_ends_at_its_bound": {
+      "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "unit",
+      "seconds": 1
+    },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -705,6 +711,12 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.a_worker_ends_with_its_parent": {
+      "description": "If a kept worker watched its parent by polling, or not at all, a Host that died would leave workers running or end them late.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
     },
     "task_control.dead_worker_reads_failed": {
       "description": "A Task whose command raised and whose failure write died with it stops reading RUNNING at the Supervisor's next pass.",

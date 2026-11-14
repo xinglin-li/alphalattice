@@ -29,7 +29,7 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
             for n in ast.walk(function)
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
         }
-        if any(
+        if "pause" in calls[name] or any(
             isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and isinstance(n.func.value, ast.Name)
@@ -78,6 +78,9 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
     reviewed = {
         (client_path, name)
         for name in (
+            # Makes every waiter's one deadline (its --max-wait within the hour, or the hour); it
+            # does not wait.
+            "_deadline",
             "_sleep_before_read",
             "_read_through_restarts",
             "_follow",

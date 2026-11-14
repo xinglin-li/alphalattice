@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -81,6 +82,8 @@ from alphalattice.interface.local_application.review_evidence import (
 )
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
+from alphalattice.kernel.shared_kernel.waiting import CEILING as WAIT_CEILING
+from alphalattice.kernel.shared_kernel.waiting import pause
 from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,
@@ -2069,17 +2072,29 @@ RECONNECT: frozenset[str] = frozenset(
 waits on, since the Task it waits for runs on under Task Control (WK)."""
 
 
-def _sleep_before_read(delay: float, deadline: float | None) -> bool:
+def _deadline(max_wait: float | None) -> float:
+    """A waiter's deadline; one that is reached ends MAX_WAIT_REACHED, its work continuing."""
+    return time.monotonic() + _max_wait(max_wait)
+
+
+def _max_wait(given: float | None) -> float:
+    """--max-wait, above 0 and at most the hour every wait has, or that hour when omitted."""
+    if given is not None and not (math.isfinite(given) and 0 < given <= WAIT_CEILING):
+        raise LocalResearchClientError("local_client.max_wait_invalid")
+    return WAIT_CEILING if given is None else given
+
+
+def _sleep_before_read(delay: float, deadline: float) -> bool:
     """Sleep only to the cap; a completed sleep always has a read after it."""
-    remaining = None if deadline is None else deadline - time.monotonic()
-    if remaining is not None and remaining <= 0:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
         return False
-    time.sleep(delay if remaining is None else min(delay, remaining))
+    pause(min(delay, remaining))
     return True
 
 
 def _read_through_restarts(
-    client: LocalResearchClient, document: dict[str, Any], deadline: float | None
+    client: LocalResearchClient, document: dict[str, Any], deadline: float
 ) -> tuple[LocalResearchClient, dict[str, Any] | None]:
     """One read, waiting out a Host that stopped or restarted, including a last read at the cap.
 
@@ -2087,14 +2102,12 @@ def _read_through_restarts(
     """
     delay = 1.0
     while True:
-        remaining = None if deadline is None else deadline - time.monotonic()
+        remaining = deadline - time.monotonic()
         request = document
-        if remaining is not None and "wait_seconds" in document:
+        if "wait_seconds" in document:
             request = {**document, "wait_seconds": min(document["wait_seconds"], max(0, remaining))}
         try:
-            body = client.request(
-                request, timeout=None if remaining is None else max(0, remaining) + _POLL_MARGIN
-            )
+            body = client.request(request, timeout=max(0, remaining) + _POLL_MARGIN)
         except LocalResearchClientError as error:
             if str(error) not in RECONNECT:
                 raise
@@ -2191,8 +2204,7 @@ def _follow(
     receipt: _FollowReceipt = _follow_receipt,
 ) -> dict[str, Any]:
     """Follow work across Host restarts, ending at an action, stage boundary or deadline."""
-    if max_wait is not None and not max_wait > 0:
-        raise LocalResearchClientError("local_client.max_wait_invalid")
+    _max_wait(max_wait)
     trial = body.get("feature_trial_id") if body.get("status") == "FEATURE_TRIAL" else None
     # A promotion follows its new Alpha Task, not the answer's subject.
     task = body.get("follow_task_id") or body.get("publication_task_id") or body.get("task_id")
@@ -2238,8 +2250,8 @@ def _follow(
             **extra,
         }
 
-    if deadline is None and max_wait is not None:
-        deadline = time.monotonic() + max_wait
+    if deadline is None:
+        deadline = _deadline(max_wait)
     held = int(body.get("verified_stage_count") or 0)
     # Say once: this call is the wait, never poll.
     receipt(client, body, document)
@@ -2248,11 +2260,11 @@ def _follow(
     known = (body.get("incident") or {}).get("key")
     while True:
         # A Task's status waits on the Host for the Task to move on (N8); a trial is polled.
-        remaining = None if deadline is None else deadline - time.monotonic()
+        remaining = deadline - time.monotonic()
         request = (
             document
-            if trial or (remaining is not None and remaining < 0.1)
-            else {**document, "wait_seconds": round(min(20.0, remaining or 20.0), 3)}
+            if trial or remaining < 0.1
+            else {**document, "wait_seconds": round(min(20.0, remaining), 3)}
         )
         client, read = _read_through_restarts(client, request, deadline)
         if read is None:
@@ -2289,8 +2301,7 @@ def _follow(
             return final(current, "ENDED" if outcome_of(current) == "OK" else "STOPPED")
         if each_stage and int(current.get("verified_stage_count") or 0) > held:
             return final(current, "STAGE_VERIFIED")
-        remaining = None if deadline is None else deadline - time.monotonic()
-        if remaining is not None and remaining <= 0:
+        if deadline - time.monotonic() <= 0:
             return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
         if trial:
             _sleep_before_read(delay, deadline)
@@ -2355,7 +2366,7 @@ def _wait_for_goal(
     me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
-    deadline = None if max_wait is None else time.monotonic() + max_wait
+    deadline = _deadline(max_wait)
     client, current = _read_through_restarts(client, document, deadline)
     prefix = _entry_of(client)
     if current is None or current.get("status") == "REFUSED":
@@ -2446,7 +2457,7 @@ class _Chain:
 
     client: LocalResearchClient
     name: str
-    deadline: float | None
+    deadline: float
     steps: list[dict[str, Any]] = field(default_factory=list)
     person_questions: list[dict[str, Any]] = field(default_factory=list)
     wake: tuple[str, str] | None = None
@@ -2497,7 +2508,7 @@ class _Chain:
             )
             return self.stop(step, registered)
         deadline = self.deadline
-        remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
+        remaining = max(0.1, deadline - time.monotonic())
         ended = _follow(self.client, body, remaining, deadline=deadline, receipt=self.receipt)
         self.steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
         self.followed_answer = ended
@@ -2561,7 +2572,7 @@ class _Chain:
 
 
 def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> _Chain:
-    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    deadline = _deadline(args.max_wait)
     wake = None
     if getattr(args, "notify", None) == "codex-queue":
         from alphalattice.interface.local_application.native_bridge import (
@@ -3171,8 +3182,7 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
     each_stage = bool(getattr(args, "each_stage", False))
     if each_stage and args.task_id is None:
         raise LocalResearchClientError("local_client.each_stage_needs_task")
-    if args.max_wait is not None and not args.max_wait > 0:
-        raise LocalResearchClientError("local_client.max_wait_invalid")
+    _max_wait(args.max_wait)
     receipt = getattr(args, "_follow_receipt", _follow_receipt)
     if args.task_id is not None:
         receipt(client, None, {"operation": "STATUS", "task_id": str(args.task_id)})
@@ -3196,8 +3206,7 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
     else:
         document = {"operation": "STATUS", "task_id": str(args.task_id)}
         # The cap counts from the waiter's start, its first read included.
-        started = time.monotonic()
-        deadline = None if args.max_wait is None else started + args.max_wait
+        deadline = _deadline(args.max_wait)
         client, status = _read_through_restarts(client, document, deadline)
         if status is None:
             # The cap came before a first read: an end like any other, its wake queued below
@@ -3247,7 +3256,7 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         "committee_key": args.committee_key,
         "committee_seen": int(args.committee_seen or 0),
     }
-    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    deadline = _deadline(args.max_wait)
     delay, body = 1.0, dict[str, Any]()
     while True:
         client, read = _read_through_restarts(client, document, deadline)

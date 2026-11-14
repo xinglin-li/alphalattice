@@ -267,6 +267,8 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         "option": "source_artifact_root",
         "type_name": "RuntimeError",
         "failure_class": None,
+        "what": "a fixture wait",
+        "seconds": 1.0,
     }
     for parameter in signature.parameters.values():
         if parameter.name == "self" or parameter.kind in (

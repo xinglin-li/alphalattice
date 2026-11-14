@@ -713,7 +713,7 @@
     },
     "shared kernel": {
       "description": "The shared kernel provides common immutable records, identity functions and persistence primitives so domain owners can share these basic contracts and operations.",
-      "covers": "shared domain validation, failure and value records; canonical JSON, content, source and recipe identity and seals; durable-file and resource-layout primitives; environment provenance, execution-span readouts and sector-history treatment vocabulary",
+      "covers": "shared domain validation, failure and value records; canonical JSON, content, source and recipe identity and seals; durable-file and resource-layout primitives; bounded waits; environment provenance, execution-span readouts and sector-history treatment vocabulary",
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
         "alphalattice.kernel.shared_kernel.arrow_identity",
@@ -733,7 +733,8 @@
         "alphalattice.kernel.shared_kernel.sealing",
         "alphalattice.kernel.shared_kernel.sector_treatment",
         "alphalattice.kernel.shared_kernel.source_identity",
-        "alphalattice.kernel.shared_kernel.spans"
+        "alphalattice.kernel.shared_kernel.spans",
+        "alphalattice.kernel.shared_kernel.waiting"
       ],
       "folds_in": [],
       "note": "Neutral primitives are defined here and imported by domain owners. This entry does not transfer the meaning, state or decisions of any domain noun.",

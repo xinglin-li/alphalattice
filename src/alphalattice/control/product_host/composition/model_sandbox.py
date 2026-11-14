@@ -30,9 +30,15 @@ from typing import Any, cast
 import psutil  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.kernel.shared_kernel.waiting import WaitTimeout, wait_until
+
 from .saved_object_readback import probe
 
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "BLOCKED", "RECOVERY_REQUIRED"})
+STUDY_SECONDS = 3600.0
+"""How long the sandbox waits for its study's Task to end: the cap of any wait. A research
+experiment Task ran 54 s at the median, 736 s at p90 and 2,090 s at most (the release workspace's
+ledger, 11 Tasks)."""
 
 
 def _copy(source: Path, target: Path) -> None:
@@ -185,13 +191,21 @@ def _run_study(copy: Path, model_id: str, study: Path | None) -> tuple[str, floa
                 session, {"operation": "EXPERIMENT_RUN", "experiment_plan_hash": plan["plan_hash"]}
             )
             task_id = str(sent.get("task_id") or sent.get("publication_task_id"))
-            while True:
-                lifecycle = _operate(session, {"operation": "STATUS", "task_id": task_id}).get(
-                    "lifecycle"
+
+            def ended(_left: float) -> str | None:
+                state = _operate(session, {"operation": "STATUS", "task_id": task_id})
+                return state.get("lifecycle") if state.get("lifecycle") in _TERMINAL else None
+
+            try:
+                lifecycle = wait_until(  # read each second, as the recorded run time assumes
+                    ended,
+                    timeout=STUDY_SECONDS,
+                    what=f"study Task {task_id}",
+                    interval=1.0,
+                    max_interval=1.0,
                 )
-                if lifecycle in _TERMINAL:
-                    break
-                time.sleep(1.0)
+            except WaitTimeout as error:
+                raise ValueError(f"model_sandbox.study_timeout:{task_id}") from error
         seconds = time.perf_counter() - started
         body = _operate(session, {"operation": "EXPERIMENT_READBACK", "task_id": task_id})
         if body.get("status") != "EXPERIMENT_PUBLISHED":

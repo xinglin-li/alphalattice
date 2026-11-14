@@ -365,8 +365,8 @@ def _answers(child: argparse.ArgumentParser, *, declaration: bool = False) -> No
     child.add_argument(
         "--max-wait",
         type=float,
-        help="The waiter's only timer, for a command run under a cap; omit it to wait until "
-        "the work ends or needs a decision.",
+        help="The waiter's only timer, in seconds, at most an hour (3600); omitted, it is the "
+        "hour. A wait that reaches its cap ends and the work continues.",
     )
 
 
@@ -481,7 +481,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         child.add_argument(
             "--max-wait",
             type=float,
-            help="The only timer, for a command run under a cap; omit it to wait for the event.",
+            help="The only timer, in seconds, at most an hour (3600); omitted, it is the hour.",
         )
         child.add_argument(
             "--notify",
@@ -617,7 +617,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
         child.add_argument(
             "--max-wait",
             type=float,
-            help="The only timer, for a command run under a cap; omit it to follow each Task.",
+            help="The only timer, in seconds, at most an hour (3600); omitted, it is the hour.",
         )
         child.add_argument(
             "--notify",
