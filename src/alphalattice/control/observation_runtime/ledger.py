@@ -38,6 +38,8 @@ _Result = TypeVar("_Result")
 
 _BUSY_TIMEOUT_SECONDS = 5.0
 _BUSY_TIMEOUT_MILLISECONDS = 5_000
+_WAL_CHECKPOINT_PAGES = 128
+_WAL_RETAINED_BYTES = 512 * 1024
 _SCHEMA_VERSION = 1
 _STORE_EPOCH_KEY = "store_epoch"
 MAXIMUM_READ_PAGE = 500
@@ -246,9 +248,12 @@ class ObservationLedger:
                 )
             self._writer.execute("PRAGMA synchronous=NORMAL")
             self._writer.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MILLISECONDS}")
-            self._writer.execute("PRAGMA wal_autocheckpoint=1000")
-            journal_bytes = max(1, self._retention_policy.ledger_cap_bytes // 100)
+            self._writer.execute(f"PRAGMA wal_autocheckpoint={_WAL_CHECKPOINT_PAGES}")
+            journal_bytes = min(
+                _WAL_RETAINED_BYTES, max(1, self._retention_policy.ledger_cap_bytes // 100)
+            )
             self._writer.execute(f"PRAGMA journal_size_limit={journal_bytes}")
+            self._journal_limit = journal_bytes
             self._writer.execute(
                 """
                 CREATE TABLE IF NOT EXISTS unified_observation (
@@ -995,8 +1000,12 @@ class ObservationLedger:
                 self._retention_policy = build_retention_policy(
                     workspace_managed_cap_bytes=self._storage_cap_reader()
                 )
-                journal_bytes = max(1, self._retention_policy.ledger_cap_bytes // 100)
-                self._writer.execute(f"PRAGMA journal_size_limit={journal_bytes}")
+                journal_bytes = min(
+                    _WAL_RETAINED_BYTES, max(1, self._retention_policy.ledger_cap_bytes // 100)
+                )
+                if journal_bytes != self._journal_limit:
+                    self._writer.execute(f"PRAGMA journal_size_limit={journal_bytes}")
+                    self._journal_limit = journal_bytes
 
             self.gate.run(refresh)
         if max(self.approximate_bytes(), self.physical_store_bytes()) <= (
