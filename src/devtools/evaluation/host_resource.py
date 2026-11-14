@@ -1,5 +1,6 @@
 """Observe the bound workspace Host and its process tree."""
 
+import re
 from pathlib import Path
 from time import time
 from types import SimpleNamespace
@@ -702,3 +703,82 @@ def sample_memory(
         **_snapshot_details(snapshot, other_errors),
         **({"host_tree_error": "; ".join(errors)} if errors else {}),
     )
+
+
+_HOST_REPORT = re.compile(r"\bThis Host \(process (\d+)\) runs apart from the shell")
+
+
+def pin_reported_host(result, processes):
+    """Bind the reported Host at launch, before its PID can be reused."""
+    if match := _HOST_REPORT.search(result.get("stdout", "")):
+        try:
+            process = processes.Process(int(match.group(1)))
+            result["reported_host"] = dict(pid=process.pid, birth=process.create_time())
+        except processes.Error as error:
+            result["reported_host_error"] = f"{type(error).__name__}: {error}"
+
+
+def reported_host(result, workspace, owned, processes, now):
+    """Resolve the launch-bound Host identity without adopting a reused or foreign PID."""
+    match = _HOST_REPORT.search(result.get("stdout", ""))
+    if not match:
+        return None
+    identity = result.get("reported_host") or {}
+    pid, birth = int(match.group(1)), identity.get("birth")
+    if (
+        identity.get("pid") != pid
+        or not isinstance(birth, (int, float))
+        or birth < float(result["birth"])
+    ):
+        raise ValueError("reported Host birth was not proved at launch")
+    row = dict(workspace=str(workspace), pid=pid, birth=birth, process_gone=False)
+    try:
+        process = processes.Process(pid)
+        if process.create_time() != birth:
+            row.update(process_gone=True, exit_observed_at=now())
+            return row, None
+        words = " ".join(process.cmdline()) + " " + process.exe()
+        if not owned.search(words):
+            raise ValueError("reported Host identity is not owned by this launch")
+        return row, process
+    except processes.NoSuchProcess:
+        row.update(process_gone=True, exit_observed_at=now())
+        return row, None
+
+
+def finish_listener_stop(row, process, port, deadline, processes, monotonic):
+    try:
+        process.wait(timeout=max(0, deadline - monotonic()))
+        process_gone = not process.is_running()
+    except processes.NoSuchProcess:
+        process_gone = True
+    except processes.Error as error:
+        process_gone = False
+        row["reason"] = f"process {process.pid}: {type(error).__name__}"
+    try:
+        port_closed = not any(
+            c.status == processes.CONN_LISTEN and c.laddr and c.laddr.port == port
+            for c in processes.net_connections(kind="tcp")
+        )
+    except (OSError, processes.Error) as error:
+        port_closed = False
+        row["reason"] = f"port {port}: {type(error).__name__}"
+    row.update(
+        process_gone=process_gone, port_closed=port_closed, stopped=process_gone and port_closed
+    )
+    if not row["stopped"] and "reason" not in row:
+        row["reason"] = "process or port still live"
+
+
+def finish_reported_stop(row, process, deadline, processes, monotonic, now):
+    try:
+        process.wait(timeout=max(0, deadline - monotonic()))
+        row["process_gone"] = not process.is_running()
+    except processes.NoSuchProcess:
+        row["process_gone"] = True
+    except processes.Error as error:
+        row["reason"] = f"process {process.pid}: {type(error).__name__}"
+    if row["process_gone"]:
+        row["exit_observed_at"] = now()
+    else:
+        row.setdefault("reason", "reported Host process still live")
