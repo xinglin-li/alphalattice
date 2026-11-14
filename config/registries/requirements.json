@@ -368,6 +368,12 @@
       "seconds": 1,
       "lower_layer": "The real local client imports process and Host facilities that the unit layer cannot load."
     },
+    "local_application.codex_first_use_names_project_trust": {
+      "description": "Codex's trust of a project is read as Codex documents it: an untrusted project gets the person's one step, an explicitly untrusted one names their setting, and a trusted one is ready.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.configure_offers_a_workspace": {
       "description": "A sandboxed configure offers the default new workspace when none exists and a coded choice when existing workspaces need selection.",
       "owner": "alphalattice.interface.local_application",

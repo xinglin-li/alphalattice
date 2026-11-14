@@ -1565,6 +1565,99 @@ def fresh_path() -> str | None:
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
 
 
+TRUST_STEP: Final = "native_bridge.codex_project_untrusted"
+MARKED_UNTRUSTED: Final = "native_bridge.codex_project_marked_untrusted"
+
+
+def _codex_layers(environ: Mapping[str, str]) -> tuple[list[dict[str, Any]], Path, Path | None]:
+    """Codex's system then user configuration, each read as TOML; a missing file is no layer.
+
+    Returns:
+        The layers, lowest first; the user configuration's path; the first unreadable one's.
+    """
+    user = Path(environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+    system = Path("/etc/codex/config.toml")
+    if os.name == "nt":
+        system = Path(environ.get("ProgramData") or "C:/ProgramData") / "OpenAI/Codex/config.toml"
+    layers = []
+    for path in (p for p in (system, user) if p.exists()):
+        try:
+            with path.open("rb") as stream:
+                layers.append(tomllib.load(stream))
+        except (OSError, tomllib.TOMLDecodeError):
+            return layers, user, path
+    return layers, user, None
+
+
+def _codex_root(project: Path, layers: list[dict[str, Any]]) -> Path | None:
+    """The nearest folder up holding a `project_root_markers` entry (`.git` unless set); None
+    for a malformed setting."""
+    markers = next(
+        (c["project_root_markers"] for c in reversed(layers) if "project_root_markers" in c),
+        [".git"],
+    )
+    if not isinstance(markers, list) or not all(isinstance(m, str) for m in markers):
+        return None
+    here = project.resolve()
+    return next((c for c in (here, *here.parents) if any((c / m).exists() for m in markers)), here)
+
+
+def _codex_trust_level(layers: list[dict[str, Any]], root: Path) -> str | None:
+    """The highest layer's `trust_level` for the root: its exact path, or on Windows case-folded."""
+    folded = os.path.normcase(str(root))
+    for layer in reversed(layers):
+        projects = layer.get("projects")
+        for key, entry in projects.items() if isinstance(projects, dict) else ():
+            matches = key == str(root) or (
+                os.name == "nt" and os.path.normcase(os.path.realpath(key)) == folded
+            )
+            if matches and isinstance(entry, dict) and isinstance(entry.get("trust_level"), str):
+                return str(entry["trust_level"])
+    return None
+
+
+def codex_project_trust(project: Path, environ: Mapping[str, str]) -> dict[str, Any]:
+    """Whether Codex loads this project's own configuration, read as Codex documents it.
+
+    Codex loads a project's `.codex/config.toml`, and with it AlphaLattice's specialists, only
+    when its configuration marks the project root `trusted`. The setting is the person's; this
+    only reads it.
+
+    Args:
+        project: Where the Codex session runs.
+        environ: The environment naming `CODEX_HOME`, and on Windows `ProgramData`.
+
+    Returns:
+        `present` True when trusted; False with the person's one step; None when a
+        configuration cannot be read, named by its path.
+    """
+    layers, user, unreadable = _codex_layers(environ)
+    root = None if unreadable else _codex_root(project, layers)
+    if root is None:
+        return {
+            "present": None,
+            "reason": "CODEX_CONFIG_UNREADABLE",
+            "config": str(unreadable or user),
+        }
+    level = _codex_trust_level(layers, root)
+    if level == "trusted":
+        return {"present": True, "project_root": str(root)}
+    command = join(["codex", "exec", "--trust", "-C", str(root), "Reply OK."], shell())
+    marked = level == "untrusted"
+    words = str(worded(MARKED_UNTRUSTED if marked else TRUST_STEP))
+    for name, value in (("root", str(root)), ("config", str(user)), ("command", command)):
+        words = words.replace("{" + name + "}", value)
+    return {
+        "present": False,
+        "who_decides": "PERSON",
+        "project_root": str(root),
+        "trust_level": level,
+        "config": str(user),
+        "commands": [] if marked else [command],
+        "words": words,
+    }
+
+
 def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, Any]:
     """An agent Session's setup: its binding preflight, and the command and runtime it lacks.
 
@@ -1579,6 +1672,9 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
             binding = None
         answer = attachment_preflight(project, binding, session[0])
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
+    if session is not None and session[0] == "codex":
+        trust = codex_project_trust(project, os.environ)
+        answer.update({"project_trust": trust} if trust["present"] is False else {})
     return answer
 
 
@@ -1698,8 +1794,9 @@ def session_binding(
     return None if held is None else (root, held)
 
 
-SETUP_GATE: Final = ("installed_leg", "retrieval_runtime")
-"""The setup a first use opens nothing without: the command its specialists run, the runtime."""
+SETUP_GATE: Final = ("installed_leg", "retrieval_runtime", "project_trust")
+"""The setup a first use opens nothing without: the command its specialists run, the runtime,
+and on Codex the project's trust, without which Codex loads none of its specialists."""
 
 
 def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:

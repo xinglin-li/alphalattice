@@ -324,6 +324,24 @@
         "zh-CN": "按路径读取 `read` 中的文件，并向本人用一句话说明 `disclosure`。启动每位专家前，检查工具的角色列表并遵循 `disclosure`。"
       }
     },
+    "native_bridge.codex_project_untrusted": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["root", "command"],
+      "words": {
+        "en": "Codex does not trust this project ({root}), so it loads neither the project's configuration nor AlphaLattice's specialists. Ask the person to trust it once, in one line: `{command}`; then run first use again.",
+        "zh-CN": "Codex 尚未信任此项目（{root}），因此不会加载项目配置，也不会加载 AlphaLattice 的专家。请用一句话请用户信任它一次：`{command}`；然后重新运行首次使用。"
+      }
+    },
+    "native_bridge.codex_project_marked_untrusted": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["root", "config"],
+      "words": {
+        "en": "Codex marks this project ({root}) untrusted in {config}, so it loads neither the project's configuration nor AlphaLattice's specialists. That setting is the person's: ask them whether to set the project's trust_level to trusted; then run first use again.",
+        "zh-CN": "Codex 在 {config} 中将此项目（{root}）标为不受信任，因此不会加载项目配置，也不会加载 AlphaLattice 的专家。该设置属于用户：请询问用户是否将该项目的 trust_level 改为 trusted；然后重新运行首次使用。"
+      }
+    },
     "native_setup.specialist_route": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

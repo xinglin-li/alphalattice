@@ -146,6 +146,11 @@ alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "
 It first checks the setup a first use cannot run without, and opens nothing while
 it is missing: the resolved command your specialists' routes run in their own fresh
 shells, including its absolute uv launcher off PATH, and the retrieval environment.
+On Codex it also checks that Codex trusts this project: an untrusted project loads
+neither its `.codex/config.toml` nor the specialists, and Codex warns that untrusted
+project-local configuration is disabled. `project_trust` is the person's item: relay its
+`words` and one step in one line, `codex exec --trust` in the project, and never change
+their Codex settings yourself.
 Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line). Download and install
 `config/requirements-retrieval.lock` packages as your act, without repeating first-use

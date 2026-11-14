@@ -1675,10 +1675,16 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Setup failures retry in this session; successful off-PATH discovery is read once."""
+    """Setup failures retry in this session; successful off-PATH discovery is read once; Codex's
+    trust of the project is the person's item, named with its one step."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
+    codex = tmp_path / "codex-home"  # this session's Codex, which trusts no project yet
+    codex.mkdir()
+    (tmp_path / ".git").mkdir()  # the project root Codex trusts
+    monkeypatch.setenv("CODEX_HOME", str(codex))
+    monkeypatch.setenv("ProgramData", str(tmp_path / "no-system-layer"))
     monkeypatch.setattr(native_bridge, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
@@ -1694,6 +1700,12 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
     assert refused["detail"] == words.detail and host.goals.first_use() is None
+    assert set(refused["missing"]) == {"installed_leg", "retrieval_runtime", "project_trust"}
+    trust = refused["missing"]["project_trust"]
+    (step,) = trust["commands"]
+    assert trust["who_decides"] == "PERSON" and step.startswith("codex exec --trust")
+    key = json.dumps(trust["project_root"])  # the person runs the step; Codex records it so
+    (codex / "config.toml").write_text(f'[projects.{key}]\ntrust_level = "trusted"\n')
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
     assert tool["commands"][0].endswith("install-tool") and "--bin" in tool["words"]
