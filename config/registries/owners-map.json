@@ -734,7 +734,7 @@
         "alphalattice.kernel.shared_kernel.sector_treatment",
         "alphalattice.kernel.shared_kernel.source_identity",
         "alphalattice.kernel.shared_kernel.spans",
-        "alphalattice.kernel.shared_kernel.waiting"
+        "alphalattice.kernel.shared_kernel.waits"
       ],
       "folds_in": [],
       "note": "Neutral primitives are defined here and imported by domain owners. This entry does not transfer the meaning, state or decisions of any domain noun.",

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
+import contextlib
 import hashlib
 import io
 import json
@@ -26,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
-from devtools.architecture.git_inputs import staged_changes, staged_moves
+from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
 from devtools.testing.contracts import import_violations
 from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
 from devtools.testing.requirements import PROVES_LINE, file_holders
@@ -210,6 +211,340 @@ def ruff_test_findings(snapshots: dict[str, str]) -> dict[str, tuple[tuple[str, 
         key: tuple(sorted((row["code"], row["location"]["row"]) for row in found))
         for key, found in rows.items()
     }
+
+
+ANTIPATTERN_BASELINE = "config/registries/antipattern-baseline.json"
+ANTIPATTERN_PRIVATE = (
+    "config/" + Path(ANTIPATTERN_BASELINE).name.removesuffix(".json") + "-private.json"
+)
+ANTIPATTERN_SIDES = (ANTIPATTERN_BASELINE, ANTIPATTERN_PRIVATE)
+ANTIPATTERN_SEMGREP = "scripts/antipattern_rules.yml"
+ANTIPATTERN_CASES = "scripts/antipattern_examples.py.txt"
+ANTIPATTERN_RULES = "PGH,G,LOG,C901,PLR0912,PLR0915,S112,S113,DTZ005,ASYNC"
+WAIT_RULES = ("S112", "S113", "DTZ005", "ASYNC")
+
+
+def _mock_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    names = {"patch", "Mock", "MagicMock", "AsyncMock"}
+    if isinstance(func, ast.Name):
+        return func.id in names
+    if not isinstance(func, ast.Attribute):
+        return False
+    owner = func.value.id if isinstance(func.value, ast.Name) else ""
+    return (
+        func.attr in names
+        or (func.attr == "object" and owner == "patch")
+        or (func.attr in {"setattr", "setenv", "setitem"} and owner in {"monkeypatch", "binding"})
+    )
+
+
+def _mock_scores(path: str, definitions: list) -> dict[str, int]:
+    scores = {}
+    for name, node in definitions:
+        if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_"):
+            count = sum(_mock_call(item) for item in ast.walk(node))
+            if count > 4:
+                scores[f"{path}::test-too-many-mocks::{name}"] = count
+    return scores
+
+
+def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
+    """Count rules by file and complex functions by their measured score."""
+    rows = _ruff(snapshots, "--select", ANTIPATTERN_RULES)
+    counts: Counter[str] = Counter()
+    for path, findings in rows.items():
+        definitions = list(_definitions(_tree(snapshots[path])))
+        if path.startswith("tests/"):
+            counts.update(_mock_scores(path, definitions))
+        for row in findings:
+            code = row["code"]
+            if path.startswith("tests/") and code.startswith(WAIT_RULES):
+                continue
+            key, amount = f"{path}::{code}", 1
+            if code in {"C901", "PLR0912", "PLR0915"}:
+                score = re.search(r"\((\d+) > \d+\)", row["message"])
+                line = row["location"]["row"]
+                owners = [
+                    (node.end_lineno - node.lineno, name)
+                    for name, node in definitions
+                    if isinstance(node, FUNCTION_TYPES) and node.lineno <= line <= node.end_lineno
+                ]
+                if not score or not owners:
+                    raise ValueError(f"Ruff omitted the complexity owner for {path}:{line}")
+                key += "::" + min(owners)[1]
+                amount = int(score.group(1))
+            counts[key] += amount
+    return dict(counts)
+
+
+def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]:
+    """A finding or allowance may fall, but neither may grow above the held count."""
+    return [
+        f"{key}: anti-pattern findings grow {held.get(key, 0)} -> {count}"
+        for key, count in sorted(found.items())
+        if count > held.get(key, 0)
+    ]
+
+
+def antipattern_baseline(text: str) -> dict[str, int]:
+    data = json.loads(text)
+    baseline = data["counts"]
+    if not isinstance(baseline, dict) or any(
+        not isinstance(k, str) or "::" not in k or type(v) is not int or v < 1
+        for k, v in baseline.items()
+    ):
+        raise ValueError("invalid anti-pattern allowance")
+    return baseline
+
+
+def antipattern_sides(texts: dict[str, str], prefix: str) -> dict[str, int]:
+    counts = Counter(antipattern_baseline(texts[prefix + ANTIPATTERN_BASELINE]))
+    if (private := texts.get(prefix + ANTIPATTERN_PRIVATE)) is not None:
+        counts.update(antipattern_baseline(private))
+    return dict(counts)
+
+
+def load_antipattern_baseline(root: Path) -> dict[str, int]:
+    texts = {ANTIPATTERN_BASELINE: (root / ANTIPATTERN_BASELINE).read_text(encoding="utf-8")}
+    with contextlib.suppress(FileNotFoundError):  # the public checkout has no private side
+        texts[ANTIPATTERN_PRIVATE] = (root / ANTIPATTERN_PRIVATE).read_text(encoding="utf-8")
+    return antipattern_sides(texts, "")
+
+
+def relocated_antipatterns(held: dict[str, int], moves: dict[str, str]) -> dict[str, int]:
+    """Move a file's allowance only with Git's byte-identical move."""
+    back = {old: new for new, old in moves.items()}
+    return {
+        back.get(path, path) + "::" + rule: count
+        for key, count in held.items()
+        for path, _, rule in [key.partition("::")]
+    }
+
+
+def test_data_antipatterns(paths: list[str]) -> dict[str, int]:
+    return {
+        f"{path}::test-data-file": 1
+        for path in paths
+        if path.startswith("tests/")
+        and Path(path).suffix.lower() not in CODE | {".md"}
+        and not path.endswith((".test.yml", ".test.yaml", "/pytest.ini"))
+    }
+
+
+def _semgrep_environment(root: Path) -> dict[str, str]:
+    return {
+        **os.environ,
+        "SEMGREP_SETTINGS_FILE": str(root / "settings.yml"),
+        "SEMGREP_LOG_FILE": str(root / "semgrep.log"),
+        "SEMGREP_VERSION_CACHE_PATH": str(root / "version"),
+    }
+
+
+def _semgrep_selftest(rules: str, cases: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="antipattern-cases-") as folder:
+        root = Path(folder)
+        (root / "rules.yml").write_text(rules, encoding="utf-8")
+        (root / "rules.py").write_text(cases, encoding="utf-8")
+        exe = Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
+        result = subprocess.run(
+            [
+                str(exe),
+                "--test",
+                "--config",
+                "rules.yml",
+                "rules.py",
+                "--json",
+                "--metrics=off",
+                "--disable-version-check",
+            ],
+            cwd=root,
+            env=_semgrep_environment(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.returncode:
+            raise ValueError(f"semgrep rule cases failed: {result.stderr[-400:]}")
+        report = json.loads(result.stdout)
+        checks = {
+            name: row
+            for config in report["results"].values()
+            for name, row in config["checks"].items()
+        }
+        expected = set(re.findall(r"(?m)^  - id: (\S+)$", rules))
+        if (
+            report.get("config_missing_tests")
+            or set(checks) != expected
+            or any(not row["passed"] for row in checks.values())
+        ):
+            raise ValueError("semgrep rule cases are incomplete or failed")
+
+
+def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int]:
+    """Run the slower rules on the same committed or staged source snapshots."""
+    if not snapshots:
+        return {}
+    with tempfile.TemporaryDirectory(prefix="antipattern-") as folder:
+        root = Path(folder)
+        config = root / "rules.yml"
+        config.write_text(rules, encoding="utf-8")
+        for path, text in snapshots.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
+        done = subprocess.run(
+            [
+                str(
+                    Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
+                ),
+                "scan",
+                "--config",
+                str(config),
+                "--json",
+                "--disable-nosem",
+                "--disable-version-check",
+                "--metrics=off",
+                "--no-git-ignore",
+                ".",
+            ],
+            cwd=root,
+            env=_semgrep_environment(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if done.returncode:
+            raise ValueError(f"semgrep exited {done.returncode}: {done.stderr[-400:]}")
+        report = json.loads(done.stdout)
+        if report.get("errors"):
+            raise ValueError(f"semgrep could not measure its inputs: {report['errors']}")
+        scanned = {Path(path).as_posix() for path in report["paths"]["scanned"]}
+        if missing := set(snapshots) - scanned:
+            raise ValueError(f"semgrep skipped source: {sorted(missing)[0]}")
+        counts = Counter()
+        for row in report["results"]:
+            path = Path(row["path"]).as_posix()
+            counts[f"{path}::{row['check_id'].split('.')[-1]}"] += 1
+        return dict(counts)
+
+
+def auxiliary_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
+    """Check staged workflows and shell scripts with their locked executables."""
+    if not snapshots:
+        return {}
+    counts = Counter()
+    with tempfile.TemporaryDirectory(prefix="antipattern-tools-") as folder:
+        root = Path(folder)
+        for path, text in snapshots.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", newline="\n")
+        windows = ".exe" if os.name == "nt" else ""
+        for tool, files, options in (
+            (
+                "actionlint",
+                [p for p in snapshots if p.startswith(".github/workflows/")],
+                ["-no-color", "-shellcheck=", "-pyflakes=", "-format", "{{json .}}"],
+            ),
+            (
+                "shellcheck",
+                [p for p in snapshots if p.endswith(".sh")],
+                ["--norc", "--format=json1"],
+            ),
+        ):
+            if not files:
+                continue
+            executable = Path(sys.executable).parent / (tool + windows)
+            if not executable.is_file():
+                raise ValueError(
+                    f"{tool} is not installed at {executable}; sync the locked environment "
+                    "(uv sync --locked --all-extras)"
+                )
+            done = subprocess.run(
+                [str(executable), *options, *files],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if done.returncode not in (0, 1):
+                raise ValueError(f"{tool} exited {done.returncode}: {done.stderr[-400:]}")
+            report = json.loads(done.stdout)
+            rows = report if tool == "actionlint" else report["comments"]
+            for row in rows:
+                path = Path(row["filepath"] if tool == "actionlint" else row["file"]).as_posix()
+                rule = row["kind"] if tool == "actionlint" else f"SC{row['code']}"
+                counts[f"{path}::{tool}-{rule}"] += 1
+        for path, text in snapshots.items():
+            if path.endswith(".sh"):
+                counts[f"{path}::shellcheck-inline-disable"] += sum(
+                    bool(re.match(r"\s*#\s*shellcheck\b.*\bdisable\s*=", line, re.I))
+                    for line in text.splitlines()
+                )
+    return {key: count for key, count in counts.items() if count}
+
+
+def _antipattern_problems(
+    staged: list[str],
+    sources: list[str],
+    texts: dict[str, str],
+    parents: tuple[str, ...],
+    head: str,
+    *,
+    moves: dict[str, str],
+    semgrep: bool = False,
+) -> list[str]:
+    baseline = antipattern_sides(texts, head)
+    found = []
+    carried = len(parents) > 1 and any(
+        parent + ":" + ANTIPATTERN_BASELINE in texts for parent in parents
+    )
+    for parent in parents:
+        previous = texts.get(parent + ":" + ANTIPATTERN_BASELINE)
+        if previous is None:
+            if not carried and (
+                ANTIPATTERN_BASELINE not in staged or "scripts/check_test_shape.py" not in staged
+            ):
+                raise ValueError("anti-pattern baseline missing from parent")
+        else:
+            found += antipattern_growth(
+                relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves), baseline
+            )
+    missing = [path for path in sources if head + path not in texts]
+    if missing:
+        raise ValueError(f"changed source unreadable: {missing[0]}")
+    measured = ruff_antipatterns(
+        {path: texts[head + path] for path in sources if path.endswith(".py")}
+    )
+    measured.update(test_data_antipatterns(staged))
+    measured.update(
+        auxiliary_antipatterns(
+            {path: texts[head + path] for path in sources if not path.endswith(".py")}
+        )
+    )
+    if semgrep:
+        if ANTIPATTERN_SEMGREP in staged or ANTIPATTERN_CASES in staged:
+            _semgrep_selftest(texts[head + ANTIPATTERN_SEMGREP], texts[head + ANTIPATTERN_CASES])
+        measured.update(
+            semgrep_antipatterns(
+                {
+                    path: texts[head + path]
+                    for path in sources
+                    if path.endswith(".py") and not path.startswith("tests/")
+                },
+                texts[head + ANTIPATTERN_SEMGREP],
+            )
+        )
+    return found + antipattern_growth(baseline, measured)
 
 
 def _sql(node: ast.AST, values: dict[str, str]) -> str:
@@ -974,7 +1309,7 @@ def _data_file_problems(
         return [f"TEST-DATA unmeasured: {error}; restore the staged registry and retry"]
 
 
-def main(argv: list[str] | None = None) -> int:
+def _shape_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--weekly", action="store_true", help="Print a read-only source review as JSON"
@@ -983,7 +1318,17 @@ def main(argv: list[str] | None = None) -> int:
         "--base",
         help="judge the committed head against its merge base with this ref (the commit stage)",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument("--semgrep", action="store_true", help="include the slower source rules")
+    return parser.parse_args(argv)
+
+
+def _shape_moves(base: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    pairs = staged_changes(ROOT, base=base, tree="HEAD") if base else staged_changes(ROOT)
+    return staged_moves(ROOT, pairs=pairs), unique_moves(pairs)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _shape_args(argv)
     if args.weekly:
         print(json.dumps(weekly_report(), ensure_ascii=False))
         return 0
@@ -1009,15 +1354,22 @@ def main(argv: list[str] | None = None) -> int:
         # A merge adds only what neither parent holds: the merged branch was checked there.
         merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
         parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
-    selected = [
-        path
-        for path in staged
-        if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
-    ]
+    selected, anti_sources = (
+        [
+            path
+            for path in staged
+            if path.startswith("src/")
+            or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
+        ],
+        [
+            path
+            for path in staged
+            if path.endswith((".py", ".sh"))
+            or (path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")))
+        ],
+    )
     try:
-        moved = staged_moves(  # a byte-identical move keeps its old path's grandfathered findings
-            ROOT, pairs=staged_changes(ROOT, base=parents[0], tree="HEAD") if args.base else None
-        )
+        moved, identical = _shape_moves(parents[0] if args.base else None)
         origin = {path: moved.get(path, path) for path in selected}
         candidates = [
             p
@@ -1029,17 +1381,35 @@ def main(argv: list[str] | None = None) -> int:
         ]
         texts = _blobs(
             [head + path for path in selected]
+            + [head + path for path in anti_sources]
             + [parent + ":" + origin[path] for parent in parents for path in selected]
             + [parent + ":" + path for parent in parents for path in candidates]
+            + [head + path for path in ANTIPATTERN_SIDES]
+            + ([head + ANTIPATTERN_SEMGREP] if args.semgrep else [])
+            + ([head + ANTIPATTERN_CASES] if args.semgrep else [])
+            + [parent + ":" + path for parent in parents for path in ANTIPATTERN_SIDES]
             + ([head + "config/registries/requirements.json"] if candidates else [])
         )
-    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
+        found, corpus = (
+            _data_file_problems(staged, moved, parents, head)
+            + _antipattern_problems(
+                staged, anti_sources, texts, parents, head, moves=identical, semgrep=args.semgrep
+            ),
+            None,
+        )
+    except (
+        OSError,
+        ValueError,
+        IndexError,
+        KeyError,
+        TypeError,
+        subprocess.SubprocessError,
+    ) as error:
         print(
             f"TEST-LAYOUT staged snapshot unreadable: {error}; restore the Git index and retry",
             file=sys.stderr,
         )
         return 1
-    found, corpus = _data_file_problems(staged, moved, parents, head), None
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:

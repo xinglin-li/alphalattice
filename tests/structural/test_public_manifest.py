@@ -62,6 +62,7 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("case-study/readme.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("probe/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
+        ("scripts/antipattern-" + "decisions.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/alpha-arm-control.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/dynamic-panel-risk.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("tests/agent_eval/test_one.py", "PRIVATE", "PRIVATE_TEST"),
@@ -110,6 +111,8 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("docs/generate_reference.py", "PUBLIC", "PUBLIC_DOC"),
         ("scripts/run_alphalattice.py", "PUBLIC", "PUBLIC_USER_SCRIPT"),
         ("config/some-rule-baseline-private.json", "PRIVATE", "PRIVATE_ALLOWANCE"),
+        ("scripts/antipattern_rules.yml", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/antipattern_examples.py.txt", "PUBLIC", "PUBLIC_VERIFICATION"),
         ("scripts/unexamined.py", "UNSETTLED", None),
         ("config/unexamined.yaml", "UNSETTLED", None),
         ("src/alphalattice/unreached.py", "UNSETTLED", None),
@@ -898,7 +901,6 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
 
-    import ast
     import os
     import time
 
@@ -958,17 +960,23 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
     assert all("timeout-minutes" in step for step in steps)
     code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    loop = next(node for node in ast.walk(ast.parse(code)) if isinstance(node, ast.For))
-    assert list(ast.literal_eval(loop.iter)) == paths
+    assert list(_pilot_slice(code)) == paths
     for directory in paths[:2]:
         (tmp_path / directory).mkdir(parents=True)
-        (tmp_path / directory / "test_sample.py").write_text(
+        (tmp_path / directory / f"test_sample_{directory.split('/')[1]}.py").write_text(
             "def test_sample(): pass\n", encoding="utf-8"
         )
     target = tmp_path / paths[2]
     target.parent.mkdir(parents=True)
     target.write_text("def test_sample(): pass\n", encoding="utf-8")
-    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", ALPHALATTICE_NETWORK_DISABLED="1")
+    env = dict(
+        os.environ,
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        ALPHALATTICE_NETWORK_DISABLED="1",
+        PYTHONPATH=str(
+            root / "src"
+        ),  # the job runs at the repository root, where src is on the path
+    )
 
     def collect_fixture():
         return subprocess.run(
@@ -982,7 +990,9 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         )
 
     assert collect_fixture().returncode == 0
-    samples = [tmp_path / path / "test_sample.py" for path in paths[:2]] + [target]
+    samples = [tmp_path / path / f"test_sample_{path.split('/')[1]}.py" for path in paths[:2]] + [
+        target
+    ]
     for path, sample in zip(paths, samples, strict=True):
         sample.write_text("# no tests\n", encoding="utf-8")
         empty = collect_fixture()
@@ -1530,3 +1540,52 @@ def test_a_disclosure_review_follows_only_its_proved_line_content(
             finding["review_key"][-1]
             == hashlib.sha256(text.replace("\r\n", "\n").split("\n")[1].encode()).hexdigest()
         )
+
+
+def _pilot_slice(code: str) -> tuple[str, ...]:
+    """The cost job's slice, as its pilot-slice step's code names it."""
+    import ast
+
+    named = (n for n in ast.walk(ast.parse(code)) if isinstance(n, ast.Assign))
+    return ast.literal_eval(
+        next(n.value for n in named if getattr(n.targets[0], "id", None) == "SLICE")
+    )
+
+
+@pytest.mark.proves("testing.codspeed_slice_names_a_repeat_unsafe_test")
+def test_the_pilot_slice_check_names_a_test_whose_body_fails_when_run_again(tmp_path):
+    """The cost job's slice check calls each body twice, as CodSpeed does: a body that passes once
+    and fails again is named, with its repair, before any measurement."""
+    import os
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    steps = yaml.safe_load((root / ".github/workflows/ci.yml").read_text("utf-8"))["jobs"][
+        "test-cost"
+    ]["steps"]
+    run = next(step for step in steps if step.get("name") == "Check the pilot slice")["run"]
+    code = run.split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    for n, path in enumerate(_pilot_slice(code)):
+        target = tmp_path / path if path.endswith(".py") else tmp_path / path / f"test_slice_{n}.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("def test_clean(): pass\n", encoding="utf-8")
+    (tmp_path / "tests/unit/evaluation/test_rows.py").write_text(
+        "def test_rows(tmp_path):\n"
+        "    with (tmp_path / 'rows').open('a') as rows:\n"
+        "        rows.write('x')\n"
+        "    assert (tmp_path / 'rows').read_text() == 'x'\n",
+        encoding="utf-8",
+    )
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(root / "src"))
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert done.returncode != 0 and "test_rows" in done.stdout and "test_clean" not in done.stdout
+    assert "runs twice" in done.stdout and "repeat: this body passed once" in done.stdout

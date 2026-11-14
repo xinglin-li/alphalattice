@@ -130,6 +130,9 @@ dev = [
     "pytest-xdist==3.8.0",
     "ruff>=0.14,<1",
     "vulture>=2.16,<3",
+    "semgrep==1.185.0",
+    "shellcheck-py==0.11.0.1",
+    "actionlint-py==1.7.12.25",
 ]
 # Each package below registers a pytest plugin that loads itself into every pytest run in an
 # environment it is installed in, so each stays out of the default dev group and in a group of

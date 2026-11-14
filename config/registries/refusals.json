@@ -368,12 +368,12 @@
 "wait.stopped": {
 "owner": "shared_kernel",
 "category": "CANCELLED",
-"classification_note": "A bounded wait (shared_kernel.waiting) its owner's stop event ended before its deadline; nothing it waited for changed."
+"classification_note": "A bounded wait (shared_kernel.waits) its owner's stop event ended before its deadline; nothing it waited for changed."
 },
 "wait.timeout": {
 "owner": "shared_kernel",
 "category": "DEADLINE_EXCEEDED",
-"classification_note": "A bounded wait (shared_kernel.waiting) reached its deadline first; what it waited on may still finish."
+"classification_note": "A bounded wait (shared_kernel.waits) reached its deadline first; what it waited on may still finish."
 },
 "workspace.conflict": {
 "owner": "workspace",

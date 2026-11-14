@@ -14,6 +14,138 @@ from devtools.testing.requirements import file_holders
 PATH = "tests/owner/test_example.py"
 
 
+def _antipattern_cases(monkeypatch) -> None:
+    """The real Ruff rules ignore inline escapes and identify each file and rule."""
+    source = (
+        "import logging\n"
+        "def example(value):\n"
+        "    logging.warning(f'{value}')  # noqa: G004, LOG015\n"
+        "    value = unknown  # type: ignore\n"
+        "    try:\n        value()\n    except Exception:\n        pass\n"
+        + "    if value:\n        value = 1\n" * 13
+        + "    value = 1\n" * 52
+    )
+    waits = "\n".join(
+        [
+            "import requests, time",
+            "from datetime import datetime",
+            "def waits():",
+            "    datetime.now()",
+            "    requests.get('https://example.test')",
+            "    for x in []:",
+            "        try:",
+            "            x()",
+            "        except Exception:",
+            "            continue",
+            "async def late():",
+            "    time.sleep" + "(1)",
+            "",
+        ]
+    )
+    mocked = "def test_mocks(monkeypatch):\n" + "    monkeypatch.setattr(a, b, c)\n" * 5
+    found = shape.ruff_antipatterns({"src/example.py": source, "src/waits.py": waits, PATH: mocked})
+    for rule in ("G004", "LOG015", "PGH003"):
+        assert found[f"src/example.py::{rule}"] > 0
+    for rule in ("C901", "PLR0912", "PLR0915"):
+        assert found[f"src/example.py::{rule}::example"] > 0
+    for rule in ("DTZ005", "S112", "S113", "ASYNC251"):
+        assert found[f"src/waits.py::{rule}"]
+    assert found[f"{PATH}::test-too-many-mocks::test_mocks"] == 5
+    workflow = "\n".join(
+        [
+            "name: test",
+            "on: push",
+            "jobs:",
+            "  a:",
+            "    runs-on: ubuntu-latest",
+            "    steps:",
+            "      - runz: x",
+            "",
+        ]
+    )
+    shell = "#!/bin/sh\necho $value\n# shellcheck disable=SC2086\n"
+    auxiliary = shape.auxiliary_antipatterns(
+        {".github/workflows/example.yml": workflow, "test.sh": shell}
+    )
+    assert any(key.startswith(".github/workflows/example.yml::actionlint-") for key in auxiliary)
+    assert auxiliary["test.sh::shellcheck-inline-disable"] == 1
+    assert any(key.startswith("test.sh::shellcheck-SC") for key in auxiliary)
+    data = shape.test_data_antipatterns(["tests/a/data.csv", "tests/a/test_example.py"])
+    assert data == {"tests/a/data.csv::test-data-file": 1}
+    assert shape.antipattern_growth({}, data)
+    assert shape.antipattern_growth(found, found) == []
+    assert shape.antipattern_growth({}, found)
+    old = {"src/old.py::C901::example": 12}
+    new = {"src/new.py::C901::example": 12}
+    assert not shape.antipattern_growth(
+        shape.relocated_antipatterns(old, {"src/new.py": "src/old.py"}), new
+    )
+    assert shape.antipattern_growth(shape.relocated_antipatterns(old, {}), new)
+    for name in ("ruff_antipatterns", "test_data_antipatterns", "auxiliary_antipatterns"):
+        monkeypatch.setattr(shape, name, lambda _: {})
+    baseline = json.dumps({"counts": {"src/a.py::PGH003": 1}})
+    snapshots = {
+        ":" + shape.ANTIPATTERN_BASELINE: baseline,
+        "HEAD:" + shape.ANTIPATTERN_BASELINE: baseline,
+    }
+    assert not shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
+    with pytest.raises(ValueError, match="anti-pattern baseline missing from parent"):
+        shape._antipattern_problems([], [], snapshots, ("MERGE_HEAD",), ":", moves={})
+    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {"src/a.py::PGH003": 2}})
+    assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
+
+
+def _split_antipattern_cases(monkeypatch, tmp_path) -> None:
+    for name in ("ruff_antipatterns", "test_data_antipatterns", "auxiliary_antipatterns"):
+        monkeypatch.setattr(shape, name, lambda _: {})
+    private = (
+        "config/" + Path(shape.ANTIPATTERN_BASELINE).name.removesuffix(".json") + "-private.json"
+    )
+    key = "probe/private.py::PGH003"
+    snapshots = {
+        ":" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": {}}),
+        ":" + private: json.dumps({"counts": {key: 2}}),
+        "HEAD:" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": {key: 2}}),
+        ":probe/private.py": "x = 1\n",
+    }
+    monkeypatch.setattr(shape, "ruff_antipatterns", lambda _: {key: 2})
+    assert not shape._antipattern_problems(
+        [], ["probe/private.py"], snapshots, ("HEAD",), ":", moves={}
+    )
+    snapshots[":" + private] = json.dumps({"counts": {key: 3}})
+    assert shape._antipattern_problems(
+        [], ["probe/private.py"], snapshots, ("HEAD",), ":", moves={}
+    )
+    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {key: 1}})
+    assert shape.antipattern_sides(snapshots, ":") == {key: 4}
+    public_file = tmp_path / shape.ANTIPATTERN_BASELINE
+    public_file.parent.mkdir(parents=True)
+    public_file.write_text(json.dumps({"counts": {"src/a.py::PGH003": 1}}))
+    assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1}
+    (tmp_path / private).write_text(json.dumps({"counts": {key: 2}}))
+    assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1, key: 2}
+
+
+@pytest.mark.large
+@pytest.mark.proves("testing.antipattern_rules_hold_the_product_tree")
+def test_nightly_antipattern_rules_hold_the_product_tree() -> None:
+    """The slow rules and their own examples run over the whole tracked source each night."""
+    listing = shape._git("ls-files", "-z", "--", "*.py")
+    assert listing.returncode == 0
+    paths = [path for path in listing.stdout.split("\0") if path and not path.startswith("tests/")]
+    specs = [":" + path for path in paths]
+    specs += [
+        ":" + name
+        for name in (shape.ANTIPATTERN_BASELINE, shape.ANTIPATTERN_SEMGREP, shape.ANTIPATTERN_CASES)
+    ]
+    blobs = shape._blobs([*specs, ":" + shape.ANTIPATTERN_PRIVATE])
+    assert all(spec in blobs for spec in specs)
+    rules = blobs[":" + shape.ANTIPATTERN_SEMGREP]
+    shape._semgrep_selftest(rules, blobs[":" + shape.ANTIPATTERN_CASES])
+    found = shape.semgrep_antipatterns({path: blobs[":" + path] for path in paths}, rules)
+    assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
+
+
 def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
     """New finding keys or swapped owners refuse, while retained and fixed findings pass."""
     row = dict(state="floor", mutation="shape", refusal_code="shape", owner="committee.py")
@@ -64,7 +196,13 @@ def _git_backend(texts, paths, state=None):
         if "-z" in command:
             output = (state or {}).get("raw", "") if "--raw" in command else "\0".join(paths) + "\0"
         if action == "cat-file":
-            rows = [texts.get(spec) for spec in kwargs["input"].decode().splitlines()]
+            rows = [
+                texts.get(
+                    spec,
+                    '{"counts":{}}' if spec.endswith(":" + shape.ANTIPATTERN_BASELINE) else None,
+                )
+                for spec in kwargs["input"].decode().splitlines()
+            ]
             output = b"".join(
                 f"{'0' * 40} blob {len(row.encode())}\n".encode() + row.encode() + b"\n"
                 if row is not None
@@ -77,8 +215,19 @@ def _git_backend(texts, paths, state=None):
     return run
 
 
-def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -> None:
+def _mock_ruff(monkeypatch):
+    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
+    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
+    monkeypatch.setattr(shape, "ruff_antipatterns", lambda snapshots: {})
+    monkeypatch.setattr(shape, "test_data_antipatterns", lambda paths: {})
+
+
+def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
+    monkeypatch, tmp_path
+) -> None:
     """Each rule fires on added content; kept lines, shrinking files and tests/structural pass."""
+    _antipattern_cases(monkeypatch)
+    _split_antipattern_cases(monkeypatch, tmp_path)
     big = "x = 1\n" * 20_000
     assert problems(PATH, big, big + "\u754c") and not problems(PATH, big + "\u754c", big)
     source = "import inspect\ninspect.getsource(owner)\n"
@@ -357,8 +506,7 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
 
 def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkeypatch) -> None:
     """Only staged content is checked, and inherited parent violations do not block a merge."""
-    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
-    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
+    _mock_ruff(monkeypatch)
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     state = {"merge": False}
@@ -495,8 +643,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
 @pytest.mark.proves("testing.the_stage_judges_the_committed_change_as_the_hook_judges_the_index")
 def test_the_stage_judges_the_committed_head_against_its_merge_base(monkeypatch) -> None:
     """With a base, the committed head is judged against its merge base, never the index."""
-    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
-    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
+    _mock_ruff(monkeypatch)
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     texts = {"HEAD:" + path: bad, ":" + path: "", "fork:" + path: ""}

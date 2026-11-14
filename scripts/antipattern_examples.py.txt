@@ -1,0 +1,134 @@
+# Each rule fires on its example and stays quiet on its bounded counterpart.
+import os
+import subprocess
+from subprocess import run as direct_run
+from pathlib import Path
+
+from wk.core import spawn
+
+
+def watch(argv, event, ROOT):
+    # A child process needs both a time limit and an appropriate window mode.
+    # ruleid: child-without-no-window, call-without-timeout
+    done = subprocess.run(argv, cwd=ROOT, env={**os.environ, "CLAUDE_CODE_SESSION_ID": str(event["session_id"])}, stdin=subprocess.DEVNULL)
+    # ok: child-without-no-window
+    # ruleid: call-without-timeout
+    done = spawn.run(argv, cwd=ROOT, env={**os.environ, "CLAUDE_CODE_SESSION_ID": str(event["session_id"])}, stdin=subprocess.DEVNULL)
+    # ok: child-without-no-window
+    # ruleid: call-without-timeout
+    done = subprocess.run(argv, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW)
+    # ruleid: child-without-no-window, call-without-timeout
+    direct_run(argv)
+    return done
+
+
+def unpacked(argv, flags, where, *args, **options):
+    # Unpacked options alone do not prove that either setting is present.
+    kept = {"timeout": 30}
+    # ruleid: child-without-no-window, call-without-timeout
+    subprocess.run(argv, **kept)
+    # ruleid: child-without-no-window, call-without-timeout
+    subprocess.run(["git", "-C", str(where), *args], capture_output=True, **options)
+    opts = {"cwd": where, "creationflags": flags}
+    # ok: child-without-no-window
+    # ruleid: call-without-timeout
+    subprocess.check_output(argv, **opts)
+    quiet = dict(capture_output=True, creationflags=flags)
+    # ok: child-without-no-window
+    # ruleid: call-without-timeout
+    subprocess.run(argv, **quiet)
+    options.setdefault("creationflags", flags)
+    # ok: child-without-no-window
+    # ruleid: call-without-timeout
+    return subprocess.run(["git", "-C", str(where), *args], capture_output=True, **options)
+
+
+def copy(source, unreadable):
+    # A directory walk must report unreadable entries.
+    # ruleid: walk-without-onerror
+    for folder, dirs, files in os.walk(source):
+        pass
+    # ok: walk-without-onerror
+    for folder, dirs, files in os.walk(source, onerror=unreadable):
+        pass
+
+
+def receipts(base: Path, days, folder):
+    # A glob can hide filesystem errors from the caller.
+    # ruleid: glob-suppresses-oserror
+    found = [p for day in days for p in (base / f"{day:%Y-%m}" / f"{day:%Y-%m-%d}").glob("*/*/pytest/*/tests.jsonl")]
+    # ruleid: glob-suppresses-oserror
+    found += list((base / "active").rglob("tests.jsonl"))
+    # ok: glob-suppresses-oserror
+    with os.scandir(folder) as entries:
+        found += [entry.path for entry in entries]
+    return found
+
+
+# Each wait rule fires on its unbounded example and stays quiet on its bounded counterpart.
+import itertools
+import threading
+import time
+from time import sleep as nap
+
+from wk.core import wait
+
+
+def waits(argv, process, ready, path, stop, send, lock, log):
+    # product decision: bounded sleep
+    nap(5)  # an aliased sleep is a sleep
+    # product decision: bounded sleep
+    wait.pause(5, stop=stop)
+    # ruleid: call-without-timeout
+    spawn.run(argv, stdin=subprocess.DEVNULL)
+    # ruleid: call-without-timeout, child-without-no-window
+    subprocess.check_output(argv, creationflags=0, timeout=None)  # None is no bound
+    # ruleid: call-without-timeout
+    process.communicate()
+    # ok: call-without-timeout
+    process.communicate(b"", 5)  # a positional timeout is a timeout
+    # ruleid: poll-without-deadline
+    while not ready():
+        stop.wait(1)
+    # ok: poll-without-deadline
+    while not stop.wait(1):  # the stop-event form ends when stopped
+        ready()
+    # ruleid: busy-wait
+    while not path.exists():
+        pass
+    # ok: busy-wait
+    wait.wait_until(lambda left: path.exists(), timeout=60, what="the file")
+    # ruleid: retry-without-bound
+    for attempt in itertools.count():
+        send()
+    # ok: retry-without-bound
+    for attempt in range(5):
+        send()
+    # ruleid: wall-clock-deadline
+    late = time.time() + 60
+    # ok: wall-clock-deadline
+    late = time.monotonic() + 60
+    # ok: deadline-reset-in-loop
+    while time.monotonic() < late:
+        send()
+    # ok: while-true-without-deadline
+    # ruleid: deadline-reset-in-loop
+    while True:
+        late = time.monotonic() + 60  # set again on every pass: never reached
+        if time.monotonic() > late:
+            break
+    with lock:
+        # ruleid: blocking-under-lock
+        process.wait(5)
+    with lock:
+        # ok: blocking-under-lock
+        argv.append("--fast")
+
+    def serve():
+        # ruleid: while-true-without-deadline
+        while True:  # a thread target with no stop event
+            send()
+    threading.Thread(target=serve).start()
+    # ruleid: while-true-without-deadline
+    while True:  # a clock it only mentions is no bound
+        log(time.monotonic())

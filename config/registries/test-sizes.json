@@ -1610,6 +1610,14 @@
   ],
   "large": [
     {
+      "pattern": "tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
+      "owner": "tests.structural",
+      "reason": "Runs Semgrep's real rule cases and the whole tracked source; its one-file pass alone uses most of the commit budget.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 120,
+      "admitted": "2026-11-14: the whole-tree scan took 25.906 s here; the goal places the slower tool in the nightly."
+    },
+    {
       "pattern": "tests/integration/product_host/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[[]AMBIGUOUS[]]",
       "owner": "tests.workspace_maintenance",
       "reason": "Builds the stopped membership change before checking the ambiguous recovery case.",

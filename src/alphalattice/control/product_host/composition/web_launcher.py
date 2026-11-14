@@ -54,7 +54,7 @@ from alphalattice.interface.local_application.web import (
     OPEN_THE_WORKBENCH,
 )
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
-from alphalattice.kernel.shared_kernel.waiting import pause
+from alphalattice.kernel.shared_kernel.waits import pause
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files

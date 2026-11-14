@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from pathlib import Path
 from time import perf_counter
@@ -80,7 +80,7 @@ def _ensure_workspace_environment() -> None:
             "playpen gate requires the workspace .venv; run "
             f"'uv sync --locked --all-extras' in {ROOT} (see README.md)"
         )
-    if Path(sys.executable).resolve() == target.resolve():
+    if Path(sys.prefix).resolve() == (ROOT / ".venv").resolve():
         return
     if os.environ.get(_ROOT_ENV_SENTINEL) == "1":
         raise RuntimeError("playpen gate failed to enter the workspace .venv")
@@ -99,6 +99,11 @@ def _run(label: str, *args: str) -> None:
     finally:
         elapsed = perf_counter() - started
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
+
+
+def budget_base(environ: Mapping[str, str]) -> str:
+    """The test budget's base: the tip a merge lands on, as its committer names it, else develop."""
+    return environ.get("ALPHALATTICE_TEST_BUDGET_BASE") or "develop"
 
 
 def static_refusals(steps: Iterable[tuple[str, Callable[[], object]]]) -> list[str]:
@@ -698,7 +703,8 @@ def _check_docstrings() -> bool:
 
 def _check_waits(*, staged: bool) -> bool:
     """Refuse an unbounded wait or loop above ``config/wait-baseline.json``: the staged sources
-    for the hook, every tracked source otherwise (scripts/check_waits.py)."""
+    for the hook, every tracked source otherwise (scripts/check_waits.py). Its words are relayed:
+    a windowless child on Windows has no console to inherit, so its own output would be lost."""
 
     started = perf_counter()
     result = subprocess.run(
@@ -710,21 +716,40 @@ def _check_waits(*, staged: bool) -> bool:
         cwd=ROOT,
         check=False,
         timeout=600,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    print(result.stdout, end="", flush=True)
+    print(result.stderr, end="", file=sys.stderr, flush=True)
     print(f"PLAYPEN_GATE_TIMING wait-rules {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
-def _check_test_shape(*, staged: bool, base_ref: str = "develop") -> bool:
+def _check_test_shape(*, staged: bool, base_ref: str = "develop", semgrep: bool = False) -> bool:
     """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
     for the hook, the committed head against its merge base with `base_ref` for the stage."""
 
     started = perf_counter()
     script = [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")]
+    if semgrep:
+        script.append("--semgrep")
     result = subprocess.run(
-        script if staged else [*script, "--base", base_ref], cwd=ROOT, check=False
+        script if staged else [*script, "--base", base_ref],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    print(
+        result.stdout, end="", flush=True
+    )  # relayed: a windowless child has no console to inherit
+    print(result.stderr, end="", file=sys.stderr, flush=True)
     print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
@@ -961,7 +986,12 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     )
     parser.add_argument("--all-python", action="store_true")
     parser.add_argument("--strict-mypy-only", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--base", default="develop", help="base commit for the test budget")
+    parser.add_argument(
+        "--base",
+        default=budget_base(os.environ),
+        help="base commit for the test budget (default: $ALPHALATTICE_TEST_BUDGET_BASE, the tip a "
+        "merge commit lands on when it is not develop, else develop)",
+    )
     parser.add_argument(
         "--fast",
         action="store_true",
@@ -1091,7 +1121,12 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("import-contracts", _check_import_contracts),
         ("docstrings", _check_docstrings),
         ("wait-rules", lambda: _check_waits(staged=args.staged)),
-        ("test-shape", lambda: _check_test_shape(staged=args.staged, base_ref=args.base)),
+        (
+            "test-shape",
+            lambda: _check_test_shape(
+                staged=args.staged, base_ref=args.base, semgrep=not args.fast
+            ),
+        ),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
     ]
     refused = static_refusals(steps)

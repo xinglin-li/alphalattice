@@ -899,8 +899,9 @@ def growth(
     rows: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[str]:
     """A change's net test lines may not exceed its net source plus the size policy's floor
-    (tools/instructions/testing.md), judged against `policy`, the test-sizes.json text of the
-    same snapshot as the measured diff: past it the change is refused by name, unless each new
+    (tools/instructions/testing.md), and a change whose tests do not grow passes; judged against
+    `policy`, the test-sizes.json text of the same snapshot as the measured diff: past it the
+    change is refused by name, unless each new
     test function's requirement carries the test manager's decided "growth" exception. An
     absent, unreadable or malformed policy is never a pass."""
     try:
@@ -913,7 +914,9 @@ def growth(
             "TEST-GROWTH unmeasured, refused: the change's config/registries/test-sizes.json is "
             "absent, unreadable or names no growth floor_lines; an unread rule is never a pass."
         ]
-    if tests <= source + floor:
+    if tests <= max(
+        source + floor, 0
+    ):  # a change whose tests do not grow never outgrows its source
         return []
     new, rows = list(new), rows or {}
     if new and all(

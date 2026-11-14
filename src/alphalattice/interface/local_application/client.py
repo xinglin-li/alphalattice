@@ -82,8 +82,8 @@ from alphalattice.interface.local_application.review_evidence import (
 )
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
-from alphalattice.kernel.shared_kernel.waiting import CEILING as WAIT_CEILING
-from alphalattice.kernel.shared_kernel.waiting import pause
+from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
+from alphalattice.kernel.shared_kernel.waits import pause
 from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,

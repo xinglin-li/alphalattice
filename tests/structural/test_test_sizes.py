@@ -2173,3 +2173,26 @@ def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_node
     sizes.validate_policy(json.loads(published))
     assert json.loads(published)["whole_tree_guards"]["slow"] == ["tests/kept.py::test_a*"]
     assert b"tests/held.py" not in published
+    from check_test_shape import antipattern_baseline
+
+    path = "config/registries/antipattern-baseline.json"
+    entries = {"tests/kept.py::C901::f": 11, "tests/held.py::C901::f": 12}
+    published, dropped = project_public(
+        path,
+        json.dumps({"counts": entries}).encode(),
+        {"tests/held.py"},
+        {path, "tests/kept.py", "tests/held.py"},
+    )
+    assert dropped and antipattern_baseline(published.decode()) == {"tests/kept.py::C901::f": 11}
+    from scripts.release.public_manifest import classify, declared_private
+
+    root = Path(__file__).resolve().parents[2]
+    counts = antipattern_baseline((root / path).read_text(encoding="utf-8"))
+    sources = {key.split("::", 1)[0] for key in counts}
+    blobs = {name: (root / name).read_bytes() for name in sources if (root / name).is_file()}
+    declared = declared_private(blobs)
+    assert not [
+        name
+        for name in sources
+        if classify(name, set(), set(), set(), declared=declared)[0] == "PRIVATE"
+    ]

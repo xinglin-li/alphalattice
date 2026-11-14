@@ -57,3 +57,30 @@ def test_a_wait_without_a_finite_capped_bound_is_refused_before_it_starts(second
         waits.wait_until(lambda left: True, timeout=seconds, what="x")
     with pytest.raises(ValueError, match=r"wait\.bound_invalid"):
         waits.pause(seconds)
+
+
+@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+def test_a_pause_lasts_its_bound_or_ends_at_once_at_a_set_stop(monkeypatch):
+    """requirement: a pause sleeps its bounded length and says False; a set stop ends it at once
+    and says True."""
+    slept = []
+    monkeypatch.setattr(waits.time, "sleep", slept.append)
+    assert waits.pause(2.5) is False and slept == [2.5]
+    stop = threading.Event()
+    stop.set()
+    assert waits.pause(30, stop=stop) is True and slept == [2.5]
+
+
+@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+@pytest.mark.parametrize(
+    ("phase", "share"),
+    [
+        pytest.param(0, 0.0, id="phase-zero"),
+        pytest.param(1_000_002, 1_000_002 / 1_000_003, id="phase-last"),
+    ],
+)
+def test_a_pauses_jitter_stays_within_its_interval(monkeypatch, phase, share):
+    """requirement: the spread two pollers take apart is a share of the interval, never more, so a
+    pause is at most its delay plus one interval."""
+    monkeypatch.setattr(waits.time, "monotonic_ns", lambda: 7 * 1_000_003 + phase)
+    assert waits.jitter(0.5) == pytest.approx(0.5 * share) and 0 <= waits.jitter(0.5) < 0.5

@@ -121,10 +121,11 @@ RULES = [
             "config/evidence-roots.json",
             "config/performance-baselines.json",
             "config/store-structural-baseline.json",
+            "scripts/antipattern-" + "decisions.md",
         ],
         "reason": (
-            "OW8 keeps development campaigns, probes and private QA location declarations "
-            "outside the product snapshot."
+            "OW8 keeps development campaigns, measurement records, probes and private QA "
+            "location declarations outside the product snapshot."
         ),
     },
     {
@@ -520,6 +521,8 @@ RULES = [
             "scripts/check_*.py",
             "scripts/test-shape-tools/package.json",
             "scripts/test-shape-tools/package-lock.json",
+            "scripts/antipattern_rules.yml",
+            "scripts/antipattern_examples.py.txt",
             "scripts/tests_registry.py",
             "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",

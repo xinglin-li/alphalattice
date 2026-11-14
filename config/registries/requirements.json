@@ -723,7 +723,8 @@
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-14: shared_kernel.waiting folded into shared_kernel.waits, one way to wait; shared_kernel.a_wait_ends_by_its_deadline_or_its_stop proves the same bound."
     },
     "shared_kernel.a_wait_ends_by_its_deadline_or_its_stop": {
       "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
@@ -767,11 +768,31 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.a_merge_is_budgeted_against_the_tip_it_lands_on": {
+      "description": "The commit hook measures a merge's test budget against the tip its committer names in ALPHALATTICE_TEST_BUDGET_BASE, so a merge onto a tip ahead of develop is not charged with the changes beneath it; unset, the base is develop.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.antipattern_rules_hold_the_product_tree": {
+      "description": "The nightly refuses new source anti-patterns and checks that every slow rule catches its planted case.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 60,
+      "lower_layer": "The rules run as an external process against the tracked product tree and cannot be proved by a unit mock."
+    },
     "testing.codspeed_marks_every_selected_test": {
       "description": "Under CodSpeed, which deselects unmarked tests, every selected test is marked as a benchmark so the public cost job measures each one; a run without CodSpeed marks none.",
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 1
+    },
+    "testing.codspeed_slice_names_a_repeat_unsafe_test": {
+      "description": "The cost job's pilot-slice check calls each test body twice over its fixtures, as CodSpeed does, and names a body that passes once and fails again, with its repair.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The proof runs the workflow step's own code as a child pytest process over a planted slice, which a unit test cannot start."
     },
     "testing.crash_requeue_keeps_longest_first": {
       "description": "Under load distribution, a crashed worker's prefetched cases return to their place in the longest-first collection order, never after every other case.",

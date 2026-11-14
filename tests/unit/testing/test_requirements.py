@@ -24,6 +24,7 @@ def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch)
     policy = '{"growth": {"floor_lines": 30}}'
     assert requirements.growth(policy, 100, 130) == []  # within source plus the floor
     assert requirements.growth(policy, -50, -20) == []  # a source cut lowers the limit
+    assert requirements.growth(policy, -138, -79) == []  # a fold that deletes tests grows none
     assert requirements.growth(policy, -50, 30)  # +30 exceeds -50 + 30
     (refused,) = requirements.growth(policy, 0, 47)  # a fixture card: 47 test lines, no source
     assert refused.startswith("TEST-GROWTH refused: net tests +47 outgrow net source +0 by more")

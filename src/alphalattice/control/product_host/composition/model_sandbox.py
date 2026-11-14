@@ -30,7 +30,7 @@ from typing import Any, cast
 import psutil  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 
-from alphalattice.kernel.shared_kernel.waiting import WaitTimeout, wait_until
+from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
 from .saved_object_readback import probe
 
