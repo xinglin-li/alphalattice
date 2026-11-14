@@ -28,7 +28,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from devtools.testing.sizes import load_policy
+from devtools.testing.sizes import load_policy, validate_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
@@ -889,6 +889,45 @@ def pyramid(
                 "prove the new behaviour with unit tests, or move an integration test down a layer."
             )
     return found
+
+
+def growth(
+    policy: str | None,
+    source: int,
+    tests: int,
+    new: Iterable[Holder] = (),
+    rows: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[str]:
+    """A change's net test lines may not exceed its net source plus the size policy's floor
+    (tools/instructions/testing.md), judged against `policy`, the test-sizes.json text of the
+    same snapshot as the measured diff: past it the change is refused by name, unless each new
+    test function's requirement carries the test manager's decided "growth" exception. An
+    absent, unreadable or malformed policy is never a pass."""
+    try:
+        loaded = validate_policy(json.loads(policy)) if policy is not None else {}
+        floor = (loaded.get("growth") or {}).get("floor_lines")
+    except ValueError:  # bad JSON or a bad policy; absent from the snapshot reads as no floor
+        floor = None
+    if type(floor) is not int:
+        return [
+            "TEST-GROWTH unmeasured, refused: the change's config/registries/test-sizes.json is "
+            "absent, unreadable or names no growth floor_lines; an unread rule is never a pass."
+        ]
+    if tests <= source + floor:
+        return []
+    new, rows = list(new), rows or {}
+    if new and all(
+        any(_decided(rows.get(key, {}).get("exception"), ["growth"]) for key in test.ids)
+        for test in new
+    ):
+        return []
+    return [
+        f"TEST-GROWTH refused: net tests {tests:+d} outgrow net source {source:+d} by more than "
+        f"{floor} lines. Turn cases into unit tests of the deciding function, keep one journey per "
+        "distinct path and delete what the change made redundant (tools/instructions/testing.md); "
+        "or record the test manager's decision on each new test's requirement row: "
+        '"exception": {"kinds": ["growth"], "why": "<why>", "decided": "<date>: <the decision>"}.'
+    ]
 
 
 def admission(

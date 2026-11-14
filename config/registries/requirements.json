@@ -801,6 +801,12 @@
       "lower_layer": "The selection checks read and construct registered policy files, which a unit test cannot access.",
       "seconds": 6.248
     },
+    "testing.tests_grow_no_faster_than_source": {
+      "description": "A change whose net test lines outgrow its net source past the policy's floor is refused by name, unless each new test's requirement carries the test manager's decided growth exception.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.unplaced_workers_warn_by_name": {
       "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",
       "owner": "devtools.testing",

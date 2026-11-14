@@ -807,10 +807,19 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     tests = sum(net for path, net in nets if path.startswith("tests/") and not path.endswith(".md"))
     print(
         f"TEST-GROWTH net source {source:+d}, net tests {tests:+d}, "
-        f"new test functions {len(added)}; reviewer judges proportion",
+        f"new test functions {len(added)}",
         flush=True,
     )
-    refused = requirements.guard(
+    try:
+        declared_rows = requirements.parse(declared) if declared else {}
+    except ValueError:
+        declared_rows = {}  # the guard below refuses an unreadable registry by name
+    sizes = "config/registries/test-sizes.json"  # the policy of the snapshot the diff measured
+    if staged:
+        policy = git("show", f":{sizes}") if git("ls-files", "--", sizes).strip() else None
+    else:
+        policy = (ROOT / sizes).read_text("utf-8") if (ROOT / sizes).is_file() else None
+    refused = requirements.growth(policy, source, tests, fresh, declared_rows) + requirements.guard(
         ROOT,
         fresh,
         declared,

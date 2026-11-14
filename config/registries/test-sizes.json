@@ -2694,6 +2694,9 @@
     "tests/structural/*",
     "tests/integration/local_application/test_cli_contract.py*"
   ],
+  "growth": {
+    "floor_lines": 30
+  },
   "admission_limits": {
     "small": {
       "seconds": 1,

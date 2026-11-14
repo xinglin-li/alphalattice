@@ -9,6 +9,7 @@
 "pipeline.size_workspace_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The running commit receipt does not provide a verified workspace identity."},
 "test_size.admission_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The size admission input is not a valid test and declared size."},
 "test_size.admission_limits": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered size admission limits are missing or malformed."},
+"test_size.growth": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered test growth floor is missing or malformed."},
 "test_size.changed_identity": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "Test-family source identities are duplicated and cannot be compared safely."},
 "test_size.large_contract": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "An edited Large test lacks its registered nightly-only contract."},
 "test_size.changed_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "The changed test families cannot be derived from pinned source evidence."},
