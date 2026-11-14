@@ -884,31 +884,120 @@ def internal_id_ratchet(
     }
 
 
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # windowless history-check children
+
+
+class _GitObjects:
+    """One `git cat-file --batch-command` for a whole history check: each `rev:path` is resolved
+    once and each blob read once, in flushed rounds of at most ROUND commands so neither pipe
+    can fill."""
+
+    ROUND = 32
+
+    def __init__(self, repo: Path):
+        self.process = subprocess.Popen(
+            ["git", "cat-file", "--batch-command", "--buffer", "-z"],
+            cwd=repo,
+            creationflags=_NO_WINDOW,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
+        self.resolved: dict[str, str | None] = {}
+        self.contents: dict[str, bytes] = {}
+
+    def __enter__(self) -> _GitObjects:
+        return self
+
+    def __exit__(self, failure, *_) -> None:
+        with self.process:  # both pipes closed and the process waited for, on every exit
+            if failure is not None:
+                self.process.kill()
+                return
+            self.process.stdin.close()
+            trailing = self.process.stdout.read()
+        if self.process.returncode:
+            raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
+        if trailing:
+            raise ValueError("unexpected trailing git object response; restore Git objects")
+
+    def _rounds(self, verb: str, items: list[str]):
+        for start in range(0, len(items), self.ROUND):
+            chunk = items[start : start + self.ROUND]
+            try:
+                self.process.stdin.write(
+                    b"".join(f"{verb} {item}\0".encode() for item in chunk) + b"flush\0"
+                )
+                self.process.stdin.flush()
+            except OSError:
+                pass  # Git stopped reading: its missing reply refuses below.
+            yield from chunk
+
+    def acquire(self, specs: set[str]) -> None:
+        out = self.process.stdout
+        for spec in self._rounds("info", sorted(specs - self.resolved.keys())):
+            missing = (spec + " missing\n").encode()
+            line = out.readline()
+            if missing.startswith(line):  # a path may hold a newline: its reply spans lines
+                line += out.read(len(missing) - len(line))
+            if line == missing:
+                self.resolved[spec] = None
+                continue
+            fields = line.split()
+            if (
+                not line.endswith(b"\n")
+                or len(fields) != 3
+                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
+                or fields[1] != b"blob"
+                or not fields[2].isdigit()
+            ):
+                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
+            self.resolved[spec] = fields[0].decode("ascii")
+        wanted = {oid for oid in self.resolved.values() if oid} - self.contents.keys()
+        for oid in self._rounds("contents", sorted(wanted)):
+            header = out.readline().split()
+            if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
+                raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
+            body = out.read(int(header[2]) + 1)
+            if len(body) != int(header[2]) + 1 or body[-1:] != b"\n":
+                raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
+            self.contents[oid] = body[:-1]
+
+
 def validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None = None
 ) -> None:
     """Validate the first landing against its source, then keep the policy lower-only."""
     if source.startswith("-"):
         raise ValueError("a revision cannot be an option")
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"],
+    with _GitObjects(repo) as objects:
+        _validate_internal_id_history(repo, source, admissions_from, objects)
+
+
+def _validate_internal_id_history(
+    repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
+) -> None:
+    found = subprocess.run(  # one start: the history's depth, then the source's commit
+        ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
         cwd=repo,
-        capture_output=True,
+        creationflags=_NO_WINDOW,
+        stdout=subprocess.PIPE,
         text=True,
         check=False,
     )
-    if shallow.returncode or shallow.stdout.strip() != "false":
+    shallow, _, resolved_source = found.stdout.partition("\n")
+    if shallow != "false":
         raise ValueError(
             "shallow or unreadable Git history; restore complete Git history and retry"
         )
-    source = subprocess.check_output(
-        ["git", "rev-parse", "--verify", f"{source}^{{commit}}"], cwd=repo, text=True
-    ).strip()
+    if found.returncode:
+        raise subprocess.CalledProcessError(found.returncode, found.args, found.stdout)
+    source = resolved_source.strip()
     later = ""
     if admissions_from is not None:
         later = subprocess.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
             cwd=repo,
+            creationflags=_NO_WINDOW,
             capture_output=True,
             text=True,
             check=False,
@@ -917,6 +1006,7 @@ def validate_internal_id_history(
     for row in subprocess.check_output(
         ["git", "rev-list", "--parents", source],
         cwd=repo,
+        creationflags=_NO_WINDOW,
         text=True,
     ).splitlines():
         fields = row.split()
@@ -933,47 +1023,14 @@ def validate_internal_id_history(
     commits = subprocess.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
+        creationflags=_NO_WINDOW,
         text=True,
     ).splitlines()
     if any(commit not in graph for commit in commits):
         raise ValueError("incomplete internal-label history graph; restore Git history")
     policies = set(commits) | {source} | ({later} if later else set())
     policies.update(parent for commit in commits for parent in graph[commit])
-    resolved, contents = {}, {}
-
-    def acquire(specs: set[str]) -> None:
-        pending = sorted(specs - resolved.keys())
-        if not pending:
-            return
-        raw = subprocess.check_output(
-            ["git", "cat-file", "--batch-check", "-z"],
-            cwd=repo,
-            input="".join(spec + "\0" for spec in pending).encode(),
-        )
-        cursor = 0
-        for spec in pending:
-            missing = (spec + " missing\n").encode()
-            if raw.startswith(missing, cursor):
-                resolved[spec] = None
-                cursor += len(missing)
-                continue
-            end = raw.find(b"\n", cursor)
-            fields = raw[cursor:end].split() if end >= 0 else []
-            if (
-                len(fields) != 3
-                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
-                or fields[1] != b"blob"
-                or not fields[2].isdigit()
-            ):
-                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
-            resolved[spec] = fields[0].decode("ascii")
-            cursor = end + 1
-        if cursor != len(raw):
-            raise ValueError("unexpected trailing git object response; restore Git objects")
-        contents.update(
-            _read_blob_batch(repo, {oid for oid in resolved.values() if oid} - contents.keys())
-        )
-
+    resolved, contents, acquire = objects.resolved, objects.contents, objects.acquire
     acquire({f"{commit}:{INTERNAL_ID_BASELINE}" for commit in policies})
     cache = {
         commit: json.loads(contents[oid])
@@ -1048,6 +1105,7 @@ def validate_internal_id_history(
             subprocess.run(
                 ["git", "merge-base", "--is-ancestor", anchor, commit],
                 cwd=repo,
+                creationflags=_NO_WINDOW,
                 capture_output=True,
                 check=False,
             ).returncode

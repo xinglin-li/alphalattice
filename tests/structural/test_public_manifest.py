@@ -1,6 +1,7 @@
 """Public scope rules, immutable hashes and disclosure redaction hold the snapshot contract."""
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -8,7 +9,8 @@ import sys
 import textwrap
 from collections import Counter
 from pathlib import Path
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -453,9 +455,10 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
+@pytest.mark.parametrize("part", ["moves", "batches", "history"], ids=str)  # its three seams
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
-    tmp_path, synthetic_history, monkeypatch
+    tmp_path, synthetic_history, monkeypatch, part
 ):
     _git, commit = synthetic_history
     with pytest.raises(ValueError, match="no frozen internal-label policy"):
@@ -471,109 +474,141 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Establish synthetic allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    base = _git("rev-parse", "HEAD")
     # A mapped move carries its allowance whole; anything else is refused by name.
     moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
-    table.parent.mkdir(parents=True)
-    base = _git("rev-parse", "HEAD")
-    extra = "SYNTHETIC-CARD"
-    for named, occurrences, refusal in (
-        ({moved: owner}, {moved: {label: 1}}, None),
-        ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
-        ({moved: owner}, {moved: {label: 2}}, "labels differ"),
-        ({}, {moved: {label: 1}}, "map does not name it"),
-        ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
-        ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
-    ):
-        rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
-        table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
-        baseline.write_text(json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8")
-        _git("add", "--all")
-        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
-        if refusal is None:
-            validate_internal_id_history(tmp_path, candidate)
-        else:
-            with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+    if part == "moves":
+        table.parent.mkdir(parents=True)
+        extra = "SYNTHETIC-CARD"
+        for named, occurrences, refusal in (
+            ({moved: owner}, {moved: {label: 1}}, None),
+            ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+            ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+            ({}, {moved: {label: 1}}, "map does not name it"),
+            ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+            ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+        ):
+            rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
+            table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
+            baseline.write_text(
+                json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8"
+            )
+            _git("add", "--all")
+            candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
+            if refusal is None:
                 validate_internal_id_history(tmp_path, candidate)
-    held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
-    baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
-    _git("add", "--all")
-    both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
-    baseline.write_text(
-        json.dumps({**policy, "occurrences": {moved: {label: 2}}}), encoding="utf-8", newline="\n"
-    )
-    _git("add", "--all")
-    grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
-    with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
-        validate_internal_id_history(tmp_path, grown)
-    table.write_text("not a map", encoding="utf-8", newline="\n")
-    baseline.write_text(
-        json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
-    )
-    _git("add", "--all")
-    candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
-    with pytest.raises(ValueError, match="test layout map is unreadable"):
-        validate_internal_id_history(tmp_path, candidate)
-    _git("reset", "--hard", base)
-    # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
-    branch = _git("rev-parse", "HEAD")
-    stream = b""
-    for number in range(12):
-        raw = json.dumps({**policy, "note": number}).encode()
-        parent = f":{number}" if number else branch
-        stream += (
-            (
-                f"commit refs/heads/batched\nmark :{number + 1}\n"
-                "committer Synthetic Author <synthetic@example.test> 0 +0000\n"
-                f"data 4\nKeep\nfrom {parent}\nM 100644 inline {INTERNAL_ID_BASELINE}\n"
-                f"data {len(raw)}\n"
-            ).encode()
-            + raw
-            + b"\n\n"
+            else:
+                with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                    validate_internal_id_history(tmp_path, candidate)
+        held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
+        baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
+        baseline.write_text(
+            json.dumps({**policy, "occurrences": {moved: {label: 2}}}),
+            encoding="utf-8",
+            newline="\n",
         )
-    subprocess.check_output(["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream)
-    tip = _git("rev-parse", "batched")
-    side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
-    merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
-    check_output, responses = subprocess.check_output, {}
-    with monkeypatch.context() as patch:
-        run = Mock(wraps=subprocess.run)
-        patch.setattr(subprocess, "run", run)
-        patch.setattr(
-            subprocess,
-            "check_output",
-            lambda command, **kwargs: responses.setdefault(
-                tuple(command), check_output(command, **kwargs)
-            ),
+        _git("add", "--all")
+        grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
+        with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
+            validate_internal_id_history(tmp_path, grown)
+        table.write_text("not a map", encoding="utf-8", newline="\n")
+        baseline.write_text(
+            json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
         )
-        validate_internal_id_history(tmp_path, merged)
-        assert run.call_count <= 12, "historical Git acquisition must use bounded batches"
-        requested = [
-            oid
-            for call in run.call_args_list
-            if "--batch" in call.args[0]
-            for oid in call.kwargs["input"].splitlines()
-        ]
-        assert len(requested) == len(set(requested)), "read each immutable blob only once"
-    for option, damage in (
-        ("--batch-check", lambda raw: b""),
-        ("--batch-check", lambda raw: b"malformed\n"),
-        ("--batch", lambda raw: raw[:-2]),
-        ("--batch", lambda raw: raw + b"trailing"),
-        ("--batch", lambda raw: raw.replace(b" blob ", b" tree ", 1)),
-        ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
-    ):
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
+        with pytest.raises(ValueError, match="test layout map is unreadable"):
+            validate_internal_id_history(tmp_path, candidate)
+        return
+    if part == "batches":
+        # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
+        branch = _git("rev-parse", "HEAD")
+        stream = b""
+        for number in range(12):
+            raw = json.dumps({**policy, "note": number}).encode()
+            parent = f":{number}" if number else branch
+            stream += (
+                (
+                    f"commit refs/heads/batched\nmark :{number + 1}\n"
+                    "committer Synthetic Author <synthetic@example.test> 0 +0000\n"
+                    f"data 4\nKeep\nfrom {parent}\nM 100644 inline {INTERNAL_ID_BASELINE}\n"
+                    f"data {len(raw)}\n"
+                ).encode()
+                + raw
+                + b"\n\n"
+            )
+        subprocess.check_output(
+            ["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream
+        )
+        tip = _git("rev-parse", "batched")
+        side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
+        merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
+        check_output, responses = subprocess.check_output, {}
+        popen, sent = subprocess.Popen, bytearray()
+
+        def recorded(
+            command, **kwargs
+        ):  # the object session's commands, kept for the replays below
+            process = popen(command, **kwargs)
+            if "--batch-command" in command:
+                stdin, sent[:] = process.stdin, b""
+                write = lambda data: sent.extend(data) or stdin.write(data)  # noqa: E731
+                process.stdin = SimpleNamespace(write=write, flush=stdin.flush, close=stdin.close)
+            return process
+
         with monkeypatch.context() as patch:
+            starts = Mock(wraps=recorded)
+            patch.setattr(subprocess, "Popen", starts)
             patch.setattr(
                 subprocess,
                 "check_output",
-                lambda command, option=option, damage=damage, **kwargs: (
-                    damage(responses[tuple(command)])
-                    if option in command
-                    else responses[tuple(command)]
+                lambda command, **kwargs: responses.setdefault(
+                    tuple(command), check_output(command, **kwargs)
                 ),
             )
-            with pytest.raises(ValueError, match=r"git object response|history graph"):
-                validate_internal_id_history(tmp_path, merged)
+            validate_internal_id_history(tmp_path, merged)
+        assert starts.call_count == 4, "one rev-parse, rev-list, log and object session per check"
+        assert all("creationflags" in call.kwargs for call in starts.call_args_list), "windowless"
+        requested = re.findall(rb"contents ([0-9a-f]{40})", sent)
+        assert requested and len(requested) == len(set(requested)), "read each immutable blob once"
+        said = check_output(
+            ["git", "cat-file", "--batch-command", "--buffer", "-z"],
+            cwd=tmp_path,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            input=bytes(sent),
+        )
+        for option, damage in (  # the session's replies or the graph, damaged: each refuses by name
+            ("--batch-command", lambda raw: b""),
+            ("--batch-command", lambda raw: b"malformed\n"),
+            ("--batch-command", lambda raw: raw[:-2]),
+            ("--batch-command", lambda raw: raw + b"trailing"),
+            ("--batch-command", lambda raw: raw.replace(b" blob ", b" tree ", 1)),
+            ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
+        ):
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    subprocess,
+                    "check_output",
+                    lambda command, option=option, damage=damage, **kwargs: (
+                        damage(responses[tuple(command)])
+                        if option in command
+                        else responses[tuple(command)]
+                    ),
+                )
+                patch.setattr(
+                    subprocess,
+                    "Popen",
+                    lambda command, option=option, damage=damage, **kwargs: (
+                        MagicMock(stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0)
+                        if option in command
+                        else popen(command, **kwargs)
+                    ),
+                )
+                with pytest.raises(ValueError, match=r"git object response|history graph"):
+                    validate_internal_id_history(tmp_path, merged)
+        return
     baseline.write_text(json.dumps({**policy, "cards": []}), encoding="utf-8", newline="\n")
     candidate = commit("Remove vocabulary", advance=False)
     with pytest.raises(ValueError, match="vocabulary changed"):
