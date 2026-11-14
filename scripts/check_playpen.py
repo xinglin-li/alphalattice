@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date
 from pathlib import Path
 from time import perf_counter
@@ -101,6 +101,26 @@ def _run(label: str, *args: str) -> None:
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
 
 
+def static_refusals(steps: Iterable[tuple[str, Callable[[], object]]]) -> list[str]:
+    """Run each static check to its end, in order, and return the labels that refused.
+
+    A command step returns None and raises CalledProcessError when it refuses; a guard returns
+    its verdict. A check that cannot run is named as unmeasured and counts as refused.
+    """
+    refused = []
+    for label, check in steps:
+        try:
+            passed = check() is not False
+        except subprocess.CalledProcessError:
+            passed = False
+        except Exception as error:  # an unrunnable check is unmeasured, never passed
+            print(f"PLAYPEN_GATE_UNMEASURED {label}: {type(error).__name__}: {error}", flush=True)
+            passed = False
+        if not passed:
+            refused.append(label)
+    return refused
+
+
 def _command_line_units(args: tuple[str, ...]) -> int:
     """UTF-16 code units Windows sees for one argument list.
 
@@ -174,6 +194,13 @@ def _run_over_targets(label: str, *prefix: str, targets: tuple[str, ...]) -> Non
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
     if failure:
         raise subprocess.CalledProcessError(failure, ("pre-commit", "run", label))
+
+
+def _git_text(*args: str) -> str:
+    """One Git answer's text; a failure raises, which the caller's step names."""
+    return subprocess.run(
+        ("git", *args), cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
 
 
 def _git_lines(*args: str) -> set[str]:
@@ -615,9 +642,12 @@ def _check_import_contracts() -> bool:
     return not found
 
 
-def _check_scoped_structural(*, staged: bool) -> bool:
-    """Run the per_file structural scans over this change's Python files only (the fast lane)."""
-    diff = ("diff", "--cached" if staged else "HEAD", "--name-status", "--no-renames")
+def _check_scoped_structural(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Run the per_file structural scans over this change's Python files only (the fast lane):
+    the staged index against HEAD for the hook, the tree against its merge base with `base_ref`
+    for the commit stage, so a committed change is scanned as its staged form was."""
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    diff = ("diff", since, "--name-status", "--no-renames")
     listing = subprocess.run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
     named = {row.split("\t")[-1] for row in listing.stdout.splitlines()}
     if not any(path.endswith(".py") for path in named):
@@ -666,14 +696,14 @@ def _check_docstrings() -> bool:
     return result.returncode == 0
 
 
-def _check_test_shape(*, staged: bool) -> bool:
-    """Refuse a staged test change that breaks the writing rules in tests/README.md."""
+def _check_test_shape(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
+    for the hook, the committed head against its merge base with `base_ref` for the stage."""
 
-    if not staged:
-        return True
     started = perf_counter()
+    script = [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")]
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")], cwd=ROOT, check=False
+        script if staged else [*script, "--base", base_ref], cwd=ROOT, check=False
     )
     print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
@@ -984,64 +1014,72 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
     if not args.fast and not _require_private_structural_inputs():
         return 1
+    # The static checks below each read the same immutable tree and none feeds another, so
+    # each runs to its end and every refusal is named in one attempt; the slow steps after
+    # them still wait for all of them. The materializer above stays a stop: later checks
+    # read the derivatives it verifies.
     python_targets = _python_targets(staged=args.staged, all_python=args.all_python)
-    if python_targets:
-        _run_over_targets(
-            "ruff-check",
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            "--config",
-            "pyproject.toml",
-            targets=python_targets,
-        )
-        _run_over_targets(
-            "ruff-format",
-            sys.executable,
-            "-m",
-            "ruff",
-            "format",
-            "--check",
-            "--config",
-            "pyproject.toml",
-            targets=python_targets,
-        )
-    if args.fast and not _check_scoped_structural(staged=args.staged):
-        return 1
+    ruff = (sys.executable, "-m", "ruff")
+    lint = (*ruff, "check", "--config", "pyproject.toml")
+    form = (*ruff, "format", "--check", "--config", "pyproject.toml")
     # Always the full strict set, never a subset. With follow_imports = "skip",
     # a module absent from the command line types as Any, so narrowing the list
     # both invents errors and hides real ones -- it is not the same check on
     # fewer files. It also buys nothing: warm-cache mypy over all of them is
     # about a second, and was never what made this gate slow.
-    _run_over_targets(
-        "strict-mypy",
-        sys.executable,
-        "-m",
-        "mypy",
-        "--config-file",
-        "pyproject.toml",
-        *_strict_targets(),
-        targets=("pyproject.toml",),
-    )
-    _report_identity_closures(staged=args.staged)
-    if not _check_identity_reach(staged=args.staged):
-        return 1
-    if not _check_evidence_bindings():
-        return 1
-    if not _check_operation_registry():
-        return 1
-    if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
-        return 1
-    if not _check_boundaries(staged=args.staged):
-        return 1
-    if not _check_import_contracts():
-        return 1
-    if not _check_docstrings():
-        return 1
-    if not _check_test_shape(staged=args.staged):
-        return 1
-    if not _check_test_budget(staged=args.staged, base_ref=args.base):
+    mypy = (sys.executable, "-m", "mypy", "--config-file", "pyproject.toml")
+    steps: list[tuple[str, Callable[[], object]]] = [
+        *(
+            [
+                (
+                    "ruff-check",
+                    lambda: _run_over_targets("ruff-check", *lint, targets=python_targets),
+                ),
+                (
+                    "ruff-format",
+                    lambda: _run_over_targets("ruff-format", *form, targets=python_targets),
+                ),
+            ]
+            if python_targets
+            else []
+        ),
+        *(
+            [
+                (
+                    "scoped-structural",
+                    lambda: _check_scoped_structural(staged=args.staged, base_ref=args.base),
+                )
+            ]
+            if args.fast
+            else []
+        ),
+        (
+            "strict-mypy",
+            lambda: _run_over_targets(
+                "strict-mypy", *mypy, *_strict_targets(), targets=("pyproject.toml",)
+            ),
+        ),
+        ("identity-closures", lambda: _report_identity_closures(staged=args.staged)),
+        ("identity-reach", lambda: _check_identity_reach(staged=args.staged)),
+        ("evidence-bindings", _check_evidence_bindings),
+        ("operation-registry", _check_operation_registry),
+        (
+            "registries",
+            lambda: _check_registries(staged=args.staged, baseline=args.registry_baseline),
+        ),
+        ("boundaries", lambda: _check_boundaries(staged=args.staged)),
+        ("import-contracts", _check_import_contracts),
+        ("docstrings", _check_docstrings),
+        ("test-shape", lambda: _check_test_shape(staged=args.staged, base_ref=args.base)),
+        ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
+    ]
+    refused = static_refusals(steps)
+    if refused:
+        print(
+            f"PLAYPEN_GATE_REFUSED {len(refused)} static check(s): {', '.join(refused)}. "
+            "Each is named above; repair them all before the next attempt.",
+            flush=True,
+        )
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

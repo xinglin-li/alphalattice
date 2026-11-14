@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
-from devtools.architecture.git_inputs import staged_moves
+from devtools.architecture.git_inputs import staged_changes, staged_moves
 from devtools.testing.contracts import import_violations
 from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
 from devtools.testing.requirements import PROVES_LINE, file_holders
@@ -832,7 +832,9 @@ def weekly_report(root: Path = ROOT) -> dict:
     }
 
 
-def _data_file_problems(staged: list[str], moved: dict, parents: tuple[str, ...]) -> list[str]:
+def _data_file_problems(
+    staged: list[str], moved: dict, parents: tuple[str, ...], head: str = ":"
+) -> list[str]:
     """The rule for test data: a path no parent holds, under tests/, that is neither code nor
     prose. The tree is its baseline, and a byte-identical move keeps its standing."""
     data = [
@@ -854,7 +856,7 @@ def _data_file_problems(staged: list[str], moved: dict, parents: tuple[str, ...]
         fresh = [path for path in data if path not in held]
         if not fresh:
             return []
-        policy = validate_policy(json.loads(_blobs([":" + REGISTRIES[0]])[":" + REGISTRIES[0]]))
+        policy = validate_policy(json.loads(_blobs([head + REGISTRIES[0]])[head + REGISTRIES[0]]))
         return new_data_file_problems(fresh, policy)
     except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         return [f"TEST-DATA unmeasured: {error}; restore the staged registry and retry"]
@@ -865,28 +867,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--weekly", action="store_true", help="Print a read-only source review as JSON"
     )
-    if parser.parse_args(argv).weekly:
+    parser.add_argument(
+        "--base",
+        help="judge the committed head against its merge base with this ref (the commit stage)",
+    )
+    args = parser.parse_args(argv)
+    if args.weekly:
         print(json.dumps(weekly_report(), ensure_ascii=False))
         return 0
-    listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+    if args.base:  # the committed head against its merge base: the stage's snapshot
+        found_base = _git("merge-base", args.base, "HEAD")
+        if found_base.returncode:
+            print(
+                f"TEST-LAYOUT base {args.base} unreadable; name a reachable base", file=sys.stderr
+            )
+            return 1
+        parents, head = (found_base.stdout.strip(),), "HEAD:"
+        listing = _git("diff", "--name-only", "-z", "--diff-filter=ACMR", parents[0], "HEAD")
+    else:  # the staged index against HEAD: the hook's snapshot
+        head = ":"
+        listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
     if listing.returncode:
         print(
-            "TEST-LAYOUT staged files unreadable; restore the Git index and retry", file=sys.stderr
+            "TEST-LAYOUT changed files unreadable; restore the Git index and retry", file=sys.stderr
         )
         return 1
     staged = listing.stdout.split("\0")
-    # A merge adds only what neither parent holds: what the merged branch brings was checked there.
-    merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
-    parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
+    if not args.base:
+        # A merge adds only what neither parent holds: the merged branch was checked there.
+        merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
+        parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
     selected = [
         path
         for path in staged
         if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
     ]
     try:
-        moved = staged_moves(
-            ROOT
-        )  # a byte-identical move keeps its old path's grandfathered findings
+        moved = staged_moves(  # a byte-identical move keeps its old path's grandfathered findings
+            ROOT, pairs=staged_changes(ROOT, base=parents[0], tree="HEAD") if args.base else None
+        )
         origin = {path: moved.get(path, path) for path in selected}
         candidates = [
             p
@@ -897,10 +916,10 @@ def main(argv: list[str] | None = None) -> int:
             and p not in moved
         ]
         texts = _blobs(
-            [":" + path for path in selected]
+            [head + path for path in selected]
             + [parent + ":" + origin[path] for parent in parents for path in selected]
             + [parent + ":" + path for parent in parents for path in candidates]
-            + ([":config/registries/requirements.json"] if candidates else [])
+            + ([head + "config/registries/requirements.json"] if candidates else [])
         )
     except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
         print(
@@ -908,11 +927,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    found, corpus = _data_file_problems(staged, moved, parents), None
+    found, corpus = _data_file_problems(staged, moved, parents, head), None
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:
-            registry = texts.get(":config/registries/requirements.json")
+            registry = texts.get(head + "config/registries/requirements.json")
             if registry is None:
                 raise ValueError("the staged requirements registry is missing")
             rows = parse_requirements(registry)
@@ -921,16 +940,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("staged source listing is unreadable")
             source_paths = set(sources.stdout.split("\0"))
             for path in added:
-                if ":" + path not in texts:
+                if head + path not in texts:
                     raise ValueError(f"staged test {path} is unreadable")
-                found += new_test_file_problems(path, texts[":" + path], rows, source_paths)
+                found += new_test_file_problems(path, texts[head + path], rows, source_paths)
         except (ValueError, TypeError, OSError) as error:
             found.append(
                 f"TEST-LAYOUT placement unmeasured: {error}; "
                 "restore the staged registry and source index"
             )
     python_sources = [p for p in selected if p.startswith("src/") and p.endswith(".py")]
-    specs = [":" + path for path in python_sources] + [
+    specs = [head + path for path in python_sources] + [
         parent + ":" + origin[path] for path in python_sources for parent in parents
     ]
     try:
@@ -943,13 +962,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     grouped, copies, locations = [], [], []
     for path in selected:
-        if ":" + path in texts:
-            new = texts[":" + path]
+        if head + path in texts:
+            new = texts[head + path]
             each = []
             for parent in parents:
                 old = texts.get(parent + ":" + origin[path])
                 measurement = (
-                    (scores.get(parent + ":" + origin[path], {}), scores[":" + path])
+                    (scores.get(parent + ":" + origin[path], {}), scores[head + path])
                     if path in python_sources
                     else None
                 )
@@ -971,8 +990,10 @@ def main(argv: list[str] | None = None) -> int:
                             return 1
                         paths = listing.stdout.split("\0")
                         corpus = {
-                            spec[1:]: text
-                            for spec, text in _blobs([":" + item for item in paths if item]).items()
+                            spec[len(head) :]: text
+                            for spec, text in _blobs(
+                                [head + item for item in paths if item]
+                            ).items()
                         }
                     copies.append((path, old, new))
                     locations.append((len(grouped), len(each)))
@@ -981,8 +1002,8 @@ def main(argv: list[str] | None = None) -> int:
     if copies:
         try:
             names = (
-                ":scripts/test-shape-tools/package.json",
-                ":scripts/test-shape-tools/package-lock.json",
+                head + "scripts/test-shape-tools/package.json",
+                head + "scripts/test-shape-tools/package-lock.json",
             )
             staged_manifests = _blobs(list(names))
             manifests = tuple(

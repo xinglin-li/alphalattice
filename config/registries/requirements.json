@@ -636,6 +636,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.static_refusals_are_named_in_one_attempt": {
+      "description": "The fast guard runs every independent static check to its end and names each refusal and each unrunnable check in one attempt, before any slow step.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The guard's main sequences its checks in one process over a tree, and no unit test of one check can show that all of them run to their ends."
+    },
     "pipeline.the_whole_public_tree_closes_at_release": {
       "description": "If the release tree stopped closing over its manifest, the export would publish a file whose dependency users cannot get, with the gate silent.",
       "owner": "devtools.pipeline",
@@ -806,6 +813,13 @@
       "owner": "devtools.testing",
       "layer": "unit",
       "seconds": 1
+    },
+    "testing.the_stage_judges_the_committed_change_as_the_hook_judges_the_index": {
+      "description": "If the commit stage judged only the working tree, a committed test-shape break the hook refuses at the index would pass the stage, or an inherited one would refuse it.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The check chooses its snapshot through Git processes, the merge base and the head or index blobs, and the unit layer may not depend on subprocess."
     },
     "testing.unplaced_workers_warn_by_name": {
       "description": "Inside the private workshop, an unplaced pytest run asking for more than two workers is warned once with heavy_slot's command, never refused; other runs stay silent.",

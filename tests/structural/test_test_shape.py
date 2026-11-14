@@ -459,6 +459,31 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     assert shape.main([]) == 1  # missing staged ownership must not be treated as empty
 
 
+@pytest.mark.proves("testing.the_stage_judges_the_committed_change_as_the_hook_judges_the_index")
+def test_the_stage_judges_the_committed_head_against_its_merge_base(monkeypatch) -> None:
+    """With a base, the committed head is judged against its merge base, never the index."""
+    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
+    path = "src/example.py"
+    bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
+    texts = {"HEAD:" + path: bad, ":" + path: "", "fork:" + path: ""}
+    backend, asked = _git_backend(texts, [path]), []
+
+    def run(command, **kwargs):
+        asked.append(command[1:])
+        if command[1] == "merge-base":
+            known = command[2] == "develop"
+            return shape.subprocess.CompletedProcess(command, int(not known), "fork\n" * known)
+        return backend(command, **kwargs)
+
+    monkeypatch.setattr(shape.subprocess, "run", run)
+    assert shape.main(["--base", "develop"]) == 1  # the committed break, though the index is clean
+    assert ["merge-base", "develop", "HEAD"] in asked
+    assert shape.main([]) == 0  # the hook judges the clean index
+    texts["fork:" + path] = bad
+    assert shape.main(["--base", "develop"]) == 0  # inherited from the base: not this change's
+    assert shape.main(["--base", "gone"]) == 1  # an unreadable base refuses, never passes
+
+
 def test_weekly_report_lists_static_candidates_and_respects_config_string_readers(
     monkeypatch,
 ) -> None:
