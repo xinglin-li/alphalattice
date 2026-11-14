@@ -92,10 +92,46 @@ def _ensure_workspace_environment() -> None:
     raise SystemExit(result.returncode)
 
 
+def child_record(label: str, code: int, passing: tuple[int, ...] = (0,)) -> str:
+    """The gate's record of one child check, printed before the child's own words."""
+    verdict = "PASS" if code in passing else f"FAIL exit {code}"
+    return f"PLAYPEN_GATE_CHILD {label} {verdict}"
+
+
+def _relay(
+    label: str, args: Iterable[str], *, passing: tuple[int, ...] = (0,), **options: Any
+) -> subprocess.CompletedProcess[str]:
+    """Run one child check and print its words here, under its name and verdict.
+
+    A windowless child on Windows inherits no console and no handle, so a log on a
+    pipe or a file would hold the refusal without its findings (1114-C2-3). The
+    child's stdout and stderr are captured as one stream, in the order it wrote
+    them, and printed unchanged after the gate's record of it.
+    """
+
+    done = subprocess.run(
+        tuple(args),
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        **options,
+    )
+    print(child_record(label, done.returncode, passing), flush=True)
+    print(done.stdout, end="", flush=True)
+    return done
+
+
 def _run(label: str, *args: str) -> None:
     started = perf_counter()
     try:
-        subprocess.run(args, cwd=ROOT, check=True)
+        done = _relay(label, args)
+        if done.returncode:
+            raise subprocess.CalledProcessError(done.returncode, args, done.stdout)
     finally:
         elapsed = perf_counter() - started
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
@@ -336,10 +372,9 @@ def _check_identity_reach(*, staged: bool) -> bool:
     if not candidates:
         return True
     print(f"identity reach: {len(candidates)} changed modules can widen it; measuring", flush=True)
-    result = subprocess.run(
+    result = _relay(
+        "identity-reach",
         [sys.executable, str(ROOT / "scripts" / "identity_readout.py"), "--reach-check"],
-        cwd=ROOT,
-        check=False,
     )
     print(f"PLAYPEN_GATE_TIMING identity-reach {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
@@ -680,7 +715,7 @@ def _check_scoped_structural(*, staged: bool, base_ref: str = "develop") -> bool
             str(Path(folder) / "pytest"),
             *tests,
         )
-        done = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        done = _relay("scoped-structural", command, passing=(0, 5), env=env)
     print(f"PLAYPEN_GATE_TIMING scoped-structural {perf_counter() - started:.3f}s", flush=True)
     return done.returncode in (0, 5)  # 5: no per_file node selected
 
@@ -694,36 +729,18 @@ def _check_docstrings() -> bool:
     """
 
     started = perf_counter()
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "check_docstrings.py")], cwd=ROOT, check=False
-    )
+    result = _relay("docstrings", [sys.executable, str(ROOT / "scripts" / "check_docstrings.py")])
     print(f"PLAYPEN_GATE_TIMING docstrings {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
 def _check_waits(*, staged: bool) -> bool:
     """Refuse an unbounded wait or loop above ``config/wait-baseline.json``: the staged sources
-    for the hook, every tracked source otherwise (scripts/check_waits.py). Its words are relayed:
-    a windowless child on Windows has no console to inherit, so its own output would be lost."""
+    for the hook, every tracked source otherwise (scripts/check_waits.py)."""
 
     started = perf_counter()
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "check_waits.py"),
-            "--staged" if staged else "--all",
-        ],
-        cwd=ROOT,
-        check=False,
-        timeout=600,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    print(result.stdout, end="", flush=True)
-    print(result.stderr, end="", file=sys.stderr, flush=True)
+    script = [sys.executable, str(ROOT / "scripts" / "check_waits.py")]
+    result = _relay("wait-rules", [*script, "--staged" if staged else "--all"], timeout=600)
     print(f"PLAYPEN_GATE_TIMING wait-rules {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
@@ -736,20 +753,7 @@ def _check_test_shape(*, staged: bool, base_ref: str = "develop", semgrep: bool 
     script = [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")]
     if semgrep:
         script.append("--semgrep")
-    result = subprocess.run(
-        script if staged else [*script, "--base", base_ref],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    print(
-        result.stdout, end="", flush=True
-    )  # relayed: a windowless child has no console to inherit
-    print(result.stderr, end="", file=sys.stderr, flush=True)
+    result = _relay("test-shape", script if staged else [*script, "--base", base_ref])
     print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 

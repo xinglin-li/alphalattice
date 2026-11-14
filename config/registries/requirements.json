@@ -537,6 +537,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "pipeline.every_child_check_names_its_findings_in_the_gate_log": {
+      "description": "Each child check the fast guard runs prints its findings in the guard's own log, under its name and verdict, whether that log is a console, a pipe or a file.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The loss is a process boundary: only a real child process whose parent writes to a pipe or a file can show its words reaching that log."
+    },
     "pipeline.flake_quarantine_candidates": {
       "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
       "owner": "devtools.pipeline",
