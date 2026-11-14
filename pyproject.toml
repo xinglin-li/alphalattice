@@ -55,7 +55,9 @@ alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "*
 [project.optional-dependencies]
 # Data Operations, Feature, Panel, and workspace storage.
 data = [
-    "duckdb>=1.5,<2",
+    # Hold through 2026-12-12: 2.0 leaves query results open and refuses our registration;
+    # migrate the connection owner and validate 2.0 storage/rollback compatibility first.
+    "duckdb==1.5.6",
     "exchange-calendars>=4.13,<5",
     "numpy>=2.5,<3",
     "pandas>=3.0,<4",
@@ -70,6 +72,8 @@ data-live = [
 # Explicitly admitted live evidence acquisition; network stays off by default.
 live-evidence = [
     "httpx>=0.28,<1",
+    # Hold through 2026-12-12: 2.3.1 changes canonical evidence bytes and escapes table notices;
+    # lift after v6 byte compatibility is proved or an identity successor is approved.
     "trafilatura==2.1.0",
 ]
 # Alpha, Risk, Sector, Portfolio, and Validation numerics.
@@ -79,13 +83,13 @@ quant = [
     "joblib>=1.5,<2",
     "lightgbm>=4.7,<4.8",
     "numpy>=2.5,<3",
-    "optuna>=4.9,<5",
+    "optuna>=5,<6",
     "osqp>=1.1,<2",
     "pandas>=3.0,<4",
     "pyarrow>=25,<26",
     "scikit-learn>=1.9,<2",
     "scipy>=1.18,<2",
-    "statsmodels>=0.14.6,<0.15",
+    "statsmodels>=0.15,<0.16",
     "threadpoolctl>=3.6,<4",
 ]
 # Pinned local semantic retrieval; the FastEmbed reranker closure stays in
