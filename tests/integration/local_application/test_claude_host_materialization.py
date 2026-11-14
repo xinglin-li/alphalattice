@@ -353,7 +353,8 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
 
 
 def test_both_agent_guides_read_the_dates_before_activation_and_review_the_positions_after():
-    """Both guides bind activation and position review to their dates and publication."""
+    """Both guides bind activation and position review to their dates and publication, and what
+    follows a published review to its offered next action, in the same words wherever said."""
     for path in (
         ROOT / "AGENTS.md",
         ROOT / ".agents/skills/alphalattice-research/SKILL.md",
@@ -365,3 +366,13 @@ def test_both_agent_guides_read_the_dates_before_activation_and_review_the_posit
         assert dates < text.index("admits the first update") < text.index("own publication")
         assert "causal replay" in text
         assert re.search(r"strategy-book review[^`\n]*--update\b", text)
+    skill = ROOT / ".agents/skills/alphalattice-research"  # the Claude copy is byte-exact
+    rule = re.search(
+        r"follow its offered next action, never the daily setting: .+?"
+        r" the committee offered in one line",
+        (skill / "SKILL.md").read_text(encoding="utf-8"),
+    )
+    assert rule and all(
+        rule[0] in (skill / "references" / name).read_text(encoding="utf-8")
+        for name in ("research-lead.md", "cro-handoff.md")
+    )

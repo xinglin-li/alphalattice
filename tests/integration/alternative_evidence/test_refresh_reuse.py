@@ -510,13 +510,22 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
         runtime.sealed_selections = SealedSelections(
             runtime.artifacts, selection_policy_hash=policy, program_hash=query_program_hash()
         )
-        # The index absent from disk: the build restores it, as before.
-        database = next((tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob("*.db"))
-        database.unlink()
+        # Each selection retired the index after its use;
+        # the kept payload made it restorable, so the refreshes above reused
+        # it whole. Lost from disk (no file and no eviction marker), the build
+        # restores it, as before, and the reused selection retires it again.
+        (marker,) = (tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob(
+            "*.evicted.json"
+        )
+        database = marker.with_name(marker.name.removesuffix(".evicted.json"))
+        assert not database.is_file()
+        marker.unlink()
         fourth = refresh(NOW + timedelta(hours=3))
         assert len(builds) == 4 and sessions.opened == 2
         assert fourth["receipt"].reused_from_receipt_hash == first["receipt"].receipt_hash
-        assert database.is_file(), "restored by the build"
+        assert marker.is_file() and not database.is_file(), (
+            "restored by the build, retired after use"
+        )
         # A named span set that is not the one delivered: refused by name at
         # the build stage, never taken for a miss.
         named = (

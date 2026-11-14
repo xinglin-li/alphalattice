@@ -428,6 +428,18 @@ def _admission_limits(policy: dict[str, Any]) -> None:
         raise ValueError("test_size.large_contract")
 
 
+def _growth(policy: dict[str, Any]) -> None:
+    """Validate the net test lines a change may add beyond its net source."""
+    growth = policy.get("growth")  # contract: require after pre-contract policy readers retire
+    if growth is not None and (
+        not isinstance(growth, dict)
+        or set(growth) != {"floor_lines"}
+        or type(growth["floor_lines"]) is not int
+        or growth["floor_lines"] < 0
+    ):
+        raise ValueError("test_size.growth")
+
+
 def _limits(policy: dict[str, Any]) -> None:
     """Refuse disabled bounds, duplicate Large declarations and unexplained resource needs."""
     limits = policy.get("limits")
@@ -440,6 +452,7 @@ def _limits(policy: dict[str, Any]) -> None:
     if any(type(n) not in (int, float) or not isfinite(n) or n <= 0 for n in bounds):
         raise ValueError("test_size.limits")
     _admission_limits(policy)
+    _growth(policy)
     if len({r["pattern"] for r in policy["large"]}) != len(policy["large"]):
         raise ValueError("test_size.large_duplicate")
     for row in policy["large"]:

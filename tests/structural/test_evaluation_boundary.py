@@ -34,6 +34,7 @@ def test_evaluation_imports_no_product_or_private_implementation(tmp_path):
     "source,refused",
     [
         ("import json\nimport yaml\nfrom .forms import Scenario\n", False),
+        ("from inspect_ai import Task\nfrom inspect_ai.util import subprocess\n", False),
         (f"from {ENTRY_MODULE} import {ENTRY_NAME}\n", False),
         (f"from {ENTRY_MODULE} import private_helper\n", True),
         (f"import {ENTRY_MODULE}\n", True),

@@ -443,7 +443,8 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
         Path("artifacts/alpha-research/current/lifecycle-arrays/not-a-digest.bin"),
     ):
         assert not (in_place / relative).samefile(second / relative)
-    shutil.rmtree(in_place)
+    moved = in_place.rename(tmp_path / "in-place-moved")  # a folder of sealed links still moves
+    shutil.rmtree(moved)
     with pytest.raises(PermissionError):
         (second / "market-data.duckdb").open("r+b")
     (second / "seed.txt").write_text("changed", encoding="utf-8")

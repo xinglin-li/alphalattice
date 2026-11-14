@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import monotonic
@@ -492,7 +493,7 @@ def test_sqlite_wal_reader_does_not_block_single_writer(tmp_path: Path) -> None:
     ledger, port = _runtime(tmp_path)
     first = port.emit(_draft(sequence=1))
     uri = f"{ledger.database_path.as_uri()}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as reader:
+    with closing(sqlite3.connect(uri, uri=True)) as reader:
         reader.execute("BEGIN")
         assert reader.execute("SELECT count(*) FROM unified_observation").fetchone()[0] == 1
         second = port.emit(_draft(sequence=2, status="COMPLETED"))
@@ -500,21 +501,43 @@ def test_sqlite_wal_reader_does_not_block_single_writer(tmp_path: Path) -> None:
         assert reader.execute("SELECT count(*) FROM unified_observation").fetchone()[0] == 1
     assert ledger.read(first.observation_id).availability is ObservationAvailability.AVAILABLE
     assert ledger.read(second.observation_id).availability is ObservationAvailability.AVAILABLE
+    for sequence in range(3, 183):
+        port.emit(_draft(sequence=sequence))
+    wal = Path(f"{ledger.database_path}-wal")
+    assert wal.stat().st_size < 1_000_000
+
+    with closing(sqlite3.connect(uri, uri=True)) as reader:
+        reader.execute("BEGIN")
+        count = reader.execute("SELECT count(*) FROM unified_observation").fetchone()[0]
+        for sequence in range(183, 243):
+            port.emit(_draft(sequence=sequence))
+        assert reader.execute("SELECT count(*) FROM unified_observation").fetchone()[0] == count
+    for sequence in range(243, 403):
+        port.emit(_draft(sequence=sequence))
+    assert wal.stat().st_size < 1_000_000
+    assert len(ledger.all_observations()) == 402
+    ledger.close()
 
 
 @pytest.mark.proves("observation_runtime.ledger_has_one_sqlite_writer")
 def test_sqlite_writer_configuration_matches_derived_projection_policy(tmp_path: Path) -> None:
     StorageCapStore(tmp_path).write(200 * 1024**2, chosen_by="HUMAN", chosen_at=NOW)
-    ledger, _port = _runtime(tmp_path)
+    ledger, port = _runtime(tmp_path)
     assert ledger._writer.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert ledger._writer.execute("PRAGMA synchronous").fetchone()[0] == 1
     assert ledger._writer.execute("PRAGMA busy_timeout").fetchone()[0] == 5_000
-    assert ledger._writer.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 1_000
+    assert ledger._writer.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 128
     cap = StorageCapStore(tmp_path).capacity(measured_data_bytes=0).cap_bytes
-    assert ledger._writer.execute("PRAGMA journal_size_limit").fetchone()[0] == max(
-        1, build_retention_policy(workspace_managed_cap_bytes=cap).ledger_cap_bytes // 100
+    assert ledger._writer.execute("PRAGMA journal_size_limit").fetchone()[0] == min(
+        512 * 1024,
+        max(1, build_retention_policy(workspace_managed_cap_bytes=cap).ledger_cap_bytes // 100),
     )
     assert ledger._writer.execute("PRAGMA auto_vacuum").fetchone()[0] == 2
+    statements: list[str] = []
+    ledger._writer.set_trace_callback(statements.append)
+    port.emit(_draft(sequence=1))
+    assert not any(statement.startswith("PRAGMA journal_size_limit=") for statement in statements)
+    ledger.close()
 
 
 @pytest.mark.proves("observation_runtime.ledger_stays_inside_its_storage_cap")
@@ -538,12 +561,14 @@ def test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentify
     store.write(1, chosen_by="HUMAN", chosen_at=NOW)
     with pytest.raises(ValueError, match=r"observation\.retention_root_over_budget"):
         port.emit(_draft(sequence=2))
+    assert ledger._writer.execute("PRAGMA journal_size_limit").fetchone()[0] == 1
     assert ledger.read(first.observation_id) == original
     assert len(ledger.all_observations()) == 1
     store.write(400 * 1024**2, chosen_by="HUMAN", chosen_at=NOW)
     replay = port.emit(_draft(sequence=1))
     assert replay.observation_id == first.observation_id and replay.disposition == "REUSED_EXACT"
     assert port.emit(_draft(sequence=2)).disposition == "APPENDED"
+    assert ledger._writer.execute("PRAGMA journal_size_limit").fetchone()[0] == 41_943
     ledger.close()
     reopened = ObservationLedger(
         tmp_path / "observations.sqlite",

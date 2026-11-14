@@ -33,7 +33,7 @@ Revision = Annotated[
 ]
 HttpsUrl = Annotated[str, StringConstraints(pattern=r"^https://[^\s]+$")]
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
-type JsonAtom = None | bool | int | FiniteFloat | str
+type JsonAtom = bool | int | FiniteFloat | str | None
 type ArgumentValue = JsonAtom | tuple[JsonAtom, ...]
 
 

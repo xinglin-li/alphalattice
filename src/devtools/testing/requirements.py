@@ -28,7 +28,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from devtools.testing.sizes import load_policy
+from devtools.testing.sizes import load_policy, validate_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
@@ -746,47 +746,191 @@ def _area_layers(tests: Iterable[Holder]) -> dict[str, Counter[str]]:
     return areas
 
 
+def _removed_imports(node: ast.AST, removed: set[str]) -> set[str] | None:
+    """Resolve project imports only when their exact modules have been removed."""
+
+    def deleted(module: str) -> bool:
+        path = module.replace(".", "/") + ".py"
+        return path in removed or "src/" + path in removed
+
+    if isinstance(node, ast.Import):
+        modules = [(item.name, item.asname or item.name.split(".")[0]) for item in node.names]
+    elif isinstance(node, ast.ImportFrom):
+        if node.level:
+            return None
+        module = node.module or ""
+        modules = [
+            (module if deleted(module) else f"{module}.{item.name}", item.asname or item.name)
+            for item in node.names
+        ]
+    else:
+        return set()
+    names: set[str] = set()
+    for module, name in modules:
+        if module.split(".", 1)[0] in {"importlib", "runpy", "subprocess", "os"}:
+            return None
+        if module.split(".", 1)[0] in {"scripts", "devtools", "alphalattice", "tests"}:
+            if name == "*" or not deleted(module):
+                return None
+            names.add(name)
+    return names
+
+
+def _removed_test_source(text: str, removed: set[str]) -> bool:
+    """A retired test file names only deleted project modules and no dynamic import route."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            name = (
+                node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            )
+            if name in {"__import__", "import_module", "run_module", "run_path", "exec", "eval"}:
+                return False
+        found = _removed_imports(node, removed)
+        if found is None:
+            return False
+        names.update(found)
+    tests = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    ]
+    return bool(names and tests) and all(
+        any(isinstance(part, ast.Name) and part.id in names for part in ast.walk(test))
+        for test in tests
+    )
+
+
+def _retired_area(
+    area: str,
+    current: list[Holder],
+    previous: list[Holder],
+    retired_tests: Mapping[str, str],
+    removed_sources: set[str],
+) -> bool:
+    old = {test.node: test for test in previous}
+    new = {test.node: test for test in current}
+    if new.keys() - old.keys():
+        return False
+    removed = [node for node in old.keys() - new.keys() if node.split("/")[2:3] == [area]]
+    unchanged = all(
+        getattr(test, "digest", "") == getattr(old[node], "digest", "")
+        for node, test in new.items()
+        if node in old and node.split("/")[2:3] == [area]
+    )
+    return bool(removed and unchanged) and all(
+        (path := node.partition("::")[0]) in retired_tests
+        and _removed_test_source(retired_tests[path], removed_sources)
+        for node in removed
+    )
+
+
+def _correct_prior_layers(
+    current: list[Holder],
+    previous: list[Holder],
+    then: dict[str, Counter[str]],
+    rows: Mapping[str, dict[str, Any]],
+    prior_rows: Mapping[str, dict[str, Any]],
+) -> None:
+    old = {test.node: test for test in previous}
+    for test in current:
+        if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
+            continue
+        original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
+        if not original or original.digest != test.digest or original.ids != test.ids:
+            continue
+        if all(
+            key in rows
+            and key in prior_rows
+            and prior_rows[key]["layer"] == "unit"
+            and rows[key]["layer"] == "integration"
+            and not lower_layer(key, rows[key], prior_rows[key])
+            for key in test.ids
+        ):
+            area = test.node.split("/")[2]
+            then[area]["unit"] -= 1
+            then[area]["integration"] += 1
+
+
 def pyramid(
     after: Iterable[Holder],
     before: Iterable[Holder] | None,
     rows: Mapping[str, dict[str, Any]] | None = None,
     prior_rows: Mapping[str, dict[str, Any]] | None = None,
+    *,
+    retired_tests: Mapping[str, str] | None = None,
+    removed_sources: set[str] | None = None,
 ) -> list[str]:
     """An area's integration share of its test functions may only fall: a change that raises it
     is refused by name. Correct an unchanged holder's prior label only when its raised registered
-    requirement says why it cannot run in unit; a new area has no prior share to keep."""
+    requirement says why it cannot run in unit; a new area has no prior share to keep. An
+    unchanged area's deleted tests may leave with the exact source they alone import."""
     current, previous = list(after), list(before or ())
     now, then = _area_layers(current), _area_layers(previous)  # no base tree: nothing to keep
+    retired_tests = retired_tests or {}
+    removed_sources = removed_sources or set()
     if rows is not None and prior_rows is not None:
-        old = {test.node: test for test in previous}
-        for test in current:
-            if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
-                continue
-            original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
-            if not original or original.digest != test.digest or original.ids != test.ids:
-                continue
-            if all(
-                key in rows
-                and key in prior_rows
-                and prior_rows[key]["layer"] == "unit"
-                and rows[key]["layer"] == "integration"
-                and not lower_layer(key, rows[key], prior_rows[key])
-                for key in test.ids
-            ):
-                area = test.node.split("/")[2]
-                then[area]["unit"] -= 1
-                then[area]["integration"] += 1
+        _correct_prior_layers(current, previous, then, rows, prior_rows)
     found = []
     for area, counts in sorted(now.items()):
         was = then.get(area, Counter())
         total, prior = sum(counts.values()), sum(was.values())
         if prior and counts["integration"] * prior > was["integration"] * total:
+            if _retired_area(area, current, previous, retired_tests, removed_sources):
+                continue
             found.append(
                 f"Test pyramid risk for {area}: its integration share would rise from "
                 f"{was['integration']}/{prior} to {counts['integration']}/{total} test functions; "
                 "prove the new behaviour with unit tests, or move an integration test down a layer."
             )
     return found
+
+
+def growth(
+    policy: str | None,
+    source: int,
+    tests: int,
+    new: Iterable[Holder] = (),
+    rows: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[str]:
+    """A change's net test lines may not exceed its net source plus the size policy's floor
+    (tools/instructions/testing.md), and a change whose tests do not grow passes; judged against
+    `policy`, the test-sizes.json text of the same snapshot as the measured diff: past it the
+    change is refused by name, unless each new
+    test function's requirement carries the test manager's decided "growth" exception. An
+    absent, unreadable or malformed policy is never a pass."""
+    try:
+        loaded = validate_policy(json.loads(policy)) if policy is not None else {}
+        floor = (loaded.get("growth") or {}).get("floor_lines")
+    except ValueError:  # bad JSON or a bad policy; absent from the snapshot reads as no floor
+        floor = None
+    if type(floor) is not int:
+        return [
+            "TEST-GROWTH unmeasured, refused: the change's config/registries/test-sizes.json is "
+            "absent, unreadable or names no growth floor_lines; an unread rule is never a pass."
+        ]
+    if tests <= max(
+        source + floor, 0
+    ):  # a change whose tests do not grow never outgrows its source
+        return []
+    new, rows = list(new), rows or {}
+    if new and all(
+        any(_decided(rows.get(key, {}).get("exception"), ["growth"]) for key in test.ids)
+        for test in new
+    ):
+        return []
+    return [
+        f"TEST-GROWTH refused: net tests {tests:+d} outgrow net source {source:+d} by more than "
+        f"{floor} lines. Turn cases into unit tests of the deciding function, keep one journey per "
+        "distinct path and delete what the change made redundant (tools/instructions/testing.md); "
+        "or record the test manager's decision on each new test's requirement row: "
+        '"exception": {"kinds": ["growth"], "why": "<why>", "decided": "<date>: <the decision>"}.'
+    ]
 
 
 def admission(
@@ -863,6 +1007,8 @@ def guard(
     *,
     tests: Iterable[Holder] | None = None,
     before_tests: Iterable[Holder] | None = None,
+    retired_tests: Mapping[str, str] | None = None,
+    removed_sources: set[str] | None = None,
 ) -> list[str]:
     """The fast guard's step over a change: its new tests and its added or edited rows, parsed
     once; a tree with no registry at either end has nothing to register."""
@@ -899,5 +1045,12 @@ def guard(
         registration(root, candidates.values(), rows, at=at, prior=prior)
         + admission(root, rows, before, at=at)
         + _fresh_lower_layers(new, rows, before)
-        + pyramid(at.tests, before_tests, rows, before)
+        + pyramid(
+            at.tests,
+            before_tests,
+            rows,
+            before,
+            retired_tests=retired_tests,
+            removed_sources=removed_sources,
+        )
     )

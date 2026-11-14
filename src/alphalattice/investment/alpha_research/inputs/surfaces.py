@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -74,7 +75,7 @@ def _training_binding_source_hashes(
 
 
 def _total_physical_memory_bytes() -> int:
-    if os.name == "nt":
+    if sys.platform == "win32":
         import ctypes
 
         class _MemoryStatus(ctypes.Structure):

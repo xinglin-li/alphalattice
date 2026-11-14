@@ -2177,3 +2177,16 @@ def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasu
     else:
         assert "unmeasured" in found["boundaries"] and "cycles" not in found["boundaries"]
         assert found["sizes"]["source_lines"] > 0  # the other rows still report
+
+
+@pytest.mark.proves("pipeline.a_row_skipped_for_documents_names_them")
+def test_a_row_skipped_for_documents_names_them_and_classes_no_red():
+    """requirement: a provider may skip a row for a change of documents only by naming them."""
+    step = {"status": "SKIPPED_DOCUMENTS", "exit": None, "seconds": 0, "provider": "workshop"}
+    assert receipt.Step(**step, documents=["a.md"]).documents == ["a.md"]
+    passed = step | {"status": "PASS", "exit": 0, "documents": ["a.md"]}
+    for wrong in (step, step | {"documents": []}, passed):
+        with pytest.raises(ValueError, match="skipped for documents names them"):
+            receipt.Step(**wrong)
+    named = [("tests", step | {"documents": ["a.md"]})]
+    assert receipt.red_class(named, {}, over_bound=False, tested=False)[0] == {}

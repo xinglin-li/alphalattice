@@ -330,6 +330,17 @@ def test_max_wait_is_the_waiters_only_timer(monkeypatch) -> None:
     assert final["wait_status"] == "MAX_WAIT_TASK_CONTINUES" and outcome_of(final) == "PENDING"
     with pytest.raises(client_module.LocalResearchClientError, match="max_wait_invalid"):
         client_module._follow(stub, admitted, 0)  # type: ignore[arg-type]
+    # A chain's omitted --max-wait is the hour. Read where its deadline less the clock rounds
+    # past that hour (an unmoved coarse clock), its follow takes the deadline, never a refusal.
+    now = 496.2857142857143
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now)
+    ended = {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", "task_id": task_id}
+    chain = client_module._Chain(_Stub([ended]), "book_review", now + 3600.0)  # type: ignore[arg-type]
+    try:
+        stopped = chain.followed("book", admitted)
+    except client_module.LocalResearchClientError as refused:  # it refused its own deadline
+        stopped = refused.args
+    assert stopped is None and chain.followed_answer["lifecycle"] == "SUCCEEDED"
 
 
 def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch) -> None:
@@ -1664,10 +1675,13 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Setup failures retry in this session; successful off-PATH discovery is read once."""
+    """Setup failures retry in this session; successful off-PATH discovery is read once; Codex's
+    trust of the project is the person's item, named with its one step."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
+    codex = Path(os.environ["CODEX_HOME"])  # this test's own Codex, which trusts no project yet
+    (tmp_path / ".git").mkdir()  # the project root Codex trusts
     monkeypatch.setattr(native_bridge, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
@@ -1683,6 +1697,12 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
     assert refused["detail"] == words.detail and host.goals.first_use() is None
+    assert set(refused["missing"]) == {"installed_leg", "retrieval_runtime", "project_trust"}
+    trust = refused["missing"]["project_trust"]
+    (step,) = trust["commands"]
+    assert trust["who_decides"] == "PERSON" and step.startswith("codex exec --trust")
+    key = json.dumps(trust["project_root"])  # the person runs the step; Codex records it so
+    (codex / "config.toml").write_text(f'[projects.{key}]\ntrust_level = "trusted"\n')
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
     assert tool["commands"][0].endswith("install-tool") and "--bin" in tool["words"]

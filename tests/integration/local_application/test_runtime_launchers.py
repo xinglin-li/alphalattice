@@ -608,7 +608,13 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
             output._obj.BasicLimitInformation.LimitFlags = 0x2000
             return escape != "unproven"
 
-        kernel = SimpleNamespace(IsProcessInJob=proof, QueryInformationJobObject=limits)
+        lock_api = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel = SimpleNamespace(
+            IsProcessInJob=proof,
+            QueryInformationJobObject=limits,
+            LockFileEx=lock_api.LockFileEx,
+            UnlockFileEx=lock_api.UnlockFileEx,
+        )
         monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
         monkeypatch.setattr(ctypes, "get_last_error", lambda: 87 if escape == "unproven" else 0)
     taken = tmp_path / "taken"

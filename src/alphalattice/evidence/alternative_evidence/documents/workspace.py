@@ -26,6 +26,7 @@ from ..contracts import AlternativeEvidenceReadingDepth, seal_contract
 from ..sources.contracts import (
     AcquiredEvidenceDocument,
     AcquiredEvidenceDocumentReference,
+    source_object_bytes,
     source_object_relative,
 )
 from .contracts import (
@@ -66,8 +67,12 @@ class AlternativeEvidenceDocumentPublisher:
             target = make_confined_parents(self.workspace.root, relative)
             target = resolve_confined(self.workspace.root, relative)
             if target.exists():
-                if not target.is_file() or target.read_bytes() != document.content:
-                    raise ValueError("alternative_evidence.source_object_integrity")
+                try:
+                    if not target.is_file():
+                        raise ValueError("not a file")
+                    source_object_bytes(target.read_bytes(), content_sha256, len(document.content))
+                except ValueError as error:
+                    raise ValueError("alternative_evidence.source_object_integrity") from error
             else:
                 if admit is not None:
                     admit(len(document.content))
@@ -102,12 +107,9 @@ class AlternativeEvidenceDocumentPublisher:
         path = resolve_confined(self.workspace.root, reference.content_object_path)
         if not path.is_file():
             raise ValueError("alternative_evidence.source_object_missing")
-        content = path.read_bytes()
-        if (
-            len(content) != reference.content_bytes
-            or sha256_hex(content) != reference.content_sha256
-        ):
-            raise ValueError("alternative_evidence.source_object_tampered")
+        content = source_object_bytes(
+            path.read_bytes(), reference.content_sha256, reference.content_bytes
+        )
         try:
             return reference.resolve(content)
         except ValueError as error:

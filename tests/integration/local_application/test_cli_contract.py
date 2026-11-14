@@ -73,7 +73,8 @@ ENVELOPE = {
 
 
 def test_a_question_code_is_optional_and_cannot_expand_a_relayed_decision() -> None:
-    """Coded replies retain legacy input and bind the catalog's permitted operations."""
+    """Uncoded replies keep their own question; a coded one carries its registered words and
+    binds the catalog's permitted operations."""
     from alphalattice.interface.local_application.goals import relayed_decision
     from alphalattice.interface.local_application.portfolio_research import (
         PersonConfirmation,
@@ -86,7 +87,15 @@ def test_a_question_code_is_optional_and_cannot_expand_a_relayed_decision() -> N
     )
     assert legacy.model_dump().get("question_code", "absent") is None
     assert relayed_decision(request, legacy) == legacy.decision_hash
-    coded = legacy.model_copy(update={"question_code": "network.daily_updates"})
+    from alphalattice.interface.local_application.goals import DAILY_NETWORK_ASK
+
+    with pytest.raises(ValueError, match=r"person_confirmation\.question_words_differ"):
+        relayed_decision(
+            request, legacy.model_copy(update={"question_code": "network.daily_updates"})
+        )
+    coded = legacy.model_copy(
+        update={"question_code": "network.daily_updates", "question": DAILY_NETWORK_ASK}
+    )
     assert relayed_decision(request, coded) == legacy.decision_hash
     wider = {**request, "evidence_documents_per_issuer": 10}
     with pytest.raises(ValueError, match=r"person_confirmation\.beyond_its_question"):

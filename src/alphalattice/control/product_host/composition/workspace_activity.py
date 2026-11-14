@@ -920,7 +920,7 @@ class WorkspaceActivity:
                             "at": envelope.observed_at.isoformat(),
                             "source": envelope.source_id,
                             "provenance": envelope.observation_id,
-                            "clock_domain": "LEDGER_OBSERVED_AT",
+                            "clock_domain": payload.get("clock_domain", "LEDGER_OBSERVED_AT"),
                         }
                     )
             if not page.more or page.next_cursor.ordinal >= head:

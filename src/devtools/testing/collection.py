@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -48,43 +51,10 @@ SIZE_TMP_PATH = pytest.StashKey[Path]()
 SIZE_CREATED = pytest.StashKey[tuple[Path, frozenset[Path]] | str]()
 SIZE_RECORDED = pytest.StashKey[bool]()
 SIZE_FAILED = pytest.StashKey[bool]()
-INSTRUCTION_COST = pytest.StashKey[bool]()
 SIZE_POLICY = pytest.StashKey[dict[str, Any]]()
 SIZE_CLOCK = pytest.StashKey[dict[str, float]]()
 SESSION_FOOTPRINT = pytest.StashKey[sizes.SessionFootprint]()
 FIND = 'register its requirement first (python scripts/tests_registry.py find "<words>")'
-
-
-def _instruction_cost(config: Any) -> bool:
-    """Only the advisory simulation omits wall-clock test limits, never a gating lane."""
-    if (
-        os.environ.get("ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS") != "1"
-        or os.environ.get("ALPHALATTICE_PIPELINE_STAGE")
-        or os.environ.get("ALPHALATTICE_TEST_LANE")
-    ):
-        return False
-    plugin = config.pluginmanager.get_plugin("codspeed_plugin")
-    return bool(
-        plugin
-        and getattr(plugin, "is_codspeed_enabled", False)
-        and getattr(getattr(plugin, "mode", None), "value", None) == "simulation"
-    )
-
-
-def _instruction_cost_timeouts(config: Any, items: list[Any]) -> None:
-    if _instruction_cost(config):
-        for item in items:
-            item.stash[INSTRUCTION_COST] = True
-            item.add_marker(pytest.mark.timeout(0, func_only=False), append=False)
-            item.user_properties.append(
-                ("test_timeout_mode", "off:codspeed-instruction-simulation")
-            )
-
-
-def pytest_report_header(config: Any) -> str | None:
-    if _instruction_cost(config):
-        return "CodSpeed instruction simulation: test wall-time bounds off; job deadline remains"
-    return None
 
 
 def _family(item: Any) -> str:
@@ -135,6 +105,87 @@ def pytest_configure_node(node: Any) -> None:
         node.workerinput["alphalattice_size_scope"] = families is not None
         if families is not None:
             node.workerinput["alphalattice_size_families"] = list(families)
+
+
+def worker_crash_evidence(worker: Any, node: str | None, directory: Path) -> dict[str, Any]:
+    """Read the worker exit and fault stream; an absent value stays unknown."""
+    worker_id = worker.gateway.id
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None:
+        raise ValueError("testing.worker_identity_unknown: invalid xdist worker identity")
+    record: dict[str, Any] = {"worker": worker_id, "node": node, "exit": None, "stack": None}
+    try:
+        process = worker.gateway._io.popen
+        exit_code = process.wait(timeout=2)
+        if type(exit_code) is not int:
+            raise ValueError("process did not provide an exit code")
+        record["exit"] = exit_code
+    except (AttributeError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        record["exit_error"] = f"worker exit unavailable: {type(error).__name__}: {error}"
+    try:
+        stack = (directory / f"worker-{worker_id}.fault.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        if not stack:
+            raise ValueError("fault stream is empty")
+        record["stack"] = stack
+    except (OSError, ValueError) as error:
+        record["stack_error"] = f"fault stream unavailable: {error}"
+    return record
+
+
+@pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
+def pytest_sessionstart(session: Any) -> None:
+    """Put each managed suite worker's native fault output in its attempt directory."""
+    config = session.config
+    worker = getattr(config, "workerinput", None)
+    if not os.environ.get("WK_SUITE_ATTEMPT") or not isinstance(worker, dict):
+        return
+    worker_id = worker.get("workerid")
+    xml = getattr(config.option, "xmlpath", None)
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None or not xml:
+        raise pytest.UsageError(
+            "testing.worker_capture_unavailable: worker identity or JUnit path missing"
+        )
+    try:
+        stream = (Path(xml).parent / f"worker-{worker_id}.fault.log").open("x", encoding="utf-8")
+        faulthandler.enable(file=stream, all_threads=True)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise pytest.UsageError(f"testing.worker_capture_unavailable: {error}") from error
+    config._worker_fault_stream = stream
+
+
+@pytest.hookimpl(optionalhook=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_testnodedown(node: Any, error: Any) -> None:
+    """Remember each xdist process and capture a crash before its scheduler entry goes away."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    config = node.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is None:
+        workers = config._worker_capture_nodes = {}
+    scheduler = getattr(config.pluginmanager.getplugin("dsession"), "sched", None)
+    pending = getattr(scheduler, "node2pending", {}).get(node, ())
+    collection = getattr(scheduler, "collection", None)
+    running = collection[pending[0]] if error is not None and pending and collection else None
+    workers[node.gateway.id] = (node, running, error is not None)
+    xml = getattr(config.option, "xmlpath", None)
+    if error is not None and xml:
+        node._worker_crash_evidence = worker_crash_evidence(node, running, Path(xml).parent)
+
+
+@pytest.hookimpl(optionalhook=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_handlecrashitem(crashitem: str, report: Any, sched: Any) -> None:
+    """Carry the actual exit and fault stream in the failed node's existing JUnit record."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    record = getattr(getattr(report, "node", None), "_worker_crash_evidence", None)
+    if not isinstance(record, dict) or record.get("node") != crashitem:
+        report.longrepr = f"{report.longrepr}\nworker capture unmeasured: node identity unavailable"
+        return
+    exit_value = record.get("exit")
+    stack = record.get("stack") or record.get("stack_error", "fault stream unavailable")
+    exit_text = exit_value if exit_value is not None else "unknown"
+    report.longrepr = f"{report.longrepr}\nworker {record['worker']} exit {exit_text}\n{stack}"
 
 
 def ordered_requeue() -> type:
@@ -431,9 +482,18 @@ def _size_report(item: Any, report: Any) -> None:
             )
         policy = item.config.stash[SIZE_POLICY]
         size = dict(item.user_properties)["test_size"]
-        admission_limit(item.nodeid, size, sum(phases.values()), footprint[0], policy)
+        seconds = sum(phases.values())
+        bound = policy.get("admission_limits", {}).get(size, {})
+        admission_limit(item.nodeid, size, seconds, footprint[0], policy)
     except (KeyError, TypeError, ValueError) as error:
         report.outcome, report.longrepr = "failed", str(error)
+        if (
+            str(error).startswith("test_size.admission_limit:")
+            and footprint[0] <= bound["tmp_bytes"]
+        ):
+            # Over its seconds only: the gate measures it alone, as a timeout (lead_check retry).
+            limit = bound["seconds"]
+            report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "admission")
 
 
 def _golden_times(item: Any) -> None:
@@ -537,7 +597,7 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
     limit = dict(item.user_properties)["test_timeout_seconds"]
-    if seconds <= limit or item.stash.get(INSTRUCTION_COST, False):
+    if seconds <= limit:
         return
     report.outcome, report.longrepr = (
         "failed",
@@ -546,21 +606,27 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             "share setup or move the test to integration"
         ),
     )
-    event = dict(
-        event="TIMEOUT",
-        nodeid=item.nodeid,
-        phase="teardown",
-        limit_seconds=limit,
-        elapsed_seconds=seconds,
-        cause="unit-own-phases",
-    )
+    report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "unit-own-phases")
+
+
+def _retry_evidence(item: Any, phase: str, limit: float, seconds: float, cause: str) -> str:
+    """A node failed on its seconds: a TIMEOUT event in the run's log asks the gate to run it
+    alone, which judges it again; an unwritable log is named in the failure."""
+    event = dict(event="TIMEOUT", nodeid=item.nodeid, phase=phase, limit_seconds=limit)
+    event.update(elapsed_seconds=seconds, cause=cause)
     log_file = item.config.getoption("log_file") or item.config.getini("log_file")
     if log_file:
         try:
+            if receipts := item.config.pluginmanager.get_plugin("pytest_receipts"):
+                slot = (
+                    receipts.heavy_slot
+                )  # the shared places, read as its own TIMEOUT event reads them
+                event["heavy_place_holders"] = slot._read(slot.HOLDERS, None)
             with Path(log_file).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(event) + "\n")
         except OSError as error:
-            report.longrepr += f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+            return f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+    return ""
 
 
 def gate(
@@ -749,6 +815,27 @@ def pytest_configure(config: Any) -> None:
 @pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
 def pytest_sessionfinish(session: Any) -> None:
     """Retain component costs once per process; missing evidence cannot prove the stage budget."""
+    config = session.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is not None and os.environ.get("WK_SUITE_ATTEMPT"):
+        try:
+            directory = Path(config.option.xmlpath).parent
+            records = [
+                worker_crash_evidence(node, running, directory)
+                for node, running, _ in workers.values()
+            ]
+            data = {
+                "schema": "alphalattice.pytest-workers.v1",
+                "attempt": os.environ["WK_SUITE_ATTEMPT"],
+                "source_sha": os.environ.get("WK_SUITE_SOURCE_SHA"),
+                "workers": records,
+            }
+            with (directory / "worker-exits.json").open("x", encoding="utf-8") as stream:
+                json.dump(data, stream, allow_nan=False)
+                stream.write("\n")
+        except (OSError, ValueError, AttributeError, KeyError) as error:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            print(f"testing.worker_capture_unavailable: {error}", file=sys.stderr)
     observer = session.config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:
@@ -774,6 +861,10 @@ def pytest_sessionfinish(session: Any) -> None:
 
 
 def pytest_unconfigure(config: Any) -> None:
+    stream = getattr(config, "_worker_fault_stream", None)
+    if stream is not None:
+        faulthandler.disable()
+        stream.close()
     observer = config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:
@@ -948,10 +1039,18 @@ def pytest_collection_finish(session: Any) -> None:
         _write_moved(session.config, record)
 
 
-def pytest_itemcollected(item: Any) -> None:
-    """Under CodSpeed every selected test is measured as its cost: it deselects unmarked tests."""
-    if os.environ.get("CODSPEED_ENV") is not None or item.config.getoption("codspeed", False):
-        item.add_marker(pytest.mark.benchmark)
+@pytest.hookimpl(wrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_collection(session: Any) -> Any:
+    """Name an xdist worker's collection refusal in the run's log. pytest sends the worker's
+    collection to the controller in a finally, so a UsageError then ends the worker silently: the
+    controller, which never collects, reports only a crash on a test that never ran."""
+    try:
+        return (yield)
+    except pytest.UsageError as error:
+        worker = getattr(session.config, "workerinput", {}).get("workerid")
+        if worker:
+            print(f"ERROR: [{worker}] {error}", file=sys.stderr, flush=True)
+        raise
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
@@ -1038,7 +1137,6 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept
-    _instruction_cost_timeouts(config, items)
 
 
 def timeout_hints(lines: list[str], failed: set[str]) -> dict[str, float]:

@@ -54,6 +54,7 @@ from alphalattice.interface.local_application.web import (
     OPEN_THE_WORKBENCH,
 )
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.shared_kernel.waits import pause
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files
@@ -75,6 +76,8 @@ STOPPING: dict[str, object] = {
 
 
 def _windows_stdin(descriptor: int) -> tuple[Any, Any, int]:
+    if sys.platform != "win32":
+        raise OSError("Windows stdin inspection is unavailable")
     import ctypes
     import msvcrt
     from ctypes import wintypes
@@ -398,13 +401,17 @@ def _detach(
         )
         panel = os.name == "nt" and capability.get("availability") == "probed"
         message_id = "host.start.breakaway_denied" + (".panel" if panel else "")
+        if sys.platform == "win32":
+            win32_error = error.winerror
+        else:
+            win32_error = None
         return _refusal(
             "local_web.detached_breakaway_denied",
             str(worded(message_id)),
             "SERVE_FROM_THE_HOST_TERMINAL_PANEL" if panel else "SERVE_FROM_A_PERSON_OWNED_TERMINAL",
             message_id=message_id,
             launch_context={
-                "win32_error": error.winerror if sys.platform == "win32" else None,
+                "win32_error": win32_error,
                 "job_limit_flags": ChildJob.current_limit_flags()
                 if sys.platform == "win32"
                 else None,
@@ -441,7 +448,7 @@ def _detach(
                     )
         if host.poll() is not None:
             return _failed_start(arguments.workspace, host, text, log_path)
-        time.sleep(0.2)
+        pause(0.2)
     return _refusal(
         "local_web.detached_host_not_ready",
         f"The detached Host (process {host.pid}) has not reported serving after "

@@ -449,8 +449,8 @@ def _kernel32() -> Any:
     return kernel
 
 
-# Windows: each session seed file read in place, held open so that no writer can open it.
-_HELD: dict[str, int] = {}
+# Windows: each session seed file read in place whose access list already refuses writers.
+_SEALED: set[str] = set()
 
 
 def refuse_writers(path: str) -> None:
@@ -459,21 +459,54 @@ def refuse_writers(path: str) -> None:
 
     POSIX: its write bits go off; unlinking a name needs only its directory. Windows keeps
     one read-only attribute per file, shared by every link, so a link could not be deleted
-    without making the source writable: one handle that shares reading and deletion, never
-    writing, is held instead, and a writer's open fails with a sharing violation.
+    without making the source writable; a held handle would refuse renaming any folder that
+    holds one of its links. Its access list denies everyone writing data instead: one entry
+    shared by every link, leaving reads, new links, folder renames and deletion free.
     """
     if os.name != "nt":
         os.chmod(path, stat.S_IMODE(os.stat(path).st_mode) & ~0o222)
         return
-    if path in _HELD:
+    if path in _SEALED:
         return
+    import ctypes.wintypes as wintypes  # lazy: the Windows path alone uses wintypes
 
-    kernel = _kernel32()
-    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
-    handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
-    if handle == ctypes.c_void_p(-1).value:
-        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
-    _HELD[path] = handle  # closed with the process; the source outlives every reader of it
+    class Trustee(ctypes.Structure):
+        _fields_ = [
+            ("multiple", ctypes.c_void_p),
+            ("operation", ctypes.c_int),
+            ("form", ctypes.c_int),
+            ("kind", ctypes.c_int),
+            ("sid", ctypes.c_void_p),
+        ]
+
+    class ExplicitAccess(ctypes.Structure):
+        _fields_ = [
+            ("permissions", wintypes.DWORD),
+            ("mode", ctypes.c_int),
+            ("inheritance", wintypes.DWORD),
+            ("trustee", Trustee),
+        ]
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    everyone, size = (ctypes.c_byte * 68)(), wintypes.DWORD(68)  # SECURITY_MAX_SID_SIZE
+    if not advapi.CreateWellKnownSid(1, None, everyone, ctypes.byref(size)):  # WinWorldSid
+        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.seal_refused: {path}")
+    old, descriptor, new = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+    name = str(Path(path).absolute())
+    # SE_FILE_OBJECT, DACL_SECURITY_INFORMATION; DENY_ACCESS of FILE_WRITE_DATA | FILE_APPEND_DATA
+    deny = ExplicitAccess(0x2 | 0x4, 3, 0, Trustee(None, 0, 0, 5, ctypes.addressof(everyone)))
+    error = advapi.GetNamedSecurityInfoW(
+        name, 1, 4, None, None, ctypes.byref(old), None, ctypes.byref(descriptor)
+    )
+    try:
+        error = error or advapi.SetEntriesInAclW(1, ctypes.byref(deny), old, ctypes.byref(new))
+        error = error or advapi.SetNamedSecurityInfoW(name, 1, 4, None, None, new, None)
+    finally:
+        ctypes.windll.kernel32.LocalFree(new)
+        ctypes.windll.kernel32.LocalFree(descriptor)
+    if error:
+        raise ctypes.WinError(error, f"test_datasets.seal_refused: {path}")
+    _SEALED.add(path)
 
 
 def remove_tree(path: Path, root: Path) -> list[str]:
@@ -636,6 +669,11 @@ def read_in_place(relative: str, size: int) -> bool:
     )
 
 
+def volume(path: Path) -> int:
+    """The volume a path lives on; a hard link joins two names only on one."""
+    return path.stat().st_dev
+
+
 def copy_payload(
     workspace: Path,
     target: Path,
@@ -651,7 +689,8 @@ def copy_payload(
     Windows the read-only attribute, shared by every link, refusing every writer even after
     the acquiring process exits. The cost, on Windows only: a plain unlink cannot remove the
     link, so pytest's tmp cleanup leaves it (it ignores errors) and the run's remover, which
-    removes read-only names, takes it with the run. Without `link`, nothing is linked.
+    removes read-only names, takes it with the run. Without `link`, nothing is linked, and a
+    target on another volume than the golden (a hard link cannot cross one) takes copies.
     """
     workspace, target = payload_path(workspace), payload_path(target)
     created = False
@@ -675,6 +714,7 @@ def copy_payload(
         # remains under its build lock without a completion marker until sealed.
         target.mkdir()
         created = True
+        link = link and volume(target) == volume(workspace)
 
         def copy_one(path: Path) -> str:
             info = path.stat()

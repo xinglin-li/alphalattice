@@ -2,6 +2,15 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
+    "tests/integration/knowledge/test_retrieval_recipes.py::test_the_retained_recipe_keeps_its_hashes": {
+      "inputs": [
+        "uv.lock",
+        "pyproject.toml",
+        "config/requirements-retrieval.lock",
+        "config/requirements-gpu.lock",
+        "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
+      ]
+    },
     "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py"
@@ -75,6 +84,91 @@
     }
   },
   "defaults": [
+    {
+      "pattern": "tests/unit/agent_eval/test_accepted_routing.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax14_audit.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax15_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax16_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1f_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax1g_probe.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax1h_score.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax3_extract.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax3_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax4_drivers.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_ax5_metrics.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax5_rescore.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax6_books.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/unit/agent_eval/test_ax8_compare.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_data_case_coverage.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
+    {
+      "pattern": "tests/integration/agent_eval/test_read_audit.py*",
+      "owner": "tests.agent_eval",
+      "size": "medium"
+    },
     {
       "pattern": "tests/integration/alpha_research/test_alpha_product_recipe.py*",
       "owner": "tests.alpha_research",
@@ -456,7 +550,7 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/evaluation/test_forms.py*",
+      "pattern": "tests/unit/evaluation/test_forms.py*",
       "owner": "tests.evaluation",
       "size": "medium"
     },
@@ -1515,6 +1609,14 @@
     }
   ],
   "large": [
+    {
+      "pattern": "tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
+      "owner": "tests.structural",
+      "reason": "Runs Semgrep's real rule cases and the whole tracked source; its one-file pass alone uses most of the commit budget.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 120,
+      "admitted": "2026-11-14: the whole-tree scan took 25.906 s here; the goal places the slower tool in the nightly."
+    },
     {
       "pattern": "tests/integration/product_host/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[[]AMBIGUOUS[]]",
       "owner": "tests.workspace_maintenance",
@@ -2594,12 +2696,21 @@
       "seen_on": [
         "pc1"
       ]
+    },
+    {
+      "node": "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words",
+      "owner": "tests.structural",
+      "until": "2026-11-12",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
     "tests/structural/*",
     "tests/integration/local_application/test_cli_contract.py*"
   ],
+  "growth": {
+    "floor_lines": 30
+  },
   "admission_limits": {
     "small": {
       "seconds": 1,

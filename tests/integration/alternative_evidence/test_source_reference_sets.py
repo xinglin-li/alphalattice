@@ -11,6 +11,7 @@ as it did.
 from __future__ import annotations
 
 import json
+import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import pytest
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.evidence.alternative_evidence.sources.contracts import (
     SOURCE_OBJECT_ROOT,
+    SOURCE_OBJECT_ZLIB,
     AcquiredEvidenceDocumentSet,
     AcquiredEvidenceSourceReferenceSet,
     parse_source_set,
@@ -109,6 +111,24 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
             published_at=_NOW + timedelta(days=2),
         )
     target.write_bytes(genuine)
+    # The same bytes kept in the zlib form read as the original, and a publication over them
+    # keeps them as they are; a damaged stream is tampered.
+    target.write_bytes(SOURCE_OBJECT_ZLIB + zlib.compress(genuine, 6))
+    try:
+        expanded = runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+    except ValueError as error:
+        pytest.fail(f"the zlib form was refused: {error}")
+    assert expanded == document_set
+    runtime.acquire_recorded(
+        request=_request_at(_NOW + timedelta(days=3)),
+        registry=_registry(),
+        documents=documents,
+        published_at=_NOW + timedelta(days=3),
+    )
+    assert target.read_bytes().startswith(SOURCE_OBJECT_ZLIB)
+    target.write_bytes(SOURCE_OBJECT_ZLIB + zlib.compress(genuine, 6)[:-4])
+    with pytest.raises(ValueError, match="source_object_tampered"):
+        runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
     runtime.close()
 
 

@@ -1,5 +1,7 @@
 {
 "entries": {
+"testing.worker_capture_unavailable": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "A worker fault stream or its attempt record cannot be retained; the result does not prove the missing evidence."},
+"testing.worker_identity_unknown": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "The worker identity is not an admitted xdist worker name; its evidence is not assigned to another process."},
 "agent_bundle.admission_busy": {"owner": "agent_bundle", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded workspace admission is occupied; this answer was not filed and can be retried."},
 "agent_bundle.answer_replay_inconsistent": {"owner": "agent_bundle", "category": "FAILED_PRECONDITION", "classification_note": "A retained keyed response does not match its filed answer; inspect the stored evidence before retrying."},
 "pipeline.size_overhead_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The commit stage cannot retain its measurement-cost observation."},
@@ -7,6 +9,7 @@
 "pipeline.size_workspace_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE", "classification_note": "The running commit receipt does not provide a verified workspace identity."},
 "test_size.admission_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The size admission input is not a valid test and declared size."},
 "test_size.admission_limits": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered size admission limits are missing or malformed."},
+"test_size.growth": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered test growth floor is missing or malformed."},
 "test_size.changed_identity": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "Test-family source identities are duplicated and cannot be compared safely."},
 "test_size.large_contract": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "An edited Large test lacks its registered nightly-only contract."},
 "test_size.changed_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "The changed test families cannot be derived from pinned source evidence."},
@@ -18,6 +21,13 @@
 "test_size.cost_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE"},
 "pipeline.receipt_cost_unmeasured": {"owner": "devtools.pipeline", "category": "UNAVAILABLE"},
 "host_facts.fake_source_missing": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION"},
+"budget.invalid_inode_receipt": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION", "classification_note": "A footprint record lacks a valid file identity or size; restore the observation and measure again."},
+"budget.inconsistent_inode_receipt": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION", "classification_note": "One file identity has conflicting sizes in a footprint record; restore the observation and measure again."},
+"evaluation.profile_workspace_unobserved": {"owner": "devtools.evaluation", "category": "UNAVAILABLE", "classification_note": "The Goal's workspace could not be identified; restore its binding and capture the profile."},
+"native_meter.host_port_unmeasured": {"owner": "devtools.evaluation", "category": "UNAVAILABLE", "classification_note": "The bound Host connection does not name a measurable port; restore the connection and measure again."},
+"native_meter.host_listener_unmeasured": {"owner": "devtools.evaluation", "category": "UNAVAILABLE", "classification_note": "The bound Host listener could not be observed; restore it and measure again."},
+"native_meter.host_listener_ambiguous": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION", "classification_note": "More than one listener matched the Host connection; resolve the ambiguity before measuring."},
+"native_meter.host_instance_changed": {"owner": "devtools.evaluation", "category": "FAILED_PRECONDITION", "classification_note": "The Host connection changed during observation; bind the current instance and measure again."},
 "test_layout.registry_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
 "test_layout.input_unreadable": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "reason": "A Python file, config JSON or named input of the snapshot that is not UTF-8 is named, never guessed."},
 "test_size.framework_fixtures_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT"},
@@ -355,6 +365,16 @@
 "category": "INVALID_ARGUMENT",
 "classification_note": "declared in the owner's admitted code set; no current emitter; meaning taken from its user words."
 },
+"wait.stopped": {
+"owner": "shared_kernel",
+"category": "CANCELLED",
+"classification_note": "A bounded wait (shared_kernel.waits) its owner's stop event ended before its deadline; nothing it waited for changed."
+},
+"wait.timeout": {
+"owner": "shared_kernel",
+"category": "DEADLINE_EXCEEDED",
+"classification_note": "A bounded wait (shared_kernel.waits) reached its deadline first; what it waited on may still finish."
+},
 "workspace.conflict": {
 "owner": "workspace",
 "category": "ABORTED",
@@ -407,6 +427,18 @@
 "category": "INVALID_ARGUMENT"
 },
 "person_confirmation.question_mismatch": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
+"person_confirmation.question_missing": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
+"person_confirmation.question_words_differ": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
+"person_confirmation.question_code_required": {
 "owner": "person_confirmation",
 "category": "INVALID_ARGUMENT"
 },

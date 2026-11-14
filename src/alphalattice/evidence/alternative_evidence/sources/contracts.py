@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+import zlib
 from datetime import date, datetime
 from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import (
@@ -179,6 +181,34 @@ distinct content, addressed by the SHA-256 of the bytes."""
 
 def source_object_relative(content_sha256: str) -> str:
     return f"{SOURCE_OBJECT_ROOT}/{content_sha256}"
+
+
+SOURCE_OBJECT_ZLIB = b"alphalattice-source-object zlib 1\n"
+"""A source object kept compressed: this line, then the original bytes as one zlib stream. The
+object's identity stays the original bytes' length and SHA-256."""
+
+
+def source_object_bytes(stored: bytes, content_sha256: str, content_bytes: int) -> bytes:
+    """The original bytes a kept source object holds, as kept or expanded from its zlib form.
+
+    Bytes that already have the identity are the original, whatever they begin with; only bytes
+    that do not, and start with `SOURCE_OBJECT_ZLIB`, are expanded, never past the identity's
+    length. Anything else, or an expansion without the identity, is tampered.
+    """
+    original = stored
+    if (len(stored) != content_bytes or sha256_hex(stored) != content_sha256) and stored.startswith(
+        SOURCE_OBJECT_ZLIB
+    ):
+        expander = zlib.decompressobj()
+        try:
+            original = expander.decompress(stored[len(SOURCE_OBJECT_ZLIB) :], content_bytes + 1)
+        except zlib.error as error:
+            raise ValueError("alternative_evidence.source_object_tampered") from error
+        if not expander.eof or expander.unused_data:
+            raise ValueError("alternative_evidence.source_object_tampered")
+    if len(original) != content_bytes or sha256_hex(original) != content_sha256:
+        raise ValueError("alternative_evidence.source_object_tampered")
+    return original
 
 
 class AcquiredEvidenceDocumentReference(BaseModel):  # type: ignore[misc]

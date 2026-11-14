@@ -84,7 +84,7 @@ def _prepare_environment() -> None:
     os.environ["PRE_COMMIT_HOME"] = str(pre_commit_home)
     os.environ["UV_CACHE_DIR"] = str(uv_cache)
 
-    path_entries = [str(Path(sys.executable).resolve().parent)]
+    path_entries = [str(Path(sys.executable).absolute().parent)]
     git = shutil.which("git")
     if git is None and os.name == "nt":
         program_files = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))

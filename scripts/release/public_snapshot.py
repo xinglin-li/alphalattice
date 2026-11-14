@@ -25,6 +25,10 @@ from typing import Any
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 PROVENANCE_SCHEMA = "alphalattice.release.snapshot-provenance"
 PROJECTION_LOADERS = {
+    "config/registries/antipattern-baseline.json": (
+        "sys.path.insert(0, str(root / 'scripts'))\n"
+        "from check_test_shape import load_antipattern_baseline\nload_antipattern_baseline(root)"
+    ),
     "config/registries/test-sizes.json": (
         "from devtools.testing.sizes import load_policy\nload_policy(root)"
     ),

@@ -17,6 +17,7 @@ import json
 import marshal
 import os
 import shutil
+import sys
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -28,6 +29,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from io import BytesIO
+from itertools import count
 from pathlib import Path
 from queue import Queue
 from threading import BoundedSemaphore, Event, Lock, Thread
@@ -78,7 +80,9 @@ _VERIFIED_SOURCE_BUILD: ContextVar[bool] = ContextVar(
 _VERIFIED_ARRAY_CACHE: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object, int]] = OrderedDict()
 _VERIFIED_ARRAY_CACHE_BYTES = 0
 _VERIFIED_ARRAY_CACHE_LOCK = Lock()
-_VERIFIED_SOURCE_LEASE_LIMIT = 512
+# One daily's Goal read leases about 2,400 sources; a bound below its working set evicts them all
+# before the next read, so every read verified again (11-10: goal show 25-36 s, 7.5 s warm here).
+VERIFIED_SOURCE_LEASE_LIMIT = 4096
 _VERIFIED_SOURCE_LEASES: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[_WindowsReadLease, ...]] = (
     OrderedDict()
 )
@@ -103,6 +107,68 @@ _VERIFIED_PROOF_CACHE: OrderedDict[tuple[object, ...], None] = OrderedDict()
 _VERIFIED_PROOF_CACHE_LOCK = Lock()
 
 
+def _windows_kernel() -> Any:
+    if sys.platform != "win32":
+        raise OSError("Windows read leases are unavailable")
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    declarations = {
+        "CreateFileW": (
+            [
+                wintypes.LPCWSTR,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.HANDLE,
+            ],
+            wintypes.HANDLE,
+        ),
+        "CreateEventW": (
+            [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR],
+            wintypes.HANDLE,
+        ),
+        "DeviceIoControl": (
+            [
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ],
+            wintypes.BOOL,
+        ),
+        "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
+        "GetFileInformationByHandleEx": (
+            [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
+            wintypes.BOOL,
+        ),
+        "GetFinalPathNameByHandleW": (
+            [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
+            wintypes.DWORD,
+        ),
+        "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
+        "WaitForMultipleObjects": (
+            [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
+            wintypes.DWORD,
+        ),
+        "CancelIoEx": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
+        "GetOverlappedResult": (
+            [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, wintypes.BOOL],
+            wintypes.BOOL,
+        ),
+        "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
+    }
+    for name, (arguments, result) in declarations.items():
+        function = getattr(kernel, name)
+        function.argtypes = arguments
+        function.restype = result
+    return kernel
+
+
 class _WindowsReadLease:
     """A file-level read-handle oplock with a same-handle path identity check.
 
@@ -120,6 +186,8 @@ class _WindowsReadLease:
     These leases are for immutable content-addressed sources only; a process-lived issuer
     also closes signalled handles when no reader is running.
     """
+
+    on_close: Callable[[], None] | None = None  # the issuer's watch rebuilds on each close
 
     def __init__(self, path: Path) -> None:
         class Overlapped(ctypes.Structure):
@@ -171,62 +239,7 @@ class _WindowsReadLease:
         self.lock = Lock()
         self.file_id_type = FileIdInformation
         self.information_type = FileInformation
-        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        declarations = {
-            "CreateFileW": (
-                [
-                    wintypes.LPCWSTR,
-                    wintypes.DWORD,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    wintypes.DWORD,
-                    wintypes.HANDLE,
-                ],
-                wintypes.HANDLE,
-            ),
-            "CreateEventW": (
-                [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR],
-                wintypes.HANDLE,
-            ),
-            "DeviceIoControl": (
-                [
-                    wintypes.HANDLE,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    wintypes.DWORD,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                ],
-                wintypes.BOOL,
-            ),
-            "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-            "GetFileInformationByHandleEx": (
-                [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
-                wintypes.BOOL,
-            ),
-            "GetFinalPathNameByHandleW": (
-                [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
-                wintypes.DWORD,
-            ),
-            "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
-            "WaitForMultipleObjects": (
-                [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
-                wintypes.DWORD,
-            ),
-            "CancelIoEx": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-            "GetOverlappedResult": (
-                [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, wintypes.BOOL],
-                wintypes.BOOL,
-            ),
-            "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
-        }
-        for name, (arguments, result) in declarations.items():
-            function = getattr(self.kernel, name)
-            function.argtypes = arguments
-            function.restype = result
+        self.kernel = _windows_kernel()
         self.identity = self._lease_identity()
         self.handle = None
         self.event = None
@@ -270,7 +283,9 @@ class _WindowsReadLease:
                 ctypes.byref(returned),
                 ctypes.byref(self.overlapped),
             )
-            self.pending = not completed and ctypes.get_last_error() == 997
+            self.pending = (
+                not completed and sys.platform == "win32" and ctypes.get_last_error() == 997
+            )
             if not self.pending:
                 raise OSError("OS read lease unavailable")
         except BaseException:
@@ -395,6 +410,8 @@ class _WindowsReadLease:
             if self.event:
                 self.kernel.CloseHandle(self.event)
                 self.event = None
+        if self.on_close is not None:
+            self.on_close()
 
 
 class _WindowsReadLeaseIssuer:
@@ -410,6 +427,7 @@ class _WindowsReadLeaseIssuer:
         self.stopped = False
         self.issued: WeakSet[_WindowsReadLease] = WeakSet()
         self.issued_lock = Lock()
+        self.changes, self.version = count(1), 0
         self.breaks_stopped = Event()
         self.thread = Thread(target=self._run, name="content-store-read-leases", daemon=True)
         self.break_thread = Thread(
@@ -421,19 +439,24 @@ class _WindowsReadLeaseIssuer:
     def _release_breaks(self) -> None:
         # Inspect only OS events. Never a stat/timestamp shortcut, and never a second proof
         # cache. A separate thread can acknowledge a rename while acquisition is waiting
-        # in Windows; using the issuing thread for both could deadlock that rename.
+        # in Windows; using the issuing thread for both could deadlock that rename. The
+        # batches are rebuilt only when a lease is issued or closed: snapshotting every
+        # retained lease each tick held the GIL for most of the Host's idle time.
+        seen = -1
+        batches: tuple[tuple[tuple[_WindowsReadLease, ...], Any], ...] = ()
         while not self.breaks_stopped.wait(0.01):
-            with self.issued_lock:
-                issued = tuple(self.issued)
-            for offset in range(0, len(issued), _WINDOWS_WAIT_HANDLE_LIMIT):
-                held = tuple(
-                    lease
-                    for lease in issued[offset : offset + _WINDOWS_WAIT_HANDLE_LIMIT]
-                    if lease.pending and lease.event
+            if seen != self.version:
+                seen = self.version  # read before the snapshot, so a later change rebuilds
+                with self.issued_lock:
+                    issued = tuple(lease for lease in self.issued if lease.pending and lease.event)
+                batches = tuple(
+                    (held, (ctypes.c_void_p * len(held))(*(lease.event for lease in held)))
+                    for held in (
+                        issued[offset : offset + _WINDOWS_WAIT_HANDLE_LIMIT]
+                        for offset in range(0, len(issued), _WINDOWS_WAIT_HANDLE_LIMIT)
+                    )
                 )
-                if not held:
-                    continue
-                events = (ctypes.c_void_p * len(held))(*(lease.event for lease in held))
+            for held, events in batches:
                 try:
                     state = held[0].kernel.WaitForMultipleObjects(len(held), events, False, 0)
                 except Exception:
@@ -444,13 +467,18 @@ class _WindowsReadLeaseIssuer:
                     for lease in held:
                         lease.release_if_broken()
 
+    def _changed(self) -> None:
+        self.version = next(self.changes)
+
     def _run(self) -> None:
         while (job := self.jobs.get()) is not None:
             path, result = job
             try:
                 lease = _WindowsReadLease(path)
+                lease.on_close = self._changed
                 with self.issued_lock:
                     self.issued.add(lease)
+                self._changed()
                 # Register before the current-access open: a rename can break this new
                 # RH lease while that open waits for the break thread to acknowledge it.
                 if not lease.unchanged():
@@ -561,7 +589,7 @@ def verified_source_value[T](
     if (
         os.name != "nt"
         or not paths
-        or len(paths) > _VERIFIED_SOURCE_LEASE_LIMIT
+        or len(paths) > VERIFIED_SOURCE_LEASE_LIMIT
         or _VERIFIED_ARRAY_SCOPE.get() is None
         or not _REUSE_VERIFIED_ARRAYS.get()
     ):
@@ -892,7 +920,7 @@ def _remember_process_value(
                 while (
                     _VERIFIED_SOURCE_LEASES
                     and sum(len(held) for held in _VERIFIED_SOURCE_LEASES.values()) + len(leases)
-                    > _VERIFIED_SOURCE_LEASE_LIMIT
+                    > VERIFIED_SOURCE_LEASE_LIMIT
                 ):
                     prior = next(iter(_VERIFIED_SOURCE_LEASES))
                     _close_source_leases(prior)
@@ -1660,6 +1688,7 @@ class CommittedIndex:
 
 
 __all__ = [
+    "VERIFIED_SOURCE_LEASE_LIMIT",
     "CommittedIndex",
     "CommittedKind",
     "ContentAddressedStore",

@@ -3694,8 +3694,8 @@
           "tests/integration/market_data_ops/test_data_performance.py:434",
           "tests/integration/market_data_ops/test_data_performance.py:85",
           "tests/integration/market_data_ops/test_data_performance.py:88",
-          "tests/integration/evaluation/test_forms.py:260",
-          "tests/integration/evaluation/test_forms.py:53",
+          "tests/unit/evaluation/test_forms.py:260",
+          "tests/unit/evaluation/test_forms.py:53",
           "tests/factor_research_pipeline_correctness/walk_forward_source.py:55",
           "tests/feature_engine/panel_workspace.py:196",
           "tests/feature_engine/panel_workspace.py:210",
@@ -7513,28 +7513,6 @@
         ]
       },
       "reader_basis": "Typed Host-lifetime field; detached default900, attached/debug0, zero disables. Operator setter is deferred; no scientific identity reads it."
-    },
-    "env:ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS": {
-      "key": "env:ALPHALATTICE_CODSPEED_NO_TIME_BOUNDS",
-      "description": "Disables per-test wall-time bounds only for the advisory CodSpeed instruction simulation; gating lanes remain bounded.",
-      "owner": "devtools.testing",
-      "type": "str | absent",
-      "default": {
-        "value": "",
-        "resolution": "Absent keeps every test wall-time bound active.",
-        "source": "src/devtools/testing/collection.py::_instruction_cost"
-      },
-      "defined_by": [
-        "src/devtools/testing/collection.py::_instruction_cost"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "advisory test-cost measurement only",
-      "identity_basis": "This execution setting changes no research computation or scientific identity; the job deadline remains in force.",
-      "readers": {
-        "literal": [
-          "src/devtools/testing/collection.py"
-        ]
-      }
     },
     "env:ALPHALATTICE_TEST_LANE": {
       "key": "env:ALPHALATTICE_TEST_LANE",

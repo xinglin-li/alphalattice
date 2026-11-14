@@ -1,6 +1,7 @@
 """Public scope rules, immutable hashes and disclosure redaction hold the snapshot contract."""
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -8,7 +9,8 @@ import sys
 import textwrap
 from collections import Counter
 from pathlib import Path
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -60,6 +62,7 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("benchmark/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("case-study/readme.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("probe/measure.py", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
+        ("scripts/antipattern-" + "decisions.md", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/alpha-arm-control.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("config/dynamic-panel-risk.yaml", "PRIVATE", "PRIVATE_DEVELOPMENT_TOOL"),
         ("tests/agent_eval/test_one.py", "PRIVATE", "PRIVATE_TEST"),
@@ -107,10 +110,14 @@ _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
         ("docs/images/research-conversation-dark.png", "PUBLIC", "PUBLIC_ASSET"),
         ("docs/generate_reference.py", "PUBLIC", "PUBLIC_DOC"),
         ("scripts/run_alphalattice.py", "PUBLIC", "PUBLIC_USER_SCRIPT"),
+        ("config/some-rule-baseline-private.json", "PRIVATE", "PRIVATE_ALLOWANCE"),
+        ("scripts/antipattern_rules.yml", "PUBLIC", "PUBLIC_VERIFICATION"),
+        ("scripts/antipattern_examples.py.txt", "PUBLIC", "PUBLIC_VERIFICATION"),
         ("scripts/unexamined.py", "UNSETTLED", None),
         ("config/unexamined.yaml", "UNSETTLED", None),
         ("src/alphalattice/unreached.py", "UNSETTLED", None),
     ],
+    ids=str,
 )
 def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind, rule):
     decision = classify(path, set(), set(), set())
@@ -453,9 +460,10 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
+@pytest.mark.parametrize("part", ["moves", "batches", "history"], ids=str)  # its three seams
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
-    tmp_path, synthetic_history, monkeypatch
+    tmp_path, synthetic_history, monkeypatch, part
 ):
     _git, commit = synthetic_history
     with pytest.raises(ValueError, match="no frozen internal-label policy"):
@@ -471,109 +479,141 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
     commit("Establish synthetic allowance")
     validate_internal_id_history(tmp_path, "HEAD")
+    base = _git("rev-parse", "HEAD")
     # A mapped move carries its allowance whole; anything else is refused by name.
     moved, table = "src/moved.py", tmp_path / "config/registries/test-layout.json"
-    table.parent.mkdir(parents=True)
-    base = _git("rev-parse", "HEAD")
-    extra = "SYNTHETIC-CARD"
-    for named, occurrences, refusal in (
-        ({moved: owner}, {moved: {label: 1}}, None),
-        ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
-        ({moved: owner}, {moved: {label: 2}}, "labels differ"),
-        ({}, {moved: {label: 1}}, "map does not name it"),
-        ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
-        ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
-    ):
-        rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
-        table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
-        baseline.write_text(json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8")
-        _git("add", "--all")
-        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
-        if refusal is None:
-            validate_internal_id_history(tmp_path, candidate)
-        else:
-            with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+    if part == "moves":
+        table.parent.mkdir(parents=True)
+        extra = "SYNTHETIC-CARD"
+        for named, occurrences, refusal in (
+            ({moved: owner}, {moved: {label: 1}}, None),
+            ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+            ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+            ({}, {moved: {label: 1}}, "map does not name it"),
+            ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+            ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+        ):
+            rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
+            table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
+            baseline.write_text(
+                json.dumps({**policy, "occurrences": occurrences}), encoding="utf-8"
+            )
+            _git("add", "--all")
+            candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Move")
+            if refusal is None:
                 validate_internal_id_history(tmp_path, candidate)
-    held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
-    baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
-    _git("add", "--all")
-    both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
-    baseline.write_text(
-        json.dumps({**policy, "occurrences": {moved: {label: 2}}}), encoding="utf-8", newline="\n"
-    )
-    _git("add", "--all")
-    grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
-    with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
-        validate_internal_id_history(tmp_path, grown)
-    table.write_text("not a map", encoding="utf-8", newline="\n")
-    baseline.write_text(
-        json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
-    )
-    _git("add", "--all")
-    candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
-    with pytest.raises(ValueError, match="test layout map is unreadable"):
-        validate_internal_id_history(tmp_path, candidate)
-    _git("reset", "--hard", base)
-    # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
-    branch = _git("rev-parse", "HEAD")
-    stream = b""
-    for number in range(12):
-        raw = json.dumps({**policy, "note": number}).encode()
-        parent = f":{number}" if number else branch
-        stream += (
-            (
-                f"commit refs/heads/batched\nmark :{number + 1}\n"
-                "committer Synthetic Author <synthetic@example.test> 0 +0000\n"
-                f"data 4\nKeep\nfrom {parent}\nM 100644 inline {INTERNAL_ID_BASELINE}\n"
-                f"data {len(raw)}\n"
-            ).encode()
-            + raw
-            + b"\n\n"
+            else:
+                with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                    validate_internal_id_history(tmp_path, candidate)
+        held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
+        baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        both = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Both")
+        baseline.write_text(
+            json.dumps({**policy, "occurrences": {moved: {label: 2}}}),
+            encoding="utf-8",
+            newline="\n",
         )
-    subprocess.check_output(["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream)
-    tip = _git("rev-parse", "batched")
-    side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
-    merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
-    check_output, responses = subprocess.check_output, {}
-    with monkeypatch.context() as patch:
-        run = Mock(wraps=subprocess.run)
-        patch.setattr(subprocess, "run", run)
-        patch.setattr(
-            subprocess,
-            "check_output",
-            lambda command, **kwargs: responses.setdefault(
-                tuple(command), check_output(command, **kwargs)
-            ),
+        _git("add", "--all")
+        grown = _git("commit-tree", _git("write-tree"), "-p", both, "-m", "Grown")
+        with pytest.raises(ValueError, match=r"allowance increased.*an allowance of its own"):
+            validate_internal_id_history(tmp_path, grown)
+        table.write_text("not a map", encoding="utf-8", newline="\n")
+        baseline.write_text(
+            json.dumps({**policy, "occurrences": {moved: {label: 1}}}), encoding="utf-8"
         )
-        validate_internal_id_history(tmp_path, merged)
-        assert run.call_count <= 12, "historical Git acquisition must use bounded batches"
-        requested = [
-            oid
-            for call in run.call_args_list
-            if "--batch" in call.args[0]
-            for oid in call.kwargs["input"].splitlines()
-        ]
-        assert len(requested) == len(set(requested)), "read each immutable blob only once"
-    for option, damage in (
-        ("--batch-check", lambda raw: b""),
-        ("--batch-check", lambda raw: b"malformed\n"),
-        ("--batch", lambda raw: raw[:-2]),
-        ("--batch", lambda raw: raw + b"trailing"),
-        ("--batch", lambda raw: raw.replace(b" blob ", b" tree ", 1)),
-        ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
-    ):
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Unreadable")
+        with pytest.raises(ValueError, match="test layout map is unreadable"):
+            validate_internal_id_history(tmp_path, candidate)
+        return
+    if part == "batches":
+        # Long valid histories, including a merge, acquire immutable inputs in bounded batches.
+        branch = _git("rev-parse", "HEAD")
+        stream = b""
+        for number in range(12):
+            raw = json.dumps({**policy, "note": number}).encode()
+            parent = f":{number}" if number else branch
+            stream += (
+                (
+                    f"commit refs/heads/batched\nmark :{number + 1}\n"
+                    "committer Synthetic Author <synthetic@example.test> 0 +0000\n"
+                    f"data 4\nKeep\nfrom {parent}\nM 100644 inline {INTERNAL_ID_BASELINE}\n"
+                    f"data {len(raw)}\n"
+                ).encode()
+                + raw
+                + b"\n\n"
+            )
+        subprocess.check_output(
+            ["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream
+        )
+        tip = _git("rev-parse", "batched")
+        side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
+        merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
+        check_output, responses = subprocess.check_output, {}
+        popen, sent = subprocess.Popen, bytearray()
+
+        def recorded(
+            command, **kwargs
+        ):  # the object session's commands, kept for the replays below
+            process = popen(command, **kwargs)
+            if "--batch-command" in command:
+                stdin, sent[:] = process.stdin, b""
+                write = lambda data: sent.extend(data) or stdin.write(data)  # noqa: E731
+                process.stdin = SimpleNamespace(write=write, flush=stdin.flush, close=stdin.close)
+            return process
+
         with monkeypatch.context() as patch:
+            starts = Mock(wraps=recorded)
+            patch.setattr(subprocess, "Popen", starts)
             patch.setattr(
                 subprocess,
                 "check_output",
-                lambda command, option=option, damage=damage, **kwargs: (
-                    damage(responses[tuple(command)])
-                    if option in command
-                    else responses[tuple(command)]
+                lambda command, **kwargs: responses.setdefault(
+                    tuple(command), check_output(command, **kwargs)
                 ),
             )
-            with pytest.raises(ValueError, match=r"git object response|history graph"):
-                validate_internal_id_history(tmp_path, merged)
+            validate_internal_id_history(tmp_path, merged)
+        assert starts.call_count == 4, "one rev-parse, rev-list, log and object session per check"
+        assert all("creationflags" in call.kwargs for call in starts.call_args_list), "windowless"
+        requested = re.findall(rb"contents ([0-9a-f]{40})", sent)
+        assert requested and len(requested) == len(set(requested)), "read each immutable blob once"
+        said = check_output(
+            ["git", "cat-file", "--batch-command", "--buffer", "-z"],
+            cwd=tmp_path,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            input=bytes(sent),
+        )
+        for option, damage in (  # the session's replies or the graph, damaged: each refuses by name
+            ("--batch-command", lambda raw: b""),
+            ("--batch-command", lambda raw: b"malformed\n"),
+            ("--batch-command", lambda raw: raw[:-2]),
+            ("--batch-command", lambda raw: raw + b"trailing"),
+            ("--batch-command", lambda raw: raw.replace(b" blob ", b" tree ", 1)),
+            ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
+        ):
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    subprocess,
+                    "check_output",
+                    lambda command, option=option, damage=damage, **kwargs: (
+                        damage(responses[tuple(command)])
+                        if option in command
+                        else responses[tuple(command)]
+                    ),
+                )
+                patch.setattr(
+                    subprocess,
+                    "Popen",
+                    lambda command, option=option, damage=damage, **kwargs: (
+                        MagicMock(stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0)
+                        if option in command
+                        else popen(command, **kwargs)
+                    ),
+                )
+                with pytest.raises(ValueError, match=r"git object response|history graph"):
+                    validate_internal_id_history(tmp_path, merged)
+        return
     baseline.write_text(json.dumps({**policy, "cards": []}), encoding="utf-8", newline="\n")
     candidate = commit("Remove vocabulary", advance=False)
     with pytest.raises(ValueError, match="vocabulary changed"):
@@ -861,13 +901,19 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     split = {path: classify(path, set(), set(), set())[0] for path in files}
     assert {path: kind for path, kind in split.items() if kind != "PUBLIC"} == {}
 
-    import ast
-    import os
-    import time
-
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
+    assert not jobs["public-tests-shard"].get("continue-on-error", False)
+    assert not jobs["public-tests"].get("continue-on-error", False)
+    supply = yaml.safe_load((root / ".github/workflows/supply-chain.yml").read_text("utf-8"))
+    sbom = supply["jobs"]["sbom"]
+    upload = supply["jobs"]["sbom-release"]
+    assert sbom.get("permissions", {}).get("contents", "read") == "read"
+    assert upload["permissions"]["contents"] == "write"
+    assert upload["needs"] == "sbom" and "release" in upload["if"]
+    assert all("gh release upload" not in step.get("run", "") for step in sbom["steps"])
+    assert any("gh release upload" in step.get("run", "") for step in upload["steps"])
     for name in ("checkout", "public-tests-shard"):
         job = jobs[name]
         assert "npm_config_cache" not in job.get("env", {})
@@ -887,93 +933,7 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
         )
         for step in (install, consumer):
             assert step["env"]["npm_config_cache"] == "${{ runner.temp }}/jscpd-npm-cache"
-    cost = jobs["test-cost"]
-    assert cost["timeout-minutes"] == 90 and cost["continue-on-error"] is True
-    assert cost.get("strategy", {}).get("matrix", {}).get("shard") == [1, 2, 3, 4]
-    assert cost["strategy"]["fail-fast"] is False
-    assert cost["env"]["PYTHONUNBUFFERED"] == "1"
     assert not jobs["checkout"].get("continue-on-error", False)
-    steps = cost["steps"]
-    collect = next(step for step in steps if step.get("name") == "Check the pilot slice")
-    measure = next(
-        step for step in steps if step.get("name") == "Measure each test of the pilot slice"
-    )
-    paths = [
-        "tests/integration/evaluation",
-        "tests/unit/evaluation",
-        "tests/integration/feature_engine/test_factor_arithmetic_identity.py",
-    ]
-    assert all(path in measure["with"]["run"] for path in paths)
-    assert "--test-group=${{ matrix.shard }} --test-group-count=4" in measure["with"]["run"]
-    assert "-vv" in measure["with"]["run"]
-    warm = next(step for step in steps if step.get("name") == "Prepare the pilot fixtures")
-    assert "--setup-only" in warm["run"] and "--codspeed" not in warm["run"]
-    assert measure["timeout-minutes"] == "${{ fromJSON(steps.budget.outputs.minutes) }}"
-    assert all("timeout-minutes" in step for step in steps)
-    code = collect["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    loop = next(node for node in ast.walk(ast.parse(code)) if isinstance(node, ast.For))
-    assert list(ast.literal_eval(loop.iter)) == paths
-    for directory in paths[:2]:
-        (tmp_path / directory).mkdir(parents=True)
-        (tmp_path / directory / "test_sample.py").write_text(
-            "def test_sample(): pass\n", encoding="utf-8"
-        )
-    target = tmp_path / paths[2]
-    target.parent.mkdir(parents=True)
-    target.write_text("def test_sample(): pass\n", encoding="utf-8")
-    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", ALPHALATTICE_NETWORK_DISABLED="1")
-
-    def collect_fixture():
-        return subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=tmp_path,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-
-    assert collect_fixture().returncode == 0
-    samples = [tmp_path / path / "test_sample.py" for path in paths[:2]] + [target]
-    for path, sample in zip(paths, samples, strict=True):
-        sample.write_text("# no tests\n", encoding="utf-8")
-        empty = collect_fixture()
-        assert (
-            empty.returncode != 0 and path in empty.stdout and "selected no tests" in empty.stdout
-        )
-        sample.write_text("def test_sample(): pass\n", encoding="utf-8")
-    budget = next(step for step in steps if step.get("id") == "budget")["run"]
-    git = Path(
-        subprocess.run(
-            ["git", "--exec-path"],
-            capture_output=True,
-            text=True,
-            check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        ).stdout.strip()
-    )
-    shell = git.parents[2] / "bin/bash.exe" if sys.platform == "win32" else Path("bash")
-    output = tmp_path / "github-output"
-    shell_output = (
-        f"/{output.drive[0].lower()}/{output.as_posix()[3:]}"
-        if sys.platform == "win32"
-        else str(output)
-    )
-    for elapsed, success in ((60, True), (12 * 60, False)):
-        script = budget.replace(
-            "${{ steps.clock.outputs.started }}", str(int(time.time()) - elapsed)
-        )
-        result = subprocess.run(
-            [str(shell), "-c", script],
-            env=dict(env, GITHUB_OUTPUT=shell_output),
-            capture_output=True,
-            text=True,
-            timeout=10,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        assert (result.returncode == 0) == success
-    assert "minutes=" in output.read_text("utf-8")
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")

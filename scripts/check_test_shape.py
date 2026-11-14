@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
+import contextlib
 import hashlib
 import io
 import json
@@ -26,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
-from devtools.architecture.git_inputs import staged_moves
+from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
 from devtools.testing.contracts import import_violations
 from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
 from devtools.testing.requirements import PROVES_LINE, file_holders
@@ -136,8 +137,18 @@ def _metrics(node: ast.AST, ruff: dict[int, int] | None = None) -> tuple[int, in
     return (node.end_lineno or node.lineno) - node.lineno + 1, decisions
 
 
-def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
-    """Measure each staged Python snapshot with one locked Ruff invocation."""
+# Ruff's pytest-style rules a test change may not grow, with the fix each names
+PT_FIXES = {
+    "PT011": "give pytest.raises a match= for the expected message",
+    "PT012": "keep one simple statement inside pytest.raises",
+    "PT014": "drop the duplicate parametrize case",
+    "PT015": "use pytest.fail for an assertion that always fails",
+    "PT017": "assert the exception through pytest.raises",
+}
+
+
+def _ruff(snapshots: dict[str, str], *options: str) -> dict[str, list[dict]]:
+    """Ruff's JSON rows for each snapshot, from one locked invocation."""
     if not snapshots:
         return {}
     with tempfile.TemporaryDirectory(prefix="test-shape-") as folder:
@@ -156,10 +167,7 @@ def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
                 "--ignore-noqa",
                 "--target-version",
                 "py312",
-                "--select",
-                "C901",
-                "--config",
-                "lint.mccabe.max-complexity=0",
+                *options,
                 "--output-format",
                 "json",
                 str(root),
@@ -172,17 +180,371 @@ def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
         )
         if done.returncode not in (0, 1):
             raise ValueError("ruff could not read the staged snapshots")
-        result = {key: {} for key in snapshots}
+        result = {key: [] for key in snapshots}
         for row in json.loads(done.stdout):
+            result[names[Path(row["filename"]).name]].append(row)
+        return result
+
+
+def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
+    """Measure each staged Python snapshot with one locked Ruff invocation."""
+    rows = _ruff(snapshots, "--select", "C901", "--config", "lint.mccabe.max-complexity=0")
+    result = {key: {} for key in rows}
+    for key, found in rows.items():
+        for row in found:
             match = re.search(r"\((\d+) > 0\)$", row["message"])
             if row["code"] != "C901" or not match:
                 raise ValueError("ruff could not measure a staged snapshot")
-            key = names[Path(row["filename"]).name]
             line = row["location"]["row"]
             if line in result[key]:
                 raise ValueError("ruff returned an ambiguous function location")
             result[key][line] = int(match.group(1)) - 1
-        return result
+    return result
+
+
+def ruff_test_findings(snapshots: dict[str, str]) -> dict[str, tuple[tuple[str, int], ...]]:
+    """Each staged test snapshot's PT findings as (rule, line), from one Ruff invocation."""
+    rows = _ruff(snapshots, "--select", ",".join(PT_FIXES))
+    if any(row["code"] not in PT_FIXES for found in rows.values() for row in found):
+        raise ValueError("ruff returned a rule outside its PT selection")
+    return {
+        key: tuple(sorted((row["code"], row["location"]["row"]) for row in found))
+        for key, found in rows.items()
+    }
+
+
+ANTIPATTERN_BASELINE = "config/registries/antipattern-baseline.json"
+ANTIPATTERN_PRIVATE = (
+    "config/" + Path(ANTIPATTERN_BASELINE).name.removesuffix(".json") + "-private.json"
+)
+ANTIPATTERN_SIDES = (ANTIPATTERN_BASELINE, ANTIPATTERN_PRIVATE)
+ANTIPATTERN_SEMGREP = "scripts/antipattern_rules.yml"
+ANTIPATTERN_CASES = "scripts/antipattern_examples.py.txt"
+ANTIPATTERN_RULES = "PGH,G,LOG,C901,PLR0912,PLR0915,S112,S113,DTZ005,ASYNC"
+WAIT_RULES = ("S112", "S113", "DTZ005", "ASYNC")
+
+
+def _mock_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    names = {"patch", "Mock", "MagicMock", "AsyncMock"}
+    if isinstance(func, ast.Name):
+        return func.id in names
+    if not isinstance(func, ast.Attribute):
+        return False
+    owner = func.value.id if isinstance(func.value, ast.Name) else ""
+    return (
+        func.attr in names
+        or (func.attr == "object" and owner == "patch")
+        or (func.attr in {"setattr", "setenv", "setitem"} and owner in {"monkeypatch", "binding"})
+    )
+
+
+def _mock_scores(path: str, definitions: list) -> dict[str, int]:
+    scores = {}
+    for name, node in definitions:
+        if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_"):
+            count = sum(_mock_call(item) for item in ast.walk(node))
+            if count > 4:
+                scores[f"{path}::test-too-many-mocks::{name}"] = count
+    return scores
+
+
+def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
+    """Count rules by file and complex functions by their measured score."""
+    rows = _ruff(snapshots, "--select", ANTIPATTERN_RULES)
+    counts: Counter[str] = Counter()
+    for path, findings in rows.items():
+        definitions = list(_definitions(_tree(snapshots[path])))
+        if path.startswith("tests/"):
+            counts.update(_mock_scores(path, definitions))
+        for row in findings:
+            code = row["code"]
+            if path.startswith("tests/") and code.startswith(WAIT_RULES):
+                continue
+            key, amount = f"{path}::{code}", 1
+            if code in {"C901", "PLR0912", "PLR0915"}:
+                score = re.search(r"\((\d+) > \d+\)", row["message"])
+                line = row["location"]["row"]
+                owners = [
+                    (node.end_lineno - node.lineno, name)
+                    for name, node in definitions
+                    if isinstance(node, FUNCTION_TYPES) and node.lineno <= line <= node.end_lineno
+                ]
+                if not score or not owners:
+                    raise ValueError(f"Ruff omitted the complexity owner for {path}:{line}")
+                key += "::" + min(owners)[1]
+                amount = int(score.group(1))
+            counts[key] += amount
+    return dict(counts)
+
+
+def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]:
+    """A finding or allowance may fall, but neither may grow above the held count."""
+    return [
+        f"{key}: anti-pattern findings grow {held.get(key, 0)} -> {count}"
+        for key, count in sorted(found.items())
+        if count > held.get(key, 0)
+    ]
+
+
+def antipattern_baseline(text: str) -> dict[str, int]:
+    data = json.loads(text)
+    baseline = data["counts"]
+    if not isinstance(baseline, dict) or any(
+        not isinstance(k, str) or "::" not in k or type(v) is not int or v < 1
+        for k, v in baseline.items()
+    ):
+        raise ValueError("invalid anti-pattern allowance")
+    return baseline
+
+
+def antipattern_sides(texts: dict[str, str], prefix: str) -> dict[str, int]:
+    counts = Counter(antipattern_baseline(texts[prefix + ANTIPATTERN_BASELINE]))
+    if (private := texts.get(prefix + ANTIPATTERN_PRIVATE)) is not None:
+        counts.update(antipattern_baseline(private))
+    return dict(counts)
+
+
+def load_antipattern_baseline(root: Path) -> dict[str, int]:
+    texts = {ANTIPATTERN_BASELINE: (root / ANTIPATTERN_BASELINE).read_text(encoding="utf-8")}
+    with contextlib.suppress(FileNotFoundError):  # the public checkout has no private side
+        texts[ANTIPATTERN_PRIVATE] = (root / ANTIPATTERN_PRIVATE).read_text(encoding="utf-8")
+    return antipattern_sides(texts, "")
+
+
+def relocated_antipatterns(held: dict[str, int], moves: dict[str, str]) -> dict[str, int]:
+    """Move a file's allowance only with Git's byte-identical move."""
+    back = {old: new for new, old in moves.items()}
+    return {
+        back.get(path, path) + "::" + rule: count
+        for key, count in held.items()
+        for path, _, rule in [key.partition("::")]
+    }
+
+
+def test_data_antipatterns(paths: list[str]) -> dict[str, int]:
+    return {
+        f"{path}::test-data-file": 1
+        for path in paths
+        if path.startswith("tests/")
+        and Path(path).suffix.lower() not in CODE | {".md"}
+        and not path.endswith((".test.yml", ".test.yaml", "/pytest.ini"))
+    }
+
+
+def _semgrep_environment(root: Path) -> dict[str, str]:
+    return {
+        **os.environ,
+        "SEMGREP_SETTINGS_FILE": str(root / "settings.yml"),
+        "SEMGREP_LOG_FILE": str(root / "semgrep.log"),
+        "SEMGREP_VERSION_CACHE_PATH": str(root / "version"),
+    }
+
+
+def _semgrep_selftest(rules: str, cases: str) -> None:
+    with tempfile.TemporaryDirectory(prefix="antipattern-cases-") as folder:
+        root = Path(folder)
+        (root / "rules.yml").write_text(rules, encoding="utf-8")
+        (root / "rules.py").write_text(cases, encoding="utf-8")
+        exe = Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
+        result = subprocess.run(
+            [
+                str(exe),
+                "--test",
+                "--config",
+                "rules.yml",
+                "rules.py",
+                "--json",
+                "--metrics=off",
+                "--disable-version-check",
+            ],
+            cwd=root,
+            env=_semgrep_environment(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.returncode:
+            raise ValueError(f"semgrep rule cases failed: {result.stderr[-400:]}")
+        report = json.loads(result.stdout)
+        checks = {
+            name: row
+            for config in report["results"].values()
+            for name, row in config["checks"].items()
+        }
+        expected = set(re.findall(r"(?m)^  - id: (\S+)$", rules))
+        if (
+            report.get("config_missing_tests")
+            or set(checks) != expected
+            or any(not row["passed"] for row in checks.values())
+        ):
+            raise ValueError("semgrep rule cases are incomplete or failed")
+
+
+def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int]:
+    """Run the slower rules on the same committed or staged source snapshots."""
+    if not snapshots:
+        return {}
+    with tempfile.TemporaryDirectory(prefix="antipattern-") as folder:
+        root = Path(folder)
+        config = root / "rules.yml"
+        config.write_text(rules, encoding="utf-8")
+        for path, text in snapshots.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
+        done = subprocess.run(
+            [
+                str(
+                    Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
+                ),
+                "scan",
+                "--config",
+                str(config),
+                "--json",
+                "--disable-nosem",
+                "--disable-version-check",
+                "--metrics=off",
+                "--no-git-ignore",
+                ".",
+            ],
+            cwd=root,
+            env=_semgrep_environment(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if done.returncode:
+            raise ValueError(f"semgrep exited {done.returncode}: {done.stderr[-400:]}")
+        report = json.loads(done.stdout)
+        if report.get("errors"):
+            raise ValueError(f"semgrep could not measure its inputs: {report['errors']}")
+        scanned = {Path(path).as_posix() for path in report["paths"]["scanned"]}
+        if missing := set(snapshots) - scanned:
+            raise ValueError(f"semgrep skipped source: {sorted(missing)[0]}")
+        counts = Counter()
+        for row in report["results"]:
+            path = Path(row["path"]).as_posix()
+            counts[f"{path}::{row['check_id'].split('.')[-1]}"] += 1
+        return dict(counts)
+
+
+def auxiliary_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
+    """Check staged workflows and shell scripts with their locked executables."""
+    if not snapshots:
+        return {}
+    counts = Counter()
+    with tempfile.TemporaryDirectory(prefix="antipattern-tools-") as folder:
+        root = Path(folder)
+        for path, text in snapshots.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", newline="\n")
+        windows = ".exe" if os.name == "nt" else ""
+        for tool, files, options in (
+            (
+                "actionlint",
+                [p for p in snapshots if p.startswith(".github/workflows/")],
+                ["-no-color", "-shellcheck=", "-pyflakes=", "-format", "{{json .}}"],
+            ),
+            (
+                "shellcheck",
+                [p for p in snapshots if p.endswith(".sh")],
+                ["--norc", "--format=json1"],
+            ),
+        ):
+            if not files:
+                continue
+            executable = Path(sys.executable).parent / (tool + windows)
+            if not executable.is_file():
+                raise ValueError(
+                    f"{tool} is not installed at {executable}; sync the locked environment "
+                    "(uv sync --locked --all-extras)"
+                )
+            done = subprocess.run(
+                [str(executable), *options, *files],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if done.returncode not in (0, 1):
+                raise ValueError(f"{tool} exited {done.returncode}: {done.stderr[-400:]}")
+            report = json.loads(done.stdout)
+            rows = report if tool == "actionlint" else report["comments"]
+            for row in rows:
+                path = Path(row["filepath"] if tool == "actionlint" else row["file"]).as_posix()
+                rule = row["kind"] if tool == "actionlint" else f"SC{row['code']}"
+                counts[f"{path}::{tool}-{rule}"] += 1
+        for path, text in snapshots.items():
+            if path.endswith(".sh"):
+                counts[f"{path}::shellcheck-inline-disable"] += sum(
+                    bool(re.match(r"\s*#\s*shellcheck\b.*\bdisable\s*=", line, re.I))
+                    for line in text.splitlines()
+                )
+    return {key: count for key, count in counts.items() if count}
+
+
+def _antipattern_problems(
+    staged: list[str],
+    sources: list[str],
+    texts: dict[str, str],
+    parents: tuple[str, ...],
+    head: str,
+    *,
+    moves: dict[str, str],
+    semgrep: bool = False,
+) -> list[str]:
+    baseline = antipattern_sides(texts, head)
+    found = []
+    carried = len(parents) > 1 and any(
+        parent + ":" + ANTIPATTERN_BASELINE in texts for parent in parents
+    )
+    for parent in parents:
+        previous = texts.get(parent + ":" + ANTIPATTERN_BASELINE)
+        if previous is None:
+            if not carried and (
+                ANTIPATTERN_BASELINE not in staged or "scripts/check_test_shape.py" not in staged
+            ):
+                raise ValueError("anti-pattern baseline missing from parent")
+        else:
+            found += antipattern_growth(
+                relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves), baseline
+            )
+    missing = [path for path in sources if head + path not in texts]
+    if missing:
+        raise ValueError(f"changed source unreadable: {missing[0]}")
+    measured = ruff_antipatterns(
+        {path: texts[head + path] for path in sources if path.endswith(".py")}
+    )
+    measured.update(test_data_antipatterns(staged))
+    measured.update(
+        auxiliary_antipatterns(
+            {path: texts[head + path] for path in sources if not path.endswith(".py")}
+        )
+    )
+    if semgrep:
+        if ANTIPATTERN_SEMGREP in staged or ANTIPATTERN_CASES in staged:
+            _semgrep_selftest(texts[head + ANTIPATTERN_SEMGREP], texts[head + ANTIPATTERN_CASES])
+        measured.update(
+            semgrep_antipatterns(
+                {
+                    path: texts[head + path]
+                    for path in sources
+                    if path.endswith(".py") and not path.startswith("tests/")
+                },
+                texts[head + ANTIPATTERN_SEMGREP],
+            )
+        )
+    return found + antipattern_growth(baseline, measured)
 
 
 def _sql(node: ast.AST, values: dict[str, str]) -> str:
@@ -647,11 +1009,95 @@ def _docstring_lines(text: str) -> dict[str, int]:
     }
 
 
+def _given(value: ast.AST | None) -> bool:
+    return value is not None and not (isinstance(value, ast.Constant) and value.value is None)
+
+
+def _names_every_case(ids: ast.AST | None) -> bool:
+    """ids= names each case; a literal list with a None entry leaves pytest's value id there."""
+    if isinstance(ids, ast.List | ast.Tuple):
+        return bool(ids.elts) and all(_given(entry) for entry in ids.elts)
+    return _given(ids)
+
+
+def _named(case: ast.AST) -> bool:
+    return (
+        isinstance(case, ast.Call)
+        and getattr(case.func, "attr", getattr(case.func, "id", "")) == "param"
+        and any(word.arg == "id" and _given(word.value) for word in case.keywords)
+    )
+
+
+def _unnamed(node: ast.AST) -> list[str]:
+    """A test's parametrize sites whose cases are not each named by ids= or pytest.param id=."""
+    sites = []
+    for mark in getattr(node, "decorator_list", ()):
+        if not (isinstance(mark, ast.Call) and getattr(mark.func, "attr", "") == "parametrize"):
+            continue
+        given = {word.arg: word.value for word in mark.keywords}
+        cases = mark.args[1] if len(mark.args) > 1 else given.get("argvalues")
+        names = mark.args[0] if mark.args else given.get("argnames")
+        listed = isinstance(cases, ast.List | ast.Tuple) and cases.elts
+        if not _names_every_case(given.get("ids")) and not (
+            listed and all(_named(case) for case in cases.elts)
+        ):
+            sites.append(f"line {mark.lineno} parametrize({ast.unparse(names) if names else ''})")
+    return sites
+
+
+def _tests(tree: ast.AST) -> dict[str, ast.AST]:
+    return {
+        name: node
+        for name, node in _definitions(tree)
+        if isinstance(node, FUNCTION_TYPES) and node.name.startswith("test_")
+    }
+
+
+def _owners(tree: ast.AST, found: tuple[tuple[str, int], ...]) -> Counter:
+    """Each PT finding counted under the innermost function holding its line, decorators
+    included, else the module."""
+    spans = [
+        (min([node.lineno] + [mark.lineno for mark in node.decorator_list]), node.end_lineno, name)
+        for name, node in _definitions(tree)
+        if isinstance(node, FUNCTION_TYPES)
+    ]
+    counts = Counter()
+    for rule, line in found:
+        holding = [span for span in spans if span[0] <= line <= span[1]]
+        counts[(max(holding)[2] if holding else "<module>", rule)] += 1
+    return counts
+
+
+def _test_problems(
+    path: str, old: str | None, new: str, ruff: tuple[tuple, tuple] | None
+) -> list[str]:
+    """An added or changed test names each parametrize case; no function grows a PT finding."""
+    before, after = _tree(old or ""), _tree(new)
+    was, found = _tests(before), []
+    for name, node in _tests(after).items():
+        if name in was and ast.dump(was[name]) == ast.dump(node):
+            continue
+        found += [
+            f"{path}::{name}: {site} leaves its cases unnamed; "
+            "give each case pytest.param(..., id=...) or ids= (rule 5)"
+            for site in _unnamed(node)
+        ]
+    if ruff is not None:
+        held, now = _owners(before, ruff[0]), _owners(after, ruff[1])
+        found += [
+            f"{path}::{name}: Ruff {rule} findings grow {held[(name, rule)]} -> {count}; "
+            f"{PT_FIXES[rule]}"
+            for (name, rule), count in sorted(now.items())
+            if count > held[(name, rule)]
+        ]
+    return found
+
+
 def problems(
     path: str,
     old: str | None,
     new: str,
-    ruff: tuple[dict[int, int], dict[int, int]] | None = None,
+    ruff: tuple[dict[int, int], dict[int, int]] | tuple[tuple, tuple] | None = None,
 ) -> list[str]:
     """Growth a staged source or test change refuses; existing debt only shrinks."""
     if path in GENERATED:
@@ -714,6 +1160,7 @@ def problems(
                 )
     if not path.endswith(".py"):
         return found
+    found += _test_problems(path, old, new, ruff)
     if path.startswith("tests/unit/"):
         found.extend(
             row for row in _lint(path, _tree(new)) if row.startswith("testing.layer_contract:")
@@ -832,7 +1279,9 @@ def weekly_report(root: Path = ROOT) -> dict:
     }
 
 
-def _data_file_problems(staged: list[str], moved: dict, parents: tuple[str, ...]) -> list[str]:
+def _data_file_problems(
+    staged: list[str], moved: dict, parents: tuple[str, ...], head: str = ":"
+) -> list[str]:
     """The rule for test data: a path no parent holds, under tests/, that is neither code nor
     prose. The tree is its baseline, and a byte-identical move keeps its standing."""
     data = [
@@ -854,39 +1303,73 @@ def _data_file_problems(staged: list[str], moved: dict, parents: tuple[str, ...]
         fresh = [path for path in data if path not in held]
         if not fresh:
             return []
-        policy = validate_policy(json.loads(_blobs([":" + REGISTRIES[0]])[":" + REGISTRIES[0]]))
+        policy = validate_policy(json.loads(_blobs([head + REGISTRIES[0]])[head + REGISTRIES[0]]))
         return new_data_file_problems(fresh, policy)
     except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         return [f"TEST-DATA unmeasured: {error}; restore the staged registry and retry"]
 
 
-def main(argv: list[str] | None = None) -> int:
+def _shape_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--weekly", action="store_true", help="Print a read-only source review as JSON"
     )
-    if parser.parse_args(argv).weekly:
+    parser.add_argument(
+        "--base",
+        help="judge the committed head against its merge base with this ref (the commit stage)",
+    )
+    parser.add_argument("--semgrep", action="store_true", help="include the slower source rules")
+    return parser.parse_args(argv)
+
+
+def _shape_moves(base: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    pairs = staged_changes(ROOT, base=base, tree="HEAD") if base else staged_changes(ROOT)
+    return staged_moves(ROOT, pairs=pairs), unique_moves(pairs)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _shape_args(argv)
+    if args.weekly:
         print(json.dumps(weekly_report(), ensure_ascii=False))
         return 0
-    listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+    if args.base:  # the committed head against its merge base: the stage's snapshot
+        found_base = _git("merge-base", args.base, "HEAD")
+        if found_base.returncode:
+            print(
+                f"TEST-LAYOUT base {args.base} unreadable; name a reachable base", file=sys.stderr
+            )
+            return 1
+        parents, head = (found_base.stdout.strip(),), "HEAD:"
+        listing = _git("diff", "--name-only", "-z", "--diff-filter=ACMR", parents[0], "HEAD")
+    else:  # the staged index against HEAD: the hook's snapshot
+        head = ":"
+        listing = _git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
     if listing.returncode:
         print(
-            "TEST-LAYOUT staged files unreadable; restore the Git index and retry", file=sys.stderr
+            "TEST-LAYOUT changed files unreadable; restore the Git index and retry", file=sys.stderr
         )
         return 1
     staged = listing.stdout.split("\0")
-    # A merge adds only what neither parent holds: what the merged branch brings was checked there.
-    merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
-    parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
-    selected = [
-        path
-        for path in staged
-        if path.startswith("src/") or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
-    ]
+    if not args.base:
+        # A merge adds only what neither parent holds: the merged branch was checked there.
+        merging = _git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
+        parents = ("HEAD", "MERGE_HEAD") if merging else ("HEAD",)
+    selected, anti_sources = (
+        [
+            path
+            for path in staged
+            if path.startswith("src/")
+            or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
+        ],
+        [
+            path
+            for path in staged
+            if path.endswith((".py", ".sh"))
+            or (path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")))
+        ],
+    )
     try:
-        moved = staged_moves(
-            ROOT
-        )  # a byte-identical move keeps its old path's grandfathered findings
+        moved, identical = _shape_moves(parents[0] if args.base else None)
         origin = {path: moved.get(path, path) for path in selected}
         candidates = [
             p
@@ -897,22 +1380,40 @@ def main(argv: list[str] | None = None) -> int:
             and p not in moved
         ]
         texts = _blobs(
-            [":" + path for path in selected]
+            [head + path for path in selected]
+            + [head + path for path in anti_sources]
             + [parent + ":" + origin[path] for parent in parents for path in selected]
             + [parent + ":" + path for parent in parents for path in candidates]
-            + ([":config/registries/requirements.json"] if candidates else [])
+            + [head + path for path in ANTIPATTERN_SIDES]
+            + ([head + ANTIPATTERN_SEMGREP] if args.semgrep else [])
+            + ([head + ANTIPATTERN_CASES] if args.semgrep else [])
+            + [parent + ":" + path for parent in parents for path in ANTIPATTERN_SIDES]
+            + ([head + "config/registries/requirements.json"] if candidates else [])
         )
-    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as error:
+        found, corpus = (
+            _data_file_problems(staged, moved, parents, head)
+            + _antipattern_problems(
+                staged, anti_sources, texts, parents, head, moves=identical, semgrep=args.semgrep
+            ),
+            None,
+        )
+    except (
+        OSError,
+        ValueError,
+        IndexError,
+        KeyError,
+        TypeError,
+        subprocess.SubprocessError,
+    ) as error:
         print(
             f"TEST-LAYOUT staged snapshot unreadable: {error}; restore the Git index and retry",
             file=sys.stderr,
         )
         return 1
-    found, corpus = _data_file_problems(staged, moved, parents), None
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:
-            registry = texts.get(":config/registries/requirements.json")
+            registry = texts.get(head + "config/registries/requirements.json")
             if registry is None:
                 raise ValueError("the staged requirements registry is missing")
             rows = parse_requirements(registry)
@@ -921,20 +1422,25 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("staged source listing is unreadable")
             source_paths = set(sources.stdout.split("\0"))
             for path in added:
-                if ":" + path not in texts:
+                if head + path not in texts:
                     raise ValueError(f"staged test {path} is unreadable")
-                found += new_test_file_problems(path, texts[":" + path], rows, source_paths)
+                found += new_test_file_problems(path, texts[head + path], rows, source_paths)
         except (ValueError, TypeError, OSError) as error:
             found.append(
                 f"TEST-LAYOUT placement unmeasured: {error}; "
                 "restore the staged registry and source index"
             )
     python_sources = [p for p in selected if p.startswith("src/") and p.endswith(".py")]
-    specs = [":" + path for path in python_sources] + [
+    specs = [head + path for path in python_sources] + [
         parent + ":" + origin[path] for path in python_sources for parent in parents
+    ]
+    test_sources = [p for p in selected if p.startswith("tests/") and p.endswith(".py")]
+    test_specs = [head + path for path in test_sources] + [
+        parent + ":" + origin[path] for path in test_sources for parent in parents
     ]
     try:
         scores = ruff_decisions({spec: texts[spec] for spec in specs if spec in texts})
+        scores.update(ruff_test_findings({s: texts[s] for s in test_specs if s in texts}))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(
             f"TEST-LAYOUT Ruff measurement unavailable: {error}; restore Ruff and retry",
@@ -943,14 +1449,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     grouped, copies, locations = [], [], []
     for path in selected:
-        if ":" + path in texts:
-            new = texts[":" + path]
+        if head + path in texts:
+            new = texts[head + path]
             each = []
             for parent in parents:
                 old = texts.get(parent + ":" + origin[path])
                 measurement = (
-                    (scores.get(parent + ":" + origin[path], {}), scores[":" + path])
+                    (scores.get(parent + ":" + origin[path], {}), scores[head + path])
                     if path in python_sources
+                    else (scores.get(parent + ":" + origin[path], ()), scores[head + path])
+                    if path in test_sources
                     else None
                 )
                 try:
@@ -971,8 +1479,10 @@ def main(argv: list[str] | None = None) -> int:
                             return 1
                         paths = listing.stdout.split("\0")
                         corpus = {
-                            spec[1:]: text
-                            for spec, text in _blobs([":" + item for item in paths if item]).items()
+                            spec[len(head) :]: text
+                            for spec, text in _blobs(
+                                [head + item for item in paths if item]
+                            ).items()
                         }
                     copies.append((path, old, new))
                     locations.append((len(grouped), len(each)))
@@ -981,8 +1491,8 @@ def main(argv: list[str] | None = None) -> int:
     if copies:
         try:
             names = (
-                ":scripts/test-shape-tools/package.json",
-                ":scripts/test-shape-tools/package-lock.json",
+                head + "scripts/test-shape-tools/package.json",
+                head + "scripts/test-shape-tools/package-lock.json",
             )
             staged_manifests = _blobs(list(names))
             manifests = tuple(

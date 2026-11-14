@@ -266,6 +266,9 @@ def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+_utc_now.clock_domain = "UTC"  # type: ignore[attr-defined]  # the default Host uses the system wall clock
+
+
 """Local files, served from the installed package. No CDN, no font host."""
 
 

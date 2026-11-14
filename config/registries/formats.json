@@ -1,5 +1,12 @@
 {
 "entries": {
+"schema:alphalattice.pytest-workers.v1": {
+"description": "An attempt-bound observation of pytest worker exits, running nodes and fault streams; absent evidence remains unknown.",
+"owner": "devtools.testing",
+"readers": ["src/devtools/testing/collection.py", "tests/integration/testing/test_collection.py"],
+"upgraders": [],
+"version": ["alphalattice.pytest-workers.v1"]
+},
 "schema:alphalattice.import-hygiene": {
 "owner": "schema:alphalattice",
 "description": "Records the non-growing count of retained function imports in config/import-hygiene.json by source path, scope and normalized import for the structural guard.",

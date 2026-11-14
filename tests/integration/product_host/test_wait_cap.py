@@ -54,6 +54,7 @@ class _Host:
             raise client.LocalResearchClientError("local_client.service_not_running")
         self.clock.sleep(float(document.get("wait_seconds", 0)))
         self.reads.append(self.clock.now)
+        assert self.clock.now <= 3600.0, "a wait read past the hour every wait is capped at"
         arrived = self.arrival is not None and self.clock.now >= self.arrival
         if self.kind == "goal":
             conversation = (
@@ -95,10 +96,30 @@ class _Host:
         return None
 
 
-@pytest.mark.parametrize("kind", ["goal", "activity-task", "task", "trial", "committee"])
-@pytest.mark.parametrize("arrival", [None, 0.5, 1.0])
-def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, arrival) -> None:
-    """every wait reaches its cap, sees the final interval and never extends it."""
+@pytest.mark.parametrize(
+    "kind",
+    [
+        pytest.param("goal", id="goal-wait"),
+        pytest.param("activity-task", id="activity-task-wait"),
+        pytest.param("task", id="task-show-wait"),
+        pytest.param("trial", id="trial-show-wait"),
+        pytest.param("committee", id="committee-wait"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("arrival", "cap"),
+    [
+        pytest.param(None, 1.0, id="none-arrives"),
+        pytest.param(0.5, 1.0, id="arrives-mid-cap"),
+        pytest.param(1.0, 1.0, id="arrives-at-cap"),
+        pytest.param(None, None, id="omitted-cap-is-the-hour"),
+        pytest.param(None, 3600.5, id="past-the-hour-is-refused"),
+    ],
+)
+def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, arrival, cap) -> None:
+    """every wait reaches its cap, sees the final interval and never extends it; a wait with no
+    --max-wait has the hour every wait is capped at, and one past the hour is refused unread."""
+    limit = cap or 3600.0
     clock = _Clock()
     host = _Host(tmp_path, clock, "goal" if kind == "goal" else kind, arrival)
     monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
@@ -113,21 +134,33 @@ def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, ar
         "committee": ["committee", "wait", "--update", host.task, "--role", "PM", "--key", "k"],
     }[kind]
     code = cli.main(
-        ["--workspace", str(tmp_path), *command, "--max-wait", "1", "--view", "full"],
+        [
+            "--workspace",
+            str(tmp_path),
+            *command,
+            *(["--max-wait", str(cap)] if cap else []),
+            "--view",
+            "full",
+        ],
         serve=lambda _: pytest.fail("no serve"),
     )
     answer = json.loads(capsys.readouterr().out)
+    if cap and cap > 3600.0:  # refused before any wait; a show answers first, the refusal beside it
+        refused = answer.get("failure_code") or answer["local_failure"]["failure_code"]
+        assert refused == "local_client.max_wait_invalid"
+        assert host.reads == ([0.0] if kind in {"task", "trial"} else [])
+        return
     expected = "MAX_WAIT_REACHED" if arrival is None else "MESSAGE" if kind == "goal" else "ENDED"
     got = answer["data"].get("wait_event", {}).get("event") or answer["data"].get("wait_status")
     assert (got or "ENDED") == expected  # a committee floor answers itself, with no event
     assert code == (3 if arrival is None else 0)
     if arrival is None or arrival == 1.0 or kind != "trial":
-        assert host.reads[-1] == pytest.approx(1.0)
-        assert clock.now == pytest.approx(1.0)
+        assert host.reads[-1] == pytest.approx(limit)
+        assert clock.now == pytest.approx(limit)
     else:
-        assert arrival <= clock.now <= 1.0
+        assert arrival <= clock.now <= limit
     assert len(host.reads) >= 2
-    assert all(t <= 1.0 for t in host.reads)
+    assert all(t <= limit for t in host.reads)
 
 
 @pytest.mark.parametrize("kind", ["goal", "activity-task"])
