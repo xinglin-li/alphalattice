@@ -1,7 +1,36 @@
 # AlphaLattice release notes
-Last checked: 2026-11-08 against 0.2.6
+Last checked: 2026-11-14 against 0.2.7
 
-Latest released version: [0.2.6](#026). Earlier measurements describe their own versions.
+Latest released version: [0.2.7](#027). Earlier measurements describe their own versions.
+
+## 0.2.7
+
+0.2.7 bounds every wait, guides a first Codex session through trusting the project, and fixes several Evidence, Host and retrieval cases. Its test, CI and verification work changes how the project is verified; it does not change how people use AlphaLattice.
+
+### Changed
+
+- Every wait is bounded: `--max-wait` is capped at one hour, a chain of commands keeps its own deadline under that cap on every OS, and workers end with the Host.
+- A first Codex session names the project's trust setting and the one step that sets it; it also names a Codex config file it cannot read and the layer that marks the project trusted.
+- A refused question relay says what to fix, in English or Chinese.
+- A rerun stopped by its Task's stop explains why in words, with the Task's id and how to resume it.
+- Evidence search indexes are rebuilt on demand instead of kept on disk, and the observation journal's storage is bounded between checkpoints.
+- A retrieval environment built against an older lock is refused with the command that rebuilds it.
+- Host resource measurements stay correct when processes exit during sampling.
+- Dependencies are updated, and the known vulnerabilities in the lock are cleared.
+- Public CI fails verification when a Linux job fails, and the per-change performance job is removed.
+
+### Fixed
+
+- Evidence source documents stored compressed are read.
+- Omitted Evidence tables stay available in their original order.
+- The path explorer accepts a blocked Task's recorded successor as a resend.
+- Verified reads keep their leases, and the lease watcher no longer spins.
+- A failed Host read records its cause.
+- Setup diagnostics never keep a configured credential, however short.
+
+### Known limits
+
+- This release was not run live with Claude Code or Codex at its final commit. First use, the upgrade from 0.2.6 and the resource budgets are covered by tests, not by a live session.
 
 ## 0.2.6
 

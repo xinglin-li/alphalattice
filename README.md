@@ -24,14 +24,14 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.4, now
+## 0.2.7, now
 
-- Reads show a bounded summary with a pointer to the complete answer, which `--output` saves whole.
-- Completing a Goal starts from a filled-in request: its recorded facts and references are already bound, and the agent adds its judgment.
-- The local Host can stay up between sessions. A matching session reuses it, and it stops by itself once no work is owed and it has been idle for its configured period. On Claude Code desktop, the agent can start it in the app's Terminal panel.
-- An invalid research plan offers its named recovery steps, and a cancelled membership update keeps what it needs to restore its change.
+- Every wait is bounded: `--max-wait` is capped at one hour, and workers end with the Host.
+- A first Codex session names the project's trust setting and the one step that sets it.
+- A refused question relay says what to fix, in English or Chinese, and a rerun stopped by its Task's stop explains why, with how to resume it.
+- Evidence search indexes are rebuilt on demand instead of kept on disk, and a retrieval environment built against an older lock is refused with the command that rebuilds it.
 
-See the [0.2.4 release notes](docs/public-source/release-notes.md#024) for each change. The versioned notes keep each measured workload and its limits.
+See the [0.2.7 release notes](docs/public-source/release-notes.md#027) for each change. The versioned notes keep each measured workload and its limits.
 
 Use Claude Code or Codex as the lead. To see what a run used, open a session's
 **Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
@@ -252,11 +252,7 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.4 is the current release.** It brings bounded reads with a saved complete
-answer, a Goal completion that starts from its recorded facts, a local Host that stays
-up between sessions and stops itself when idle, and named recovery for invalid plans.
-The [release notes](docs/public-source/release-notes.md#024) describe the delivered
-behaviour; earlier notes keep their observed workloads and remaining limits.
+**0.2.7 is the current release.** It bounds every wait, guides a first Codex session through trusting the project, and fixes several Evidence, Host and retrieval cases. The [release notes](docs/public-source/release-notes.md#027) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -267,27 +263,25 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.5: a measured baseline.** A first use and a daily, replayed without a model,
-  report each stage's time and the program's peak memory in minutes; later speed and
-  memory changes are measured against it.
-- **0.2.6: memory within budget.** Bring first use and daily updates within 8 GB.
-- **0.2.7: realistic replay.** Replay real-world events (corporate actions, late
-  reports, provider outages) through the real data client and its cache.
-- **0.2.8: data checks.** Check the health of the data every day, in the program and
-  the Workbench.
-- **0.2.9: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
-- **0.2.10: caching and checking, done once.** Hash once, verify at trust boundaries
+- **0.2.8: one data layer.** Every record the product keeps, from market data to research results, in one store per machine: each byte stored once, and upgrades reuse unchanged data.
+- **0.2.9: a plugin kernel.** The data layer's ports and the product's parts register as plugins.
+- **0.2.10: the daily fits the machine.** First use and daily updates within 8 GB of memory, measured on the new data layout.
+- **0.2.11: realistic replay, and data you can trust.** Replay real-world events (corporate actions, late
+  reports, provider outages) through the real data client and its cache, and check the health of the data every day, in the program and the Workbench.
+- **0.2.12: caching and checking, done once.** Hash once, verify at trust boundaries
   and recompute only what changed, borrowing from Git's index and Bazel's action
   cache.
-- **0.2.11: less waiting on the program.** The program prepares likely next steps
+- **0.2.13: less waiting on the program.** The program prepares likely next steps
   while the agent is thinking.
-- **0.2.12: history you can query by date.** Ask what was known, tried and decided on
+- **0.2.14: history you can query by date.** Ask what was known, tried and decided on
   a past date, with nothing learned after it.
-- **0.2.13: an evaluation flywheel.** One runner and fixed gates check every patch
+- **0.2.15: the product in plugins.** The product's parts move onto 0.2.9's plugin kernel, one at a time.
+- **0.2.16: the agent protocol as an API.** The agent protocol is finished as an API that keeps working for existing callers.
+- **0.2.17: an evaluation flywheel.** One runner and fixed gates check every patch
   from the product's own records.
-- **0.2.14: a first result in ten minutes.** A short trial on a small sample, labelled
-  as a trial.
-- **0.2.15: ground for daily supervision.** A store for the forward record of
+- **0.2.18: a first result in ten minutes, and one command to install.** A short trial on a small sample, labelled
+  as a trial, and a one-command install.
+- **0.2.19: ground for daily supervision.** What 0.3's daily supervision needs, including a store for the forward record of
   positions.
 
 Later minor versions:
@@ -337,7 +331,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-14 against 0.2.7
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

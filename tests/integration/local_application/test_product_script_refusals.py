@@ -775,7 +775,8 @@ def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, ca
     assert payload["failure_code"] == "model_store.store_unwritable"
     assert payload["store"] == str(tmp_path.resolve())
     os_cause = next(cause for cause in payload["causes"] if cause["kind"] == "OS")
-    assert os_cause["errno"] == 13 and os_cause["winerror"] == 5
+    assert os_cause["errno"] == 13
+    assert os_cause.get("winerror") == 5 if sys.platform == "win32" else "winerror" not in os_cause
     assert os_cause["message"] == os.strerror(13)
     assert "--store <directory>" in payload["detail"] and payload["next_action"]
     assert "NEVER-PRINT-ME" not in json.dumps(payload) and fetched == []

@@ -598,6 +598,13 @@
       "layer": "integration",
       "seconds": 15
     },
+    "pipeline.readmes_name_project_release": {
+      "description": "Both public READMEs name the project version as their current release in the heading, current-release sentence, notes link and last-checked line.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The check reads the tracked project and both README files together."
+    },
     "pipeline.receipt_classes_every_red": {
       "description": "Each red node and non-passing stage row classes as a defect, flake, slow test, load or tooling from its own evidence, and a red with no evidence reads unclassified, never a defect.",
       "owner": "devtools.pipeline",
