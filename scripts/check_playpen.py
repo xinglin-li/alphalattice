@@ -743,6 +743,60 @@ def _check_waits(*, staged: bool) -> bool:
     return result.returncode == 0
 
 
+def _develop_conflicts(*, staged: bool, target: str = "develop") -> list[str]:
+    """The files where the change would conflict with `target`: the staged index for the hook, the
+    committed head for the stage. None when this checkout has no such branch, or a merge commit,
+    which resolves its own conflicts, is being staged."""
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ("git", *args),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    if git("rev-parse", "-q", "--verify", target).returncode:
+        return []
+    change = "HEAD"
+    if staged:
+        if git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+            return []
+        head = git("rev-parse", "-q", "--verify", "HEAD").stdout.strip()
+        tree = git("write-tree").stdout.strip()
+        named = ("-c", "user.name=fast-guard", "-c", "user.email=fast-guard@example.invalid")
+        written = git(*named, "commit-tree", tree, *(["-p", head] if head else []), "-m", "staged")
+        change = written.stdout.strip()
+    done = git("merge-tree", "--write-tree", "--name-only", "--no-messages", change, target)
+    if done.returncode == 0:
+        return []
+    if done.returncode == 1:
+        return [line for line in done.stdout.splitlines()[1:] if line.strip()]
+    raise RuntimeError(f"git merge-tree exited {done.returncode}: {done.stderr.strip()[:200]}")
+
+
+def _check_develop_conflict(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Refuse a change that would conflict with develop, as the harness's commit does with main."""
+    started = perf_counter()
+    try:
+        files = _develop_conflicts(staged=staged, target=base_ref)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"develop-conflict unmeasured: {error}; restore Git and retry", file=sys.stderr)
+        return False
+    for path in files:
+        print(
+            f"develop-conflict: {path} conflicts with {base_ref}: "
+            f"merge {base_ref} into this branch, then commit",
+            file=sys.stderr,
+        )
+    print(f"PLAYPEN_GATE_TIMING develop-conflict {perf_counter() - started:.3f}s", flush=True)
+    return not files
+
+
 def _check_test_shape(*, staged: bool, base_ref: str = "develop", semgrep: bool = False) -> bool:
     """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
     for the hook, the committed head against its merge base with `base_ref` for the stage."""
@@ -976,8 +1030,7 @@ def _require_private_structural_inputs() -> bool:
 def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environment) -> int:
     """Run the gate; `ensure_environment` enters the workspace .venv (a test passes its own)."""
     ensure_environment()
-    gate_started = perf_counter()
-    parser = argparse.ArgumentParser()
+    gate_started, parser = perf_counter(), argparse.ArgumentParser()
     parser.add_argument(
         "--staged",
         action="store_true",
@@ -993,6 +1046,12 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         default=budget_base(os.environ),
         help="base commit for the test budget (default: $ALPHALATTICE_TEST_BUDGET_BASE, the tip a "
         "merge commit lands on when it is not develop, else develop)",
+    )
+    parser.add_argument(
+        "--semgrep",
+        action="store_true",
+        help="with --fast, still run the semgrep source rules on the change: the commit stage's "
+        "guard, whose bound holds their seconds; the commit hook leaves them out",
     )
     parser.add_argument(
         "--fast",
@@ -1126,10 +1185,14 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         (
             "test-shape",
             lambda: _check_test_shape(
-                staged=args.staged, base_ref=args.base, semgrep=not args.fast
+                staged=args.staged, base_ref=args.base, semgrep=not args.fast or args.semgrep
             ),
         ),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
+        (
+            "develop-conflict",
+            lambda: _check_develop_conflict(staged=args.staged, base_ref=args.base),
+        ),
     ]
     refused = static_refusals(steps)
     if refused:

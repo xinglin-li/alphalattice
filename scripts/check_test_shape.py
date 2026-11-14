@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
+from devtools.testing import os_marks
 from devtools.testing.contracts import import_violations
 from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
 from devtools.testing.requirements import PROVES_LINE, file_holders
@@ -1513,6 +1514,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     for each in grouped:
         found += sorted(set.intersection(*each))
+    found += [  # a test the change writes names the OS its OS-only call needs
+        line
+        for path in test_sources
+        for line in os_marks.refusals(
+            path, texts[head + path], *(texts.get(p + ":" + origin[path], "") for p in parents)
+        )
+    ]
     for line in found:
         print(line, file=sys.stderr)
     return 1 if found else 0

@@ -507,6 +507,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "pipeline.a_change_that_would_conflict_with_develop_is_refused_at_commit": {
+      "description": "If a change that conflicts with develop passed the commit, the merge queue would refuse it only after review; the commit refuses it at once by name, as the harness's commit does with main.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The check asks Git to merge a staged tree into a real develop branch, so only a real repository can show the conflict it refuses."
+    },
     "pipeline.a_row_skipped_for_documents_names_them": {
       "description": "A provider may record a row as skipped for a change of documents only by naming those documents, and such a row classes no red.",
       "owner": "devtools.pipeline",
@@ -784,6 +791,12 @@
     },
     "testing.a_merge_is_budgeted_against_the_tip_it_lands_on": {
       "description": "The commit hook measures a merge's test budget against the tip its committer names in ALPHALATTICE_TEST_BUDGET_BASE, so a merge onto a tip ahead of develop is not charged with the changes beneath it; unset, the base is develop.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.an_os_only_test_names_its_os": {
+      "description": "If a test a change writes reached a Windows-only API without naming its OS, it would fail on the macOS and Ubuntu runners; the commit refuses it with the repair.",
       "owner": "devtools.testing",
       "layer": "unit",
       "seconds": 1

@@ -9,6 +9,7 @@ import pytest
 import check_test_shape as shape
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
+from devtools.testing import os_marks
 from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
@@ -144,6 +145,67 @@ def test_nightly_antipattern_rules_hold_the_product_tree() -> None:
     shape._semgrep_selftest(rules, blobs[":" + shape.ANTIPATTERN_CASES])
     found = shape.semgrep_antipatterns({path: blobs[":" + path] for path in paths}, rules)
     assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
+
+
+OS_CASES = {  # each way a test reaches Windows: True when it is refused for naming no OS
+    "WinDLL": ("def test_a():\n    ctypes.WinDLL('kernel32')\n", True),
+    "marked": (
+        '@pytest.mark.skipif(sys.platform != "win32", reason="w")\n'
+        'def test_a():\n    ctypes.WinDLL("k")\n',
+        False,
+    ),
+    "alias": (
+        'WINDOWS = pytest.mark.skipif(os.name != "nt", reason="w")\n'
+        "@WINDOWS\ndef test_a():\n    winreg.HKEY_CURRENT_USER\n",
+        False,
+    ),
+    "module": (
+        'pytestmark = pytest.mark.skipif(os.name != "nt", reason="w")\n'
+        "def test_a():\n    msvcrt.getch()\n",
+        False,
+    ),
+    "fork": ('def test_a():\n    if os.name == "nt":\n        ctypes.windll.kernel32\n', False),
+    "and-fork": (
+        'def test_a(x):\n    if x and sys.platform == "win32":\n        ctypes.windll.kernel32\n',
+        False,
+    ),
+    "returns": (
+        'def test_a():\n    if os.name != "nt":\n        return\n    ctypes.WinDLL("k")\n',
+        False,
+    ),
+    "winerror": (
+        "def test_a(tmp_path):\n    with pytest.raises(OSError) as caught:\n"
+        "        open(tmp_path)\n    assert caught.value.winerror == 5\n",
+        True,
+    ),
+    "winerror-set": (
+        "def test_a():\n    error = OSError()\n    error.winerror = 5\n"
+        "    assert error.winerror == 5\n",
+        False,
+    ),
+    "powershell": (
+        'def test_a():\n    subprocess.run(["powershell", "-Command", "x"], check=True)\n',
+        True,
+    ),
+    "data": (
+        'def test_a():\n    assert count({"command": ["pwsh", "-Command", "x"]}) == 1\n',
+        False,
+    ),
+}
+
+
+@pytest.mark.proves("testing.an_os_only_test_names_its_os")
+@pytest.mark.parametrize("case", sorted(OS_CASES), ids=sorted(OS_CASES))
+def test_a_test_that_reaches_an_os_only_api_names_its_os(case: str) -> None:
+    """The product runs on macOS, Ubuntu and Windows: a test a change writes that reaches a
+    Windows-only API is refused unless it names its OS, with the repair."""
+    source, refused = OS_CASES[case]
+    found = os_marks.refusals("tests/owner/test_x.py", source, "")
+    assert bool(found) is refused
+    assert all("os-unmarked" in line and "skipif" in line for line in found)
+    assert (
+        os_marks.refusals("tests/owner/test_x.py", source, source) == []
+    )  # a kept test is not judged
 
 
 def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
