@@ -113,10 +113,19 @@ def golden_cache(tmp_path_factory, request):
 @pytest.fixture
 def setup_done(tmp_path, monkeypatch):
     """A checkout whose first-use setup is done (`setup_support.setup_done`), in this process
-    and in the environment its subprocesses inherit."""
+    and in the environment its subprocesses inherit; a Codex session's own item, the person's
+    trust of the project, is recorded in this test's own Codex home, as Codex records it."""
+    from alphalattice.interface.local_application.native_bridge import codex_project_trust
     from tests.setup_support import setup_done as done
 
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    root = codex_project_trust(Path.cwd(), {"CODEX_HOME": str(home)})["project_root"]
+    (home / "config.toml").write_text(
+        f'[projects.{json.dumps(root)}]\ntrust_level = "trusted"\n', encoding="utf-8"
+    )
     with done(tmp_path) as env:
+        env = {**env, "CODEX_HOME": str(home)}
         for name, value in env.items():
             monkeypatch.setenv(name, value)
         yield env
