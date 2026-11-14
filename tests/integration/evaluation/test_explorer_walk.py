@@ -468,18 +468,19 @@ def test_a_retired_recovery_offer_is_settled_only_by_its_completed_source(tmp_pa
     assert bool(explorer.findings) == (state not in {"SUCCEEDED", "stopped-read"})
 
 
-@pytest.mark.parametrize(
-    "identity",
-    [
-        *("same", "update-plan", "different", "missing", "cancelled", "cancelled-read"),
-        *("recovered-same", "recovered-task", "recovered-message"),
-        *("read-same", "read-update", "read-message", "read-empty"),
-    ],
+IDENTITIES = (
+    *("same", "update-plan", "different", "missing", "cancelled", "cancelled-read"),
+    *("successor", "recovered-same", "recovered-task", "recovered-message"),
+    *("read-same", "read-update", "read-message", "read-empty"),
 )
+
+
+@pytest.mark.parametrize("identity", IDENTITIES, ids=IDENTITIES)
 def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     tmp_path: Path, identity: str
 ) -> None:
-    """A duplicate must recover its original admission without creating another one."""
+    """A duplicate must recover its original admission without creating another one; a new
+    Task is clean only as the original's recorded successor (a BLOCKED Task does not resume)."""
     request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
     key = "message_id" if identity == "recovered-message" else "task_id"
     baseline = {"operation": "MODEL_RUN", "outcome": "PENDING", "data": {key: "original"}}
@@ -498,6 +499,10 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
 
     def call(argv: list[str]) -> dict[str, Any]:
         sent.append(json.loads(Path(argv[-1]).read_text(encoding="utf-8")))
+        if sent[-1] == {"operation": "TASKS"}:
+            link = "different" if identity == "successor" else None
+            row = {"task_id": "original", "attention": {"successor_task_id": link}}
+            return {"operation": "TASKS", "outcome": "OK", "data": {"tasks": [row]}}
         if identity.startswith("read-"):
             if len(sent) == 1:
                 return {
@@ -548,8 +553,12 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     elif identity.startswith("read-"):
         assert sent == [request, {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}]
     else:
-        assert sent == [request] * (2 if identity.startswith("recovered-") else 1)
+        listed = [{"operation": "TASKS"}] * (
+            identity in {"different", "successor", "recovered-task"}
+        )
+        assert sent == [request] * (2 if identity.startswith("recovered-") else 1) + listed
     assert bool(explorer.findings) == (
-        identity not in {"same", "recovered-same", "read-same", "update-plan", "cancelled-read"}
+        identity
+        not in {"same", "successor", "recovered-same", "read-same", "update-plan", "cancelled-read"}
     )
     assert len(explorer.mutation_checks) == 1

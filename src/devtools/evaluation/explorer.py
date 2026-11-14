@@ -507,7 +507,11 @@ class Explorer:
             identities = {k: before[k] for k in keys if before.get(k) is not None}
             repeated = _data(corrected or answer)
             same = identities and all(repeated.get(k) == v for k, v in identities.items())
-            if operation not in self.read_operations and not same:
+            if (
+                operation not in self.read_operations
+                and not same
+                and not self._successor(before, repeated, where)
+            ):
                 reason, corrected = "duplicate admission differs or has no identity proof", None
         row = {
             "state": where,
@@ -522,6 +526,26 @@ class Explorer:
             "reason": reason,
         }
         return row, corrected
+
+    def _successor(self, before: dict[str, Any], repeated: dict[str, Any], where: str) -> bool:
+        """A resend admitted after its Task stopped is that Task's recorded successor.
+
+        A BLOCKED Task does not resume, so the Host admits the same work again and records the
+        link; the task list proves it, whether the original stopped before the resend or not.
+        """
+        original, successor = before.get("task_id"), repeated.get("task_id")
+        if not original or not successor or original == successor:
+            return False
+        document = self.work / f"successor-{len(self.events)}.json"
+        document.write_text(json.dumps({"operation": "TASKS"}), encoding="utf-8")
+        listed = self._send(["request", "--file", str(document)], where + " > successor")
+        self.events[-1].attributes["alphalattice.mutation"] = "duplicate"
+        return any(
+            task.get("task_id") == original
+            and (task.get("attention") or {}).get("successor_task_id") == successor
+            for task in _data(listed).get("tasks", [])
+            if isinstance(task, dict)
+        )
 
     def _discovered_binding(
         self, original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
