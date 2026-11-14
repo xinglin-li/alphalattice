@@ -835,7 +835,23 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         for code in (
             "local_client.report_sentence_not_admitted",
             "local_client.report_route_not_admitted",
+            # a relayed person question, checked before sending (questions.relayed_question)
+            "person_confirmation.question_unknown",
+            "person_confirmation.question_mismatch",
         )
+    ),
+    *(  # each detail is its registered message, worded in the answer's language
+        (code, ClientRefusal("INVALID_INPUT", "READ_THE_OFFERED_QUESTION", code))
+        for code in (
+            "person_confirmation.question_missing",
+            "person_confirmation.question_words_differ",
+        )
+    ),
+    (
+        "person_confirmation.",
+        ClientRefusal(
+            "INVALID_INPUT", "READ_THE_OFFERED_QUESTION", "person_confirmation.relay_refused"
+        ),
     ),
     # First match wins: an exact code before the prefix that also covers it.
     (

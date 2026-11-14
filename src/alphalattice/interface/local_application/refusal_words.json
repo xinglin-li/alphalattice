@@ -32,6 +32,21 @@
   "detail": "This question code does not cover the requested operation. Keep the offered request and its question together.",
   "next_action": "READ_THE_OFFERED_QUESTION"
  },
+ "person_confirmation.question_missing": {
+  "message_id": "person_confirmation.question_missing",
+  "detail": "person_confirmation.question_missing",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_words_differ": {
+  "message_id": "person_confirmation.question_words_differ",
+  "detail": "person_confirmation.question_words_differ",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_code_required": {
+  "message_id": "person_confirmation.question_code_required",
+  "detail": "person_confirmation.question_code_required",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
  "local_web.assets_stale": {
   "detail": "The Local Web's built files differ from this checkout's sources. Run `uv run python scripts/build_local_web_ui.py --product`, then serve again.",
   "next_action": "BUILD_LOCAL_WEB_ASSETS_AND_SERVE_AGAIN"

@@ -2160,8 +2160,9 @@ def _relayed_asked(
         return asked
     try:
         return relayed_question(operation, question_code, asked)[0]
-    except ValueError as error:
-        raise client.LocalResearchClientError(str(error)) from error
+    except ValueError as error:  # relayed_question raises only its owner's codes
+        code = str(error).removeprefix("person_confirmation.")
+        raise client.LocalResearchClientError(f"person_confirmation.{code}") from error
 
 
 _LOCATORS: Final = {

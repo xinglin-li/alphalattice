@@ -521,6 +521,42 @@
         "zh-CN": "此主机正在停止，未接纳本次请求。主机停止后，请重新启动此工作区的主机，再重试被拒绝的请求。"
       }
     },
+    "person_confirmation.question_missing": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This question is asked in your own words, so the relay needs the line you asked the person. Give it with --asked beside --question-code.",
+        "zh-CN": "此问题由你用自己的话提问，因此转达时需要附上你向本人提出的那句话。请用 --asked 与 --question-code 一同给出。"
+      }
+    },
+    "person_confirmation.question_words_differ": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The question you relayed differs from its registered words. Relay the registered question exactly as written, in English or Chinese, or give only --question-code.",
+        "zh-CN": "你转达的问题与其登记的措辞不同。请按原文（英文或中文）一字不差地转达登记的问题，或只给出 --question-code。"
+      }
+    },
+    "person_confirmation.question_code_required": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This operation's question is a registered one, so a retyped question cannot be relayed. Give the code named after the colon with --question-code, and the person's words.",
+        "zh-CN": "此操作的问题是已登记的问题，因此不能转达重新输入的问题。请用 --question-code 给出冒号后所列的代码，并附上本人的原话。"
+      }
+    },
+    "person_confirmation.relay_refused": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The relayed question was refused before any request was sent. Read the offered question, then relay its code with the person's words.",
+        "zh-CN": "转达的问题在发送任何请求之前即被拒绝。请读取所提供的问题，然后将其代码与本人的原话一同转达。"
+      }
+    },
     "host.idle": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",

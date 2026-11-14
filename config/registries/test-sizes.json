@@ -2688,6 +2688,12 @@
       "seen_on": [
         "pc1"
       ]
+    },
+    {
+      "node": "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words",
+      "owner": "tests.structural",
+      "until": "2026-11-12",
+      "reason": "Confirmed post-merge regression; expires with its owned repair."
     }
   ],
   "mandatory": [
