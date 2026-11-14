@@ -439,7 +439,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             private_test_growth,
             problems,
         )
-        from devtools.testing.sizes import validate_policy, validate_post_merge_scopes
+        from devtools.testing.sizes import policy_change, validate_post_merge_scopes
     finally:
         sys.path.pop(0)
     inputs = census_inputs(ROOT, baseline) if staged else None
@@ -480,10 +480,8 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
                 previous, value = json.loads(base), json.loads(current)
                 found += shrink_only_growth(path, previous, value, carry if moves else None)
                 if path == "config/registries/test-sizes.json":
-                    try:
-                        validate_policy(value)
-                    except ValueError as error:
-                        found.append(f"{path}:1: {error}")
+                    changed_policy = policy_change(previous, value, carry if moves else None)
+                    found += [f"{path}:1: {problem}" for problem in changed_policy]
     # The staged policy and its deferred declarations must come from the same index.
     try:
         size_path = "config/registries/test-sizes.json"

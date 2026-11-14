@@ -882,6 +882,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.test_budgets_only_fall": {
+      "description": "A raised or added test budget is refused at commit unless a budget admission carries a dated decision and a value at or above it.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.test_placement_and_structural_scope": {
       "description": "New test files must declare their owner and source, and a deferred structural test must have a valid scope before selection.",
       "owner": "devtools.testing",

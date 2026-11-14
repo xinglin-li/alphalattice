@@ -1993,7 +1993,7 @@
       "owner": "tests.portfolio_strategy_lab",
       "reason": "Rebuilds a corrected sector's kept history across the real daily input owner; its other six cases were deleted on coverage and mutation evidence.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 900,
+      "timeout_seconds": 60,
       "admitted": "2026-11-03: 50.6 s and 220 MB at teardown in a commit stage, over the 30 s Medium limit."
     },
     {
@@ -2088,7 +2088,7 @@
       "owner": "tests.researcher_methodology_surface",
       "reason": "A real market-maintenance and risk journey measured 30.001 s before and 30.230 s after in the same paired run.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 900,
+      "timeout_seconds": 120,
       "admitted": "2026-11-03: measured at the Medium boundary; restore Medium when this journey is reduced"
     },
     {
@@ -2182,7 +2182,19 @@
       "admitted": "2026-10-30: measured 11.163 s on Windows; size registration pilot admits the Large classification."
     }
   ],
-  "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Resource confinement is a separate boundary.",
+  "budget_admissions": [
+    {
+      "budget": "large:tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
+      "value": 900,
+      "admitted": "2026-11-14: Cold input-revision setup ran 317-408 s in six nightly runs on 11-13 and 11-14; three times the slowest exceeds 900 s, so 900 s holds and no lower step fits"
+    },
+    {
+      "budget": "large:tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
+      "value": 120,
+      "admitted": "2026-11-14: The whole-tree Ruff and semgrep scan ran 17-22 s on its build run of 11-14; 120 s is the smallest of the steps 60, 120, 300, 600, 900, 1800, 3600 and 5400 s at or above three times the slowest"
+    }
+  ],
+  "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Every test budget (a size limit, an admission limit, the growth floor, a Large timeout) only falls; a raised or added one carries a budget_admissions row with its value and a dated decision. Resource confinement is a separate boundary.",
   "sizes": [
     "small",
     "medium",

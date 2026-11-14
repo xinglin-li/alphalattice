@@ -440,6 +440,84 @@ def _growth(policy: dict[str, Any]) -> None:
         raise ValueError("test_size.growth")
 
 
+def budgets(policy: dict[str, Any]) -> dict[str, float]:
+    """Each numeric test budget by name: a size limit, an admission limit, the growth floor and
+    every Large row's timeout, a row without one taking the Large limit."""
+    limits = policy["limits"]
+    found = {f"limits.{size}": value for size, value in limits.items()}
+    for size, row in (policy.get("admission_limits") or {}).items():
+        found |= {f"admission_limits.{size}.{key}": value for key, value in row.items()}
+    if policy.get("growth") is not None:
+        found["growth.floor_lines"] = policy["growth"]["floor_lines"]
+    for row in policy["large"]:
+        found["large:" + row["pattern"]] = row.get("timeout_seconds", limits["large"])
+    return found
+
+
+def budget_rises(
+    before: dict[str, Any], after: dict[str, Any], carry: Callable[[str], str] | None = None
+) -> list[str]:
+    """A test budget only falls: a raised or added one needs a dated budget admission at or above
+    its new value. ``carry`` restates a byte-identical move's old name."""
+    old = budgets(before)
+    old |= {carry(name): value for name, value in old.items()} if carry else {}
+    admitted = {row["budget"]: row["value"] for row in after.get("budget_admissions", [])}
+    return [
+        f"test budget {name} rose {old.get(name, 'from none')} -> {value}; lower it, or add a "
+        "budget_admissions row with its value and 'YYYY-MM-DD: why' in admitted"
+        for name, value in sorted(budgets(after).items())
+        if value > old.get(name, float("-inf")) and admitted.get(name, float("-inf")) < value
+    ]
+
+
+def policy_change(
+    before: dict[str, Any], after: dict[str, Any], carry: Callable[[str], str] | None = None
+) -> list[str]:
+    """A staged catalog's refusals against the one it changes: invalid, or each unadmitted rise."""
+    try:
+        validate_policy(after)
+    except ValueError as error:
+        return [str(error)]
+    return budget_rises(before, after, carry)
+
+
+def _dated(decision: Any) -> bool:
+    """A decision reads 'YYYY-MM-DD: why' on one line, with a real date."""
+    match = (
+        re.fullmatch(r"(\d{4}-\d{2}-\d{2}): \S[^\n\r]*", decision)
+        if isinstance(decision, str)
+        else None
+    )
+    try:
+        return match is not None and date.fromisoformat(match[1]) is not None
+    except ValueError:
+        return False
+
+
+def _budget_admissions(policy: dict[str, Any]) -> None:
+    """Each budget admission names one current budget, the admitted value and a dated one-line
+    decision, as a new Large row's admitted does."""
+    rows = policy.get("budget_admissions", [])
+    current = budgets(policy)
+    if not isinstance(rows, list):
+        raise ValueError("test_size.budget_admission")
+    for row in rows:
+        if not (
+            isinstance(row, dict)
+            and set(row) == {"budget", "value", "admitted"}
+            and _dated(row["admitted"])
+            and row["budget"] in current
+            and type(row["value"]) in (int, float)
+            and isfinite(row["value"])
+        ):
+            raise ValueError(
+                "test_size.budget_admission: name one current budget, the admitted value and "
+                "'YYYY-MM-DD: why'; remove an admission with its budget"
+            )
+    if len({row["budget"] for row in rows}) != len(rows):
+        raise ValueError("test_size.budget_admission: one admission per budget")
+
+
 def _limits(policy: dict[str, Any]) -> None:
     """Refuse disabled bounds, duplicate Large declarations and unexplained resource needs."""
     limits = policy.get("limits")
@@ -455,6 +533,7 @@ def _limits(policy: dict[str, Any]) -> None:
     _growth(policy)
     if len({r["pattern"] for r in policy["large"]}) != len(policy["large"]):
         raise ValueError("test_size.large_duplicate")
+    _budget_admissions(policy)
     for row in policy["large"]:
         reason = row.get("reason")
         if (
