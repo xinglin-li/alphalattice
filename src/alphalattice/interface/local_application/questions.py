@@ -39,6 +39,42 @@ def person_question(code: str, *, operation: str | None = None) -> dict[str, Any
     }
 
 
+ASKED_IN_OWN_WORDS = frozenset({"network.workspace_access"})
+"""Registered questions whose words tell the agent how to ask, in its own one line; every other
+registered question is asked, and relayed, exactly as written."""
+CODED_ONLY = {"COMMITTEE_DAILY_SET": "committee.daily"}
+"""Operations whose one question is a registered one: an uncoded relay of it can only be a
+retyped question, so it is refused with the code that carries the words."""
+
+
+def relayed_question(operation: str, code: str | None, asked: str | None) -> tuple[str, str | None]:
+    """The question a relay names: the registered words when a code names them, never a paraphrase.
+
+    With a code its words are taken (or checked, when the agent typed them too); without one, an
+    operation that only questions asked as written decide takes their words alone, so a retyped
+    question (`CODED_ONLY`) is refused by name with the code that carries the words; an uncoded
+    relay of any other operation keeps its own one-line question.
+
+    Raises:
+        ValueError: `person_confirmation.question_unknown`, `.question_mismatch`,
+            `.question_words_differ` or `.question_code_required:<code>`.
+    """
+    if code is not None:
+        question = person_question(code, operation=operation)
+        if code in ASKED_IN_OWN_WORDS:
+            if not asked:
+                raise ValueError("person_confirmation.question_missing")
+            return asked, code
+        if asked is not None and asked not in (question["words"], question["words_zh"]):
+            raise ValueError("person_confirmation.question_words_differ")
+        return asked or question["words"], code
+    if asked is None:
+        raise ValueError("person_confirmation.question_missing")
+    if (only := CODED_ONLY.get(operation)) is not None:
+        raise ValueError("person_confirmation.question_code_required:" + only)
+    return asked, None
+
+
 def asked_questions(operation: str, proposed: object) -> list[dict[str, Any]]:
     """Resolve catalog-declared Host producers; foreign return fields remain ordinary data."""
     codes = (
@@ -140,6 +176,50 @@ def current_person_questions(
         "pending": [q for q in questions if q["state"] == "ASKED"],
         "invalid": invalid,
     }
+
+
+def question_proof_gaps(row: Mapping[str, Any], question: Mapping[str, Any]) -> list[str]:
+    """The proof a Host row's question fails, by name.
+
+    The proof is a registered code, its catalog hash, and an operation reference that is the
+    row's own and among its correlation ids.
+    """
+    code, refs = question.get("code"), question.get("references") or {}
+    try:
+        definition = person_question(code) if isinstance(code, str) else {}
+    except ValueError:
+        definition = {}
+    if not definition:
+        return ["code_unregistered"]
+    ref = refs.get("operation_ref") if isinstance(refs, Mapping) else None
+    held = {
+        "catalog_hash_differs": question.get("catalog_hash") == definition["catalog_hash"],
+        "operation_ref_missing": bool(ref),
+        "operation_ref_not_the_rows": bool(ref)
+        and ref == (row.get("payload") or {}).get("operation_ref"),
+        "operation_ref_not_correlated": bool(ref) and ref in row.get("correlation_ids", []),
+    }
+    return [name for name, ok in held.items() if not ok]
+
+
+def unproved_questions(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Each row's question that fails its proof, so an evidence gap names its cause.
+
+    Each carries the row's ordinal and operation, the question's code and the conditions it fails.
+    """
+    return [
+        {
+            "ordinal": row.get("ordinal"),
+            "operation": (row.get("payload") or {}).get("operation"),
+            "code": question.get("code"),
+            "failing": gaps,
+        }
+        for row in rows
+        for question in ((row.get("payload") or {}).get("subject") or {}).get(
+            "person_questions", []
+        )
+        if (gaps := question_proof_gaps(row, question))
+    ]
 
 
 class PersonConfirmation(BaseModel):  # type: ignore[misc]

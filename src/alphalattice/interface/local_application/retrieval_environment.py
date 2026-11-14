@@ -23,12 +23,14 @@ import importlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
@@ -38,6 +40,24 @@ PLAYPEN: Path = resolve_playpen_root(Path(__file__))
 LOCK = PLAYPEN / "uv.lock"
 ENVIRONMENT = PLAYPEN / ".venv-retrieval"
 ADDITIONS = PLAYPEN / "config" / "requirements-retrieval.lock"
+NETWORK = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "UV_HTTP_TIMEOUT",
+    "UV_REQUEST_TIMEOUT",
+    "UV_HTTP_RETRIES",
+    "UV_CONCURRENT_DOWNLOADS",
+    "UV_INDEX_URL",
+    "UV_DEFAULT_INDEX",
+    "UV_EXTRA_INDEX_URL",
+    "UV_NATIVE_TLS",
+    "SSL_CERT_FILE",
+    "REQUESTS_CA_BUNDLE",
+    "UV_OFFLINE",
+)
+"""The settings uv's downloads read: proxies, indexes, TLS roots and timeouts."""
 LOCKED_SETUP_DISCLOSURE = (
     "I will install the retrieval packages pinned in config/requirements-retrieval.lock, "
     "downloading any missing packages as part of this setup."
@@ -52,6 +72,137 @@ LOCKED_SETUP_WORDS = (
 def _uv() -> str:
     executable = os.environ.get("UV", "uv")
     return executable
+
+
+def trace_path() -> Path:
+    """Where the setup keeps each install step's verbose uv trace, beside what it builds."""
+    if not (PLAYPEN / "pyproject.toml").is_file():
+        return (
+            Path(sys.executable).parent.parent / "retrieval-setup.log"
+        )  # the filled environment's root
+    return ENVIRONMENT.with_name(ENVIRONMENT.name + "-setup.log")
+
+
+def network_environment(environment: dict[str, str] | None = None) -> dict[str, str]:
+    """The network settings a uv step ran with, a credential in a URL masked."""
+    found = os.environ if environment is None else environment
+    return {
+        key.upper(): _redact(value, found)
+        for key, value in sorted(found.items())
+        if key.upper() in NETWORK
+    }
+
+
+SHORT = 4
+"""Characters below which a configured credential cannot be masked by value alone."""
+
+
+def _redact(text: str, environment: Mapping[str, str]) -> str:
+    """Remove URL credentials, query values and known environment secrets from diagnostics.
+
+    A line that still holds a configured credential too short to mask by value is withheld
+    whole, its variable named, so no configured credential reaches the trace.
+    """
+    text = re.sub(r"//[^/@\s]+@", "//***@", text)
+    text = re.sub(r"(?i)(https?://[^\s\"'?#]+)\?[^\s\"']+", r"\1?***", text)
+    text = re.sub(
+        r"(?i)\b(authorization|proxy-authorization)\s*[:=]\s*(?:bearer|basic)\s+[^\s,]+",
+        r"\1: ***",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\b(password|passwd|secret|token|api[-_]?key)([\"']?\s*[:=]\s*[\"']?)[^\s,\"'}]+",
+        r"\1\2***",
+        text,
+    )
+    secrets = _secrets(environment)
+    for value in sorted((value for value in secrets if len(value) >= SHORT), key=len, reverse=True):
+        text = text.replace(value, "***")
+    short = {value: key for value, key in secrets.items() if len(value) < SHORT}
+    return "".join(_withheld(line, short) for line in text.splitlines(keepends=True))
+
+
+def _withheld(line: str, short: Mapping[str, str]) -> str:
+    """The line, or a marker in its place when it holds a short configured credential."""
+    found = sorted({key for value, key in short.items() if value in line})
+    if not found:
+        return line
+    ending = line[len(line.rstrip("\r\n")) :]
+    return (
+        f"[uv line withheld: it holds a credential from {', '.join(found)} too short to mask;"
+        f" lengthen or unset it to see this line]{ending}"
+    )
+
+
+def _secrets(environment: Mapping[str, str]) -> dict[str, str]:
+    """The credential values the environment configures, each with its variable's name.
+
+    A value is secret when its variable's name says so, or when it is a configured URL's user,
+    password or query value (encoded and decoded).
+    """
+    found: dict[str, str] = {}
+    for key, value in environment.items():
+        values: set[str] = set()
+        if re.search(r"(?i)(password|passwd|secret|token|api.?key)", key):
+            values.add(value)
+        for url in re.findall(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s\"']+", value):
+            try:
+                parts = urlsplit(url)
+            except ValueError:  # an unparsable URL (a bad IPv6 host) must not hide the failure
+                continue  # it is named; its userinfo is still masked by _redact's own pattern
+            if parts.password:
+                values.update(part for part in (parts.username, parts.password) if part)
+            for pair in parts.query.split("&"):
+                values.add(pair.partition("=")[2])
+            values.update(query for _, query in parse_qsl(parts.query))
+        for secret in values | {unquote(secret) for secret in values}:
+            if secret:
+                found.setdefault(secret, key.upper())
+    return found
+
+
+def _run_uv(
+    arguments: tuple[str, ...],
+    trace: Path,
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Run one uv step verbosely, its whole trace and network settings appended to `trace`.
+
+    A failed step raises CalledProcessError, as before; its trace stays for the refusal to name.
+    """
+    command = (_uv(), "-v", *arguments)
+    effective = dict(os.environ) if env is None else env
+    with trace.open("a", encoding="utf-8") as log:
+        log.write(
+            json.dumps(
+                {
+                    "step": " ".join(arguments[:2]),
+                    "command": [_redact(part, effective) for part in command],
+                    "network": network_environment(env),
+                }
+            )
+            + "\n"
+        )
+        log.flush()
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=cwd,
+                env=env,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.CalledProcessError as error:
+            log.write(_redact(error.stdout or "", effective))
+            raise subprocess.CalledProcessError(error.returncode, command) from None
+        log.write(_redact(result.stdout or "", effective))
 
 
 def interpreter_path() -> Path:
@@ -116,9 +267,10 @@ def create(*, offline: bool) -> Path:
     if not (PLAYPEN / "pyproject.toml").is_file():
         # An installed distribution already owns its environment; pinned additions
         # enter that environment, never the package or a workspace.
-        subprocess.run(
+        trace = trace_path()
+        trace.write_text("", encoding="utf-8")
+        _run_uv(
             (
-                _uv(),
                 "pip",
                 "install",
                 "--python",
@@ -127,18 +279,19 @@ def create(*, offline: bool) -> Path:
                 str(ADDITIONS),
                 *(("--offline",) if offline else ()),
             ),
-            check=True,
+            trace,
         )
         return Path(sys.executable)
     if not LOCK.is_file():
         raise FileNotFoundError(LOCK)
     interpreter = interpreter_path()
     offline_flag = ("--offline",) if offline else ()
+    trace = trace_path()
+    trace.write_text("", encoding="utf-8")
     with setup_environment(PLAYPEN) as environment:
         environment["UV_PROJECT_ENVIRONMENT"] = str(ENVIRONMENT)
-        subprocess.run(
+        _run_uv(
             (
-                _uv(),
                 "sync",
                 "--project",
                 str(PLAYPEN),
@@ -148,13 +301,12 @@ def create(*, offline: bool) -> Path:
                 "dev",
                 *offline_flag,
             ),
-            check=True,
+            trace,
             cwd=PLAYPEN,
             env=environment,
         )
-        subprocess.run(
+        _run_uv(
             (
-                _uv(),
                 "pip",
                 "install",
                 "--python",
@@ -163,7 +315,7 @@ def create(*, offline: bool) -> Path:
                 str(ADDITIONS),
                 *offline_flag,
             ),
-            check=True,
+            trace,
             cwd=PLAYPEN,
             env=environment,
         )
@@ -197,7 +349,8 @@ def refusal(
     place = environment.name
     missing = [path.name for path in locks if not path.is_file()]
     if isinstance(error, subprocess.CalledProcessError):
-        step = "uv pip install" if error.cmd[1] == "pip" else f"uv {error.cmd[1]}"
+        verb = next(part for part in error.cmd[1:] if part != "-v")
+        step = "uv pip install" if verb == "pip" else f"uv {verb}"
         code = f"{kind}.setup_failed:{step} exited {error.returncode}"
         detail = f"uv could not build {place}; its own output above names why. " + (
             "With --offline it reads only the local cache, and a pinned package the cache lacks "
@@ -247,7 +400,13 @@ def refusal(
         **setup_failure(error),
         "status": "REFUSED",
         "failure_code": code,
-        "detail": detail,
+        "detail": detail
+        + (
+            f" uv's verbose trace of each step, with its network settings, is kept at "
+            f"{trace_path()}."
+            if _traced(kind, error)
+            else ""
+        ),
         "next_action": next_action,
         "environment": str(environment),
         "next_commands": {
@@ -263,7 +422,27 @@ def refusal(
             if kind == "retrieval_environment" and isinstance(error, subprocess.CalledProcessError)
             else {}
         ),
+        **_traced(kind, error),
     }
+
+
+def _traced(kind: str, error: Exception) -> dict[str, object]:
+    """A failed retrieval install step's kept trace: its path, its tail and its network settings."""
+    if kind != "retrieval_environment" or not isinstance(error, subprocess.CalledProcessError):
+        return {}
+    return {
+        "trace": str(trace_path()),
+        "trace_tail": _tail(trace_path()),
+        "network": network_environment(),
+    }
+
+
+def _tail(trace: Path, lines: int = 20) -> list[str]:
+    """The trace's last lines, where uv names a failed step's cause; none when it is unreadable."""
+    try:
+        return trace.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+    except OSError:
+        return []
 
 
 def _help_command(kind: str) -> list[str]:

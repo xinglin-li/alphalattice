@@ -256,7 +256,9 @@ with Alpha, Risk and the CRO. `alphalattice committee open` offers each speciali
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
 three (ALPHA, RISK, CRO), then in one turn start them using the role-selection rule above
 (each bundle's route runs two commands, which the registered CRO type's allowlist also covers),
-each with its bundle's path, and in that same turn submit your own stance,
+each with its bundle's path and, on Claude Code, with the Agent tool's `run_in_background`: a
+member started in the foreground holds your turn while it waits for the reveal, which waits for
+your stance. In that same turn submit your own stance,
 argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
 floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds
 up: what changed and what it cost, its research envelope, whether it can be carried out,

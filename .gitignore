@@ -74,6 +74,7 @@ Thumbs.db
 .idea/
 .vscode/
 .venv-retrieval/
+.venv-retrieval-setup.log
 .codex/native-research.local.d/
 # Retired with FLOW-1's producer sequences; an older checkout may still hold them.
 .codex/native-research-sequences.local.*
@@ -83,8 +84,8 @@ Thumbs.db
 .claude/alphalattice-project.local.json
 
 # Installed product browser dependencies and private browser evidence
-/third_party/playwright/node_modules/
-/third_party/playwright/.browsers/
+/third_party/playwright/node_modules
+/third_party/playwright/.browsers
 /third_party/code-analysis/node_modules/
 /scripts/test-shape-tools/node_modules/
 /.playwright-cli/

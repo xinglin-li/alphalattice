@@ -30,7 +30,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PersonConfirmation,
     decision_hash,
 )
-from alphalattice.interface.local_application.questions import person_question
+from alphalattice.interface.local_application.questions import person_question, relayed_question
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
@@ -109,13 +109,13 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
 
     Raises:
-        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch` or
-            `.beyond_its_question`.
+        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch`,
+            `.beyond_its_question`, or the question's own refusal (`relayed_question`): a
+            registered question's relay carries its registered words, never a paraphrase.
     """
     if NOT_A_PERSON.search(confirmation.words):
         raise ValueError("person_confirmation.not_the_persons_words")
-    if confirmation.question_code is not None:
-        person_question(confirmation.question_code, operation=str(request["operation"]))
+    relayed_question(str(request["operation"]), confirmation.question_code, confirmation.question)
     decision = decision_hash(request)
     if confirmation.decision_hash != decision:
         raise ValueError("person_confirmation.decision_mismatch")

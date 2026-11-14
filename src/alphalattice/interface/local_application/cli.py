@@ -93,6 +93,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
     decision_hash,
 )
+from alphalattice.interface.local_application.questions import relayed_question
 from alphalattice.interface.local_application.read_views import summary_display
 from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
@@ -789,13 +790,14 @@ def _person_confirmation_options(child: argparse.ArgumentParser) -> None:
         "--question-code",
         dest="person_question_code",
         metavar="CODE",
-        help="With --person-said: the registered code beside the question.",
+        help="With --person-said: the registered question's code; the Host takes its words.",
     )
     child.add_argument(
         "--asked",
         dest="person_asked",
         metavar="QUESTION",
-        help="With --person-said: the one-line question you asked the person, as asked.",
+        help="With --person-said: the one-line question you asked the person, as asked; "
+        "with --question-code, only its registered words.",
     )
     child.add_argument(
         "--repeat",
@@ -2090,8 +2092,7 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
     said, asked = given.pop("person_confirmation", None), getattr(args, "person_asked", None)
     repeat = getattr(args, "person_repeat", None)
     question_code = getattr(args, "person_question_code", None)
-    if (said is None) != (asked is None) or ((repeat or question_code) and said is None):
-        parser.error("--person-said and --asked go together: the person's words, your question")
+    asked = _relayed_asked(parser, operation, said, asked, question_code, repeat)
 
     def document() -> dict[str, Any]:
         if (
@@ -2140,6 +2141,27 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         }
 
     return document
+
+
+def _relayed_asked(
+    parser: argparse.ArgumentParser,
+    operation: str,
+    said: object,
+    asked: str | None,
+    question_code: str | None,
+    repeat: str | None,
+) -> str | None:
+    """The relay's question: a registered code's own words, never retyped; a paraphrase refused."""
+    if (repeat or question_code or asked) and said is None:
+        parser.error("--person-said and --asked go together: the person's words, your question")
+    if said is not None and asked is None and question_code is None:
+        parser.error("--person-said needs its question: --question-code, or --asked as asked")
+    if said is None or question_code is None:
+        return asked
+    try:
+        return relayed_question(operation, question_code, asked)[0]
+    except ValueError as error:
+        raise client.LocalResearchClientError(str(error)) from error
 
 
 _LOCATORS: Final = {

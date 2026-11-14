@@ -1206,15 +1206,33 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
 
     choice = {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": True}
     confirmation = PersonConfirmation(
-        question=(
-            "Should each daily update also convene the investment committee, "
-            "about ten more minutes?"
-        ),
+        question=committee.DAILY_ASK,
         words="Yes.",
         question_code="committee.daily",
         decision_hash=decision_hash(choice),
     )
     assert relayed_decision(choice, confirmation) == confirmation.decision_hash
+    # A lead once relayed its own paraphrase, and the relay could not be graded:
+    # a retyped question is refused by name, coded or not; the code carries the words
+    paraphrase = "Should each daily update also convene the committee and its report?"
+    with pytest.raises(ValueError, match=r"person_confirmation\.question_words_differ"):
+        relayed_decision(choice, confirmation.model_copy(update={"question": paraphrase}))
+    with pytest.raises(
+        ValueError, match=r"person_confirmation\.question_code_required:committee\.daily"
+    ):
+        relayed_decision(
+            choice, confirmation.model_copy(update={"question": paraphrase, "question_code": None})
+        )
+    with pytest.raises(
+        ValueError, match=r"person_confirmation\.question_code_required:committee\.daily"
+    ):
+        relayed_decision(choice, confirmation.model_copy(update={"question_code": None}))
+    from alphalattice.interface.local_application.questions import relayed_question
+
+    assert relayed_question("COMMITTEE_DAILY_SET", "committee.daily", None) == (
+        committee.DAILY_ASK,
+        "committee.daily",
+    )
     # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
     # question waits for the person, and the goal's completion goes on beside it.
     assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked

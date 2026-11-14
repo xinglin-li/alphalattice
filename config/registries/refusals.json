@@ -420,6 +420,18 @@
 "owner": "person_confirmation",
 "category": "INVALID_ARGUMENT"
 },
+"person_confirmation.question_missing": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
+"person_confirmation.question_words_differ": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
+"person_confirmation.question_code_required": {
+"owner": "person_confirmation",
+"category": "INVALID_ARGUMENT"
+},
 "activity.accepted_answer_binding_mismatch": {
 "owner": "activity",
 "category": "FAILED_PRECONDITION"

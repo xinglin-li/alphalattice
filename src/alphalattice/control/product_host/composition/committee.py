@@ -421,7 +421,7 @@ def daily_asked(
         return done
     relay = (
         f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
-        f'--asked "{DAILY_ASK}" --question-code committee.daily'
+        "--question-code committee.daily"  # the Host takes the registered words: none retyped
     )
     return done | {
         "next_action": done.get("next_action") or "ASK_THE_PERSON_ONCE",

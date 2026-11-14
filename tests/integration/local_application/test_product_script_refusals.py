@@ -154,14 +154,69 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         subprocess.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
-    def exits(command: tuple[str, ...], **_options: object) -> None:
-        raise subprocess.CalledProcessError(1, command)
+    calls: list[dict[str, Any]] = []
 
+    def exits(command: tuple[str, ...], **options: Any) -> None:
+        calls.append(options)
+        raise subprocess.CalledProcessError(
+            1,
+            command,
+            output="error: tcp connect error: deadline has elapsed\n"
+            "error: https://example.invalid/simple?token=REVIEW_DUMMY_TOKEN\n"
+            "debug: password=REVIEW_DUMMY_PASSWORD\n"
+            "error: proxy rejected credential REVIEW_DUMMY_TOKEN\n"
+            "error: proxy user REVIEW_PROXY_USER refused REVIEW_PROXY_SECRET\n"
+            "error: proxy rejected credential x7Z\n",
+        )
+
+    monkeypatch.setattr(setup, "ENVIRONMENT", tmp_path / "checkout-env" / ".venv-retrieval")
+    (tmp_path / "checkout-env").mkdir()
+    monkeypatch.setenv("HTTPS_PROXY", "http://REVIEW_PROXY_USER:REVIEW_PROXY_SECRET@proxy:8080")
+    monkeypatch.setenv("UV_INDEX_URL", "https://example.invalid/simple?token=REVIEW_DUMMY_TOKEN")
+    monkeypatch.setenv("UV_HTTP_TIMEOUT", "30")
+    monkeypatch.setenv("UV_EXTRA_INDEX_URL", "http://[unparsable/simple")  # never hides the cause
+    monkeypatch.setenv(
+        "PIP_INDEX_URL", "https://example.invalid/simple?key=x7Z"
+    )  # too short to mask
     monkeypatch.setattr(setup.subprocess, "run", exits)
     monkeypatch.setattr(sys, "argv", ["create_retrieval_environment.py", "--offline"])
     assert setup.main() == 2
     refusal = _refusal(capsys)
     assert refusal["failure_code"] == "retrieval_environment.setup_failed:uv sync exited 1"
+    # A failed install names its cause from uv's kept verbose trace and
+    # the network settings it ran with, a URL credential masked
+    trace = tmp_path / "checkout-env" / ".venv-retrieval-setup.log"
+    assert refusal["trace"] == str(trace) and str(trace) in refusal["detail"]
+    assert refusal["trace_tail"][-6] == "error: tcp connect error: deadline has elapsed"
+    # a configured URL's credential (its user too) echoed alone by the provider or proxy is
+    # redacted; one too short to mask by value withholds its whole line; the cause stays
+    assert refusal["trace_tail"][-3:] == [
+        "error: proxy rejected credential ***",
+        "error: proxy user *** refused ***",
+        "[uv line withheld: it holds a credential from PIP_INDEX_URL too short to mask;"
+        " lengthen or unset it to see this line]",
+    ]
+    for configured in (
+        "REVIEW_PROXY_USER",
+        "REVIEW_PROXY_SECRET",
+        "REVIEW_DUMMY_TOKEN",
+        "x7Z",
+    ):  # none kept
+        assert configured not in trace.read_text(encoding="utf-8")
+        assert configured not in str(refusal)
+    assert "REVIEW_PROXY_SECRET" not in trace.read_text(encoding="utf-8")
+    assert "REVIEW_PROXY_SECRET" not in str(refusal)
+    assert "REVIEW_DUMMY_TOKEN" not in trace.read_text(encoding="utf-8")
+    assert "REVIEW_DUMMY_TOKEN" not in str(refusal)
+    assert "REVIEW_DUMMY_PASSWORD" not in trace.read_text(encoding="utf-8")
+    assert (
+        calls[0]["creationflags"] & getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if sys.platform == "win32"
+        else True
+    )
+    assert '"-v", "sync"' in trace.read_text(encoding="utf-8")
+    assert refusal["network"]["HTTPS_PROXY"] == "http://***@proxy:8080"
+    assert refusal["network"]["UV_HTTP_TIMEOUT"] == "30"
     assert refusal["next_action"] == "RUN_LOCKED_DEPENDENCY_SETUP"
     assert refusal["next_commands"]["setup"] == setup.fill_command()
     assert gpu.main() == 2
@@ -197,12 +252,13 @@ def test_retrieval_setup_uses_checkout_scratch(
         "alphalattice.interface.local_application.retrieval_environment",
     ]
 
-    def checked(_command: tuple[str, ...], **options: Any) -> None:
+    def checked(_command: tuple[str, ...], **options: Any) -> subprocess.CompletedProcess[str]:
         env = options["env"]
         temporary = Path(env["TEMP"])
         assert temporary.is_dir() and temporary.is_relative_to(checkout)
         assert env["TMP"] == env["TEMP"] and env["TMPDIR"] == env["TEMP"]
         seen.append(temporary)
+        return subprocess.CompletedProcess(_command, 0, stdout="")
 
     with monkeypatch.context() as local:
         local.setattr(setup, "PLAYPEN", checkout)
