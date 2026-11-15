@@ -376,20 +376,30 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
     assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
-    # an added or changed test names each parametrize case and grows no Ruff PT finding
-    unnamed = "@pytest.mark.parametrize('flag', [True, False])\ndef test_a(flag):\n    'One.'\n"
-    named = unnamed.replace("[True, False]", "[True, False], ids=['on', 'off']")
+    # an added or changed test names each case pytest would name by its position (rule 5); a
+    # case of literal values names itself, as in the harness's lint
+    site = "@pytest.mark.parametrize({}, {})\ndef test_a(flag):\n    'One.'\n"
+    for names, cases, refused in (
+        ("'flag'", "['on', 'off']", False),  # a literal str is its own id
+        ("'flag'", "[1, -2, 0.5, b'x', True, None]", False),
+        ("'flag'", "[object(), 'off']", True),  # an object is named flag0
+        ("'flag'", "[[1], {'a': 1}]", True),  # so are a list and a dict
+        ("'flag'", "CASES", True),  # a computed list cannot be read
+        ("'a, b'", "[('x', 1), ('y', None)]", False),  # several literal values
+        ("('a', 'b')", "[('x', [1])]", True),
+        ("'flag'", "[object(), None], ids=['on', 'off']", False),
+        ("'flag'", "[object(), None], ids=['on', None]", True),  # None asks for the value id
+        ("'flag'", "[pytest.param(object(), id='on'), pytest.param(1)]", False),
+        ("'flag'", "[pytest.param(object(), id=None)]", True),
+    ):
+        assert bool(problems(PATH, None, site.format(names, cases))) is refused, cases
+    unnamed = site.format("'flag'", "[object(), 'off']")
     assert problems(PATH, None, unnamed) == [
-        f"{PATH}::test_a: line 1 parametrize('flag') leaves its cases unnamed; "
-        "give each case pytest.param(..., id=...) or ids= (rule 5)"
+        f"{PATH}::test_a: line 1 parametrize('flag') has a case pytest names by its position; "
+        "give each such case pytest.param(..., id=...), or ids= (rule 5)"
     ]
     assert not problems(PATH, unnamed, unnamed)  # a kept test keeps its standing
     assert problems(PATH, unnamed, unnamed.replace("One.", "Two."))  # a changed one is judged
-    assert not problems(PATH, None, named)
-    assert problems(PATH, None, named.replace("'off'", "None"))  # None asks for the value id
-    case = "[pytest.param(True, id='on'), pytest.param(False, id=None)]"
-    assert problems(PATH, None, unnamed.replace("[True, False]", case))
-    assert not problems(PATH, None, unnamed.replace("[True, False]", case.replace("None", "'off'")))
     raises = 'def test_a():\n    """One."""\n    with pytest.raises(ValueError):\n        f()\n'
     old = "import pytest\n" + raises
     twice = "@pytest.mark.parametrize('a', [1, 1], ids=['x', 'y'])\n" + raises

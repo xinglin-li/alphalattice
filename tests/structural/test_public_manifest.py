@@ -460,7 +460,7 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
-@pytest.mark.parametrize("part", ["moves", "batches", "history"], ids=str)  # its three seams
+@pytest.mark.parametrize("part", ["moves", "batches", "history"])  # its three seams
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
     tmp_path, synthetic_history, monkeypatch, part

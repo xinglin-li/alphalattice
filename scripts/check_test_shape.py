@@ -1093,8 +1093,40 @@ def _named(case: ast.AST) -> bool:
     )
 
 
+def _literal(value: ast.AST) -> bool:
+    """A value pytest names by itself, stably: a str, bytes, number, bool or None literal, a
+    signed number included."""
+    if isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.USub | ast.UAdd):
+        value = value.operand
+    return isinstance(value, ast.Constant)
+
+
+def _several(names: ast.AST | None) -> bool:
+    """Whether the argnames name more than one argument, so each case holds a value for each."""
+    if isinstance(names, ast.Constant) and isinstance(names.value, str):
+        return "," in names.value
+    return isinstance(names, ast.List | ast.Tuple) and len(names.elts) > 1
+
+
+def _self_named(case: ast.AST, several: bool) -> bool:
+    """A case pytest gives a readable, stable id: one with id=, or whose values are all literals.
+    Any other value (an object, a list, a dict, a name) pytest names by its position (argname0,
+    argname1), which shifts when a case is added or removed."""
+    if _named(case):
+        return True
+    if isinstance(case, ast.Call) and getattr(case.func, "attr", getattr(case.func, "id", "")) == (
+        "param"
+    ):
+        values = case.args
+    else:
+        values = case.elts if several and isinstance(case, ast.List | ast.Tuple) else [case]
+    return bool(values) and all(_literal(value) for value in values)
+
+
 def _unnamed(node: ast.AST) -> list[str]:
-    """A test's parametrize sites whose cases are not each named by ids= or pytest.param id=."""
+    """A test's parametrize sites with a case pytest would name by its position, under no ids=
+    naming every case. A literal case reads as its id already; a computed case list cannot be
+    read, so it counts."""
     sites = []
     for mark in getattr(node, "decorator_list", ()):
         if not (isinstance(mark, ast.Call) and getattr(mark.func, "attr", "") == "parametrize"):
@@ -1104,7 +1136,7 @@ def _unnamed(node: ast.AST) -> list[str]:
         names = mark.args[0] if mark.args else given.get("argnames")
         listed = isinstance(cases, ast.List | ast.Tuple) and cases.elts
         if not _names_every_case(given.get("ids")) and not (
-            listed and all(_named(case) for case in cases.elts)
+            listed and all(_self_named(case, _several(names)) for case in cases.elts)
         ):
             sites.append(f"line {mark.lineno} parametrize({ast.unparse(names) if names else ''})")
     return sites
@@ -1143,8 +1175,8 @@ def _test_problems(
         if name in was and ast.dump(was[name]) == ast.dump(node):
             continue
         found += [
-            f"{path}::{name}: {site} leaves its cases unnamed; "
-            "give each case pytest.param(..., id=...) or ids= (rule 5)"
+            f"{path}::{name}: {site} has a case pytest names by its position; "
+            "give each such case pytest.param(..., id=...), or ids= (rule 5)"
             for site in _unnamed(node)
         ]
     if ruff is not None:
