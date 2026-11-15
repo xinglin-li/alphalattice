@@ -3672,6 +3672,18 @@
       "readers": [
         "product_host.data_preparation.application"
       ]
+    },
+    "data-root": {
+      "summary": "the 0.2.8 data root's databases: the event log with its definition registry, and the search index",
+      "class": "event-log",
+      "tier": 1,
+      "home": "the data root itself: log.sqlite (log.sql), index.sqlite (index.sql) and the DuckLake catalog (catalog.sql)",
+      "location": "machine-data-root",
+      "bytes": null,
+      "writers": [
+        "data_layer.root:_database"
+      ],
+      "readers": []
     }
   },
   "helpers": {

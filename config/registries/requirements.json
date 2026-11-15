@@ -182,6 +182,41 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.log_refuses_what_its_rules_forbid": {
+      "description": "Each rule of the data root's event log refuses its breach by name and leaves the log unchanged.",
+      "lower_layer": "The rules are SQLite triggers and constraints of log.sql; only a real database holds them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.log_views_read_as_defined": {
+      "description": "Each view of the data root's event log reads a settled log as defined, and each hot read uses its index.",
+      "lower_layer": "The views and query plans are SQLite's; only a real database holds them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.root_created_twice_is_all_equal": {
+      "description": "Creating a data root twice leaves every file byte-identical with nothing created, its index holding the vector table; another schema version is refused by name.",
+      "lower_layer": "Creation writes SQLite databases and folders on disk.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.seed_registry_is_whole": {
+      "description": "The seed registry names each reference definition once as a registered family's version 1, with registry.seeded, the research tags and every artifact type's measures.",
+      "lower_layer": "The seed registry is package data the unit layer may not read; the log a data root is born with holds it.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 1
+    },
+    "data_layer.vector_table_defers_without_extension_loading": {
+      "description": "Without extension loading a data root still creates every index table but the vector table, and names that table deferred.",
+      "lower_layer": "The index is a SQLite database on disk, built through the extension loader.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_platform.session_authority_is_content_addressed": {
       "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
       "owner": "alphalattice.control.data_platform",

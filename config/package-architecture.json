@@ -116,6 +116,19 @@
       "physical_namespace_target": "alphalattice.kernel.data"
     },
     {
+      "package_id": "data_layer",
+      "product_area": "kernel",
+      "capability_owner": "Data Layer",
+      "role": "DETERMINISTIC_CAPABILITY",
+      "dependency_level": 1,
+      "authority_kind": "DATA_LAYER_SCHEMA",
+      "allowed_peer_dependencies": [
+        "data"
+      ],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.data_layer"
+    },
+    {
       "package_id": "observation_runtime",
       "product_area": "control",
       "capability_owner": "Observation Runtime",

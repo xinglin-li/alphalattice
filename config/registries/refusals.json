@@ -6424,6 +6424,11 @@
 "owner": "data",
 "category": "INVALID_ARGUMENT"
 },
+"data_layer.schema_mismatch": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A data root database was made by another schema version; it is only read and never migrated or rebuilt in place."
+},
 "data_tradability.adv20_warmup_unavailable": {
 "owner": "data_tradability",
 "category": "FAILED_PRECONDITION"

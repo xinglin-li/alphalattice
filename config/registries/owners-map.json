@@ -4912,6 +4912,15 @@
       ],
       "folds_in": [],
       "note": "Consumer: devtools.testing.contracts applies test layer resources through a scoped subscription."
+    },
+    "data layer": {
+      "description": "The data layer holds the 0.2.8 data root: its event log, definition registry, catalog schema and search index, so every later reader shares one store.",
+      "covers": "the data root's folders, the DDL of log.sqlite, the DuckLake catalog and index.sqlite, the seed registry and the schema version a data root is refused by",
+      "owner": "alphalattice.kernel.data_layer",
+      "defined_by": [
+        "alphalattice.kernel.data_layer.root"
+      ],
+      "folds_in": []
     }
   }
 }

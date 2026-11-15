@@ -20,6 +20,11 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    # The 0.2.8 data layer: content identity, the event log's spans and the index's vectors.
+    "blake3>=1.0.11,<2",
+    "opentelemetry-api>=1.45.2,<2",
+    "opentelemetry-sdk>=1.45.2,<2",
+    "sqlite-vec>=0.1.9,<0.2",
     # Already locked; process telemetry is runtime, not only a test dependency.
     "psutil>=7,<8",
     "pydantic>=2.12,<3",
@@ -50,7 +55,7 @@ build_py = "scripts.release.wheel_build.BuildPy"
 scripts = "scripts"
 
 [tool.setuptools.package-data]
-alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg", "protocols/actor_execution/cl100k_base.tiktoken.gz"]
+alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg", "**/*.sql", "protocols/actor_execution/cl100k_base.tiktoken.gz"]
 
 [project.optional-dependencies]
 # Data Operations, Feature, Panel, and workspace storage.
