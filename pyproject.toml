@@ -33,7 +33,7 @@ dependencies = [
     # `protocols.actor_execution.projections` imports it at module load and is
     # reached by deterministic Factor and Evidence contracts.
     "tiktoken>=0.13,<1",
-    "xxhash>=3.7,<4",
+    "xxhash>=4,<5",
 ]
 
 [project.scripts]
@@ -60,13 +60,14 @@ alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "*
 [project.optional-dependencies]
 # Data Operations, Feature, Panel, and workspace storage.
 data = [
-    # Hold through 2026-12-12: 2.0 leaves query results open and refuses our registration;
-    # migrate the connection owner and validate 2.0 storage/rollback compatibility first.
-    "duckdb==1.5.6",
+    # Extension wheels are matched to this engine and loaded from installed packages offline.
+    "duckdb==2.0.0",
+    "duckdb-extension-ducklake==2.0.0",
+    "duckdb-extension-sqlite-scanner==2.0.0",
     "exchange-calendars>=4.13,<5",
     "numpy>=2.5,<3",
     "pandas>=3.0,<4",
-    "pyarrow>=25,<26",
+    "pyarrow>=26,<27",
     "tzdata>=2026.3,<2027",
 ]
 # Explicitly admitted live market acquisition; network stays off by default.
@@ -91,7 +92,7 @@ quant = [
     "optuna>=5,<6",
     "osqp>=1.1,<2",
     "pandas>=3.0,<4",
-    "pyarrow>=25,<26",
+    "pyarrow>=26,<27",
     "scikit-learn>=1.9,<2",
     "scipy>=1.18,<2",
     "statsmodels>=0.15,<0.16",

@@ -2,6 +2,24 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "data_layer.extension_unavailable": {
+      "owner": "alphalattice.kernel.data_layer",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.",
+        "zh-CN": "已安装的数据扩展无法加载。请运行 uv sync --locked --extra data，恢复与数据库引擎版本匹配的数据依赖。"
+      }
+    },
+    "workspace_database.runtime_extension_refused": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.",
+        "zh-CN": "工作区连接使用已安装的数据依赖，不支持在运行时安装或加载扩展。"
+      }
+    },
     "shared.wait.stopped": {
       "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The wait was stopped before its bound, as its owner asked; nothing it waited for was changed. Send the request again when it is wanted.", "zh-CN": "等待在到达上限前按其所有者的要求停止；所等待的内容没有任何改变。需要时请再次发送该请求。"}

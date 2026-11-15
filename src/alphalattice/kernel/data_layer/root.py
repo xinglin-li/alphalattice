@@ -3,8 +3,8 @@
 machine/log.sqlite      the event log and every table projected from it (schema/log.sql), with
                         the seed registry
 machine/index.sqlite    the search index (schema/index.sql), its vector table through sqlite-vec
-machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), made only when DuckLake loads
-                        from extensions/, the product's own; nothing is ever fetched
+machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), using the installed extension
+                        wheels when the data extra is present; nothing is ever fetched
 data, blobs, staging    DuckLake's Parquet files, content-addressed blobs, compute staging
 
 The DDL in schema/ is the 0.2.8 reference schemas' text, unchanged. Nothing reads a data root
@@ -26,6 +26,7 @@ from typing import Final
 import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.shared_kernel.environment import package_versions
 
 SCHEMA_VERSION: Final = 1
 """`PRAGMA user_version` of the databases this code creates; it refuses any other."""
@@ -130,10 +131,28 @@ def _database(path: Path, build) -> tuple[bool, frozenset[str]]:
     return True, tables
 
 
+def _load_extensions(connection) -> None:
+    """Load engine-matched binaries from the installed wheels, never INSTALL or a repository."""
+    import duckdb  # lazy: data is optional; log/index creation works without DuckDB
+
+    version = dict(package_versions(("duckdb",)))["duckdb"]
+    for name in ("sqlite_scanner", "ducklake"):
+        path = resources.files(f"duckdb_extension_{name}").joinpath(
+            "extensions", f"v{version}", f"{name}.duckdb_extension"
+        )
+        quoted = str(path).replace("\\", "/").replace("'", "''")
+        try:
+            connection.execute(f"LOAD '{quoted}'").complete()
+        except duckdb.Error as error:
+            raise DataError(
+                f"The installed {name} extension could not load. "
+                "Restore the locked data dependencies with uv sync --locked --extra data.",
+                code="data_layer.extension_unavailable",
+            ) from error
+
+
 def _catalog(root: Path) -> bool | None:
-    """The DuckLake catalog, made when DuckLake and DuckDB's SQLite scanner load from the root's
-    own extensions folder with every download off; None when they do not (DuckDB absent, or the
-    extensions not shipped)."""
+    """Create the SQLite-backed DuckLake catalog from installed wheels; defer without data."""
     try:
         import duckdb  # lazy: DuckDB is the optional data extra; without it the catalog defers
     except ImportError:
@@ -151,16 +170,16 @@ def _catalog(root: Path) -> bool | None:
     )
     try:
         try:
-            connection.execute("LOAD sqlite; LOAD ducklake;")
-        except duckdb.Error:
+            _load_extensions(connection)
+        except ModuleNotFoundError:
             return None
         data = (root / "data").as_posix()
         connection.execute(
             f"ATTACH 'ducklake:sqlite:{catalog.as_posix()}' AS lake (DATA_PATH '{data}/')"
-        )
-        connection.execute("USE lake")
+        ).complete()
+        connection.execute("USE lake").complete()
         for statement in _statements(schema_text("catalog.sql")):
-            connection.execute(statement)
+            connection.execute(statement).complete()
     finally:
         connection.close()
     return True

@@ -48,6 +48,8 @@ inputs request, repair the invalid fields and plan again with the same research 
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
 
+Data extensions come from the locked DuckLake and SQLite scanner packages. Do not use runtime SQL `INSTALL` to repair them; restore the locked data dependencies and follow the named refusal.
+
 Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
 
 If you installed AlphaLattice in this session, continue here: read this guide and

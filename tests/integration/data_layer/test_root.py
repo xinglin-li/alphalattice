@@ -339,12 +339,34 @@ def _files(root: Path) -> dict[str, str]:
 def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_path):
     """The second creation makes and changes nothing; another schema version is refused by name."""
     first = create_data_root(tmp_path)
+    assert "machine/catalog.sqlite" in first.created
+    import duckdb
+
+    from alphalattice.kernel.data_layer import root as owner
+
+    with duckdb.connect(
+        config={"autoinstall_known_extensions": False, "autoload_known_extensions": False}
+    ) as catalog:
+        owner._load_extensions(catalog)
+        catalog.execute(
+            f"ATTACH 'ducklake:sqlite:{tmp_path.as_posix()}/machine/catalog.sqlite' AS lake "
+            f"(DATA_PATH '{tmp_path.as_posix()}/data/')"
+        ).complete()
+        catalog.execute(
+            f"ATTACH '{tmp_path.as_posix()}/machine/log.sqlite' AS log (TYPE SQLITE, READ_ONLY)"
+        ).complete()
+        catalog.execute("SET TimeZone='UTC'").complete()
+        for statement in owner._statements(owner.schema_text("views.sql")):
+            catalog.execute(statement).complete()
+        assert catalog.execute("SELECT count(*) FROM raw_bar_asof(1)").fetchall() == [(0,)]
+        assert catalog.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
+        assert catalog.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")
-    made += ("machine/log.sqlite", "machine/index.sqlite")
+    made += ("machine/log.sqlite", "machine/index.sqlite", "machine/catalog.sqlite")
     assert (first.created, second.created, _files(tmp_path)) == (made, (), files)
-    assert second.deferred == ("catalog: deferred (ducklake extension absent)",)
+    assert second.deferred == ()
     assert _tables(tmp_path / "machine" / "index.sqlite") >= {
         "passage",
         "passage_vec",

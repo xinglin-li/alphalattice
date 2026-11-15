@@ -27,9 +27,6 @@ from time import monotonic
 import duckdb
 import pytest
 
-from alphalattice.control.product_host.composition.application_session import (
-    WorkspaceApplicationSession,
-)
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
     WorkspaceDatabase,
@@ -75,7 +72,11 @@ def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
     with pytest.raises(RuntimeError, match="second unit"), database.retain(read_only=False):
         assert retained_workspace_database(database.path)
         with database.transaction() as first:
-            first.execute("INSERT INTO unit VALUES (2, 'first')")
+            import pyarrow as pa
+
+            first.execute("SELECT id, note FROM unit").fetchone()
+            first.register("incoming", pa.table({"id": [2], "note": ["first"]}))
+            first.execute("INSERT INTO unit SELECT * FROM incoming RETURNING id").fetchone()
         with (
             pytest.raises(RuntimeError, match="second unit"),
             database.transaction() as second,
@@ -91,10 +92,21 @@ def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
     assert _rows(database) == [(1, "seed"), (2, "first")]
 
 
+@pytest.mark.proves("workspace_runtime.installed_extensions_only")
 def test_read_only_request_inside_a_writable_retention_cannot_write(tmp_path: Path) -> None:
     """Read only request inside a writable retention cannot write."""
 
     database = _prepared(tmp_path)
+    with database.connect(read_only=False) as writer:
+        absent = (tmp_path / "not-shipped.duckdb_extension").as_posix()
+        for install in (
+            lambda: writer.execute(f"/* offline */ INSTALL '{absent}'"),
+            lambda: writer.install_extension("not_shipped", repository=str(tmp_path)),
+        ):
+            with pytest.raises(
+                RuntimeError, match=r"workspace_database\.runtime_extension_refused"
+            ):
+                install()
     ordinary = database.connect(read_only=True)
     try:
         with pytest.raises(duckdb.Error):
@@ -226,6 +238,10 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
     tmp_path: Path,
 ) -> None:
     """Session read boundary holds each store once and writers queue behind it."""
+
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
 
     database = _prepared(tmp_path)
     task_store = tmp_path / "runtime" / "research-task-control.duckdb"
@@ -539,8 +555,8 @@ def test_guard_holds_through_keyword_and_statement_doors(tmp_path: Path) -> None
                 reader.executemany(query="INSERT INTO unit VALUES (?, ?)", parameters=[(3, "kw")])
             # Valid reads on every door still work after the refusals.
             assert reader.execute(query="SELECT count(*) FROM unit").fetchone() == (1,)
-            assert reader.sql(query="SELECT count(*) FROM unit").fetchone() == (1,)
-            assert reader.from_query("SELECT count(*) FROM unit").fetchone() == (1,)
+            assert reader.sql(query="SELECT count(*) FROM unit").fetchall() == [(1,)]
+            assert reader.from_query("SELECT count(*) FROM unit").fetchall() == [(1,)]
         finally:
             reader.close()
     # Persisted state, read back on a fresh instance after every connection

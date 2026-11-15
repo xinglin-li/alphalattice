@@ -264,7 +264,7 @@
       "seconds": 5
     },
     "data_layer.root_created_twice_is_all_equal": {
-      "description": "Creating a data root twice leaves every file byte-identical with nothing created, its index holding the vector table; another schema version is refused by name.",
+      "description": "Creating a data root with installed data dependencies creates the SQLite DuckLake catalog and runs its views and macros offline; repeating creation leaves every file byte-identical, and another schema version is refused by name.",
       "lower_layer": "Creation writes SQLite databases and folders on disk.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
@@ -593,6 +593,13 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "contract",
       "seconds": 10
+    },
+    "market_data_ops.set_quality_inputs_match_listing_readers": {
+      "description": "Set-scoped quality inputs match the persisted admissions, closes and actions returned by each listing reader.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "A real DuckDB store and Arrow result are needed to compare the persisted set query with its per-listing readers."
     },
     "observation_runtime.accepted_answers_enter_the_ledger_once": {
       "description": "If one accepted role answer published twice or lost its submitting lead, the ledger would count work that was never one exchange.",
@@ -1163,6 +1170,13 @@
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 10
+    },
+    "workspace_runtime.installed_extensions_only": {
+      "description": "Every workspace handle refuses SQL and method forms of runtime extension installation before the engine can read a repository.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The native DuckDB statement parser and registration APIs define this boundary; an in-memory policy double cannot prove that SQL and method calls reach it."
     },
     "workspace_runtime.seal_record_survives_a_held_file": {
       "description": "A file another process holds neither stops a store's open while the hold is brief nor kills a worker at its close.",

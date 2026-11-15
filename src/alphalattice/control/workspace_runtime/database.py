@@ -224,6 +224,7 @@ class WorkspaceConnection:
         # COMMIT ends a read-only transaction whether it is live or aborted,
         # keeps the session's registered views and temporary tables, and is
         # refused only when no transaction is open.
+        self._raw.complete()
         with suppress(duckdb.TransactionException):
             self._raw.execute("COMMIT")
 
@@ -241,8 +242,6 @@ class WorkspaceConnection:
         here before anything reaches the transaction.
         """
 
-        if not self._guarded:
-            return
         if isinstance(query, str):
             statements = self._raw.extract_statements(query)
         elif isinstance(query, duckdb.Statement):
@@ -250,7 +249,13 @@ class WorkspaceConnection:
         else:
             return
         for statement in statements:
-            if statement.type in _UNGUARDABLE_STATEMENTS:
+            if not self._guarded and statement.type == duckdb.StatementType.LOAD:
+                raise RuntimeError(
+                    "workspace_database.runtime_extension_refused: "
+                    "use the product's installed data dependencies; runtime extension installation "
+                    "and loading through a workspace connection are unavailable"
+                )
+            if self._guarded and statement.type in _UNGUARDABLE_STATEMENTS:
                 raise RuntimeError(
                     f"workspace_database.read_only_handle_refuses_statement:{statement.type.name}"
                 )
@@ -283,14 +288,24 @@ class WorkspaceConnection:
         """Run one of the engine's methods on this handle under the guard."""
 
         attribute = getattr(self._raw, name)
+        if not self._guarded and name in {"install_extension", "load_extension"}:
+            raise RuntimeError(
+                "workspace_database.runtime_extension_refused: "
+                "use the product's installed data dependencies; runtime extension installation "
+                "and loading through a workspace connection are unavailable"
+            )
+        # DuckDB 2.0 keeps execute()'s result until exhaustion, complete() or abort().
+        # Complete before new work: abort() can fail a transaction whose statement writes.
+        if name not in _RESULT_METHODS:
+            self._raw.complete()
+        if name in _SQL_DOORS:
+            self._refuse_unguardable(args[0] if args else kwargs.get("query"))
         if self._guarded:
             refused = _REFUSED_METHODS.get(name)
             if refused is not None:
                 raise RuntimeError(
                     f"workspace_database.read_only_handle_refuses_statement:{refused}"
                 )
-            if name in _SQL_DOORS:
-                self._refuse_unguardable(args[0] if args else kwargs.get("query"))
             if name in _SQL_DOORS or name in _STATEMENT_DOORS:
                 self._arm()
         try:
@@ -411,7 +426,10 @@ class WorkspaceConnection:
             return
         self._closed = True
         if not self._top:
-            self._raw.close()
+            try:
+                self._raw.complete()
+            finally:
+                self._raw.close()
             return
         # Untracked first: the engine closes the instance with its last
         # connection (a checkpoint, then the file), and an opener that
@@ -426,7 +444,10 @@ class WorkspaceConnection:
         counted = _release_top_level(self)
         try:
             with span("write", "duckdb_instance_close"):
-                self._raw.close()
+                try:
+                    self._raw.complete()
+                finally:
+                    self._raw.close()
         finally:
             if counted:
                 _closed(self._path)
@@ -477,6 +498,31 @@ class WorkspaceConnection:
 
 _SQL_DOORS = frozenset({"execute", "executemany", "sql", "query", "from_query"})
 """The engine's methods that take SQL: text or a statement object, positionally or as ``query=``."""
+
+_RESULT_METHODS = frozenset(
+    {
+        "fetchone",
+        "fetchmany",
+        "fetchall",
+        "fetchdf",
+        "fetch_df",
+        "df",
+        "fetchnumpy",
+        "fetch_arrow_table",
+        "fetch_record_batch",
+        "fetch_df_chunk",
+        "fetch_arrow_reader",
+        "to_arrow_table",
+        "to_arrow_reader",
+        "arrow",
+        "pl",
+        "torch",
+        "tf",
+        "complete",
+        "abort",
+    }
+)
+"""Result readers retain the pending execute() result; every other call starts new work."""
 
 _STATEMENT_DOORS = frozenset(
     {

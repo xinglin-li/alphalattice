@@ -39,13 +39,19 @@ def configure_duckdb(connection: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyCo
     """Give a DuckDB connection's instance the applied threads."""
     threads = reader_threads()
     if threads is not None:
-        connection.execute(f"SET threads TO {threads}")
+        connection.execute(f"SET threads TO {threads}").complete()
     return connection
 
 
 def connect_duckdb(path: Path | str, *, read_only: bool) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB file with the applied threads."""
-    return configure_duckdb(duckdb.connect(str(path), read_only=read_only))
+    return configure_duckdb(
+        duckdb.connect(
+            str(path),
+            read_only=read_only,
+            config={"autoinstall_known_extensions": False, "autoload_known_extensions": False},
+        )
+    )
 
 
 __all__ = ["apply_reader_threads", "configure_duckdb", "connect_duckdb", "reader_threads"]

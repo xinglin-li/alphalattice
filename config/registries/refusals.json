@@ -1,5 +1,7 @@
 {
 "entries": {
+"workspace_database.runtime_extension_refused": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "Workspace connections use the installed data dependencies and refuse runtime extension installation or loading."},
+"data_layer.extension_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An installed extension cannot load; restore the engine-matched locked data dependencies before creating the catalog."},
 "testing.worker_capture_unavailable": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "A worker fault stream or its attempt record cannot be retained; the result does not prove the missing evidence."},
 "testing.worker_identity_unknown": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "The worker identity is not an admitted xdist worker name; its evidence is not assigned to another process."},
 "agent_bundle.admission_busy": {"owner": "agent_bundle", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded workspace admission is occupied; this answer was not filed and can be retried."},
