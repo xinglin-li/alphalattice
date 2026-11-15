@@ -47,7 +47,8 @@ import re
 import secrets
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import partial
 from http import HTTPStatus
@@ -210,6 +211,27 @@ class AdmittedRequest:
     issues_session: bool
     launch: bool = False
     provenance: RequestProvenance | None = None
+    trace: tuple[tuple[str, str], ...] = ()
+    """The W3C `traceparent` and `baggage` headers the client sent, for its step's span."""
+
+
+TRACE_HEADERS: Final = ("traceparent", "baggage")
+
+
+@contextmanager
+def _step(
+    route: Route, operation: object, trace: tuple[tuple[str, str], ...], *, traced: bool
+) -> Iterator[None]:
+    """One span for a client's step or a write, in the trace its headers name; a polling read
+    opens none. The history, and with it the SDK, is imported only for a traced step."""
+    if not traced:
+        yield
+        return
+    from alphalattice.kernel.data_layer.history import step  # lazy: the Host's, never the CLI's
+
+    named = operation if isinstance(operation, str) else route.path
+    with step("host.request", dict(trace), operation=named, route=f"{route.method} {route.path}"):
+        yield
 
 
 DEFAULT_IDLE_TIMEOUT_SECONDS: Final = 900
@@ -459,6 +481,11 @@ class LocalWebApplication:
             # The session cookie is issued at the launch URL alone (`_launch`).
             issues_session=False,
             provenance=provenance,
+            trace=tuple(  # header names are case-insensitive; a client may send `Traceparent`
+                (name.lower(), value)
+                for name, value in headers.items()
+                if name.lower() in TRACE_HEADERS
+            ),
         )
 
     def _launch(self, query: str, headers: Mapping[str, str]) -> AdmittedRequest | LocalWebResponse:
@@ -576,9 +603,10 @@ class LocalWebApplication:
             )
             if self.admission is not None:
                 action = partial(self.admission, action, writes)
-            answer = self._offer_workbench(
-                with_binding_notice(action()), admitted.provenance, operation=operation
-            )
+            with _step(route, operation, admitted.trace, traced=route.external_client or writes):
+                answer = self._offer_workbench(
+                    with_binding_notice(action()), admitted.provenance, operation=operation
+                )
         except LocalWebError as error:
             return self._refuse(
                 HTTPStatus.BAD_REQUEST,

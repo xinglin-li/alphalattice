@@ -484,7 +484,7 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """One session reader assigns both requests and their counted launches to the same
-    unambiguous session."""
+    unambiguous session; a trace in the environment is sent only as one ASCII line."""
 
     from alphalattice.interface.local_application import cli_contract
 
@@ -494,6 +494,9 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     both = {**claude, **codex}
     assert cli_contract.agent_session(both) is None
     assert cli_contract.agent_provenance_headers(both) == {}
+    traced = {"TRACEPARENT": "00-1-2-01", "BAGGAGE": "a=1\r\nX-Injected: 1"}  # one line only
+    assert cli_contract.agent_provenance_headers(traced) == {"traceparent": "00-1-2-01"}
+    assert cli_contract.agent_provenance_headers({"BAGGAGE": "a=é"}) == {}  # ASCII only
     launches = [cli_contract.count_launch(env) for env in (claude, both, claude, codex)]
     assert launches == [1, None, 2, 1]
     assert cli_contract.agent_session(claude) == ("claude-code", "claude-1")

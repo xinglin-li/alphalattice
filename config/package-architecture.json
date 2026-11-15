@@ -172,6 +172,7 @@
       "dependency_level": 1,
       "authority_kind": "TASK_AUTHORITY",
       "allowed_peer_dependencies": [
+        "data_layer",
         "workspace_runtime"
       ],
       "artifact_writer": true,
@@ -633,6 +634,8 @@
     "alphalattice.investment.risk_research.experiments.window": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.investment.sector_research.inputs.storage": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.kernel.data.calendar": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.kernel.data_layer.history": "Load the Host's history only for a step a Host records; it brings the OpenTelemetry SDK.",
+    "alphalattice.kernel.data_layer.spans": "Defer this optional implementation until a Host or a traced worker call records a span; dependencies: opentelemetry-sdk.",
     "alphalattice.kernel.knowledge._embeddings": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.kernel.knowledge._reranking": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.kernel.knowledge._torch": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",

@@ -26,6 +26,7 @@ import multiprocessing
 import multiprocessing.connection
 import os
 import pickle
+import sys
 import tempfile
 import threading
 from collections import deque
@@ -37,7 +38,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
@@ -47,6 +48,13 @@ from alphalattice.kernel.shared_kernel.spans import (
     span,
 )
 
+if TYPE_CHECKING:  # the SDK is imported by a traced call alone
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from alphalattice.kernel.data_layer.spans import RowsExporter
+
+_TRACER: tuple[TracerProvider, RowsExporter] | None = None
+"""This worker process's tracer provider and the exporter keeping its spans' rows."""
 POLL_SECONDS = 0.5
 """How often the waiting parent reads the call's answer and the Task's cancellation."""
 
@@ -134,6 +142,7 @@ def run_in_child(
         with span("wait", "worker"):
             answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
     absorb(answer.get("spans"))
+    _traced(answer)
     return _answered(answer)
 
 
@@ -201,6 +210,7 @@ class ChildCalls:
         with span("wait", "worker"):
             answer = _waited(submitted, self._flag, self._cancelled)
         absorb(answer.get("spans"))
+        _traced(answer)
         if answer["status"] != "OK" or submitted.answer is None:
             return _answered(answer)
         with submitted.answer.open("rb") as source:
@@ -273,6 +283,7 @@ def _submitted(
             str(flag),
             threads,
             None if answer is None else str(answer),
+            _carrier(),
         )
     except BrokenProcessPool:
         assert pool is not None
@@ -390,6 +401,7 @@ def _call(
     flag: str,
     threads: int | None = None,
     answer: str | None = None,
+    trace: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -398,14 +410,21 @@ def _call(
     `threads`, the numerical libraries are held to that many threads for the call; with
     `answer`, the result is written to that file and the pipe carries only that it was. The
     call's spans, with the worker's CPU seconds and bytes over it, ride beside the answer for
-    the parent's stage ledger (A4).
+    the parent's stage ledger (A4). With `trace`, the W3C context of the step that sent the call,
+    the call is one `worker.call` span in that trace, handed back as its step event (`trace`).
     """
     ledger: SpanLedger | None = None
+    rows: list[dict[str, Any]] = []
     try:
         arguments = _held(arguments)
         module_name, _, name = target.partition(":")
         function = getattr(importlib.import_module(module_name), name)
-        with held_offline(), _numerical_threads(threads), collect() as ledger:
+        with (
+            held_offline(),
+            _numerical_threads(threads),
+            collect() as ledger,
+            _worker_span(target, trace, rows),
+        ):
             result = function(**arguments, cancelled=lambda: os.path.exists(flag))
         if answer is not None:
             with open(answer, "wb") as sink:
@@ -420,12 +439,60 @@ def _call(
             "message": str(error)[:2000],
             "failure_class": declared if isinstance(declared, str) else None,
             "spans": None if ledger is None else ledger.readout_value,
+            "trace": rows or None,
         }
     return {
         "status": "OK",
         "result": result,
         "spans": None if ledger is None else ledger.readout_value,
+        "trace": rows or None,
     }
+
+
+def _carrier() -> dict[str, str]:
+    """The trace of the step sending a call. Only a Host loads its history, so a process that has
+    not cannot be recording, and pays no import for it."""
+    history = sys.modules.get("alphalattice.kernel.data_layer.history")
+    return {} if history is None else history.trace_carrier()
+
+
+def _traced(answer: Mapping[str, Any]) -> None:
+    """Hand the worker's spans to the Host's log, when the call carried a trace."""
+    if answer.get("trace"):
+        from alphalattice.kernel.data_layer.history import traced  # lazy: a traced answer alone
+
+        traced(answer["trace"])
+
+
+@contextmanager
+def _worker_span(
+    target: str, trace: Mapping[str, str] | None, rows: list[dict[str, Any]]
+) -> Iterator[None]:
+    """The call as one `worker.call` span in the trace `trace` names; its step event goes to
+    `rows`. Without a trace, nothing: the SDK is imported only by a traced call."""
+    if not trace:
+        yield
+        return
+    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, for a traced call alone
+        RowsExporter,
+        context_of,
+        tracer_provider,
+    )
+
+    global _TRACER
+    if _TRACER is None:  # one per worker process, kept with it
+        kept = RowsExporter()
+        _TRACER = (tracer_provider(kept), kept)
+    provider, exporter = _TRACER
+    tracer = provider.get_tracer("worker")
+    try:
+        with tracer.start_as_current_span(
+            "worker.call", context_of(trace), attributes={"call": target}
+        ):
+            yield
+    finally:
+        rows.extend(exporter.rows)
+        exporter.rows.clear()
 
 
 def _held(arguments: dict[str, Any]) -> dict[str, Any]:

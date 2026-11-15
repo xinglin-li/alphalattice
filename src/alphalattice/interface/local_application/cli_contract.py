@@ -196,6 +196,8 @@ declares, never authority and never identity (LAWS ID6, OP13); a session bound t
 not. The Host records them beside what the request did, so a result outlives its session
 and a goal holds what was done for it."""
 
+TRACE_VARIABLES: Final = {"TRACEPARENT": "traceparent", "BAGGAGE": "baggage"}  # W3C, as text
+
 AGENT_SESSION_VARIABLES: Final = (
     ("claude-code", "CLAUDE_CODE_SESSION_ID"),
     ("codex", "CODEX_THREAD_ID"),
@@ -237,7 +239,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
 
 
 def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None) -> dict[str, str]:
-    """The headers naming the agent session a command runs in, and the goal it names.
+    """The headers naming the agent session a command runs in, the goal it names and its trace.
 
     The session is `agent_session`'s; with none named, `--goal` still attributes the request.
     """
@@ -247,6 +249,9 @@ def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None
         headers = {AGENT_VENDOR_HEADER: session[0], AGENT_SESSION_HEADER: session[1]}
     if goal is not None:
         headers[GOAL_HEADER] = goal
+    for variable, header in TRACE_VARIABLES.items():
+        if (value := environ.get(variable, "")).isascii() and value.isprintable() and value:
+            headers[header] = value
     return headers
 
 
