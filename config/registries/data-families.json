@@ -3692,6 +3692,7 @@
       "writers": [
         "data_layer.log:HostLog",
         "data_layer.log:hold",
+        "data_layer.log:replay",
         "data_layer.root:_database",
         "data_layer.store:stage",
         "data_layer.backup:restore_data_root",
@@ -3731,6 +3732,7 @@
     "alternative_evidence.runtime.task_adapter:AlternativeEvidenceDocumentTaskAdapter": "applies a planned preparation's session width in memory (PREPARATIONS.open)",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
+    "data_layer.history:open_history": "opens the data root through HostLog.open, whose class is the data-root family's writer",
     "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes"
   }
 }

@@ -32,6 +32,7 @@ RUNNING_TEST: dict[str, object] = {"id": None, "private": False, "factory": None
 # This process's backup root: one per process, named once at configure. A test's own workspaces'
 # generations go with the passed test, and the root with a clean session (backups_made).
 BACKUP_ROOT: Path | None = None
+DATA_ROOT: Path | None = None
 
 
 def backups_made() -> frozenset[str]:
@@ -124,9 +125,12 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
     # rules: under PowerShell quoting that loses a path's backslashes, and the file lands at the
     # drive root. The run's own shell must not decide that; a test of another shell sets its own.
     os.environ.setdefault("ALPHALATTICE_SHELL", "posix")
-    global BACKUP_ROOT
+    global BACKUP_ROOT, DATA_ROOT
     BACKUP_ROOT = Path(tempfile.mkdtemp(prefix="alphalattice-test-backups-", dir=backup_parent))
     os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(BACKUP_ROOT)
+    # The Host's research history: one data root per test process, never the machine's own.
+    DATA_ROOT = Path(tempfile.mkdtemp(prefix="alphalattice-test-data-", dir=backup_parent))
+    os.environ["ALPHALATTICE_DATA_ROOT"] = str(DATA_ROOT)
 
 
 @contextmanager

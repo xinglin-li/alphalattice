@@ -18,9 +18,8 @@ names an event a crash could still lose.
 The log keeps its own clock (`clock`): a live event's recorded_us is the larger of the wall clock
 and the last value plus one microsecond, so it never steps back when the wall clock does.
 
-This card projects the registry's own two event types, the chain's checkpoint and
-`artifact.produced`, whose profile row an inline body's foreign key needs in the same unit; every
-other type's projection is added by its own card, and its events are kept meanwhile.
+Each event type's projection is project.py's; `replay` copies the events alone into an empty log
+through the same write and rebuilds every projected table ALL EQUAL.
 """
 
 from __future__ import annotations
@@ -48,13 +47,15 @@ from alphalattice.kernel.data_layer.chain import (
     fold,
     fold_segments,
 )
+from alphalattice.kernel.data_layer.project import ENDED, project
+from alphalattice.kernel.data_layer.root import build_log
 
 BATCH_SIZE: Final = 64
 """Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256).
 FULL costs a tenth of that against NORMAL (14.6k against 16.6k at 64 on the workshop PC)."""
 BATCH_SECONDS: Final = 0.2
 """The longest an ordinary event waits for its batch's commit."""
-ENDED: Final = ("completed", "failed", "cancelled")
+
 LOCK_NAME: Final = "host.lock"
 LOCK_AT: Final = 1 << 30
 """The byte a Windows Host locks: past any name the lock file holds."""
@@ -435,7 +436,7 @@ def _write(
         con.execute("INSERT INTO event_text VALUES (?, ?)", (seq, text))
     stored = con.execute("SELECT * FROM event WHERE seq = ?", (seq,)).fetchone()
     _fold(con, stored)
-    _project(con, stored, text)
+    project(con, stored, text)
     _body(con, stored, body, live=live)
     return seq
 
@@ -446,12 +447,6 @@ def _fold(con: sqlite3.Connection, event: sqlite3.Row) -> None:
     con.execute(
         "INSERT OR REPLACE INTO chain_head VALUES (1, ?, ?, ?)", (event["seq"], new, CHAIN_VERSION)
     )
-
-
-def _project(con: sqlite3.Connection, event: sqlite3.Row, text: str | None) -> None:
-    handler = PROJECTIONS.get(event["type"])
-    if handler is not None:
-        handler(con, event, json.loads(event["attrs"]), text)
 
 
 def _body(con: sqlite3.Connection, event: sqlite3.Row, body: bytes | None, *, live: bool) -> None:
@@ -469,97 +464,34 @@ def _body(con: sqlite3.Connection, event: sqlite3.Row, body: bytes | None, *, li
         con.execute("INSERT INTO artifact_body VALUES (?, ?)", (event["subject_id"], body))
 
 
-def _json(value: Any) -> str | None:
-    return None if value is None else canonical(value).decode()
+def replay(source: sqlite3.Connection, path: Path) -> sqlite3.Connection:
+    """A new log at `path` holding `source`'s events, each written again through the one write.
 
-
-def _definition(
-    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
-) -> None:
-    d = json.loads(text or "{}")
-    values = [d["family"], d["name"], d["version"], d.get("status", "experimental")]
-    values += [d.get("relation"), _json(d.get("conversion")), _json(d.get("spec", {})), d["text"]]
-    values += [d.get("code_ref"), _json(d.get("golden")), d.get("owner", event["node"])]
-    con.execute(
-        f"INSERT INTO definition VALUES ({', '.join('?' * 13)}, NULL)",
-        (*values, event["seq"], event["seq"]),
+    Nothing but the events, their texts and inline bodies is copied, one event at a time; every
+    projected table is rebuilt from them, so `project.differences(source, replayed)` is empty
+    when the log is the only truth. A forgotten text is admitted as it was once (live=False).
+    """
+    con = sqlite3.connect(path, isolation_level=None)
+    con.row_factory = sqlite3.Row
+    build_log(con)
+    con.execute("PRAGMA foreign_keys = ON")
+    rows = source.cursor()
+    rows.row_factory = sqlite3.Row  # whatever rows the caller's connection makes
+    rows.execute(
+        "SELECT e.*, t.text, b.body FROM event e LEFT JOIN event_text t ON t.seq = e.seq"
+        " LEFT JOIN artifact_body b ON e.type = 'artifact.produced' AND b.artifact_id ="
+        " e.subject_id ORDER BY e.seq"
     )
-
-
-def _definition_status(
-    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
-) -> None:
-    key = (attrs["family"], attrs["name"], attrs["version"])
-    where = "WHERE family = ? AND name = ? AND version = ?"
-    owner = con.execute(f"SELECT owner FROM definition {where}", key).fetchone()
-    if owner is None or (
-        owner[0] != event["node"] and event["actor_kind"] not in ("person", "host")
-    ):
-        raise DataError(
-            "a definition's status is moved by its owner, the person or the host",
-            code="data_layer.definition_not_owner",
-        )
-    con.execute(
-        f"UPDATE definition SET status = ?, status_seq = ?, status_reason = ? {where}",
-        (attrs["status"], event["seq"], attrs.get("reason"), *key),
-    )
-
-
-def _checkpoint(
-    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
-) -> None:
-    con.execute(
-        "INSERT INTO chain_checkpoint VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            attrs["seq"],
-            attrs["kind"],
-            attrs["head"],
-            event["occurred_us"],
-            attrs.get("note"),
-            attrs.get("chain_version", CHAIN_VERSION),
-        ),
-    )
-
-
-def _artifact(
-    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
-) -> None:
-    """An artifact's profile: what it means, how it is identified and where its body is."""
-    trial = attrs.get("trial_id")
-    if trial and con.execute("SELECT 1 FROM trial WHERE trial_id = ?", (trial,)).fetchone() is None:
-        raise DataError(
-            "a trial's artifact follows the trial's registration",
-            code="data_layer.artifact_trial_unregistered",
-        )
-    values = [
-        event["subject_id"],
-        attrs["identity_kind"],
-        attrs["type"],
-        attrs.get("type_version", 1),
-    ]
-    values += [attrs["meaning"], attrs.get("recipe_key"), attrs.get("selection_id"), trial]
-    values += [_json(attrs.get("shape")), attrs.get("valid_from"), attrs.get("valid_to")]
-    values += [attrs.get("row_count"), attrs.get("size_bytes"), attrs.get("content_digest")]
-    state = "never_stored" if attrs["storage"] == "none" else "present"
-    con.execute(
-        "INSERT INTO artifact (artifact_id, identity_kind, type, type_version, meaning, recipe_key,"
-        " selection_id, trial_id, shape, valid_from, valid_to, row_count, size_bytes,"
-        f" content_digest, storage, body_state, produced_seq) VALUES ({', '.join('?' * 17)})",
-        (*values, attrs["storage"], state, event["seq"]),
-    )
-    if attrs["storage"] != "none":  # a kept trial keeps what it produces later too
-        con.execute(
-            "INSERT OR IGNORE INTO live_ref SELECT ?, 'trial', trial_id, ? FROM trial"
-            " WHERE trial_id = ? AND kept = 1",
-            (event["subject_id"], event["seq"], trial),
-        )
-
-
-Projection = Callable[[sqlite3.Connection, sqlite3.Row, dict[str, Any], str | None], None]
-PROJECTIONS: Final[dict[str, Projection]] = {
-    "definition.registered": _definition,
-    "definition.status_changed": _definition_status,
-    "chain.checkpointed": _checkpoint,
-    "artifact.produced": _artifact,
-}
-"""Each projected event type's handler; it reads the event, its attributes and its text only."""
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        for event in rows:
+            row = {column: event[column] for column in ENVELOPE}
+            text, body = event["text"], event["body"]
+            admit(row, text, _spec(con, row), _superseded(con), live=False, body=body)
+            _write(con, row, text, body, live=False)
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        con.close()
+        raise
+    return con

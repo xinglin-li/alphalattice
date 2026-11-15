@@ -210,7 +210,7 @@ log.flush()
     "point",
     [
         pytest.param("_fold", id="after the event row"),
-        pytest.param("_project", id="after the chain fold"),
+        pytest.param("project", id="after the chain fold"),
         pytest.param("_end", id="after the projection, before the commit"),
     ],
 )
@@ -269,11 +269,14 @@ os._exit(9)
 def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root):
     """An ordinary event is committed by its batch's size, its deadline, a durable event after it
     or the flush a reply waits for, which a killed Host keeps; a durable one when appended."""
+    with HostLog.open(root, now_us=T0) as log:  # a goal is set in its workspace
+        log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
     base = _events(root)
     with HostLog.open(root, batch=2, seconds=60, now_us=T0) as log:
         log.record("tool.call", attrs={"tool": "a"}, phase="completed")
         assert _events(root) == base
-        log.record("goal.set", ("goal", "g1"), {"title": "durable"}, actor=("person", "me"))
+        goal = {"title": "durable"}
+        log.record("goal.set", ("goal", "g1"), goal, workspace="w1", actor=("person", "me"))
         assert _events(root) == base + 2
         log.record("tool.call", attrs={"tool": "b"}, phase="completed")
         log.record("tool.call", attrs={"tool": "c"}, phase="completed")

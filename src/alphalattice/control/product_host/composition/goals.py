@@ -57,6 +57,7 @@ from alphalattice.control.product_host.publication.goals import (
 )
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+from alphalattice.interface.local_application import goal_history
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
@@ -1771,6 +1772,7 @@ class GoalApplication:
         )
         value = Goal.seal(**fields)
         saved = self.store.publish(value, prior.goal_hash if prior else None)
+        goal_history.saved(prior, saved, caller)
         answer: dict[str, Any] = {
             "status": "GOAL_SAVED",
             **self._identity_of(saved),

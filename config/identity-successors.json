@@ -15163,6 +15163,34 @@
    "successor": "4e52960f3376090348764c303a2d86dc7bcb9a37d92242c8e05bdf05d1531834",
    "change": "The Host no longer asks for a restart while it prepares data",
    "reason": "Data preparation now records each manifest it is about to publish under the mutation gate before writing it; two product host roles' implementation fingerprints move with that ownership record, while their inputs, computation and every other identity are unchanged (77 of 79 readout values equal)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "successor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "successor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "11609a7ad8665fb1269616d5bbbcf8476f1b9e16b17096f76ded8822c44eb55f",
+   "successor": "12e8f2a6a10696d4f34a4629e3a9fb3f4afbf243ad734f9feb6f23dbee4e84d7",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "d2c15cf18691bd8c34e7b2de937b030687b3c822f21bc4a66f3a16605e4678b9",
+   "successor": "bc5590e040f36da93ee57fd05373ea87914550df70ac54385fd47a6bee04b81e",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
   }
  ]
 }

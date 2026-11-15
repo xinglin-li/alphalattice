@@ -14,14 +14,15 @@ registration.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from importlib import resources
-from pathlib import Path
-from typing import Final
+from pathlib import Path, PurePath
+from typing import Any, Final
 
 import sqlite_vec
 
@@ -79,7 +80,8 @@ def statements(text: str) -> list[str]:
     return [part.strip() for part in bare.split(";") if part.strip()]
 
 
-def _build_log(connection: sqlite3.Connection) -> None:
+def build_log(connection: sqlite3.Connection) -> None:
+    """log.sql's tables in `connection`, with every seed definition registered at seq 1."""
     connection.executescript(schema_text("log.sql"))
     with connection:
         rows = seed_rows()
@@ -151,16 +153,19 @@ def load_extensions(connection) -> None:
             ) from error
 
 
-def _catalog(root: Path) -> bool | None:
-    """Create the SQLite-backed DuckLake catalog from installed wheels; defer without data."""
+def sql_path(path: PurePath) -> str:
+    """`path` for a DuckDB string literal: forward slashes, each quote doubled."""
+    return path.as_posix().replace("'", "''")
+
+
+def duckdb_session(root: Path) -> Any | None:
+    """An in-memory DuckDB session with the SQLite scanner and DuckLake loaded from their installed
+    wheels, every download off; None without the data extra. The caller closes it."""
     try:
-        import duckdb  # lazy: DuckDB is the optional data extra; without it the catalog defers
+        import duckdb  # lazy: DuckDB is the optional data extra; without it the session defers
     except ImportError:
         return None
-    catalog = root / "machine" / "catalog.sqlite"
-    if catalog.exists():
-        return False
-    connection = duckdb.connect(  # in memory: the catalog lives in the attached SQLite file
+    connection = duckdb.connect(
         ":memory:",
         config={
             "extension_directory": str(root / "extensions"),
@@ -169,13 +174,30 @@ def _catalog(root: Path) -> bool | None:
         },
     )
     try:
-        try:
-            load_extensions(connection)
-        except ModuleNotFoundError:
-            return None
-        data = (root / "data").as_posix()
+        load_extensions(connection)
+    except ModuleNotFoundError:
+        connection.close()
+        return None
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def _catalog(root: Path) -> bool | None:
+    """Create the SQLite-backed DuckLake catalog from installed wheels; defer without data."""
+    if importlib.util.find_spec("duckdb") is None:
+        return None
+    catalog = root / "machine" / "catalog.sqlite"
+    if catalog.exists():
+        return False
+    connection = duckdb_session(root)  # in memory: the catalog lives in the attached SQLite file
+    if connection is None:
+        return None
+    try:
+        data = sql_path(root / "data")
         connection.execute(
-            f"ATTACH 'ducklake:sqlite:{catalog.as_posix()}' AS lake (DATA_PATH '{data}/')"
+            f"ATTACH 'ducklake:sqlite:{sql_path(catalog)}' AS lake (DATA_PATH '{data}/')"
         ).complete()
         connection.execute("USE lake").complete()
         for statement in statements(schema_text("catalog.sql")):
@@ -193,7 +215,7 @@ def create_data_root(path: Path) -> DataRoot:
             (path / folder).mkdir(parents=True, exist_ok=True)
             created.append(folder)
     tables: frozenset[str] = frozenset()
-    for name, build in (("log.sqlite", _build_log), ("index.sqlite", _build_index)):
+    for name, build in (("log.sqlite", build_log), ("index.sqlite", _build_index)):
         made, tables = _database(path / "machine" / name, build)
         if made:
             created.append(f"machine/{name}")

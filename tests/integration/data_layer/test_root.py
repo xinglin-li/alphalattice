@@ -6,12 +6,14 @@ import hashlib
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer.reading import reading_session
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 N = 10**9
@@ -340,27 +342,12 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     """The second creation makes and changes nothing; another schema version is refused by name."""
     first = create_data_root(tmp_path)
     assert "machine/catalog.sqlite" in first.created
-    import duckdb
-
-    from alphalattice.kernel.data_layer import root as owner
-
-    with duckdb.connect(
-        config={"autoinstall_known_extensions": False, "autoload_known_extensions": False}
-    ) as catalog:
-        owner.load_extensions(catalog)
-        catalog.execute(
-            f"ATTACH 'ducklake:sqlite:{tmp_path.as_posix()}/machine/catalog.sqlite' AS lake "
-            f"(DATA_PATH '{tmp_path.as_posix()}/data/')"
-        ).complete()
-        catalog.execute(
-            f"ATTACH '{tmp_path.as_posix()}/machine/log.sqlite' AS log (TYPE SQLITE, READ_ONLY)"
-        ).complete()
-        catalog.execute("SET TimeZone='UTC'").complete()
-        for statement in owner.statements(owner.schema_text("views.sql")):
-            catalog.execute(statement).complete()
-        assert catalog.execute("SELECT count(*) FROM raw_bar_asof(1)").fetchall() == [(0,)]
-        assert catalog.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
-        assert catalog.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
+    reading = reading_session(tmp_path)  # the Host's views over the log, the lake attached
+    assert reading is not None
+    with closing(reading):
+        assert reading.execute("SELECT count(*) FROM raw_bar_asof(1)").fetchall() == [(0,)]
+        assert reading.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
+        assert reading.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")

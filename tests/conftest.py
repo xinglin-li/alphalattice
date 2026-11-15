@@ -712,14 +712,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             if goldens := getattr(session.config, "_golden_cleanup", None):
                 cleanup.callback(goldens.close)
             cleanup.callback(_verify_session_seeds)
-            if (
-                environment.BACKUP_ROOT is not None and not session.testsfailed
-            ):  # it outlived every run
-                cleanup.callback(
-                    evaluation.golden_workspaces.remove_tree,
-                    environment.BACKUP_ROOT,
-                    environment.BACKUP_ROOT.parent,
-                )
+            for root in (environment.BACKUP_ROOT, environment.DATA_ROOT):
+                if root is not None and not session.testsfailed:  # it outlived every run
+                    cleanup.callback(evaluation.golden_workspaces.remove_tree, root, root.parent)
     except Exception as error:
         # An xdist worker's exit status alone is not propagated as a test failure.
         message = f"session fixture cleanup failed: {type(error).__name__}: {error}"

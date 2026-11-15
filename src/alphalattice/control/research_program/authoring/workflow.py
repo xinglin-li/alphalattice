@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
 
 from alphalattice.kernel.shared_kernel.environment import held_offline
@@ -329,6 +329,26 @@ class _OutputStores:
     evidence: ResearchEvidenceStore
 
 
+class TrialRecorder(Protocol):
+    """Where a sealed run's trial is recorded: its start before the Desk runs, then its end."""
+
+    def started(self, sealed: SealedSubmission) -> object:
+        """Record the run's start; what it returns is handed to `ended`."""
+
+    def ended(self, trial: object, evidence: ResearchExecutionEvidence | None) -> None:
+        """Record the run's end: its evidence, or None when the Desk raised."""
+
+
+class _NoTrials:
+    """No history: a workflow composed outside a Host records nothing."""
+
+    def started(self, sealed: SealedSubmission) -> object:
+        return None
+
+    def ended(self, trial: object, evidence: ResearchExecutionEvidence | None) -> None:
+        return None
+
+
 class ResearchProgramWorkflow:
     """Orchestrate the three commands over an injected dispatcher and executors."""
 
@@ -340,6 +360,7 @@ class ResearchProgramWorkflow:
         workspace_root: Path,
         source_workspace: Path,
         verifiers: tuple[DeskEvidenceVerifier, ...] = (),
+        trials: TrialRecorder | None = None,
     ) -> None:
         """Install Desk execution and verification owners for one workspace.
 
@@ -349,6 +370,7 @@ class ResearchProgramWorkflow:
             workspace_root: Root allowed to hold output workspaces.
             source_workspace: Source workspace that outputs must not overlap.
             verifiers: Explicitly installed Desk evidence verifiers.
+            trials: Where each sealed run's trial is recorded; nothing when absent.
 
         Raises:
             AuthoringError: If executor or verifier kinds are duplicated.
@@ -368,6 +390,7 @@ class ResearchProgramWorkflow:
         # baseline is caller input, so trusting it to describe the source would
         # let a document authorize writes into the workspace it reads.
         self._source_workspace = Path(source_workspace)
+        self._trials: TrialRecorder = trials or _NoTrials()
 
     def validate(self, document: Mapping[str, Any]) -> object:
         """Validate an authored document against the installed Desk kinds."""
@@ -748,14 +771,19 @@ class ResearchProgramWorkflow:
         it proved identical, which is the only difference the two ever had. Every Desk's
         call runs held offline, as its envelope declares, whatever the workspace allows.
         """
-        with held_offline():
-            result = executor.execute(
-                program=program,
-                document=sealed.document,
-                authority=sealed.authority,
-                output_workspace=outputs.root,
-                recorder=recorder,
-            )
+        trial = self._trials.started(sealed)
+        try:
+            with held_offline():
+                result = executor.execute(
+                    program=program,
+                    document=sealed.document,
+                    authority=sealed.authority,
+                    output_workspace=outputs.root,
+                    recorder=recorder,
+                )
+        except BaseException:
+            self._trials.ended(trial, None)
+            raise
         evidence = ResearchExecutionEvidence.create(
             kind=program.kind,
             program_hash=program.program_hash,
@@ -778,13 +806,13 @@ class ResearchProgramWorkflow:
                 exclude=observation_fields
             ):
                 raise AuthoringError("research_authoring.evidence_identity_conflict")
-            return (
-                self._verified_readback(
-                    program=program, stored=previous, authority=sealed.authority, outputs=outputs
-                ),
-                sealed.binding,
+            readback = self._verified_readback(
+                program=program, stored=previous, authority=sealed.authority, outputs=outputs
             )
+            self._trials.ended(trial, previous)
+            return readback, sealed.binding
         outputs.evidence.publish(evidence)
+        self._trials.ended(trial, evidence)
         return evidence, sealed.binding
 
     def _verified_readback(

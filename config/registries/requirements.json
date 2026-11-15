@@ -283,6 +283,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.data_root_is_set_or_the_application_folder": {
+      "description": "The data root is ALPHALATTICE_DATA_ROOT when set, else the platform's application data folder.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.durable_events_commit_at_once": {
       "description": "A durable event commits when appended; an ordinary one with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
       "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
@@ -295,6 +301,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.experience_reads_without_bodies": {
+      "description": "The reading views and compare read profiles and measures only: with every artifact body removed, experience returns each trial with its measures and two artifacts compare across a convertible metric version.",
+      "lower_layer": "The views are DuckDB SQL over the attached SQLite log; only both engines run them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
     },
     "data_layer.heavy_work_runs_beside_the_writer": {
       "description": "An append and its flush made while a large admission is digested and staged wait as an ordinary one does, since staging runs in the process that has the rows and never under the writer.",
@@ -313,6 +326,13 @@
     "data_layer.host_append_is_all_or_nothing": {
       "description": "Each append writes the event, its text, the chain head, its projection and an inline body as one unit: a refused event leaves no trace and its batch's other events whole.",
       "lower_layer": "The unit is a SQLite transaction and its savepoints; only a real database holds them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.host_history_records_or_defers": {
+      "description": "A Host's history records its workspace and the Host's own definitions, and records nothing while another Host holds the data root.",
+      "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
@@ -380,9 +400,28 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.paths_are_quoted_sql_literals": {
+      "description": "A data root path enters DuckDB SQL as a string literal with forward slashes and each quote doubled, so a folder named with a quote attaches.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.recipe_key_is_its_content": {
+      "description": "A recipe's key is the digest of its method, version, parameters and upstream recipes, whatever order they are written in.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.repair_appends_each_owed_event_once": {
       "description": "Repair appends each event a catalog snapshot carried and the log lacks once, with its writer's envelope and snapshot, at the next start even below the free-space floor that refuses staging.",
       "lower_layer": "The owed event is read from a real DuckLake snapshot's commit info and appended through the Host's write path into a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.replay_rebuilds_every_projection": {
+      "description": "A history replayed into an empty log rebuilds every projected table and the chain head ALL EQUAL, and a projection reading anything but its event is named by its table.",
+      "lower_layer": "A projection is SQL inside the event's own SQLite transaction; only a real database replays it.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
@@ -701,6 +740,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "local_application.goal_revisions_enter_the_history": {
+      "description": "A new goal is recorded once, a conclusion is drawn, and the person's supporting or rejecting response to one is feedback.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.native_tool_setup_uses_writable_scratch": {
       "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",
       "owner": "alphalattice.interface.local_application",
@@ -725,6 +770,13 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.research_runs_are_recorded_as_trials": {
+      "description": "A sealed research run is a trial with its selection, recipe and evidence artifact, a rerun is another trial, and the history replays ALL EQUAL.",
+      "lower_layer": "The run is the real workflow over a real workspace, and the history a real SQLite log.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 30
     },
     "local_application.retrieval_setup_uses_writable_scratch": {
       "description": "Retrieval setup gives its Windows subprocesses a temporary directory inside the writable checkout and removes it after use.",

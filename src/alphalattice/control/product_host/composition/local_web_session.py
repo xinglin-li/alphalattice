@@ -246,6 +246,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
+from alphalattice.kernel.data_layer.history import close_history, open_history
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
@@ -642,6 +643,7 @@ class LocalPortfolioWebSession:
         healthy stop uses, before the failure is re-raised.
         """
         try:
+            open_history(self.workspace_manifest.workspace_id, self.workspace.name)
             return self._start()
         except BaseException:
             self._teardown(timeout=None)
@@ -1035,6 +1037,7 @@ class LocalPortfolioWebSession:
             self.review_authority = None
         if self.review is not None:
             self.review.close_source()
+        close_history()
         if self.session is not None:
             if self.client_connection is not None:
                 remove_client_connection(self.client_connection)
