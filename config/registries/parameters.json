@@ -1922,7 +1922,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::200": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::240": {
 "class": "LIMIT",

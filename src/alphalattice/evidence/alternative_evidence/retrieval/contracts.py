@@ -63,6 +63,11 @@ class AlternativeEvidenceRetrievalGeneration(_RetrievalGenerationRecord):
     corpus_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     index_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     vector_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_class: str | None = Field(
+        default=None, max_length=200, exclude_if=lambda value: value is None
+    )
+    """The machine class its spec names (`HybridIndexSpec.execution_class`), readable on the
+    record itself; absent for a recipe whose numbers a sealed canary fixes on every machine."""
 
 
 class HybridV3RetrievalGeneration(_RetrievalGenerationRecord):

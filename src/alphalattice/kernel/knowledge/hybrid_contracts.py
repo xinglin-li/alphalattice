@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from functools import cache
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
@@ -41,26 +42,32 @@ RECIPE_BGE_SMALL_CPU = "hybrid-v3-bge-small-en"
 RECIPE_QWEN3_ENCODER_GPU = "hybrid-v3-qwen3-embedding-gpu"
 RECIPE_QWEN3_RERANKER_GPU = "hybrid-v3-minilm-qwen3-reranker-gpu"
 RECIPE_QWEN3_GPU = "hybrid-v3-qwen3-gpu"
+RECIPE_MINILM_INT8_CPU = "hybrid-v3-minilm-int8"
+NEW_BUILD_RECIPE = RECIPE_MINILM_INT8_CPU
+"""The recipe a new Evidence authority is set up with; an installed one keeps its own."""
 SUPPORTED_RECIPES: tuple[str, ...] = (
     RECIPE_MINILM_CPU,
     RECIPE_BGE_SMALL_CPU,
     RECIPE_QWEN3_ENCODER_GPU,
     RECIPE_QWEN3_RERANKER_GPU,
     RECIPE_QWEN3_GPU,
+    RECIPE_MINILM_INT8_CPU,
 )
 """The bounded set of retrieval recipes: one payload each, no other pairing.
 
 `hybrid-v2-minilm` is the payload every existing index and generation was
 built under; the four `v3` recipes are the comparison arms of the evidence
 initiative (a CPU encoder against the retained reranker; the Qwen3 encoder,
-the Qwen3 reranker, and both, on the one supported local GPU backend). A
-recipe is admitted by name; its identity is its whole payload."""
+the Qwen3 reranker, and both, on the one supported local GPU backend).
+`hybrid-v3-minilm-int8` is the same two models as the upstream int8 graphs
+of the same pinned revisions. A recipe is admitted by name; its identity is
+its whole payload."""
 FixedPolicyId = Annotated[
     str,
     StringConstraints(
         pattern=(
             r"^hybrid-(v2-minilm|v3-bge-small-en|v3-qwen3-embedding-gpu"
-            r"|v3-minilm-qwen3-reranker-gpu|v3-qwen3-gpu)$"
+            r"|v3-minilm-qwen3-reranker-gpu|v3-qwen3-gpu|v3-minilm-int8)$"
         )
     ),
 ]
@@ -74,7 +81,7 @@ FixedPooling = Annotated[
     str, StringConstraints(pattern=r"^(MEAN_NON_PADDING|CLS_TOKEN|LAST_TOKEN)$")
 ]
 FixedNormalization = Annotated[str, StringConstraints(pattern=r"^L2_FLOAT32$")]
-FixedQuantization = Annotated[str, StringConstraints(pattern=r"^NONE$")]
+FixedQuantization = Annotated[str, StringConstraints(pattern=r"^(NONE|INT8_DYNAMIC)$")]
 FixedProvider = Annotated[str, StringConstraints(pattern=r"^(CPUExecutionProvider|TORCH_CUDA)$")]
 FixedExecutionMode = Annotated[str, StringConstraints(pattern=r"^ORT_SEQUENTIAL$")]
 EncoderRuntime = Annotated[str, StringConstraints(pattern=r"^(ONNX_CPU|TORCH_CUDA)$")]
@@ -107,10 +114,31 @@ RERANKER_PACK: tuple[tuple[str, str], ...] = (
 RERANKER_PACK_SHA256 = sha256_hex(
     canonical_json_bytes({name: digest for name, digest in sorted(RERANKER_PACK)})
 )
+# The same revision's upstream int8 graph in place of the fp32 one; the other four
+# files are the fp32 pack's.
+RERANKER_INT8_GRAPH = "onnx/model_int8.onnx"
+RERANKER_INT8_PACK: tuple[tuple[str, str], ...] = tuple(
+    sorted(
+        (
+            *((name, digest) for name, digest in RERANKER_PACK if name != "onnx/model.onnx"),
+            (
+                RERANKER_INT8_GRAPH,
+                "a13ec391ca99f49886694e12d3e800521f36d4267d7d448c34421c541a2baf50",
+            ),
+        )
+    )
+)
+RERANKER_INT8_PACK_SHA256 = sha256_hex(
+    canonical_json_bytes({name: digest for name, digest in sorted(RERANKER_INT8_PACK)})
+)
 MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 MODEL_REVISION = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
 MODEL_ARTIFACT_SHA256 = "10f7a088420252b26caf819236ca2c9d2987afd0fc06fec7553b542a5655a05a"
 TOKENIZER_SHA256 = "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"
+# The same revision's upstream int8 graph (dynamic quantization; the repository's
+# `_arm64` and `_avx512_vnni` files are these bytes too).
+MODEL_INT8_GRAPH = "onnx/model_qint8_avx512.onnx"
+MODEL_INT8_ARTIFACT_SHA256 = "783fea82d71a58179b830a4dbd2d58447e640609e98eedf9ffa12622d375a672"
 
 # The BAAI encoder: the upstream fp32 ONNX export in the official repository
 # (no converted or quantized third-party distribution) and its BERT WordPiece
@@ -598,6 +626,11 @@ class HybridIndexSpec(DomainModel):
     )
     reranker_cuda_version: ShortString | None = Field(default=None, exclude_if=lambda v: v is None)
     reranker_torch_dtype: ShortString | None = Field(default=None, exclude_if=lambda v: v is None)
+    execution_class: ShortString | None = Field(default=None, exclude_if=lambda v: v is None)
+    """The class of machine whose integer kernels make a live-canary recipe's numbers
+    (`machine_class`): every identity derived from the spec (index, contexts, pair scores,
+    capability) follows it, so another class's results are never reused here. None for a recipe
+    whose numbers a sealed canary fixes on every machine."""
     logical_hash: Sha256Hex
 
     @model_validator(mode="after")
@@ -611,8 +644,14 @@ class HybridIndexSpec(DomainModel):
             ValueError: Recipe values, allowed legacy execution fields or logical_hash differ from
                 the installed recipe.
         """
-        actual = self.model_dump(mode="python", exclude={"schema_version", "logical_hash"})
+        actual = self.model_dump(
+            mode="python", exclude={"schema_version", "logical_hash", "execution_class"}
+        )
         expected = recipe_payload(self.policy_id)
+        if (self.execution_class is None) == live_canary(self):
+            raise ValueError(
+                f"HybridIndexSpec {self.policy_id} names a machine class only for a live canary"
+            )
         if self.intra_op_num_threads is not None:
             expected.update(legacy_execution_payload(self.intra_op_num_threads))
         expected.pop("schema_version")
@@ -648,6 +687,8 @@ class HybridIndexSpec(DomainModel):
             Validated recipe with its canonical identity and no execution-width fields.
         """
         payload = recipe_payload(policy_id)
+        if payload["quantization"] != "NONE":  # a live canary: this machine's numbers
+            payload["execution_class"] = machine_class()
         return cls.model_validate(
             {**payload, "logical_hash": sha256_hex(canonical_json_bytes(payload))}
         )
@@ -749,7 +790,103 @@ def recipe_payload(policy_id: str) -> dict[str, object]:
             "policy_id": RECIPE_QWEN3_RERANKER_GPU,
             **_qwen3_reranker_fields(),
         }
+    if policy_id == RECIPE_MINILM_INT8_CPU:
+        return {
+            **_fixed_spec_payload(),
+            "policy_id": RECIPE_MINILM_INT8_CPU,
+            "model_artifact_sha256": MODEL_INT8_ARTIFACT_SHA256,
+            "quantization": "INT8_DYNAMIC",
+            "reranker_pack_sha256": RERANKER_INT8_PACK_SHA256,
+        }
     raise ValueError(f"unsupported retrieval recipe: {policy_id}")
+
+
+def encoder_graph(spec: HybridIndexSpec) -> str:
+    """The ONNX graph file an ONNX encoder pack of `spec` holds, by its artifact digest."""
+    return (
+        MODEL_INT8_GRAPH
+        if spec.model_artifact_sha256 == MODEL_INT8_ARTIFACT_SHA256
+        else ("onnx/model.onnx")
+    )
+
+
+def reranker_pack_files(spec: HybridIndexSpec) -> tuple[tuple[str, str], ...]:
+    """The files, with their digests, of the ONNX cross-encoder pack `spec` admits."""
+    return (
+        RERANKER_INT8_PACK
+        if spec.reranker_pack_sha256 == RERANKER_INT8_PACK_SHA256
+        else (RERANKER_PACK)
+    )
+
+
+@cache
+def machine_class() -> str:
+    """Return this machine's class for integer kernels: architecture, processor, SIMD extensions.
+
+    A live-canary recipe's spec names it, so its results are this class's alone. A generation
+    from another class stays readable and is compared by quality, never by bytes.
+    """
+    import platform  # lazy: read once, when a live-canary spec is first made
+
+    import numpy  # lazy: read once, when a live-canary spec is first made
+
+    simd = numpy.show_config(mode="dicts")["SIMD Extensions"]
+    features = "+".join([*simd["baseline"], *simd["found"]]) or "none"
+    return f"{platform.machine()}; {platform.processor() or 'unknown processor'}; {features}"
+
+
+def setup_recipe(named: str | None, *, installed: str | None, retained_layout: bool) -> str:
+    """Return the recipe an Evidence setup binds: the one named, else the installed one, else new.
+
+    A new authority is set up with `NEW_BUILD_RECIPE`, unless its semantic model is a pack of the
+    retained layout (`--semantic-model`), which only the retained recipe reads; an installed
+    authority keeps its own recipe unless another is named.
+
+    Args:
+        named: The recipe the setup names (`--recipe`), if any.
+        installed: The installed authority's recipe, if one is installed.
+        retained_layout: Whether the setup names a pack directory of the retained layout.
+
+    Returns:
+        The recipe identifier the setup binds and seals.
+    """
+    if named:
+        return named
+    if installed:
+        return installed
+    return RECIPE_MINILM_CPU if retained_layout else NEW_BUILD_RECIPE
+
+
+def canary_to_prove(
+    spec: HybridIndexSpec, sealed: str | None, one_thread: Callable[[], str]
+) -> str | None:
+    """Return the canary a session of `spec` must equal at its threads, if any.
+
+    The sealed canary when there is one; for a live canary, this machine's own at one thread
+    (`one_thread`, asked only then); else none.
+
+    Args:
+        spec: The session's retrieval spec.
+        sealed: The canary sealed for the session's context, if one is.
+        one_thread: Computes the same canary on a one-thread session of this machine.
+
+    Returns:
+        The SHA-256 the session's canary must equal, or None when there is nothing to prove.
+    """
+    if sealed is None and live_canary(spec):
+        return one_thread()
+    return sealed
+
+
+def live_canary(spec: HybridIndexSpec) -> bool:
+    """Whether `spec`'s sessions prove their canary live instead of against a sealed one.
+
+    Integer kernels differ by instruction set, so an int8 graph's numbers are its machine's
+    and no sealed value holds on another. What the canary guarantees, that threads never move
+    a number, is proved on this machine at each session's open: the canary at the session's
+    threads equals the canary at one thread.
+    """
+    return spec.quantization != "NONE"
 
 
 def _qwen3_reranker_fields() -> dict[str, object]:
@@ -840,6 +977,7 @@ _EMBEDDING_CONTEXT_FIELDS = (
     "encoder_transformers_version",
     "encoder_cuda_version",
     "encoder_torch_dtype",
+    "execution_class",
 )
 
 
@@ -881,6 +1019,7 @@ _RERANKER_CONTEXT_FIELDS = (
     "reranker_transformers_version",
     "reranker_cuda_version",
     "reranker_torch_dtype",
+    "execution_class",
 )
 
 
@@ -1501,7 +1640,10 @@ __all__ = [
     "LEGACY_HYBRID_INDEX_SCHEMA_VERSION",
     "MODEL_ARTIFACT_SHA256",
     "MODEL_ID",
+    "MODEL_INT8_ARTIFACT_SHA256",
+    "MODEL_INT8_GRAPH",
     "MODEL_REVISION",
+    "NEW_BUILD_RECIPE",
     "PAIR_SCORE_BLOCK_SUFFIX",
     "PAIR_SCORE_ROOT",
     "QWEN3_EMBEDDING_MODEL_ID",
@@ -1514,9 +1656,13 @@ __all__ = [
     "QWEN3_RERANKER_PACK_SHA256",
     "RECIPE_BGE_SMALL_CPU",
     "RECIPE_MINILM_CPU",
+    "RECIPE_MINILM_INT8_CPU",
     "RECIPE_QWEN3_ENCODER_GPU",
     "RECIPE_QWEN3_GPU",
     "RECIPE_QWEN3_RERANKER_GPU",
+    "RERANKER_INT8_GRAPH",
+    "RERANKER_INT8_PACK",
+    "RERANKER_INT8_PACK_SHA256",
     "RERANKER_RUNTIME_FASTEMBED_CPU",
     "RERANKER_RUNTIME_TORCH_CUDA",
     "SUPPORTED_RECIPES",
@@ -1544,9 +1690,15 @@ __all__ = [
     "RetrievalScoreSemantics",
     "SealedPairScoreBlock",
     "SemanticPackStatus",
+    "canary_to_prove",
     "embedding_context_hash",
+    "encoder_graph",
+    "live_canary",
+    "machine_class",
     "recipe_payload",
     "reranker_context_hash",
+    "reranker_pack_files",
     "safe_intra_op_threads",
+    "setup_recipe",
     "vector_asset_key",
 ]

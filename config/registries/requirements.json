@@ -33,6 +33,12 @@
       "layer": "integration",
       "seconds": 30
     },
+    "alternative_evidence.int8_generation_names_its_machine_class": {
+      "description": "If an int8 generation did not name its machine class in its identity, or another generation's hash moved, numbers from different machines could be compared by bytes.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
     "alternative_evidence.review_rerun_joins_its_preparation": {
       "description": "A repeated book review joins the preparation in flight at any cutoff, reads no filing index beside it, and a parked one is handed back without a person.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -477,6 +483,24 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 5
+    },
+    "knowledge.a_new_authority_takes_the_int8_recipe": {
+      "description": "If a new Evidence authority did not take the int8 recipe, or an installed one lost its own recipe on a rebind, first use stays slow or old indexes stop matching.",
+      "owner": "alphalattice.kernel.knowledge",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "knowledge.int8_canary_is_proved_live_at_session_open": {
+      "description": "If an int8 session loaded at the CPU budget's threads without equalling the canary one thread gives on this machine, threads could move retrieval numbers unseen.",
+      "owner": "alphalattice.kernel.knowledge",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "knowledge.int8_recipe_is_the_retained_models_int8_graphs": {
+      "description": "If the int8 recipe named other models, shared a sealed canary, installed over the fp32 packs or shared identities across machine classes, results from different machines would mix.",
+      "owner": "alphalattice.kernel.knowledge",
+      "layer": "unit",
+      "seconds": 1
     },
     "local_application.a_disconnected_waiter_reports_the_task_continues": {
       "description": "When a Host stays unavailable through the wait cap the answer reports that the Task continues.",

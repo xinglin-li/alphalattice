@@ -534,7 +534,7 @@ def host_readiness(
     facts = _host_facts(binding)
     # What the agent fills is read from the first use's own source, so the two never disagree.
     fillable = {key: dict(item) for key, item in agent_setup().items()}
-    packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
+    packs = recipe_readiness(default_store_root())
     queue = (
         {"present": True, "scope": "HOST_FEATURE"}
         if host == "claude-code"

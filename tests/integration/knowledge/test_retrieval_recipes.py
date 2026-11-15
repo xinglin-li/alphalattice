@@ -1,4 +1,4 @@
-"""Five retrieval recipes are admitted by name; the retained one keeps every
+"""Six retrieval recipes are admitted by name; the retained one keeps every
 hash it was published under.
 
 A recipe is one whole payload (encoder, reranker, runtime, input policy,
@@ -30,6 +30,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     EMBEDDING_CANARIES,
     RECIPE_BGE_SMALL_CPU,
     RECIPE_MINILM_CPU,
+    RECIPE_MINILM_INT8_CPU,
     RECIPE_QWEN3_ENCODER_GPU,
     RECIPE_QWEN3_GPU,
     RECIPE_QWEN3_RERANKER_GPU,
@@ -477,7 +478,7 @@ def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(
 
     from alphalattice.kernel.knowledge import _reranking as reranking
 
-    scores = iter((-4.206943035125732, -4.2069))
+    scores = iter((-4.206943035125732, -4.2069, -4.25, -4.25, -4.25, -4.3))
 
     class _Encoder:
         def __init__(self, *_args: Any, threads: int, **_kwargs: Any) -> None:
@@ -487,15 +488,25 @@ def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(
             assert (query, passages) == (RETRIEVAL_CANARY_QUERY, [RETRIEVAL_CANARY_PASSAGE])
             return [next(scores)]
 
+        @staticmethod
+        def list_supported_models() -> list[dict[str, str]]:
+            return []
+
+        @staticmethod
+        def add_custom_model(name: str, *, sources: Any, model_file: str) -> None:
+            assert model_file == "onnx/model_int8.onnx"
+
     load = importlib.import_module
     monkeypatch.setattr(reranking, "verify_reranker_pack", lambda *_args: None)
     monkeypatch.setattr(
         reranking.importlib,
         "import_module",
         lambda name: (
-            SimpleNamespace(TextCrossEncoder=_Encoder)
-            if name == "fastembed.rerank.cross_encoder"
-            else load(name)
+            {
+                "fastembed.rerank.cross_encoder": SimpleNamespace(TextCrossEncoder=_Encoder),
+                "fastembed.common.model_description": SimpleNamespace(ModelSource=dict),
+            }.get(name)
+            or load(name)
         ),
     )
     spec = HybridIndexSpec.fixed_v2()
@@ -503,3 +514,11 @@ def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(
     with pytest.raises(KnowledgeRetrievalError, match="at 8 intra-op threads") as refused:
         reranking.LocalCrossEncoderAdapter(tmp_path, spec, threads=8)
     assert refused.value.failure.code == "retrieval.execution_canary_mismatch"
+    # A live canary (the int8 recipe) is this machine's score at one thread, asked first.
+    int8 = HybridIndexSpec.for_recipe(RECIPE_MINILM_INT8_CPU)
+    with embeddings.VERIFIED_PACKS.threads_for(7):  # the CPU budget's share, never min(4, cpus)
+        assert reranking.reranker_session_threads(int8) == 7
+        assert embeddings.embedding_session_threads(int8) == 7
+    assert reranking.LocalCrossEncoderAdapter(tmp_path, int8, threads=8).threads == 8
+    with pytest.raises(KnowledgeRetrievalError, match="at 8 intra-op threads"):
+        reranking.LocalCrossEncoderAdapter(tmp_path, int8, threads=8)

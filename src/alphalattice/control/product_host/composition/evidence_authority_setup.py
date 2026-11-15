@@ -137,9 +137,11 @@ from alphalattice.kernel.knowledge.hybrid import (
     probe_hybrid_retrieval_capabilities,
 )
 from alphalattice.kernel.knowledge.hybrid_contracts import (
+    NEW_BUILD_RECIPE,
     RECIPE_MINILM_CPU,
     SUPPORTED_RECIPES,
     HybridIndexSpec,
+    setup_recipe,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.persistence import replace_with_retry
@@ -705,7 +707,11 @@ class _Setup:
                     "evidence_review.research_input_selection_required", "research_input_id"
                 )
             universe = portfolio_result_context.universe_listing_ids(workspace)
-        recipe = arguments.recipe or RECIPE_MINILM_CPU
+        recipe = setup_recipe(
+            arguments.recipe,
+            installed=_installed_recipe(workspace),
+            retained_layout=getattr(arguments, "semantic_model", None) is not None,
+        )
         if recipe not in SUPPORTED_RECIPES:
             raise ValueError("evidence_review.retrieval_recipe_unsupported")
 
@@ -792,6 +798,7 @@ class _Setup:
             source_root, source_hash, acquisition = _acquire_sec_sources(
                 arguments,
                 requested,
+                recipe=self.recipe,
                 official_source=self.official_source,
                 clock=self.clock,
                 cutoff=cutoff,
@@ -1012,6 +1019,7 @@ class _Setup:
         if package is None:
             return _rebind_installed(
                 self.arguments,
+                recipe=self.recipe,
                 workspace=self.workspace,
                 gate=self.session.mutation_gate,
                 universe=self.universe,
@@ -1022,6 +1030,7 @@ class _Setup:
             )
         return _seal_package(
             self.arguments,
+            recipe=self.recipe,
             workspace=self.workspace,
             gate=self.session.mutation_gate,
             semantic_relative=semantic_relative,
@@ -1178,6 +1187,16 @@ def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceCons
     )
 
 
+def _installed_recipe(workspace: Path) -> str | None:
+    """The installed authority's recipe, read to choose the default; it is verified later."""
+    binding = read_research_workspace_manifest(workspace).evidence_review
+    if binding is None:
+        return None
+    manifest = (workspace / binding.relative_path).read_bytes()
+    recipe: str = EvidenceReviewWorkspaceManifest.model_validate_json(manifest).retrieval_recipe
+    return recipe
+
+
 def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: str) -> Path:
     """Where the recipe's packs are read from, inside the workspace.
 
@@ -1219,6 +1238,7 @@ def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: st
 def _rebind_installed(
     arguments: argparse.Namespace,
     *,
+    recipe: str,
     workspace: Path,
     gate: WorkspaceMutationGate,
     universe: dict[str, str],
@@ -1262,7 +1282,6 @@ def _rebind_installed(
             "evidence_review.installed_matter_selection_retired:"
             "rebind with --matter-selection INTEGRATED_TOPIC_ROUTING"
         )
-    recipe = arguments.recipe or RECIPE_MINILM_CPU
     if installed.semantic_model_relative_path != semantic_relative and (
         recipe == installed.retrieval_recipe
     ):
@@ -1273,6 +1292,7 @@ def _rebind_installed(
     listing = _listing_authority(universe, verified.registry, entities)
     return _seal_package(
         arguments,
+        recipe=recipe,
         workspace=workspace,
         gate=gate,
         registry=verified.registry,
@@ -1313,6 +1333,7 @@ def _rebind_installed(
 def _seal_package(
     arguments: argparse.Namespace,
     *,
+    recipe: str,
     workspace: Path,
     gate: WorkspaceMutationGate,
     registry: SecIssuerRegistrySnapshot,
@@ -1340,11 +1361,7 @@ def _seal_package(
                 "authority_id": authority_id,
                 "minimum_entity_coverage": minimum_entity_coverage,
                 # Absent for the retained recipe, so its package ids are unchanged.
-                **(
-                    {"retrieval_recipe": arguments.recipe}
-                    if arguments.recipe and arguments.recipe != RECIPE_MINILM_CPU
-                    else {}
-                ),
+                **({"retrieval_recipe": recipe} if recipe != RECIPE_MINILM_CPU else {}),
                 # Absent for the production plan, so every installed id is unchanged.
                 **({"matter_selection": selection.selection_id} if selection is not None else {}),
             }
@@ -1371,7 +1388,7 @@ def _seal_package(
         semantic_capability_hash=capability_hash,
         model_profile=profile,
         minimum_entity_coverage=minimum_entity_coverage,
-        retrieval_recipe=arguments.recipe or RECIPE_MINILM_CPU,
+        retrieval_recipe=recipe,
         matter_selection=selection,
     )
     manifest_path = destination / "evidence-review-authority.json"
@@ -1462,6 +1479,7 @@ def _acquire_sec_sources(
     arguments: argparse.Namespace,
     entities: tuple[str, ...],
     *,
+    recipe: str,
     official_source: OfficialSourceAdmission | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     cutoff: datetime | None = None,
@@ -1514,7 +1532,6 @@ def _acquire_sec_sources(
             mode=AlternativeEvidenceMode.LIVE_OFFICIAL,
         )
         admission = seal_live_setup_admission(request.request_hash, now)
-        recipe = arguments.recipe or RECIPE_MINILM_CPU
         runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
             artifact_root=workspace / "runtime" / "artifacts",
             workspace_root=workspace / "runtime" / "evidence-knowledge",
@@ -1676,8 +1693,10 @@ def _parser(
     parser.add_argument(
         "--recipe",
         choices=SUPPORTED_RECIPES,
-        help=f"Retrieval recipe; defaults to {RECIPE_MINILM_CPU!r}. Other recipes are bound "
-        "from the application model store (install_retrieval_pack.py).",
+        help=f"Retrieval recipe; a new authority defaults to {NEW_BUILD_RECIPE!r} (with "
+        f"--semantic-model, {RECIPE_MINILM_CPU!r}), an installed one keeps its own. Recipes "
+        "other than the retained one are bound from the application model store "
+        "(install_retrieval_pack.py).",
     )
     parser.add_argument(
         "--model-store", type=Path, help="Application model store override for --recipe."

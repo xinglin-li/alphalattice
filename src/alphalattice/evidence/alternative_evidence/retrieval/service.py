@@ -404,6 +404,7 @@ class AlternativeEvidenceRetrievalService:
                     document_count=manifest.document_count,
                     chunk_count=manifest.chunk_count,
                     built_at=built_at,
+                    execution_class=self.index_spec.execution_class,
                 )
             except Exception:
                 lease.close()

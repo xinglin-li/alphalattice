@@ -29,7 +29,10 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     HybridIndexSpec,
     KnowledgeRetrievalMode,
     SemanticPackStatus,
+    canary_to_prove,
     embedding_context_hash,
+    encoder_graph,
+    live_canary,
     safe_intra_op_threads,
 )
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
@@ -141,7 +144,7 @@ def probe_semantic_pack(
     details: list[str] = []
     try:
         root = encoder_root(model_root, spec)
-        model_path = root / "onnx" / "model.onnx"
+        model_path = root / encoder_graph(spec)
         tokenizer_path = encoder_tokenizer_path(root, spec)
         if _hash_file(model_path) != spec.model_artifact_sha256:
             raise _semantic_error("semantic model artifact hash differs from the index spec")
@@ -772,7 +775,7 @@ def semantic_pack_paths(model_root: Path, spec: HybridIndexSpec) -> tuple[Path, 
     the model."""
 
     root = encoder_root(model_root, spec)
-    return (root / "onnx", root / "onnx" / "model.onnx", encoder_tokenizer_path(root, spec))
+    return (root / "onnx", root / encoder_graph(spec), encoder_tokenizer_path(root, spec))
 
 
 def shared_embedding_adapter(
@@ -843,10 +846,10 @@ def create_session_options(runtime: Any, threads: int) -> Any:
 
 def embedding_session_threads(spec: HybridIndexSpec) -> int:
     """The threads an embedding session of `spec` loads with: the CPU budget's
-    share when its encoder has a sealed canary to prove the numbers on, else
-    the safe default every spec sealed before F1 named."""
+    share when its encoder has a canary to prove the numbers on, sealed or live,
+    else the safe default every spec sealed before F1 named."""
 
-    if embedding_context_hash(spec.without_execution()) in EMBEDDING_CANARIES:
+    if live_canary(spec) or embedding_context_hash(spec.without_execution()) in EMBEDDING_CANARIES:
         return VERIFIED_PACKS.threads()
     return safe_intra_op_threads()
 
@@ -894,7 +897,7 @@ class LocalOnnxEmbeddingAdapter:
             ).SentencePieceProcessor
 
         root = encoder_root(model_root, spec)
-        model_path = root / "onnx" / "model.onnx"
+        model_path = root / encoder_graph(spec)
         tokenizer_path = encoder_tokenizer_path(root, spec)
         if _hash_file(model_path) != spec.model_artifact_sha256:
             raise _semantic_error("semantic model artifact hash differs from the index spec")
@@ -925,11 +928,16 @@ class LocalOnnxEmbeddingAdapter:
             if self._session.get_providers() != [spec.execution_provider]:
                 raise _semantic_error("ONNX session did not bind the CPU-only provider")
             self._input_names = {item.name for item in self._session.get_inputs()}
+            # The real runtime proves its numbers on this machine at these threads; a
+            # stand-in runtime has no sealed numbers to prove, only a live canary.
             sealed = EMBEDDING_CANARIES.get(embedding_context_hash(spec.without_execution()))
-            if sealed is not None and runtime_module is None:
-                # The real runtime proves its numbers on this machine at these
-                # threads; a stand-in runtime has no sealed numbers to prove.
-                self._prove_canary(sealed)
+            expected = canary_to_prove(
+                spec,
+                sealed if runtime_module is None else None,
+                lambda: self._one_thread_canary(model_path),
+            )
+            if expected is not None:
+                self._prove_canary(expected)
         except KnowledgeRetrievalError:
             self.close()
             raise
@@ -974,13 +982,30 @@ class LocalOnnxEmbeddingAdapter:
     ) -> tuple[float, ...]:
         return self._embed((text,), is_query=True, cancelled=cancelled)[0]
 
-    def _prove_canary(self, sealed: str) -> None:
+    def _canary(self) -> str:
         prepared = prepare_embedding_input(
             RETRIEVAL_CANARY_TEXT, policy=self.spec.embedding_input_policy, is_query=False
         )
         row = self._rows((self._encode(prepared),))[0]
-        if hashlib.sha256(row.astype("<f4").tobytes()).hexdigest() != sealed:
+        return hashlib.sha256(row.astype("<f4").tobytes()).hexdigest()
+
+    def _prove_canary(self, sealed: str) -> None:
+        if self._canary() != sealed:
             raise canary_mismatch("embedding", self.threads)
+
+    def _one_thread_canary(self, model_path: Path) -> str:
+        """The canary this machine computes at one thread: what a live canary's session
+        must equal at its own threads."""
+        session = self._session
+        self._session = self._runtime.InferenceSession(
+            str(model_path),
+            sess_options=create_session_options(self._runtime, 1),
+            providers=[self.spec.execution_provider],
+        )
+        try:
+            return self._canary()
+        finally:
+            self._session = session
 
     def _rows(self, encoded: tuple[list[int], ...]) -> Any:
         """One batch's normalized float32 rows."""

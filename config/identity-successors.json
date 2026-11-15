@@ -15037,6 +15037,13 @@
    "successor": "552d62654276f4c7cb7929988832227026c43ad328d5b9dba2b26a0dc2d80add",
    "change": "Make the development fast guard portable across platforms",
    "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "55aa0e8de56f92c1c76ef390943083124cc21882498218ba48b437ab9225a7cd",
+   "successor": "b4e98a97c128c94179695add42f8acf0bd2c9faf679786fc870cb1d9fedfd67b",
+   "change": "New workspaces prepare Evidence about 30% faster with int8 retrieval",
+   "reason": "Evidence retrieval gains a faster int8 recipe whose indexes, vectors and pair scores are bound to the machine class that computed them, so results from one kind of processor are never reused on another; the existing fp32 recipe keeps every identity, hash and sealed canary unchanged"
   }
  ]
 }

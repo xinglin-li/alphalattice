@@ -55,14 +55,16 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     PAIR_SCORE_BLOCK_SUFFIX,
     PAIR_SCORE_ROOT,
     RERANKER_CANARIES,
-    RERANKER_PACK,
     RERANKER_RUNTIME_TORCH_CUDA,
     RETRIEVAL_CANARY_PASSAGE,
     RETRIEVAL_CANARY_QUERY,
     HybridIndexSpec,
     PairScoreAdmission,
     SealedPairScoreBlock,
+    canary_to_prove,
+    live_canary,
     reranker_context_hash,
+    reranker_pack_files,
     safe_intra_op_threads,
 )
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
@@ -144,7 +146,8 @@ def verify_reranker_pack(model_root: Path, spec: HybridIndexSpec) -> tuple[str, 
         present = {path.relative_to(pack).as_posix() for path in pack.rglob("*") if path.is_file()}
     except OSError as exc:
         raise _error("reranker model pack is unavailable", cause=exc) from exc
-    expected = {name for name, _digest in RERANKER_PACK}
+    files = reranker_pack_files(spec)
+    expected = {name for name, _digest in files}
     missing = sorted(expected - present)
     if missing:
         raise _error(f"reranker model pack is missing a consumed artifact: {missing[0]}")
@@ -153,7 +156,7 @@ def verify_reranker_pack(model_root: Path, spec: HybridIndexSpec) -> tuple[str, 
         raise _error(f"reranker model pack holds an unadmitted artifact: {unexpected[0]}")
 
     observed: dict[str, str] = {}
-    for name, digest in RERANKER_PACK:
+    for name, digest in files:
         try:
             observed[name] = _hash_file(pack / name)
         except OSError as exc:
@@ -183,7 +186,7 @@ def reranker_pack_paths(model_root: Path, spec: HybridIndexSpec) -> tuple[Path, 
         from alphalattice.kernel.knowledge._torch import torch_reranker_pack_paths
 
         return torch_reranker_pack_paths(pack)
-    return (pack, *(pack / name for name, _digest in RERANKER_PACK))
+    return (pack, *(pack / name for name, _digest in reranker_pack_files(spec)))
 
 
 def _load_reranker(model_root: Path, spec: HybridIndexSpec, threads: int) -> Any:
@@ -211,9 +214,9 @@ class SharedRerankerAdapter:
 
 def reranker_session_threads(spec: HybridIndexSpec) -> int:
     """The threads a cross-encoder session of `spec` loads with: the CPU
-    budget's share when it has a sealed canary, else the safe default."""
+    budget's share when it has a canary, sealed or live, else the safe default."""
 
-    if reranker_context_hash(spec.without_execution()) in RERANKER_CANARIES:
+    if live_canary(spec) or reranker_context_hash(spec.without_execution()) in RERANKER_CANARIES:
         return VERIFIED_PACKS.threads()
     return safe_intra_op_threads()
 
@@ -594,6 +597,33 @@ def pair_score_store(
     return store
 
 
+INT8_CROSS_ENCODER = "alphalattice/ms-marco-MiniLM-L-6-v2-int8"
+"""The name FastEmbed knows the int8 pack's graph by: the same repository and revision,
+another graph file."""
+
+
+def _cross_encoder(module: Any, model_root: Path, spec: HybridIndexSpec, threads: int) -> Any:
+    """FastEmbed's cross-encoder over the verified pack, loading the graph the pack holds."""
+    name = spec.reranker_model_id
+    graph = next(file for file, _digest in reranker_pack_files(spec) if file.endswith(".onnx"))
+    if graph != "onnx/model.onnx":
+        name = INT8_CROSS_ENCODER
+        known = {model["model"] for model in module.TextCrossEncoder.list_supported_models()}
+        if name not in known:
+            sources = importlib.import_module(  # lazy: the reranker's optional extra
+                "fastembed.common.model_description"
+            )
+            module.TextCrossEncoder.add_custom_model(
+                name, sources=sources.ModelSource(hf=spec.reranker_model_id), model_file=graph
+            )
+    return module.TextCrossEncoder(
+        name,
+        specific_model_path=str(reranker_pack_root(model_root)),
+        local_files_only=True,
+        threads=threads,
+    )
+
+
 class LocalCrossEncoderAdapter:
     """Score (query, passage) pairs with the verified local cross-encoder."""
 
@@ -604,26 +634,27 @@ class LocalCrossEncoderAdapter:
         module = importlib.import_module("fastembed.rerank.cross_encoder")  # lazy: reranker.
         MODEL_WORK.reranker_model_loads += 1
         self.threads = threads or safe_intra_op_threads()
-        self._encoder: Any = module.TextCrossEncoder(
-            spec.reranker_model_id,
-            specific_model_path=str(reranker_pack_root(model_root)),
-            local_files_only=True,
-            threads=self.threads,
-        )
+        self._encoder: Any = _cross_encoder(module, model_root, spec, self.threads)
         self._decimals = spec.reranker_score_decimal_places
         self._batch_size = spec.batch_size
         self._cache = PairScoreCache()
-        sealed = RERANKER_CANARIES.get(reranker_context_hash(spec.without_execution()))
-        if sealed is not None:
+        expected = canary_to_prove(
+            spec,
+            RERANKER_CANARIES.get(reranker_context_hash(spec.without_execution())),
+            lambda: self._canary(_cross_encoder(module, model_root, spec, 1)),
+        )
+        if expected is not None and self._canary(self._encoder) != expected:
             # The canary pair's raw score, before rounding: a session that moves
             # a number on this machine at these threads is refused by name.
-            raw = list(
-                self._encoder.rerank(
-                    RETRIEVAL_CANARY_QUERY, [RETRIEVAL_CANARY_PASSAGE], batch_size=self._batch_size
-                )
+            raise canary_mismatch("cross-encoder", self.threads)
+
+    def _canary(self, encoder: Any) -> str:
+        raw = list(
+            encoder.rerank(
+                RETRIEVAL_CANARY_QUERY, [RETRIEVAL_CANARY_PASSAGE], batch_size=self._batch_size
             )
-            if not raw or (hashlib.sha256(struct.pack("<f", float(raw[0]))).hexdigest() != sealed):
-                raise canary_mismatch("cross-encoder", self.threads)
+        )
+        return hashlib.sha256(struct.pack("<f", float(raw[0]))).hexdigest() if raw else ""
 
     def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...]:
         """One score per passage, quantized so ordering does not ride on float

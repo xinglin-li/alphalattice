@@ -42,7 +42,10 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_TOKENIZER_SHA256,
     MODEL_ARTIFACT_SHA256,
     MODEL_ID,
+    MODEL_INT8_ARTIFACT_SHA256,
+    MODEL_INT8_GRAPH,
     MODEL_REVISION,
+    NEW_BUILD_RECIPE,
     QWEN3_EMBEDDING_MODEL_ID,
     QWEN3_EMBEDDING_MODEL_REVISION,
     QWEN3_EMBEDDING_PACK,
@@ -51,9 +54,11 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     QWEN3_RERANKER_PACK,
     RECIPE_BGE_SMALL_CPU,
     RECIPE_MINILM_CPU,
+    RECIPE_MINILM_INT8_CPU,
     RECIPE_QWEN3_ENCODER_GPU,
     RECIPE_QWEN3_GPU,
     RECIPE_QWEN3_RERANKER_GPU,
+    RERANKER_INT8_PACK,
     RERANKER_MODEL_ID,
     RERANKER_MODEL_REVISION,
     RERANKER_PACK,
@@ -77,6 +82,9 @@ class PackDefinition:
     license_id: str
     runtime: str
     approximate_bytes: int
+    variant: str = ""
+    """Names another set of files of the same repository revision (`int8`), which is
+    installed in its own directory beside the revision's."""
 
     @property
     def directory_name(self) -> str:
@@ -86,6 +94,15 @@ class PackDefinition:
             Repository identifier with each slash replaced by two hyphens.
         """
         return self.repository.replace("/", "--")
+
+    @property
+    def revision_directory(self) -> str:
+        """Return the revision's directory name, with the variant's suffix when it has one.
+
+        Returns:
+            The pinned revision, or the revision, a hyphen and the variant.
+        """
+        return f"{self.revision}-{self.variant}" if self.variant else self.revision
 
 
 MINILM_ENCODER = PackDefinition(
@@ -97,6 +114,16 @@ MINILM_ENCODER = PackDefinition(
     "ONNX_CPU",
     475_370_661,
 )
+MINILM_INT8_ENCODER = PackDefinition(
+    "minilm-l12-multilingual-int8",
+    MODEL_ID,
+    MODEL_REVISION,
+    ((MODEL_INT8_GRAPH, MODEL_INT8_ARTIFACT_SHA256), ("sentencepiece.bpe.model", TOKENIZER_SHA256)),
+    "Apache-2.0",
+    "ONNX_CPU",
+    123_481_449,
+    variant="int8",
+)
 MSMARCO_RERANKER = PackDefinition(
     "ms-marco-minilm-l6",
     RERANKER_MODEL_ID,
@@ -105,6 +132,16 @@ MSMARCO_RERANKER = PackDefinition(
     "Apache-2.0",
     "FASTEMBED_ONNX_CPU",
     91_707_303,
+)
+MSMARCO_INT8_RERANKER = PackDefinition(
+    "ms-marco-minilm-l6-int8",
+    RERANKER_MODEL_ID,
+    RERANKER_MODEL_REVISION,
+    RERANKER_INT8_PACK,
+    "Apache-2.0",
+    "FASTEMBED_ONNX_CPU",
+    23_727_592,
+    variant="int8",
 )
 BGE_ENCODER = PackDefinition(
     "bge-small-en-v1.5",
@@ -155,6 +192,8 @@ PACKS: tuple[PackDefinition, ...] = (
     BGE_ENCODER,
     QWEN3_ENCODER,
     QWEN3_RERANKER,
+    MINILM_INT8_ENCODER,
+    MSMARCO_INT8_RERANKER,
 )
 RECIPE_PACKS: dict[str, tuple[PackDefinition, PackDefinition]] = {
     RECIPE_MINILM_CPU: (MINILM_ENCODER, MSMARCO_RERANKER),
@@ -162,6 +201,7 @@ RECIPE_PACKS: dict[str, tuple[PackDefinition, PackDefinition]] = {
     RECIPE_QWEN3_ENCODER_GPU: (QWEN3_ENCODER, MSMARCO_RERANKER),
     RECIPE_QWEN3_RERANKER_GPU: (MINILM_ENCODER, QWEN3_RERANKER),
     RECIPE_QWEN3_GPU: (QWEN3_ENCODER, QWEN3_RERANKER),
+    RECIPE_MINILM_INT8_CPU: (MINILM_INT8_ENCODER, MSMARCO_INT8_RERANKER),
 }
 """Encoder and reranker of every supported recipe; the two presets a user
 chooses between are recipes, never a free pairing."""
@@ -271,13 +311,13 @@ def pack_directory(store: Path, pack: PackDefinition) -> Path:
         pack: Exact repository and immutable pinned revision.
 
     Returns:
-        Repository directory followed by the immutable pinned revision.
+        Repository directory followed by the immutable pinned revision (and its variant).
     """
-    return store / pack.directory_name / pack.revision
+    return store / pack.directory_name / pack.revision_directory
 
 
 def _staging_directory(store: Path, pack: PackDefinition) -> Path:
-    return store / pack.directory_name / f".staging-{pack.revision}"
+    return store / pack.directory_name / f".staging-{pack.revision_directory}"
 
 
 def _sha256(path: Path) -> str:
@@ -772,8 +812,8 @@ def runtime_availability() -> dict[str, object]:
     }
 
 
-def recipe_readiness(store: Path, recipe: str) -> dict[str, object]:
-    """One recipe's packs and runtime as they stand: what a user sees before choosing."""
+def recipe_readiness(store: Path, recipe: str = NEW_BUILD_RECIPE) -> dict[str, object]:
+    """One recipe's packs and runtime as they stand (a new build's by default)."""
     encoder, reranker = recipe_pack_statuses(store, recipe)
     gpu = any(pack.runtime.startswith("TORCH") for pack in (encoder.pack, reranker.pack))
     runtime = (

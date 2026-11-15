@@ -21,7 +21,7 @@ from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.retrieval_environment import fill_command
 from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
+from alphalattice.kernel.knowledge.hybrid_contracts import NEW_BUILD_RECIPE
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 if TYPE_CHECKING:
@@ -157,9 +157,9 @@ def evidence_setup(
                 "before": "The running Host installs it as a Task; nothing is stopped.",
             }
         }
-    store, packs = model_store.default_store_root(), model_store.RECIPE_PACKS[RECIPE_MINILM_CPU]
+    store, packs = model_store.default_store_root(), model_store.RECIPE_PACKS[NEW_BUILD_RECIPE]
     pack: dict[str, object] = {
-        "recipe": RECIPE_MINILM_CPU,
+        "recipe": NEW_BUILD_RECIPE,
         # Where the packs are read from, whether they are there and what a download takes;
         # the setup verifies them by hash.
         "store": str(store),
@@ -167,13 +167,13 @@ def evidence_setup(
         "download_bytes": sum(value.approximate_bytes for value in packs),
         "check": f"{retrieval} scripts/install_retrieval_pack.py --status --view summary",
         "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
-        f"{RECIPE_MINILM_CPU} --network",
+        f"{NEW_BUILD_RECIPE} --network",
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 
         pack["check"] = join(pack_command("--status", "--view", "summary"), shell())
-        pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
+        pack["install"] = join(pack_command("--install", NEW_BUILD_RECIPE, "--network"), shell())
     if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = join(fill_command(), shell())  # the one command, on either leg
     scope = " ".join(
