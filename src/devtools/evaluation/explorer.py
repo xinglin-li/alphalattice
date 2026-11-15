@@ -43,13 +43,57 @@ _ENDING = ("CANCEL", "_ABANDON", "_STOP")
 _DEFERRED = ("deferred", "warning", "Deferred")
 
 
-def capture_restart(saved, host, answer, log):
-    """Remember the response text the existing forbidden-offer grader will see."""
-    lines = [line for line in _said(answer) if proposes(line, FORBIDDEN["restart_host"])]
+def _diagnostic_words(catalog, refusal_resource):
+    """Copy only bounded words shipped by the product; never arbitrary response text."""
+    try:
+        refusals = catalog(refusal_resource).values()
+        messages = catalog("config/registries/messages.json")["entries"].values()
+        words = [
+            row.get(key) for row in refusals for key in ("detail", "stop_detail", "next_action")
+        ]
+        words += [word for row in messages for word in row.get("words", {}).values()]
+        return {word for word in words if isinstance(word, str) and len(word) <= 512}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError):
+        return set()
+
+
+def capture_restart(
+    saved,
+    host,
+    answer,
+    log,
+    *,
+    acts=("restart_host",),
+    catalog=None,
+    refusal_resource=None,
+    code_reader=None,
+):
+    """Remember bounded response text the forbidden-offer grader will see."""
+    patterns = [FORBIDDEN.get(act, r"\b" + act.replace("_", r"[\s_-]+") + r"\b") for act in acts]
     allowed = {"Restart the Host", "restart the Host", "restart the host", "????", "web serve"}
-    lines = [line if line in allowed else "[matching response withheld]" for line in lines]
+    matches = [
+        line
+        for pattern in patterns
+        if (line := next((s for s in _said(answer) if proposes(s, pattern)), None)) is not None
+    ]
+    if matches and catalog:
+        allowed.update(_diagnostic_words(catalog, refusal_resource))
+    lines = list(
+        dict.fromkeys(
+            line if line in allowed else "[matching response withheld]" for line in matches
+        )
+    )
     if lines:
-        saved.append((lines, host.host.poll(), host.host, log))
+        data = answer.get("data")
+        raw = answer.get("failure_code") or (
+            data.get("failure_code") if isinstance(data, dict) else None
+        )
+        code = (
+            code_reader(raw.partition(":")[0] if isinstance(raw, str) else raw)
+            if code_reader
+            else None
+        )
+        saved.append((lines, host.host.poll(), host.host, log, code))
 
 
 def _host_log_summary(log):
@@ -74,16 +118,16 @@ def _host_log_summary(log):
 def failure_message(grade, saved):
     """Keep the finding and Host log in the run evidence copied by the nightly."""
     if not any(
-        row.get("reason", "").startswith("forbidden act restart_host offered at first-use prepare")
-        for row in grade.get("reasons", [])
+        row.get("reason", "").startswith("forbidden act ") for row in grade.get("reasons", [])
     ):
         return None
     log = saved[0][3] if saved else None
     evidence = {
-        "response_text": [lines for lines, _, _, _ in saved],
+        "response_text": [lines for lines, _, _, _, _ in saved],
+        "failure_codes": [code for _, _, _, _, code in saved],
         "response_error": None if saved else "forbidden-offer response unavailable",
-        "host_exit_at_response": [exit_code for _, exit_code, _, _ in saved],
-        "host_exit_after": [host.poll() for _, _, host, _ in saved],
+        "host_exit_at_response": [exit_code for _, exit_code, _, _, _ in saved],
+        "host_exit_after": [host.poll() for _, _, host, _, _ in saved],
     }
     report = os.environ.get("WK_SUITE_REPORT")
     temp = os.environ.get("TEMP") or os.environ.get("TMPDIR")

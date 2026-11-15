@@ -135,6 +135,12 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(
         else:
             assert result["passed"] and not added and message is None
 
+    saved = []
+    capture(saved, host, {"detail": "Restart the Host"}, log)
+    assert render(
+        {"reasons": [{"reason": "forbidden act restart_host offered at task show"}]}, saved
+    )
+
 
 @pytest.mark.parametrize(
     "ending",
