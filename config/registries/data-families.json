@@ -3284,10 +3284,10 @@
       ]
     },
     "backups": {
-      "summary": "workspace backups: objects, exported tables and attempt records",
+      "summary": "workspace backups retained until upgrade retirement, and machine-root SQLite snapshots with admitted immutable files",
       "class": "backup-install",
       "tier": 4,
-      "home": "outside the data layer: backups stay files the Host owns, each registered by digest in log artifact",
+      "home": "outside the data root: workspace backups stay files the Host owns, registered by digest in log artifact; machine-root generations hold index/log/catalog online snapshots and the chain head beside a shared immutable file pool",
       "location": "backup-root",
       "bytes": null,
       "writers": [
@@ -3295,12 +3295,21 @@
         "product_host.storage.backup:_Objects",
         "product_host.storage.backup:_copy_file",
         "product_host.storage.backup:_export_table",
-        "product_host.storage.backup:_record_attempt"
+        "product_host.storage.backup:_record_attempt",
+        "data_layer.backup:backup_data_root",
+        "data_layer.backup:copy_files",
+        "data_layer.backup:_snapshot"
       ],
       "readers": [
         "product_host.composition.entry",
         "product_host.composition.portfolio_research_operations",
-        "product_host.maintenance.data_update"
+        "product_host.maintenance.data_update",
+        "data_layer.backup:restore_data_root",
+        "data_layer.backup:_consistent",
+        "data_layer.backup:_head",
+        "data_layer.backup:_catalog_paths",
+        "data_layer.backup:_owners",
+        "data_layer.backup:_file_digest"
       ]
     },
     "plan-previews": {
@@ -3684,9 +3693,15 @@
         "data_layer.log:HostLog",
         "data_layer.log:hold",
         "data_layer.root:_database",
-        "data_layer.store:stage"
+        "data_layer.store:stage",
+        "data_layer.backup:restore_data_root",
+        "data_layer.backup:_relocate_catalog",
+        "data_layer.backup:_snapshot"
       ],
-      "readers": []
+      "readers": [
+        "data_layer.backup:backup_data_root",
+        "data_layer.backup:_files"
+      ]
     }
   },
   "helpers": {
@@ -3695,6 +3710,10 @@
     "workspace_runtime.reader_threads:connect_duckdb": "opens the workspace database for its repositories, whose tables the storage authorities list"
   },
   "not_persisting": {
+    "data_layer.backup:_consistent": "opens the copied log and attaches the copied catalog with mode=ro to verify snapshot references; SQLite refuses writes",
+    "data_layer.backup:_catalog_paths": "opens the copied catalog with mode=ro to resolve its immutable file references; SQLite refuses writes",
+    "data_layer.backup:_owners": "reads copied SQLite owners with mode=ro and a DuckDB in-memory connection with a READ_ONLY catalog attach; no owner is written",
+    "data_layer.backup:_head": "opens the copied log with mode=ro to verify the entire saved hash chain; SQLite refuses writes",
     "causal_outcomes.execution.artifacts:_local_qa_ipc": "serializes a table to an in-memory buffer (pa.BufferOutputStream)",
     "factor_research.inputs.execution_target:_table_content_hash": "serializes a table to an in-memory buffer to hash it",
     "feature_engine.panels.closure_artifacts:arrow_table_logical_hash": "serializes a table to an in-memory buffer to hash it",

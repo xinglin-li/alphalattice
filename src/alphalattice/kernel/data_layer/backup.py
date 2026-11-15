@@ -1,0 +1,456 @@
+"""Online machine-root backups and verified restoration through the data-layer owners.
+
+Generations hold index, log and catalog snapshots in that order. A catalog can be newer than
+its log: restore verifies the saved log head, then uses StorePort's ordinary startup repair.
+The repository's shared files/ pool keeps admitted immutable data and blobs once. Transport,
+staging, process locks, keychains and installed extensions are not backup inputs.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import sqlite3
+import uuid
+from contextlib import closing
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path, PurePosixPath
+from typing import Any, Final
+
+from blake3 import blake3
+
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS
+from alphalattice.kernel.data_layer.log import HostLog, verify_whole
+from alphalattice.kernel.data_layer.root import FOLDERS, load_extensions
+from alphalattice.kernel.data_layer.store import StorePort
+
+DATABASES: Final = ("index.sqlite", "log.sqlite", "catalog.sqlite")
+DIGESTS: Final = {"blake3:v1": blake3, "blake3": blake3, "sha256": sha256}
+
+
+def _valid_digest(value: Any) -> bool:
+    """A versioned backup seal, or a recognized tagged digest retained from its owner."""
+    if not isinstance(value, str):
+        return False
+    prefix, _, value = value.rpartition(":")
+    return prefix in DIGESTS and bool(re.fullmatch(r"[0-9a-f]{64}", value))
+
+
+def _file_digest(path: Path, prefix: str) -> str:
+    """Stream one immutable file once at this boundary; never load a large body into memory."""
+    state = DIGESTS[prefix]()
+    with _real(path).open("rb") as source:
+        while block := source.read(1024 * 1024):
+            state.update(block)
+    return prefix + ":" + state.hexdigest()
+
+
+def _refuse(code: str, message: str) -> DataError:
+    """A named data-layer refusal, without any copied content in its diagnostic."""
+    return DataError(message, code=f"data_layer.{code}")
+
+
+def _real(path: Path) -> Path:
+    """Refuse a file or directory redirected away from its admitted path."""
+    if path.resolve() != path.absolute():
+        raise _refuse("backup_path_aliased", f"{path} is aliased; use its admitted real path")
+    return path
+
+
+def _handle(value: Any) -> bool:
+    """Whether a portable manifest handle names only admitted data or blob storage."""
+    if not isinstance(value, str) or "\\" in value or ":" in value or "\0" in value:
+        return False
+    parts = PurePosixPath(value).parts
+    return bool(
+        len(parts) > 1
+        and parts[0] in {"data", "blobs"}
+        and ".." not in parts
+        and PurePosixPath(value).as_posix() == value
+    )
+
+
+def read_manifest(generation: Path) -> dict[str, Any]:
+    """Read a portable generation; malformed paths or a missing saved head refuse by name."""
+    path = _real(generation.resolve() / "manifest.json")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        head, files = value["head"], value["files"]
+        valid_head = (
+            type(head["seq"]) is int
+            and head["seq"] >= 0
+            and type(head["chain_version"]) is int
+            and head["chain_version"] in LINKS
+            and isinstance(head["head"], str)
+            and (
+                head["head"] == ""
+                if head["seq"] == 0
+                else bool(re.fullmatch(r"blake3:[0-9a-f]{64}", head["head"]))
+            )
+        )
+        paths = [entry["path"] for entry in files]
+        valid_files = all(
+            _handle(entry["path"])
+            and type(entry["size"]) is int
+            and entry["size"] >= 0
+            and _valid_digest(entry["digest"])
+            for entry in files
+        ) and len(set(paths)) == len(paths)
+        if (
+            type(value["version"]) is not int
+            or value["version"] != 2
+            or value["databases"] != list(DATABASES)
+            or not valid_head
+            or not valid_files
+        ):
+            raise ValueError("format, saved head or file set")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise _refuse(
+            "backup_manifest_invalid",
+            f"machine backup manifest {path} is invalid; use a complete generation",
+        ) from error
+    return value
+
+
+def copy_files(root: Path, pool: Path, files: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Copy only new immutable files and verify every reused or copied body against its seal."""
+    copied = []
+    for entry in files:
+        handle = entry["path"]
+        if not _handle(handle) or not _valid_digest(entry["digest"]):
+            raise _refuse(
+                "backup_manifest_invalid", f"machine backup manifest handle {handle!r} is invalid"
+            )
+        source, target = _real(root / handle), _real(pool / handle)
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            copied.append(handle)
+        if (
+            target.stat().st_size != entry["size"]
+            or _file_digest(target, entry["digest"].rpartition(":")[0]) != entry["digest"]
+        ):
+            raise _refuse(
+                "backup_file_changed",
+                f"{target} differs from its sealed bytes; use an intact generation",
+            )
+    return tuple(copied)
+
+
+def _snapshot(source: Path, target: Path) -> None:
+    """Copy one committed SQLite state in bounded page steps, without a long source lock."""
+    with (
+        closing(sqlite3.connect(_real(source).as_uri() + "?mode=ro", uri=True)) as src,
+        closing(sqlite3.connect(_real(target))) as dst,
+    ):
+        src.backup(dst, pages=128)
+
+
+def _head(path: Path) -> dict[str, Any]:
+    """Verify the entire copied chain and return its actual head and final sequence."""
+    with closing(sqlite3.connect(_real(path).as_uri() + "?mode=ro", uri=True)) as con:
+        con.row_factory = sqlite3.Row
+        stored = con.execute(
+            "SELECT seq, head, chain_version FROM chain_head WHERE id = 1"
+        ).fetchone()
+        last = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()[0]
+        try:
+            valid = verify_whole(con) and (stored[0] if stored else 0) == last
+        except KeyError:
+            valid = False
+        if not valid:
+            raise _refuse(
+                "backup_chain_broken",
+                f"{path} does not verify its whole chain; use an untampered backup",
+            )
+        return dict(
+            zip(
+                ("seq", "head", "chain_version"),
+                tuple(stored) if stored else (0, "", CHAIN_VERSION),
+                strict=True,
+            )
+        )
+
+
+def _consistent(machine: Path) -> None:
+    """A copied log must never name a snapshot absent from its copied catalog."""
+    with closing(sqlite3.connect((machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)) as con:
+        con.execute(
+            "ATTACH DATABASE ? AS catalog", ((machine / "catalog.sqlite").as_uri() + "?mode=ro",)
+        )
+        absent = con.execute(
+            "SELECT a.catalog_snapshot FROM admission a LEFT JOIN catalog.ducklake_snapshot s"
+            " ON a.catalog_snapshot = s.snapshot_id WHERE s.snapshot_id IS NULL LIMIT 1"
+        ).fetchone()
+        if absent:
+            raise _refuse(
+                "backup_catalog_behind_log",
+                f"{machine} lacks catalog snapshot {absent[0]} named by its log; "
+                "take a new ordered backup",
+            )
+
+
+def _walk(folder: Path):
+    """Read admitted files; refuse an unreadable folder or aliased child."""
+    for parent, directories, files in folder.walk(on_error=_unreadable):
+        _real(parent)
+        for name in directories:
+            _real(parent / name)
+        for name in files:
+            yield _real(parent / name)
+
+
+def _unreadable(error: OSError) -> None:
+    """Name a source folder which could not be enumerated."""
+    raise _refuse(
+        "backup_unreadable",
+        f"{error.filename} cannot be read; restore access and take a new backup",
+    ) from error
+
+
+def _catalog_paths(catalog: Path) -> set[str]:
+    """Resolve the copied catalog's paths at each file's creation snapshot, including history."""
+    with closing(sqlite3.connect(_real(catalog).as_uri() + "?mode=ro", uri=True)) as con:
+        bases = con.execute(
+            "SELECT value FROM ducklake_metadata WHERE key='data_path' AND scope IS NULL"
+        ).fetchall()
+        if len(bases) != 1 or not isinstance(bases[0][0], str):
+            raise _refuse(
+                "backup_catalog_invalid", f"{catalog} lacks one data path; use an intact backup"
+            )
+        base = PurePosixPath(bases[0][0].replace("\\", "/"))
+
+        def handle(parts):
+            path = base
+            for value, relative in parts:
+                part = PurePosixPath(value.replace("\\", "/"))
+                path = path / part if relative else part
+            try:
+                named = "data/" + path.relative_to(base).as_posix()
+            except ValueError as error:
+                raise _refuse(
+                    "backup_path_aliased", f"{catalog} references {path} outside its data root"
+                ) from error
+            if not _handle(named):
+                raise _refuse(
+                    "backup_manifest_invalid", f"{catalog} references unsafe file {named}"
+                )
+            return named
+
+        found = set()
+        for table in ("data_file", "delete_file"):
+            rows = con.execute(
+                "SELECT s.path,s.path_is_relative,t.path,t.path_is_relative,"
+                f"f.path,f.path_is_relative FROM ducklake_{table} f "
+                "LEFT JOIN ducklake_table t ON t.table_id=f.table_id "
+                "AND t.begin_snapshot<=f.begin_snapshot "
+                "AND (t.end_snapshot IS NULL OR t.end_snapshot>f.begin_snapshot) "
+                "LEFT JOIN ducklake_schema s ON s.schema_id=t.schema_id "
+                "AND s.begin_snapshot<=f.begin_snapshot "
+                "AND (s.end_snapshot IS NULL OR s.end_snapshot>f.begin_snapshot)"
+            )
+            for row in rows:
+                if any(value is None for value in row):
+                    raise _refuse(
+                        "backup_catalog_invalid",
+                        f"{catalog} cannot resolve every referenced file; use an intact backup",
+                    )
+                found.add(handle(zip(row[::2], row[1::2], strict=True)))
+        found.update(
+            handle(((path, relative),))
+            for path, relative in con.execute(
+                "SELECT path,path_is_relative FROM ducklake_files_scheduled_for_deletion"
+            )
+        )
+    return found
+
+
+def _owners(machine: Path, data: Path) -> dict[str, str | None]:
+    """The copied catalog's file/body references and copied log's retained blob proofs."""
+    import duckdb  # lazy: the optional data extra reads catalog Evidence body references
+
+    found: dict[str, str | None] = dict.fromkeys(_catalog_paths(machine / "catalog.sqlite"))
+    with closing(
+        sqlite3.connect(_real(machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)
+    ) as con:
+        profiles = con.execute(
+            "SELECT artifact_id,content_digest,body_state FROM artifact WHERE storage='blob'"
+        ).fetchall()
+    for name, digest, state in profiles:
+        if state == "present":
+            found["blobs/" + name] = digest
+    collected = {name for name, _, state in profiles if state == "collected"}
+    catalog = _real(machine / "catalog.sqlite").as_posix().replace("'", "''")
+    location = (_real(data).as_posix() + "/").replace("'", "''")
+    try:
+        with closing(
+            duckdb.connect(
+                ":memory:",
+                config={"autoinstall_known_extensions": False, "autoload_known_extensions": False},
+            )
+        ) as lake:
+            load_extensions(lake)
+            lake.execute(
+                f"ATTACH 'ducklake:sqlite:{catalog}' AS lake "
+                f"(READ_ONLY, DATA_PATH '{location}', OVERRIDE_DATA_PATH true)"
+            )
+            for (name,) in lake.execute(
+                "SELECT DISTINCT doc_digest FROM lake.world.evidence_doc"
+            ).fetchall():
+                if name not in collected:
+                    found.setdefault("blobs/" + name, None)
+    except duckdb.Error as error:
+        raise _refuse(
+            "backup_unreadable", f"{machine} cannot read its body owners; use an intact backup"
+        ) from error
+    if any(
+        not _handle(path) or (digest is not None and not _valid_digest(digest))
+        for path, digest in found.items()
+    ):
+        raise _refuse(
+            "backup_manifest_invalid",
+            f"{machine} has an unsafe path or unreadable owner digest; repair its owner",
+        )
+    return found
+
+
+def _files(root: Path, machine: Path) -> list[dict[str, Any]]:
+    """Seal the owners' required files and the admitted blob store without changing identities."""
+    owners = _owners(machine, root / "data")
+    handles = set(owners) | {path.relative_to(root).as_posix() for path in _walk(root / "blobs")}
+    return [
+        dict(
+            path=handle,
+            size=_real(root / handle).stat().st_size,
+            digest=owners.get(handle) or _file_digest(root / handle, "blake3:v1"),
+        )
+        for handle in sorted(handles)
+    ]
+
+
+def backup_data_root(root: Path, repository: Path) -> Path:
+    """Snapshot index, log, catalog and admitted files; return the published generation."""
+    root, repository = root.resolve(), repository.resolve()
+    if repository.is_relative_to(root):
+        raise _refuse(
+            "backup_overlaps_root",
+            f"{repository} is inside {root}; choose an external backup repository",
+        )
+    generations, pool = repository / "generations", repository / "files"
+    name = uuid.uuid4().hex
+    partial, generation = generations / ("." + name + ".partial"), generations / name
+    try:
+        _real(generations).mkdir(parents=True, exist_ok=True)
+        for folder in ("data", "blobs"):
+            _real(pool / folder).mkdir(parents=True, exist_ok=True)
+        (partial / "machine").mkdir(parents=True)
+        for database in DATABASES:
+            _snapshot(root / "machine" / database, partial / "machine" / database)
+        head = _head(partial / "machine/log.sqlite")
+        _consistent(partial / "machine")
+        files = _files(root, partial / "machine")
+        copied = copy_files(root, pool, files)
+        manifest = dict(
+            version=2,
+            databases=list(DATABASES),
+            head=head,
+            created_at=datetime.now(UTC).isoformat(),
+            copied_files=list(copied),
+            files=files,
+        )
+        (partial / "manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
+        os.rename(partial, generation)
+        return generation
+    except (OSError, sqlite3.Error) as error:
+        raise _refuse(
+            "backup_unreadable",
+            f"machine backup of {root} could not copy {error}; restore access and retry",
+        ) from error
+    finally:
+        if partial.exists():
+            shutil.rmtree(partial)
+
+
+def _relocate_catalog(catalog: Path, data: Path) -> None:
+    """Relocate only the restored catalog's global data path; its file paths stay relative."""
+    with closing(sqlite3.connect(catalog)) as con:
+        changed = con.execute(
+            "UPDATE ducklake_metadata SET value = ? WHERE key = 'data_path' AND scope IS NULL",
+            (data.as_posix() + "/",),
+        ).rowcount
+        if changed != 1:
+            raise _refuse(
+                "backup_catalog_invalid",
+                f"{catalog} lacks one global data path; use an intact backup",
+            )
+        con.commit()
+
+
+def restore_data_root(generation: Path, target: Path) -> Path:
+    """Verify a generation, restore into a fresh root and run the existing owed-event repair."""
+    import duckdb  # lazy: only restore opens the optional data extra's DuckDB reader
+
+    generation, target = generation.resolve(), Path(os.path.abspath(target))
+    if os.path.lexists(target):
+        raise _refuse("restore_target_exists", f"{target} exists; restore into a fresh root")
+    manifest = read_manifest(generation)
+    try:
+        if _head(generation / "machine/log.sqlite") != manifest["head"]:
+            raise _refuse(
+                "backup_chain_broken",
+                f"{generation} does not match its saved chain head; use an untampered backup",
+            )
+        _consistent(generation / "machine")
+        pool = generation.parent.parent / "files"
+        owners = _owners(generation / "machine", pool / "data")
+        listed = {entry["path"]: entry for entry in manifest["files"]}
+        if missing := owners.keys() - listed.keys():
+            raise _refuse(
+                "backup_manifest_invalid",
+                f"{generation} omits required file {min(missing)}; use a complete generation",
+            )
+        if any(
+            digest is not None and digest != listed[path]["digest"]
+            for path, digest in owners.items()
+        ):
+            raise _refuse(
+                "backup_file_changed",
+                f"{generation} differs from its owner's digest; use an intact generation",
+            )
+    except sqlite3.Error as error:
+        raise _refuse(
+            "backup_unreadable",
+            f"{generation / 'machine'} cannot be verified; use an intact backup",
+        ) from error
+    partial = target.with_name(f".{target.name}.{uuid.uuid4().hex}.restore")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial.mkdir()
+        for folder in FOLDERS:
+            (partial / folder).mkdir()
+        for database in DATABASES:
+            _snapshot(generation / "machine" / database, partial / "machine" / database)
+        copy_files(pool, partial, manifest["files"])
+        _relocate_catalog(partial / "machine/catalog.sqlite", partial / "data")
+        with HostLog.open(partial) as log:
+            port = StorePort.open(partial, log)
+            port.close()
+        _relocate_catalog(partial / "machine/catalog.sqlite", target / "data")
+        if os.path.lexists(target):
+            raise _refuse("restore_target_exists", f"{target} exists; restore into a fresh root")
+        os.rename(partial, target)
+        return target
+    except (OSError, sqlite3.Error, duckdb.Error) as error:
+        raise _refuse(
+            "backup_unreadable",
+            f"machine restore from {generation} could not copy {error}; use an intact backup",
+        ) from error
+    finally:
+        if partial.exists():
+            shutil.rmtree(partial)

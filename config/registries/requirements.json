@@ -264,6 +264,18 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.backup_copies_only_new_files": {
+      "description": "A machine backup copies newly referenced immutable files into its shared pool, reuses unchanged held files and refuses a changed sealed name or a path outside its roots.",
+      "layer": "unit",
+      "seconds": 1,
+      "owner": "alphalattice.kernel.data_layer"
+    },
+    "data_layer.backup_manifest_is_portable": {
+      "description": "A machine backup manifest names exactly its three databases, a well-formed chain head and unique relative data/blob handles; malformed or escaping handles are refused before restore writes.",
+      "layer": "unit",
+      "seconds": 1,
+      "owner": "alphalattice.kernel.data_layer"
+    },
     "data_layer.chain_catches_a_rewritten_event": {
       "description": "The chain verifies whole and from its last checkpoint, a new log is seeded and checkpointed monthly, and an event rewritten past its trigger breaks the fold.",
       "lower_layer": "The chain folds rows of a real SQLite log, rewritten past its trigger.",
@@ -339,6 +351,27 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
+    },
+    "data_layer.machine_backup_keeps_a_repairable_cut": {
+      "description": "A backup captures index before log before catalog during a write burst without holding the Host for the backup; its log names no missing catalog snapshot and restore uses the existing owed-event repair.",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "The interleaving crosses real SQLite backup steps and a committed DuckLake snapshot with the Host writer active.",
+      "owner": "alphalattice.kernel.data_layer"
+    },
+    "data_layer.machine_backup_restores_all_retained_results": {
+      "description": "Online snapshots of all three machine databases and the admitted file set restore every retained result ALL EQUAL into a fresh root while workspace backup remains unchanged.",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "SQLite online backup, SQLite vectors and the DuckLake catalog/file readback require real databases and files.",
+      "owner": "alphalattice.kernel.data_layer"
+    },
+    "data_layer.machine_restore_refuses_a_changed_chain": {
+      "description": "Machine restore refuses a changed chain, changed retained bytes or a manifest missing an owned file before publishing the destination.",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The corruption crosses real copied SQLite/DuckLake owners, retained files and the restore publication boundary.",
+      "owner": "alphalattice.kernel.data_layer"
     },
     "data_layer.one_host_writes_the_data_root": {
       "description": "A second Host is refused the data root's lock by name with its holder, and other processes read the log through a read-only attach that refuses a write.",

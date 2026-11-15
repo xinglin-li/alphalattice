@@ -29,6 +29,42 @@ Restore targets a new or empty directory and can run without a Host. It uses the
 
 The restore receipt identifies the generation and limitations: market tables are staged as Parquet for rebuild, and listed inputs or packages may need recapture or installation. A restored workspace may still lack derived values or readable reports.
 
+## Machine data roots in 0.2.8
+
+Machine-root backups keep the admitted data, results, Evidence bodies and index text.
+They exclude raw transport, credentials, keychains and process locks. The existing
+workspace backup commands remain available.
+
+The data-layer API creates a generation in a separate backup repository and restores
+it into a fresh root:
+
+```python
+from pathlib import Path
+
+from alphalattice.kernel.data_layer import backup_data_root, restore_data_root
+
+generation = backup_data_root(Path("data-root"), Path("machine-backups"))
+restored = restore_data_root(generation, Path("restored-data-root"))
+```
+
+Keep the whole backup repository: each generation contains its three SQLite snapshots,
+file manifest and saved log chain head; its immutable files live in the shared `files/`
+pool. Later generations copy only new files into that pool.
+
+Each file keeps its owner's recorded content digest when available; otherwise the
+generation records a versioned BLAKE3 seal of its bytes. Backup verifies a pool file
+before reusing it. Restore verifies the retained bytes and reconciles the file list
+against the copied catalog and admitted blob owners before publishing the new root.
+A changed file or an incomplete generation is refused by name. Generations without
+these file seals are refused; take a new backup to obtain a verified generation.
+
+Online backup copies the index, then the log, then the catalog, without holding the
+Host writer for the backup's duration. The catalog may contain commits newer than the
+copied log. Restore first verifies the saved chain and its catalog references, then runs
+the store's existing startup repair to append owed events. It relocates the restored
+catalog to the new root. An unverifiable chain, missing file or existing destination is
+refused by name; choose an intact generation and a fresh destination.
+
 ## Storage
 
 The data dependencies include engine-matched DuckLake and SQLite scanner binaries. The data-root catalog loads these installed packages without downloading extensions. Workspace connections refuse runtime extension installation or loading. If an installed binary cannot load, restore the locked data dependencies with `uv sync --locked --extra data`.
