@@ -352,6 +352,20 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
     """Each rule fires on added content; kept lines, shrinking files and tests/structural pass."""
     _antipattern_cases(monkeypatch)
     _split_antipattern_cases(monkeypatch, tmp_path)
+    for path in ("scripts/example.py", "tests/structural/test_example.py"):
+        for flag in ("DETACHED_" + "PROCESS", "CREATE_NEW_" + "CONSOLE"):
+            for source in (
+                f"import subprocess\nx = subprocess.{flag}\n",
+                f"import subprocess\nx = getattr(subprocess, {flag!r}, 0)\n",
+                f"from subprocess import {flag} as flag\n",
+            ):
+                assert problems(path, None, source), (path, source)
+        assert not problems(
+            path, None, "import subprocess\nx = getattr(subprocess, 'CREATE_NO_WINDOW', 0)\n"
+        )
+    assert not problems(
+        "src/example.py", None, "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
+    )
     big = "x = 1\n" * 20_000
     assert problems(PATH, big, big + "\u754c") and not problems(PATH, big + "\u754c", big)
     source = "import inspect\ninspect.getsource(owner)\n"
@@ -647,6 +661,14 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     texts = {":" + path: bad, "HEAD:" + path: "", "MERGE_HEAD:" + path: ""}
     monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [path], state))
     assert shape.main([]) == 1
+    for guarded in ("scripts/example.py", "tests/structural/example.py"):
+        bad_flag = "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
+        blobs = {":" + guarded: bad_flag, "HEAD:" + guarded: ""}
+        monkeypatch.setattr(shape.subprocess, "run", _git_backend(blobs, [guarded]))
+        assert shape.main([]) == 1
+        blobs[":" + guarded] = "import subprocess\nx = subprocess.CREATE_NO_WINDOW\n"
+        assert shape.main([]) == 0
+    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [path], state))
     state["merge"] = True
     texts["HEAD:" + path] = bad
     assert shape.main([]) == 0

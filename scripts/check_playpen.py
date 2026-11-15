@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
@@ -82,6 +82,13 @@ _LAUNCHER_RESERVE = 512
 _COMMAND_LINE_UNITS = 32_766 - _LAUNCHER_RESERVE
 
 
+def _quiet_run(*args: Any, **options: Any) -> subprocess.CompletedProcess[Any]:
+    """Launch each gate child without opening a console on Windows."""
+    return subprocess.run(
+        *args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **options
+    )
+
+
 def _ensure_workspace_environment() -> None:
     """Re-execute under `<root>/.venv`, the environment `uv.lock` describes.
 
@@ -105,7 +112,7 @@ def _ensure_workspace_environment() -> None:
     if os.environ.get(_ROOT_ENV_SENTINEL) == "1":
         raise RuntimeError("playpen gate failed to enter the workspace .venv")
     os.environ[_ROOT_ENV_SENTINEL] = "1"
-    result = subprocess.run(
+    result = _quiet_run(
         (str(target), str(Path(__file__).resolve()), *sys.argv[1:]),
         check=False,
     )
@@ -129,7 +136,7 @@ def _relay(
     them, and printed unchanged after the gate's record of it.
     """
 
-    done = subprocess.run(
+    done = _quiet_run(
         tuple(args),
         cwd=ROOT,
         check=False,
@@ -138,7 +145,6 @@ def _relay(
         text=True,
         encoding="utf-8",
         errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         **options,
     )
     print(child_record(label, done.returncode, passing), flush=True)
@@ -306,13 +312,13 @@ def _run_over_targets(label: str, *prefix: str, targets: tuple[str, ...]) -> Non
 
 def _git_text(*args: str) -> str:
     """One Git answer's text; a failure raises, which the caller's step names."""
-    return subprocess.run(
-        ("git", *args), cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.strip()
+    return cast(
+        str, _quiet_run(("git", *args), cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    ).strip()
 
 
 def _git_lines(*args: str) -> set[str]:
-    result = subprocess.run(("git", *args), cwd=ROOT, check=True, capture_output=True, text=True)
+    result = _quiet_run(("git", *args), cwd=ROOT, check=True, capture_output=True, text=True)
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
@@ -402,14 +408,14 @@ def _reach_may_grow(*, staged: bool) -> list[str]:
         area = module if parts[-1] == "__init__" else module.rpartition(".")[0]
         if area not in areas and not (len(parts) > 2 and parts[2] in deciding):
             continue
-        before = subprocess.run(
+        before = _quiet_run(
             ["git", "show", f"HEAD:{path}"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             encoding="utf-8",
         )
-        after = subprocess.run(
+        after = _quiet_run(
             ["git", "show", f":{path}"] if staged else ["git", "show", f"HEAD:{path}"],
             cwd=ROOT,
             capture_output=True,
@@ -526,7 +532,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
     ratchet = "config/registries/test-private.json"
 
     def shown(revision: str, path: str = ratchet) -> str | None:
-        result = subprocess.run(
+        result = _quiet_run(
             ["git", "show", f"{revision}:{path}"],
             cwd=ROOT,
             capture_output=True,
@@ -588,7 +594,7 @@ def ledger_records(root: Path) -> tuple[str, str, dict[str, bytes]] | None:
 
     def run(*args: str) -> subprocess.CompletedProcess[bytes]:
         try:
-            return subprocess.run(("git", *args), cwd=root, capture_output=True)
+            return _quiet_run(("git", *args), cwd=root, capture_output=True)
         except OSError as error:
             raise ValueError(
                 f"check_playpen.ledger_unreadable:{LEDGER}; restore Git before committing: {error}"
@@ -706,7 +712,7 @@ def _check_boundaries(*, staged: bool) -> bool:
     def current(path: str) -> bytes | None:  # the index's bytes, or the working tree's
         if not staged:
             return (ROOT / path).read_bytes() if (ROOT / path).is_file() else None
-        shown = subprocess.run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
+        shown = _quiet_run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
         return shown.stdout if shown.returncode == 0 else None
 
     started = perf_counter()
@@ -753,7 +759,7 @@ def _check_scoped_structural(*, staged: bool, base_ref: str = "develop") -> bool
     for the commit stage, so a committed change is scanned as its staged form was."""
     since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
     diff = ("diff", since, "--name-status", "--no-renames")
-    listing = subprocess.run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
+    listing = _quiet_run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
     named = {row.split("\t")[-1] for row in listing.stdout.splitlines()}
     if not any(path.endswith(".py") for path in named):
         return True
@@ -804,7 +810,7 @@ def _develop_conflicts(*, staged: bool, target: str = "develop") -> list[str]:
     which resolves its own conflicts, is being staged."""
 
     def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+        return _quiet_run(
             ("git", *args),
             cwd=ROOT,
             capture_output=True,
@@ -812,7 +818,6 @@ def _develop_conflicts(*, staged: bool, target: str = "develop") -> list[str]:
             encoding="utf-8",
             errors="replace",
             timeout=60,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
     if git("rev-parse", "-q", "--verify", target).returncode:
@@ -922,13 +927,13 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         sys.path.pop(0)
 
     def git(*args: str) -> str:
-        done = subprocess.run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
+        done = _quiet_run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
         if done.returncode:
             said = (done.stderr or done.stdout).strip().splitlines()[:1]
             raise RuntimeError(
                 f"`git {' '.join(args)}` failed: {' '.join(said) or done.returncode}"
             )
-        return done.stdout
+        return cast(str, done.stdout)
 
     try:
         pending = ROOT / git("rev-parse", "--git-path", "MERGE_HEAD").strip()

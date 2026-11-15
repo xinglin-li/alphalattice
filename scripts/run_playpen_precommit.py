@@ -149,7 +149,12 @@ def _format_staged() -> None:
             "--",
         )
         for batch in _batched(tuple(path for _, _, path in staged), prefix=prefix):
-            subprocess.run((*prefix, *batch), cwd=after, check=True)
+            subprocess.run(
+                (*prefix, *batch),
+                cwd=after,
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
         changes, partial = [], []
         for mode, oid, path in staged:
             formatted = (after / path).read_bytes()
@@ -202,6 +207,7 @@ def _format_staged() -> None:
                     cwd=PLAYPEN_ROOT,
                     capture_output=True,
                     check=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.split(b"\0")
                 if attrs[-1:] != [b""] or len(attrs) != 6 * len(changes) + 1:
                     raise ValueError(
@@ -229,6 +235,7 @@ def _format_staged() -> None:
                 ("git", "diff", "--no-index", "--no-prefix", "--binary", "--", "before", "after"),
                 cwd=mirror,
                 capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             if patch.returncode != 1:
                 raise ValueError(
@@ -239,6 +246,7 @@ def _format_staged() -> None:
                 input=patch.stdout,
                 cwd=PLAYPEN_ROOT,
                 check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
 

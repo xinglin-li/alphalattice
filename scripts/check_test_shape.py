@@ -1264,6 +1264,33 @@ def _test_problems(
     return found
 
 
+def _window_flags(path: str, source: str) -> list[str]:
+    """Test and tool children must inherit a hidden console, never request a new one."""
+    forbidden = {"DETACHED_" + "PROCESS", "CREATE_NEW_" + "CONSOLE"}
+    found = []
+    for node in ast.walk(_tree(source)):
+        value = (
+            node.attr
+            if isinstance(node, ast.Attribute)
+            else node.id
+            if isinstance(node, ast.Name)
+            else node.name
+            if isinstance(node, ast.alias)
+            else node.args[1].value
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) > 1
+            and isinstance(node.args[1], ast.Constant)
+            else None
+        )
+        if value in forbidden:
+            found.append(
+                f"{path}:{node.lineno}: {value} opens a visible console; use CREATE_NO_WINDOW"
+            )
+    return found
+
+
 def problems(
     path: str,
     old: str | None,
@@ -1275,6 +1302,13 @@ def problems(
     ``docstrings`` are its head's Ruff docstring findings (``ruff_docstrings``)."""
     if path in GENERATED:
         return []
+    windows = (
+        _window_flags(path, new)
+        if path.startswith(("tests/", "scripts/")) and path.endswith(".py")
+        else []
+    )
+    if path.startswith("scripts/"):
+        return windows
     if path.startswith("src/"):
         found = []
         size = len(new.encode("utf-8", errors="surrogateescape"))
@@ -1314,7 +1348,7 @@ def problems(
         return found
     if not path.startswith("tests/"):
         return []
-    found = []
+    found = windows
 
     def counted(text: str) -> int:  # tracing a test to its requirement never grows its file
         return len(PROVES_LINE.sub("", text).encode("utf-8", errors="surrogateescape"))
@@ -1533,6 +1567,7 @@ def main(argv: list[str] | None = None) -> int:
             path
             for path in staged
             if path.startswith("src/")
+            or (path.startswith("scripts/") and path.endswith(".py"))
             or (path.startswith("tests/") and path.endswith((".py", ".cjs")))
         ],
         [

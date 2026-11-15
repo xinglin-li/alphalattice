@@ -20,7 +20,9 @@ def synthetic_history(tmp_path):
     def git(*args):
         options = [part for setting in config for part in ("-c", setting)]
         return subprocess.check_output(
-            ["git", *options, "-C", str(tmp_path), *args], text=True
+            ["git", *options, "-C", str(tmp_path), *args],
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).strip()
 
     def commit(message, *, advance=True):
