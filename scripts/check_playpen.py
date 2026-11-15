@@ -800,14 +800,16 @@ def _check_docstrings() -> bool:
     return result.returncode == 0
 
 
-def _check_waits(*, staged: bool) -> bool:
-    """Refuse an unbounded wait or loop above ``config/wait-baseline.json``: the staged sources
-    for the hook, every tracked source otherwise (scripts/check_waits.py)."""
+def _check_counts(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Refuse an unbounded wait or loop above ``config/wait-baseline.json`` and a ``type: ignore``
+    above ``config/type-ignore-baseline.json``, in one child (scripts/check_counts.py): the staged
+    files for the hook, every tracked file otherwise against the merge base with ``base_ref``."""
 
     started = perf_counter()
-    script = [sys.executable, str(ROOT / "scripts" / "check_waits.py")]
-    result = _relay("wait-rules", [*script, "--staged" if staged else "--all"], timeout=600)
-    print(f"PLAYPEN_GATE_TIMING wait-rules {perf_counter() - started:.3f}s", flush=True)
+    script = [sys.executable, str(ROOT / "scripts" / "check_counts.py")]
+    scope = ["--staged"] if staged else ["--all", "--base", base_ref]
+    result = _relay("counts", [*script, *scope], timeout=600)
+    print(f"PLAYPEN_GATE_TIMING counts {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
@@ -1301,7 +1303,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("boundaries", lambda: _check_boundaries(staged=args.staged)),
         ("import-contracts", _check_import_contracts),
         ("docstrings", _check_docstrings),
-        ("wait-rules", lambda: _check_waits(staged=args.staged)),
+        ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
         (
             "test-shape",
             lambda: _check_test_shape(

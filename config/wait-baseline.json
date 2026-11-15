@@ -6,7 +6,7 @@
     "scripts/check_alpha_verification_impact.py::call-without-timeout": 8,
     "scripts/check_alpha_verification_impact.py::swallowed-in-loop": 2,
     "scripts/check_docstrings.py::call-without-timeout": 1,
-    "scripts/check_playpen.py::call-without-timeout": 15,
+    "scripts/check_playpen.py::call-without-timeout": 11,
     "scripts/check_playpen.py::swallowed-in-loop": 1,
     "scripts/check_test_shape.py::call-without-timeout": 1,
     "scripts/configure_playpen_dev.py::call-without-timeout": 2,

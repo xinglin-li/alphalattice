@@ -185,7 +185,7 @@ extend-exclude = ["experiments", "tmp", "workspaces"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # S113, ASYNC and DTZ005: blocking calls with no timeout and naive wall clocks (the wait rules
-# in scripts/check_waits.py hold the rest); none existed when they came in.
+# in scripts/check_counts.py hold the rest); none existed when they came in.
 extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005"]
 
 [tool.ruff.lint.per-file-ignores]

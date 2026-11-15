@@ -113,6 +113,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.type_ignores_only_fall": {
+      "description": "A commit is refused when a file's type: ignore count for an error code rises, a new file holds one, one names no code, or the baseline rose; one command lowers it.",
+      "lower_layer": "The refusal reads staged blobs, a staged move and the parent's baseline through Git, which a unit test cannot hold.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 10
+    },
     "architecture.wait_baseline_only_falls": {
       "description": "A commit is refused when a staged source holds more wait findings than the baseline, or when the baseline rose above its parent.",
       "lower_layer": "The refusal reads staged blobs and the parent's baseline through Git, which a unit test cannot hold.",
