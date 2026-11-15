@@ -3677,13 +3677,14 @@
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) and machine/host.lock, the one Host's lock naming its holder",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, and machine/host.lock, the one Host's lock naming its holder",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [
         "data_layer.log:HostLog",
-        "data_layer.log:_take_lock",
-        "data_layer.root:_database"
+        "data_layer.log:hold",
+        "data_layer.root:_database",
+        "data_layer.store:stage"
       ],
       "readers": []
     }

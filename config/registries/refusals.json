@@ -6496,10 +6496,45 @@
 "category": "INVALID_ARGUMENT",
 "classification_note": "An event's type and version are not registered event types."
 },
+"data_layer.admission_key_repeated": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "One admission carries one version of a world table's key; DuckLake keeps no keys, so StorePort does."
+},
+"data_layer.below_free_floor": {
+"owner": "data_layer",
+"category": "RESOURCE_EXHAUSTED",
+"classification_note": "Below the data root's free-space floor no admission is staged, so the log, the repair and cleanup keep their room."
+},
+"data_layer.data_folder_unreadable": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A folder under the data root's data/ that cannot be listed stops the start, since an empty reading would leave unnamed files unseen."
+},
+"data_layer.handle_outside_root": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "StorePort deletes only a file or folder inside the data root's staging/, data/ or blobs/."
+},
+"data_layer.live_ref_held": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "An artifact body a live reference holds is never collected."
+},
 "data_layer.host_running": {
 "owner": "data_layer",
 "category": "FAILED_PRECONDITION",
 "classification_note": "Another Host holds the data root's lock and is its only writer; other processes attach read-only."
+},
+"data_layer.staging_taken": {
+"owner": "data_layer",
+"category": "ABORTED",
+"classification_note": "A starting Host collected this admission's staging before its producer held the lock; the producer stages the rows again."
+},
+"data_layer.world_table_not_admitted": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "StorePort admits only the world tables it names; a further table is added with its first source."
 },
 "data_tradability.adv20_warmup_unavailable": {
 "owner": "data_tradability",

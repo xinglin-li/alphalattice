@@ -6,11 +6,17 @@ with the holder it found. Every row of log.sqlite comes from `HostLog.append`: i
 (admit.py), then writes the event, its text, the chain's new head, its projection and an inline
 artifact's body as one unit, all of it or none of it.
 
-Ordinary events commit in batches under synchronous NORMAL: a batch commits at BATCH_SIZE events,
-BATCH_SECONDS after its first, at `flush` and at `close`. Each event is its own savepoint inside
-the batch, so a refused event leaves the batch's others whole. An event whose type is durable in
-the registry commits at once under FULL, after the batch before it. A crash loses at most the open
-batch, never part of an event, and the chain verifies after it.
+Ordinary events commit in batches: a batch commits at BATCH_SIZE events, BATCH_SECONDS after its
+first, at `flush` and at `close`. Each event is its own savepoint inside the batch, so a refused
+event leaves the batch's others whole. An event whose type is durable in the registry commits at
+once, with the batch before it. Every commit is under synchronous FULL, so what has committed
+survives a lost machine, not only a killed process. A crash loses at most the open batch, never
+part of an event, and the chain verifies after it. `append` returns before an ordinary event's
+batch commits, so the Host calls `flush` before it returns anything to an agent: a reply never
+names an event a crash could still lose.
+
+The log keeps its own clock (`clock`): a live event's recorded_us is the larger of the wall clock
+and the last value plus one microsecond, so it never steps back when the wall clock does.
 
 This card projects the registry's own two event types, the chain's checkpoint and
 `artifact.produced`, whose profile row an inline body's foreign key needs in the same unit; every
@@ -44,7 +50,8 @@ from alphalattice.kernel.data_layer.chain import (
 )
 
 BATCH_SIZE: Final = 64
-"""Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256)."""
+"""Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256).
+FULL costs a tenth of that against NORMAL (14.6k against 16.6k at 64 on the workshop PC)."""
 BATCH_SECONDS: Final = 0.2
 """The longest an ordinary event waits for its batch's commit."""
 ENDED: Final = ("completed", "failed", "cancelled")
@@ -114,6 +121,8 @@ class HostLog:
         self._guard = threading.RLock()
         self._pending = 0
         self._timer: threading.Timer | None = None
+        last = con.execute("SELECT recorded_us FROM event ORDER BY seq DESC LIMIT 1").fetchone()
+        self._last_us = -1 if last is None else int(last[0])
 
     @classmethod
     def open(
@@ -138,7 +147,7 @@ class HostLog:
             )
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON")
-            con.execute("PRAGMA synchronous = NORMAL")
+            con.execute("PRAGMA synchronous = FULL")
             if not verify_from_checkpoint(con):
                 con.close()
                 raise DataError(
@@ -184,37 +193,41 @@ class HostLog:
         """Admit one event and write it as one unit; returns its seq.
 
         The unit is the event, its text, the chain, its projection and an inline artifact's body.
-        A durable type is committed on return; an ordinary one with its batch.
+        A durable type is committed on return; an ordinary one with its batch, so a caller that
+        replies on it flushes first. A live event's recorded_us is the log's clock; replay
+        (live=False) keeps the one it had.
         """
         with self._guard:
             con = self._con
+            if live:
+                row = {**row, "recorded_us": self.clock()}
             spec = _spec(con, row)
             admit(row, text, spec, _superseded(con), live=live, body=body)
             durable = bool(spec.get("durable"))
-            if durable:
-                self._commit()
-                con.execute("PRAGMA synchronous = FULL")
+            if self._pending == 0:
+                con.execute("BEGIN IMMEDIATE")
+                self._arm()
+            con.execute("SAVEPOINT event")
             try:
-                if self._pending == 0:
-                    con.execute("BEGIN IMMEDIATE")
-                    self._arm()
-                con.execute("SAVEPOINT event")
-                try:
-                    seq = _write(con, row, text, body, live=live)
-                except BaseException:
-                    con.execute("ROLLBACK TO event")
-                    con.execute("RELEASE event")
-                    if self._pending == 0:
-                        self._end("ROLLBACK")
-                    raise
+                seq = _write(con, row, text, body, live=live)
+            except BaseException:
+                con.execute("ROLLBACK TO event")
                 con.execute("RELEASE event")
-                self._pending += 1
-                if durable or self._pending >= self._batch:
-                    self._commit()
-            finally:
-                if durable:
-                    con.execute("PRAGMA synchronous = NORMAL")
+                if self._pending == 0:
+                    self._end("ROLLBACK")
+                raise
+            con.execute("RELEASE event")
+            self._pending += 1
+            if durable or self._pending >= self._batch:
+                self._commit()
             return seq
+
+    def clock(self, at_least: int = 0) -> int:
+        """The log's next moment, in microseconds: the larger of the wall clock, the last moment
+        plus one and `at_least`. It never steps back, so neither does anything stamped with it."""
+        with self._guard:
+            self._last_us = max(time.time_ns() // 1000, self._last_us + 1, at_least)
+            return self._last_us
 
     def record(
         self,
@@ -230,7 +243,7 @@ class HostLog:
         return self.append(envelope(type_, subject, attrs, text=text, **more), text, body)
 
     def flush(self) -> None:
-        """Commit the open batch, if any."""
+        """Commit the open batch, if any; the Host's reply waits for it."""
         with self._guard:
             self._commit()
 
@@ -238,6 +251,23 @@ class HostLog:
         """Rows as the Host sees them, its open batch included."""
         with self._guard:
             return self._con.execute(sql, args).fetchall()
+
+    def queue_deletion(self, handle: str, kind: str, error: str) -> None:
+        """Record a file another process holds open, or count one more failed try at it.
+
+        `deletion_queue` is the Host's working state, not a projection: no event writes it.
+        """
+        with self._guard:
+            self._con.execute(
+                "INSERT INTO deletion_queue VALUES (?, ?, ?, 1, ?) ON CONFLICT (handle) DO UPDATE"
+                " SET attempts = attempts + 1, last_error = excluded.last_error",
+                (handle, kind, self.clock(), error),
+            )
+
+    def dequeue_deletion(self, handle: str) -> None:
+        """Forget a queued file once it is gone."""
+        with self._guard:
+            self._con.execute("DELETE FROM deletion_queue WHERE handle = ?", (handle,))
 
     def close(self) -> None:
         """Commit the open batch and release the data root's lock."""
@@ -300,31 +330,60 @@ def verify_whole(con: sqlite3.Connection) -> bool:
     return bool(fold_segments(events, [(b[0], b[1]) for b in bounds], stored[1]) == stored[0])
 
 
+def hold(path: Path) -> IO[bytes] | None:
+    """An exclusive hold on `path`, kept while the returned handle is open; None when another
+    handle, in this process or another, holds it, or when the file it locked is no longer the one
+    at `path` (`drop` removed it between the open and the lock). The holder's death releases it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+b", buffering=0)
+    try:
+        lock_byte(handle)
+        if os.path.samestat(os.fstat(handle.fileno()), os.stat(path)):
+            return handle
+    except OSError:
+        pass  # held by another, or removed after the open: no hold either way
+    handle.close()
+    return None
+
+
+def drop(handle: IO[bytes], path: Path) -> None:
+    """Give up a hold and remove its file, so no later `hold` takes a file no longer at `path`.
+
+    POSIX removes the file while it is still held. Windows cannot remove an open file, so the
+    hold ends first; a handle that opened the file meanwhile keeps it, since the removal fails.
+    """
+    if sys.platform != "win32":
+        path.unlink(missing_ok=True)
+        handle.close()
+        return
+    handle.close()
+    try:
+        path.unlink(missing_ok=True)
+    except PermissionError:
+        return  # another handle opened it after the hold ended: the file is that holder's now
+
+
 def _take_lock(path: Path) -> IO[bytes]:
     """The data root's lock, held by its open handle for the Host's life.
 
     The locked byte lies past the file's end (LOCK_AT), so the holder's name at its start stays
     readable to the process the refusal names it to.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle = path.open("a+b", buffering=0)
-    try:
-        _lock_byte(handle)
-    except OSError as error:
-        handle.seek(0)
-        holder = handle.read(512).decode(errors="replace").strip() or "an unnamed process"
-        handle.close()
+    handle = hold(path)
+    if handle is None:
+        holder = path.read_bytes()[:512].decode(errors="replace").strip() or "an unnamed process"
         raise DataError(
             f"another Host ({holder}) holds this data root and is its only writer; read it "
             "through data_layer.log.attach, or stop that Host first",
             code="data_layer.host_running",
-        ) from error
+        )
     handle.truncate(0)
     handle.write(f"pid {os.getpid()}, {Path(sys.argv[0]).name or 'python'}".encode())
     return handle
 
 
-def _lock_byte(handle: IO[bytes]) -> None:
+def lock_byte(handle: IO[bytes]) -> None:
+    """Lock one byte of `handle`'s file without waiting; OSError when another handle has it."""
     if sys.platform == "win32":
         import msvcrt  # lazy: the module exists only on Windows
 

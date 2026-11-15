@@ -73,7 +73,7 @@ def seed_rows(owner: str = "kernel", seq: int = 1) -> list[tuple]:
     ]
 
 
-def _statements(text: str) -> list[str]:
+def statements(text: str) -> list[str]:
     """A DDL file's statements without its comments (no literal in them holds `--` or `;`)."""
     bare = "\n".join(line.split("--", 1)[0] for line in text.splitlines())
     return [part.strip() for part in bare.split(";") if part.strip()]
@@ -96,7 +96,7 @@ def _build_index(connection: sqlite3.Connection) -> None:
         vectors = True
     except (AttributeError, sqlite3.OperationalError):
         vectors = False
-    for statement in _statements(schema_text("index.sql")):
+    for statement in statements(schema_text("index.sql")):
         if vectors or "USING vec0" not in statement:
             connection.execute(statement)
 
@@ -131,7 +131,7 @@ def _database(path: Path, build) -> tuple[bool, frozenset[str]]:
     return True, tables
 
 
-def _load_extensions(connection) -> None:
+def load_extensions(connection) -> None:
     """Load engine-matched binaries from the installed wheels, never INSTALL or a repository."""
     import duckdb  # lazy: data is optional; log/index creation works without DuckDB
 
@@ -170,7 +170,7 @@ def _catalog(root: Path) -> bool | None:
     )
     try:
         try:
-            _load_extensions(connection)
+            load_extensions(connection)
         except ModuleNotFoundError:
             return None
         data = (root / "data").as_posix()
@@ -178,7 +178,7 @@ def _catalog(root: Path) -> bool | None:
             f"ATTACH 'ducklake:sqlite:{catalog.as_posix()}' AS lake (DATA_PATH '{data}/')"
         ).complete()
         connection.execute("USE lake").complete()
-        for statement in _statements(schema_text("catalog.sql")):
+        for statement in statements(schema_text("catalog.sql")):
             connection.execute(statement).complete()
     finally:
         connection.close()

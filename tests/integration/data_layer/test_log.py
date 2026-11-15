@@ -74,7 +74,14 @@ REFUSED = {
     ),
     "refused after the chain folded": (
         ("artifact.produced", ("artifact", "r1")),
-        {"attrs": {"type": "report", "meaning": "m", "storage": "inline", "identity_kind": "c"}},
+        {
+            "attrs": {
+                "type": "report",
+                "meaning": "m",
+                "storage": "inline",
+                "identity_kind": "content",
+            }
+        },
     ),
     "refused by the log's own rule": (("lesson.recorded",), {"text": "no cause", "cause": -5}),
 }
@@ -247,10 +254,21 @@ def test_a_second_host_is_refused_by_name_and_others_attach_read_only(root):
     HostLog.open(root, now_us=T0).close()  # released at close
 
 
+REPLY = """
+import os, sys
+from pathlib import Path
+from alphalattice.kernel.data_layer.log import HostLog
+log = HostLog.open(Path(sys.argv[1]), batch=1000, seconds=60, now_us=int(sys.argv[2]))
+log.record("tool.call", attrs={"tool": "replied"}, phase="completed")
+log.flush()  # a reply waits for its commit
+os._exit(9)
+"""
+
+
 @pytest.mark.proves("data_layer.durable_events_commit_at_once")
 def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root):
-    """An ordinary event is committed by its batch's size, its deadline or a durable event after
-    it; a durable event is committed when its append returns."""
+    """An ordinary event is committed by its batch's size, its deadline, a durable event after it
+    or the flush a reply waits for, which a killed Host keeps; a durable one when appended."""
     base = _events(root)
     with HostLog.open(root, batch=2, seconds=60, now_us=T0) as log:
         log.record("tool.call", attrs={"tool": "a"}, phase="completed")
@@ -266,3 +284,11 @@ def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root
         if deadline is not None:
             deadline.join(timeout=10)
         assert _events(root) == base + 5
+    kwargs = {"stdin": subprocess.DEVNULL, "capture_output": True, "timeout": 60}
+    child = subprocess.run(
+        [sys.executable, "-c", REPLY, str(root), str(T0)],
+        env=os.environ | {"PYTHONPATH": str(Path(host.__file__).parents[3])},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no window on Windows
+        **kwargs,
+    )
+    assert (child.returncode, _events(root)) == (9, base + 6)

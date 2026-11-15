@@ -347,7 +347,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with duckdb.connect(
         config={"autoinstall_known_extensions": False, "autoload_known_extensions": False}
     ) as catalog:
-        owner._load_extensions(catalog)
+        owner.load_extensions(catalog)
         catalog.execute(
             f"ATTACH 'ducklake:sqlite:{tmp_path.as_posix()}/machine/catalog.sqlite' AS lake "
             f"(DATA_PATH '{tmp_path.as_posix()}/data/')"
@@ -356,7 +356,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
             f"ATTACH '{tmp_path.as_posix()}/machine/log.sqlite' AS log (TYPE SQLITE, READ_ONLY)"
         ).complete()
         catalog.execute("SET TimeZone='UTC'").complete()
-        for statement in owner._statements(owner.schema_text("views.sql")):
+        for statement in owner.statements(owner.schema_text("views.sql")):
             catalog.execute(statement).complete()
         assert catalog.execute("SELECT count(*) FROM raw_bar_asof(1)").fetchall() == [(0,)]
         assert catalog.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]

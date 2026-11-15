@@ -251,6 +251,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.admission_is_read_as_of_before_and_after_a_correction": {
+      "description": "One admission's rows share one known_at that never steps back with the wall clock; the as-of read before its correction sees them, after it sees the correction, and the replaced version is superseded in the same commit.",
+      "lower_layer": "The as-of read is DuckDB's macro over a real DuckLake catalog.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.append_admits_only_a_keepable_event": {
       "description": "The append boundary refuses by name a missing attribute, an unbound, missing or unexpected text, a malformed count or part, a credential and a live write under a superseded definition.",
       "owner": "alphalattice.kernel.data_layer",
@@ -265,17 +272,31 @@
       "seconds": 5
     },
     "data_layer.durable_events_commit_at_once": {
-      "description": "An ordinary event is committed by its batch's size, its deadline or a durable event after it, and a durable event is committed when its append returns.",
-      "lower_layer": "Commit visibility is what another SQLite connection reads.",
+      "description": "A durable event commits when appended; an ordinary one with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
+      "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 10
     },
     "data_layer.event_ids_are_uuidv7": {
       "description": "A new event's id is a UUIDv7 whose leading 48 bits are the Unix milliseconds it was minted in.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.heavy_work_runs_beside_the_writer": {
+      "description": "An append and its flush made while a large admission is digested and staged wait as an ordinary one does, since staging runs in the process that has the rows and never under the writer.",
+      "lower_layer": "The wait is measured on a real log's commits against a second real process.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 20
+    },
+    "data_layer.held_files_wait_in_the_deletion_queue": {
+      "description": "A file another handle holds open waits in the deletion queue with its error and tries, and goes at the first start after it is released.",
+      "lower_layer": "Windows' refusal to delete an open file is the operating system's, on a real disk.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
     },
     "data_layer.host_append_is_all_or_nothing": {
       "description": "Each append writes the event, its text, the chain head, its projection and an inline body as one unit: a refused event leaves no trace and its batch's other events whole.",
@@ -290,6 +311,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 15
+    },
+    "data_layer.live_ref_bodies_are_never_collected": {
+      "description": "A blob whose artifact a live reference holds is refused deletion by name and stays, while an unheld blob is deleted.",
+      "lower_layer": "The hold is a live_ref row in a real SQLite log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
     },
     "data_layer.log_refuses_what_its_rules_forbid": {
       "description": "Each rule of the data root's event log refuses its breach by name and leaves the log unchanged.",
@@ -312,6 +340,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.repair_appends_each_owed_event_once": {
+      "description": "Repair appends each event a catalog snapshot carried and the log lacks once, with its writer's envelope and snapshot, at the next start even below the free-space floor that refuses staging.",
+      "lower_layer": "The owed event is read from a real DuckLake snapshot's commit info and appended through the Host's write path into a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.root_created_twice_is_all_equal": {
       "description": "Creating a data root with installed data dependencies creates the SQLite DuckLake catalog and runs its views and macros offline; repeating creation leaves every file byte-identical, and another schema version is refused by name.",
       "lower_layer": "Creation writes SQLite databases and folders on disk.",
@@ -333,12 +368,38 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.stage_refuses_what_it_cannot_admit": {
+      "description": "Staging refuses by name two versions of one key in one admission and a world table StorePort does not admit, before anything is staged.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.start_collects_what_no_write_owns": {
+      "description": "Start collects staging no producer holds and data files the catalog does not name, holding each admission's lock while it does, so a producer's staging is never lost.",
+      "lower_layer": "Collection reads a real DuckLake catalog's file tables and deletes files on disk.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.store_deletes_only_its_own_files": {
+      "description": "StorePort refuses by name to delete anything outside the data root's staging, data and blobs folders, before touching the disk.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.vector_table_defers_without_extension_loading": {
       "description": "Without extension loading a data root still creates every index table but the vector table, and names that table deferred.",
       "lower_layer": "The index is a SQLite database on disk, built through the extension loader.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
+    },
+    "data_layer.write_order_recovers_from_a_kill_at_each_point": {
+      "description": "A Host killed after an admission's files, catalog commit or event leaves no half snapshot: the next start finds all its rows or none, its event once, and no staging.",
+      "lower_layer": "A kill is a real process's death between a real DuckLake commit and a real log append.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 30
     },
     "data_platform.session_authority_is_content_addressed": {
       "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
