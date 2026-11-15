@@ -81,6 +81,168 @@
       "within": [
         "src/alphalattice/*.py"
       ]
+    },
+    "tests/structural/test_book_declarations.py::test_no_owner_exports_a_declaration_as_a_whole_request": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "safe_dump"
+      ]
+    },
+    "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair": {
+      "inputs": [
+        "src/devtools/architecture/moved_names.py",
+        "src/alphalattice/kernel/shared_kernel/project_layout.py"
+      ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_every_fit_plan_call_site_states_its_protocol": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "build_alpha_model_fit_plan"
+      ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_only_the_owner_writes_the_manifest": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "publish_research_workspace_manifest"
+      ]
+    },
+    "tests/structural/test_pipeline_stage.py::test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies": {
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/pipeline/definition.py",
+        "src/devtools/pipeline/facets.py",
+        "src/devtools/pipeline/receipt.py",
+        "src/devtools/pipeline/stage.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "config/registries/test-sizes.json",
+        "config/pipeline.toml"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "last_plan"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_no_owner_keeps_a_preview_in_one_slot": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "preview"
+      ]
+    },
+    "tests/structural/test_product_scripts_answer_their_writes.py::test_every_product_script_that_writes_a_location_it_chooses_answers_in_words": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py",
+        "scripts/run_alphalattice.py"
+      ],
+      "words": [
+        "scripts/",
+        "alphalattice.control.product_host.composition.evidence_authority_setup",
+        "alphalattice.control.product_host.composition.retrieval_pack_setup",
+        "alphalattice.control.product_host.composition.web_launcher",
+        "alphalattice.interface.local_application.retrieval_environment"
+      ],
+      "inputs": [
+        "AGENTS.md",
+        "README.md",
+        "docs/public-source/*.md",
+        ".agents/skills/*",
+        "tests/integration/local_application/test_product_script_refusals.py",
+        "scripts/build_local_web_ui.py",
+        "scripts/create_gpu_environment.py",
+        "scripts/create_retrieval_environment.py",
+        "scripts/install_retrieval_pack.py",
+        "scripts/materialize_claude_host.py",
+        "scripts/materialize_evidence_cro_authority.py",
+        "scripts/native_research.py",
+        "scripts/run_alphalattice.py",
+        "scripts/run_local_portfolio_web.py",
+        "src/alphalattice/interface/local_application/native_setup.py",
+        "src/alphalattice/interface/local_application/retrieval_environment.py",
+        "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "src/alphalattice/investment/alpha_research/verification/impact.py"
+      ]
+    },
+    "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "LocalResearchClientError",
+        "failure_code"
+      ],
+      "inputs": [
+        "config/registries/refusals.json",
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        "src/alphalattice/interface/local_application/refusal_words.json",
+        "src/alphalattice/control/guanyin/data/workspace_maintenance.py",
+        "src/alphalattice/control/product_host/composition/plain_refusals.py",
+        "tests/structural/refusal_support.py"
+      ]
+    },
+    "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items": {
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/architecture/nouns.py",
+        "src/devtools/architecture/registries.py",
+        "src/devtools/architecture/structural.py",
+        "src/devtools/architecture/where.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py"
+      ]
+    },
+    "tests/structural/test_scoped_resumes.py::test_every_owner_resume_names_the_task_its_request_chose": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "resume"
+      ]
+    },
+    "tests/structural/test_task_child_start.py::test_every_process_pool_owner_is_in_the_child_start_class": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "ProcessPoolExecutor"
+      ]
+    },
+    "tests/structural/test_test_shape.py::test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps": {
+      "inputs": [
+        "scripts/check_test_shape.py",
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/testing/__init__.py",
+        "src/devtools/testing/audit.py",
+        "src/devtools/testing/contracts.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/os_marks.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "scripts/antipattern_rules.yml"
+      ]
     }
   },
   "defaults": [
@@ -2743,7 +2905,7 @@
   ],
   "shrink_only_list": "large",
   "whole_tree_guards": {
-    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration; a slower one stays in post-merge. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
+    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration. A slower one stays out of that broad match: the commit stage runs it when its own selection_readers row says the change touches what it reads (a module-proof guard went red on develop unseen when nothing ran it before the nightly, 11-15), and the nightly runs every one whole. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
     "reads": [
       "src/*",
       "scripts/*",

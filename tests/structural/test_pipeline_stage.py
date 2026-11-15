@@ -12,6 +12,7 @@ import pytest
 
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
+from devtools.testing import sizes
 from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,7 +51,8 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
 @pytest.mark.proves("pipeline.stage_runs_each_row_by_one_provider")
 @pytest.mark.proves("pipeline.stage_target_is_separate_from_stop")
 @pytest.mark.proves("pipeline.cost_receipt_contains_required_nodes")
-@pytest.mark.parametrize("case", CASES)
+@pytest.mark.proves("pipeline.slow_guards_run_when_the_change_touches_what_they_read")
+@pytest.mark.parametrize("case", CASES, ids=str)
 def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     tmp_path, case, monkeypatch
 ):
@@ -176,8 +178,16 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
         facet_rows = stage.selection_readers(policy)
 
-        def facets(path, before, after):
-            return stage.facet_holders([pair(path)], {old: before, new: after}, facet_rows)
+        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
+            "test_every_lifecycle_set_is_registered_with_its_reason"
+        )
+        typed = "tests/integration/product_host/test_local_web_service.py::" + (
+            "test_every_web_handler_preserves_every_typed_owner_exception"
+        )
+        census = {n: r for n, r in facet_rows.items() if n in {host_holder, lifecycle, typed}}
+
+        def facets(path, before, after, rows=census):
+            return stage.facet_holders([pair(path)], {old: before, new: after}, rows)
 
         owner = "src/alphalattice/control/product_host/composition/answer_turns.py"
         assert facets(owner, "def f(deadline): pass", "def f(): pass") == (host_holder,)
@@ -188,12 +198,6 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         client_path = "src/alphalattice/interface/local_application/client.py"
         assert stage.derived_holders([pair(client_path)]) == (client,)
         # 11-04..07: a census meets the change it reads in the card's own stage, by its facet.
-        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
-            "test_every_lifecycle_set_is_registered_with_its_reason"
-        )
-        typed = "tests/integration/product_host/test_local_web_service.py::" + (
-            "test_every_web_handler_preserves_every_typed_owner_exception"
-        )
         anywhere = "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py"
         assert facets(anywhere, "", "X = {'QUEUED', 'RUNNING'}") == (lifecycle,)
         assert facets("tests/x.py", "", "X = {'QUEUED', 'RUNNING'}") == ()
@@ -207,12 +211,71 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             "from .one import Base\nclass E(Base): pass",
             "from .two import Base\nclass E(Base): pass",
         ) == (typed,)
+        # 11-15: a slow whole-tree guard meets the change it reads by its own row, never the broad
+        # match (a module-proof red reached develop when only the nightly ran it).
+        guard = "tests/x.py::"
+        slow_rows = stage.selection_readers(
+            {
+                "selection_readers": {
+                    guard + "modules": {"facet": "module_presence", "within": ["src/*.py"]},
+                    guard + "contracts": {"facet": "class_declarations", "within": ["src/*.py"]},
+                    guard + "calls": {
+                        "facet": "mentions",
+                        "within": ["src/*.py"],
+                        "words": ["plan"],
+                    },
+                    guard + "holders": {"facet": "defined_tests", "within": ["tests/*.py"]},
+                    guard + "tree": {"inputs": ["src/web/*"]},
+                }
+            }
+        )
+        told, untold = "plan(x,\n  protocol=1)", "plan(x)"
+        zero = "0" * 40
+
+        def slow_facets(path, before, after):  # None is an absent side: a zero object, mode 0
+            meta = [
+                ":" + ("000000" if before is None else "100644"),
+                "000000" if after is None else "100644",
+                zero if before is None else old,
+                zero if after is None else new,
+                "A" if before is None else "D" if after is None else "M",
+            ]
+            found = stage.facet_holders([(meta, path)], {old: before, new: after}, slow_rows)
+            return tuple(n.removeprefix(guard) for n in found)
+
+        model = "class M(Base):\n model_config = C(frozen={})"
+        for path, before, after, selected in (
+            (anywhere, "def g(): return 1", "def g(): return 2", ()),  # touches no guard's read
+            (anywhere, "x = 1", None, ("modules",)),  # a module deleted
+            (anywhere, None, "", ("modules",)),  # an empty module added
+            (anywhere, "x = 1", "", ()),  # a module emptied, still there
+            (anywhere, model.format(True), model.format(False), ("contracts",)),
+            (anywhere, "def g():\n f(x,\n  protocol=1)", "def g():\n f(x)", ()),
+            (anywhere, "def g():\n " + told, "def g():\n " + untold, ("calls",)),
+            ("tests/unit/test_a.py", "def test_a(): pass", "def test_b(): pass", ("holders",)),
+            ("tests/unit/test_a.py", "def test_a(): pass", "def test_a(): return", ()),
+        ):
+            assert slow_facets(path, before, after) == selected, after
+        assert stage.registered_holders({"src/web/js/x.js"}, {}, slow_rows) == (guard + "tree",)
+        assert stage.registered_holders({"src/webs.js"}, {}, slow_rows) == ()
+        rule = policy["whole_tree_guards"]
+        orphans = [
+            pattern
+            for pattern in rule["slow"]
+            if pattern.rstrip("*") not in facet_rows
+            and sizes.classify(pattern.rstrip("*"), [], policy)[0] != "large"
+        ]
+        assert orphans == [], "give each slow whole-tree guard its selection_readers row"
         with pytest.raises(ValueError):
             stage.facet_holders([pair(anywhere)], {}, facet_rows)
-        with pytest.raises(ValueError):
-            stage.selection_readers(
-                {"selection_readers": {lifecycle: {"facet": "x", "within": []}}}
-            )
+        for bad in (
+            {"facet": "x", "within": []},
+            {"facet": "mentions", "within": ["src/*.py"]},  # a word facet names its words
+            {"facet": "lifecycle_sets", "within": ["src/*.py"], "words": ["x"]},
+            {"facet": "mentions", "within": ["src/*.py"], "words": [" "]},
+        ):
+            with pytest.raises(ValueError):
+                stage.selection_readers({"selection_readers": {lifecycle: bad}})
         monkeypatch.setattr(
             stage,
             "changed_families",
@@ -452,20 +515,9 @@ def test_control():
             PYTHONPATH=str(ROOT / "src"),
             PYTEST_ADDOPTS="--deselect=" + family,
         )
-        ordinary = tmp_path / "ordinary"
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
         )
-        done = subprocess.run(
-            [*argv, "--out", str(ordinary)],
-            env=env,
-            capture_output=True,
-            timeout=30,
-            creationflags=flags,
-        )
-        assert done.returncode == 0, done.stderr
-        with pytest.raises(receipt.ReceiptError, match="missing required tests"):
-            receipt.verify(ordinary / "receipt.jsonl", required_tests=[family], within_limits=True)
         cache = source.parent / "__pycache__"
         cache.mkdir(exist_ok=True)
         (cache / "fixture.pyc").write_bytes(b"bytecode is not source")
@@ -510,18 +562,17 @@ def test_control():
             creationflags=flags,
         )
         assert slow.returncode != 0 and b"missing required tests" in slow.stderr
-        for label, selected in (
-            ("missing", family + "[missing]"),
-            ("outside", "../test_x.py::test_x"),
-        ):
-            bad = subprocess.run(
-                [*argv, "--out", str(tmp_path / label), "--required-tests", selected],
-                env=env,
-                capture_output=True,
-                timeout=30,
-                creationflags=flags,
-            )
-            assert bad.returncode != 0
+        for ran, absent in ((tmp_path / "slow", family), (cost, family + "[missing]")):
+            with pytest.raises(receipt.ReceiptError, match="missing required tests"):
+                receipt.verify(ran / "receipt.jsonl", required_tests=[absent], within_limits=True)
+        outside = subprocess.run(
+            [*argv, "--out", str(tmp_path / "outside"), "--required-tests", "../test_x.py::test_x"],
+            env=env,
+            capture_output=True,
+            timeout=30,
+            creationflags=flags,
+        )
+        assert outside.returncode != 0
         subprocess.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
         refused = subprocess.run(
             [*argv, "--out", str(tmp_path / "not-cost"), "--required-tests", family],

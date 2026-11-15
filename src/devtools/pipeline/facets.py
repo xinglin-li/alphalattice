@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import ast
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from collections.abc import Set as AbstractSet
 
 LIFECYCLE_STATES = frozenset(
@@ -106,10 +106,20 @@ def lifecycle_sets(source: str) -> set[tuple[str, str]]:
     return found
 
 
+def _read_field(item: ast.stmt) -> bool:
+    """A class statement a constructor's census reads as a field: an annotated field, or a
+    pydantic model's config, which the contract census reads."""
+    return isinstance(item, ast.AnnAssign) or (
+        isinstance(item, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "model_config" for t in item.targets)
+    )
+
+
 def class_declarations(source: str) -> set[str]:
-    """Each top-level class as a constructor sees it: its name, bases, decorators, annotated
-    fields, ``__init__`` signature and import bindings used by bases. The typed-exception census
-    resolves exception classes across modules, including imported base aliases."""
+    """Each top-level class as a constructor sees it: its name, bases, decorators, fields
+    (``_read_field``), ``__init__`` signature and import bindings used by bases. The
+    typed-exception census resolves exception classes across modules, including imported base
+    aliases."""
     found = set()
     tree = ast.parse(source)
     bases_used = {
@@ -141,10 +151,47 @@ def class_declarations(source: str) -> set[str]:
             ),
             None,
         )
-        fields = [ast.unparse(item) for item in node.body if isinstance(item, ast.AnnAssign)]
+        fields = [ast.unparse(item) for item in node.body if _read_field(item)]
         bases = [ast.unparse(base) for base in (*node.bases, *node.keywords)]
         decorators = [ast.unparse(decorator) for decorator in node.decorator_list]
         found.add(json.dumps([node.name, bases, decorators, fields, init]))
+    return found
+
+
+def module_presence(source: str | None) -> set[str]:
+    """Whether the file is there (``None`` is an absent side): its facts change only when it is
+    added or deleted, an empty module included. A census over which modules exist reads no more
+    of a file."""
+    return set() if source is None else {"present"}
+
+
+def defined_tests(source: str) -> set[str]:
+    """The test functions a file defines, by name: they change when one is added, removed or
+    renamed, which is all a census of named test holders reads of a test file."""
+    return {
+        node.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+
+
+def mentions(source: str, words: Collection[str]) -> set[str]:
+    """Each function, and each module or class statement outside one, whose text holds one of
+    ``words``, by its syntax. A census that finds the calls or names ``words`` spell reads a
+    subset of this, so a word added or removed, or any edit inside such a function, changes it."""
+    if not any(word in source for word in words):
+        return set()
+    tree = ast.parse(source)
+    nodes = list(ast.walk(tree))
+    bodies = [tree.body, *(n.body for n in nodes if isinstance(n, ast.ClassDef))]
+    loose = {id(s) for body in bodies for s in body if not isinstance(s, ast.ClassDef)}
+    found = set()
+    for node in nodes:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or id(node) in loose:
+            text = ast.get_source_segment(source, node) or ""
+            if any(word in text for word in words):
+                found.add(ast.dump(node, include_attributes=False))
     return found
 
 
@@ -152,10 +199,29 @@ FACETS: dict[str, Callable[[str], AbstractSet[object]]] = {
     "deadline_owners": deadline_names,
     "lifecycle_sets": lifecycle_sets,
     "class_declarations": class_declarations,
+    "defined_tests": defined_tests,
 }
 """The facets a ``selection_readers`` row may name, each a function of one file's text."""
 
+PRESENCE_FACETS: dict[str, Callable[[str | None], AbstractSet[object]]] = {
+    "module_presence": module_presence,
+}
+"""The facets a row may name that read an absent side as absent, never as an empty text."""
 
-def facet_changed(facet: str, before: str, after: str) -> bool:
-    """Whether a file's facts for this facet differ between two texts (an absent side is '')."""
+WORD_FACETS: dict[str, Callable[[str, Collection[str]], AbstractSet[object]]] = {
+    "mentions": mentions,
+}
+"""The facets a row names with its ``words``, each a function of one file's text and them."""
+
+
+def facet_changed(
+    facet: str, before: str | None, after: str | None, words: Collection[str] = ()
+) -> bool:
+    """Whether a file's facts for this facet differ between two texts; ``None`` is an absent
+    side, which every facet but a presence facet reads as ''."""
+    if facet in PRESENCE_FACETS:
+        return PRESENCE_FACETS[facet](before) != PRESENCE_FACETS[facet](after)
+    before, after = before or "", after or ""
+    if facet in WORD_FACETS:
+        return WORD_FACETS[facet](before, words) != WORD_FACETS[facet](after, words)
     return FACETS[facet](before) != FACETS[facet](after)

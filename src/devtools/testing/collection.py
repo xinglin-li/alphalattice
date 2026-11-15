@@ -1003,8 +1003,8 @@ def _record_moved(
     floor: bool = False,
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
-    leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
-    so a post-merge red among them is a red the stage no longer catches (the week's signal)."""
+    leaves to the nightly, and whether this run ran them (an unscoped run always does), so a
+    nightly red among them is a red the stage no longer catches (the week's signal)."""
     xml = getattr(config.option, "xmlpath", None)
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
@@ -1026,7 +1026,7 @@ def _write_moved(config: Any, record: dict[str, Any]) -> None:
     if reporter is not None:
         reporter.write_line(
             f"STRUCTURAL-MOVED {len(record['moved'])} guards leave the commit stage "
-            f"for post-merge; this {record['tier']} run ran {len(record['ran'])} of them"
+            f"for the nightly; this {record['tier']} run ran {len(record['ran'])} of them"
         )
 
 

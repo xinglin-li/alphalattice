@@ -4,9 +4,11 @@
 
 - Keep the impact runner's file-per-process default; batch only through its audited safe list and revoke batching on a process-global framework import.
 - Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing; a structural file must declare whole-tree scope and contain no fenced guard.
-- Run a structural guard with no declared `reach` in the commit stage only when its own file changed or a
-  `structural_fence` row names its fence law (public-private, identity, evidence, secrets); post-merge, candidate
-  and nightly run every structural guard whole, and each run's `structural-moved.json` names the guards that moved.
+- Run a structural guard with no declared `reach` in the commit stage only when its own file changed, the tree a
+  fast guard reads changed (`whole_tree_guards`), a slow guard's `selection_readers` row says the change touches
+  what it reads, or a `structural_fence` row names its fence law (public-private, identity, evidence, secrets).
+  Every slow whole-tree guard has its row, or is Large and runs in the nightly; the nightly runs every structural
+  guard whole, and each run's `structural-moved.json` names the guards that moved.
 - Run explicitly required Small and Medium nodes at declared limits, including quarantined nodes, and record them in the same receipt. Measure Large, end-to-end and native tests separately and run them in their scheduled tiers.
 
 ## Verified result reuse

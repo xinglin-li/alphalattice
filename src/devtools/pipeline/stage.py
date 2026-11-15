@@ -19,7 +19,7 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -36,7 +36,7 @@ from devtools.architecture.git_inputs import (
     unique_moves,
 )
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
-from devtools.pipeline.facets import FACETS, facet_changed
+from devtools.pipeline.facets import FACETS, PRESENCE_FACETS, WORD_FACETS, facet_changed
 from devtools.pipeline.receipt import Writer, _now, verify
 from devtools.testing.requirements import edited_families, file_holders, layer, selection
 from devtools.testing.sizes import classify
@@ -144,11 +144,23 @@ def _reader_path(value: object) -> bool:
 
 
 def _facet_row(row: dict[str, Any]) -> None:
-    """A facet row names a known facet and the files its census reads."""
-    within = row["within"]
-    if row["facet"] not in FACETS or not isinstance(within, list) or not within:
+    """A facet row names a known facet and the files its census reads; a word facet names its
+    words, and any row may add whole inputs (a registry or the census's own tool)."""
+    within, words, inputs = row["within"], row.get("words"), row.get("inputs", [])
+    worded = row["facet"] in WORD_FACETS
+    known = row["facet"] in FACETS or row["facet"] in PRESENCE_FACETS or worded
+    if not known or not isinstance(within, list) or not within:
         raise ValueError("test_size.required_selection_invalid")
-    if not all(_reader_path(path) for path in within):
+    if worded != (words is not None) or (
+        worded
+        and (
+            not isinstance(words, list)
+            or not words
+            or not all(isinstance(w, str) and w.strip() for w in words)
+        )
+    ):
+        raise ValueError("test_size.required_selection_invalid")
+    if not isinstance(inputs, list) or not all(_reader_path(path) for path in (*within, *inputs)):
         raise ValueError("test_size.required_selection_invalid")
 
 
@@ -164,6 +176,9 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
             {"inputs", "literal_root"},
             {"inputs", "census", "sample", "conditional_inputs"},
             {"facet", "within"},
+            {"facet", "within", "inputs"},
+            {"facet", "within", "words"},
+            {"facet", "within", "words", "inputs"},
         ):
             raise ValueError("test_size.required_selection_invalid")
         if "facet" in row:
@@ -189,14 +204,21 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
     return cast(dict[str, dict[str, Any]], rows)
 
 
+def _matched(paths: Iterable[str], globs: Iterable[str]) -> bool:
+    """Whether any of these paths is one of the globs (a plain path matches only itself)."""
+    globs = tuple(globs)
+    return any(fnmatchcase(path, glob) for path in paths for glob in globs)
+
+
 def registered_holders(
     paths: set[str], sources: Mapping[str, str], rows: Mapping[str, dict[str, Any]]
 ) -> tuple[str, ...]:
-    """Resolve direct inputs, the paths a reader's own source names under its declared root, and
-    each declared producer census without private path literals."""
+    """Resolve direct inputs (a path, or a glob over paths), the paths a reader's own source
+    names under its declared root, and each declared producer census without private path
+    literals."""
     found = set()
     for node, row in rows.items():
-        if paths.intersection(row.get("inputs", ())):
+        if _matched(paths, row.get("inputs", ())):
             found.add(node)
         if sources and "literal_root" in row:
             own = node.split("::", 1)[0]
@@ -397,7 +419,7 @@ def facet_holders(
     found = set()
     for node, row in rows.items():
         for meta, path in pairs if "facet" in row else ():
-            if not any(fnmatchcase(path, glob) for glob in row["within"]):
+            if not _matched({path}, row["within"]):
                 continue
             if (
                 len(meta) != 5
@@ -405,10 +427,10 @@ def facet_holders(
                 or meta[1] not in {"000000", "100644", "100755"}
             ):
                 raise ValueError(f"a changed census source is not a regular file: {path}")
-            sides = ["" if set(oid) == {"0"} else blobs.get(oid) for oid in meta[2:4]]
-            if None in sides:
+            if any(set(oid) != {"0"} and oid not in blobs for oid in meta[2:4]):
                 raise ValueError(f"a changed census source is unavailable: {path}")
-            if facet_changed(row["facet"], *cast(list[str], sides)):
+            before, after = (None if set(oid) == {"0"} else blobs[oid] for oid in meta[2:4])
+            if facet_changed(row["facet"], before, after, words=row.get("words", ())):
                 found.add(node)
                 break
     return tuple(sorted(found))

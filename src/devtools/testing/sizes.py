@@ -318,8 +318,9 @@ def _whole_tree_guards(policy: dict[str, Any]) -> None:
 
 
 def moved(nodeid: str, policy: dict[str, Any]) -> bool:
-    """A whole-tree structural guard with no declared reach and no fence law: the commit stage
-    leaves it to post-merge, which runs every structural node whole (the reform's rule, 0.2.md)."""
+    """A whole-tree structural guard with no declared reach and no fence law: the commit stage runs
+    it only when the tree it reads changed (``guards_the_change``) or its selection row requires it,
+    and the nightly runs every structural node whole (the reform's rule, 0.2.md)."""
     nodeid = nodeid.replace("\\", "/")
     return (
         nodeid.startswith("tests/structural/")
@@ -748,7 +749,7 @@ def included(
             return any(fnmatchcase(nodeid, p) for p in policy["mandatory"]) or size != "large"
         return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
     if lane == "merge" and changed is not None and moved(nodeid, policy):
-        own = nodeid.replace("\\", "/").split("::")[0]  # else post-merge runs it whole
+        own = nodeid.replace("\\", "/").split("::")[0]  # else the nightly runs it whole
         return own in changed or guards_the_change(nodeid, policy, changed)
     return (
         not lane
