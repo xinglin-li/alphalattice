@@ -1071,7 +1071,7 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
                 )
             )
 
-        counts = lambda: (  # noqa: E731 - a compact view of the four moving counts
+        counts = lambda: (  # a compact view of the four moving counts
             delivery.counts["raw_ready"],
             delivery.counts["quality_eligible"],
             delivery.counts["feature_ready"],

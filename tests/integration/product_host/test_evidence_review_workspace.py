@@ -187,7 +187,7 @@ def test_a_request_while_the_install_publishes_needs_no_restart(tmp_path, acquis
         )
         PortfolioResearchOperations._refresh_prepared_inputs(host)  # type: ignore[arg-type]
 
-    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))  # noqa: E731
+    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))
     task, _, _ = _install(tmp_path, served=[], during=snapshot, hold=refresh)
     assert task.lifecycle.value == "SUCCEEDED", task.failure_code
     with pytest.raises(ValueError, match="configuration_changed_restart_required"):

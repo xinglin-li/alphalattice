@@ -186,11 +186,23 @@ extend-exclude = ["experiments", "tmp", "workspaces"]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # S113, ASYNC and DTZ005: blocking calls with no timeout and naive wall clocks (the wait rules
 # in scripts/check_counts.py hold the rest); none existed when they came in.
-extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005"]
+# D100 to D107 and D419: a public definition of the library with no docstring, or an empty one,
+# leaves its page in the published API reference blank. The docstring form rules stay out:
+# complying with them moves blank lines and quotes and leaves the code no better.
+extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005", "D10", "D419"]
+# E731: a lambda bound to a local name is the same callable as a def; complying turns one line into
+# two and leaves the code no better.
+ignore = ["E731"]
 
 [tool.ruff.lint.per-file-ignores]
 # Agent answers are product output; maintainers' tools own their diagnostics.
-"!src/alphalattice/**" = ["T20", "TID251"]
+"!src/alphalattice/**" = ["T20", "TID251", "D10", "D419"]
+# The command layer: these modules write the terminal answer, so a print there is its output, not
+# a stray one; T20 refuses print in the rest of the library.
+"src/alphalattice/interface/local_application/{cli,client,read_views,retrieval_environment}.py" = ["T20"]
+"src/alphalattice/control/product_host/composition/{entry,web_launcher,retrieval_pack_setup,saved_object_readback}.py" = ["T20"]
+# A module inside a private package is not public API, though Ruff counts only its own name.
+"src/alphalattice/**/_*/**" = ["D10"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "sys.stdout" = { msg = "Write through the output owner" }

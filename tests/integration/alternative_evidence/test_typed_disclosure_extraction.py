@@ -631,7 +631,7 @@ def _later(text: str) -> str:
 
 
 def _compare(current: TypedDisclosureRecord, prior: TypedDisclosureRecord):
-    rules = lambda record: (record.rules_id, record.definitions_hash)  # noqa: E731
+    rules = lambda record: (record.rules_id, record.definitions_hash)
     return {
         value.key: value
         for value in compare_typed_disclosures(

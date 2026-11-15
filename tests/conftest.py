@@ -407,7 +407,7 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
             def truth():
                 admits = self._recovery_context
                 if _ROUND_TRIP_REPORT:
-                    admits = lambda sent: original(self, sent)  # noqa: E731
+                    admits = lambda sent: original(self, sent)
                 return truth_problems(self, request.operation, body, admits)
 
             _observer.answered(

@@ -394,7 +394,7 @@ class LocalResearchClient:
                 )
                 progress = Timer(
                     5.0,
-                    lambda: print(  # noqa: T201  # CLI stderr
+                    lambda: print(
                         json.dumps(
                             {
                                 "operation": operation,
@@ -2179,7 +2179,7 @@ def _follow_receipt(
                     saved[:] = [output]
             recovery = {**read, "format": format, "output": str(_next_output(output))}
     finally:
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "task_id": read.get("task_id"),
@@ -2284,7 +2284,7 @@ def _follow(
         )
         stage = current.get("current_stage")
         if (state, stage) != last:
-            print(  # noqa: T201  # CLI stderr
+            print(
                 json.dumps({"follow": document, "state": state, "current_stage": stage}),
                 file=sys.stderr,  # noqa: TID251
                 flush=True,
@@ -2468,7 +2468,7 @@ class _Chain:
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         if document.get("task_id"):
             self.receipt(self.client, None, {"operation": "STATUS", "task_id": document["task_id"]})
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "flow": self.name,
@@ -3406,7 +3406,7 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         _profile_hint(answer, body)
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
@@ -3531,7 +3531,7 @@ def run(
                     ),
                 },
             )
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
@@ -3561,7 +3561,7 @@ def run(
         # Pydantic errors may contain the document; never echo it.
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=None,

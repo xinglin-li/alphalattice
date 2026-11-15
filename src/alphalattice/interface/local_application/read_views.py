@@ -54,7 +54,7 @@ def emit_owner(
         )
     reading = contract.READ_VIEW.set((view or "compact", line, summary_display))
     try:
-        print(  # noqa: T201  # legacy/full serializer
+        print(
             json.dumps(result, indent=indent, default=str)
             if view is None
             else contract.answer_json(result, default=str)

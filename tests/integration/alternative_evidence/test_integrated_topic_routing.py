@@ -1004,7 +1004,7 @@ def test_the_table_share_is_dealt_across_the_topics_that_have_tables() -> None:
     governance = need("d4", 1, "GOVERNANCE_CONTROLS")
     unrenderable = need("d5", 1, "COMMERCIAL_COUNTERPARTY")
     needs = [*liquidity, shared, *operations, governance, unrenderable]
-    renderable = lambda n: n.document_key != "d5"  # noqa: E731
+    renderable = lambda n: n.document_key != "d5"
     views = topic_fair_views(needs, share=6, renderable=renderable)
     dealt = [(v.document_key, v.placeholder.ordinal) for v in views]
     # Round one in the topics' declared order: liquidity takes the shared

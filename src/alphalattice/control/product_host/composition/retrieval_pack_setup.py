@@ -201,7 +201,7 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
 
         def progress(name: str, index: int, total: int, pack_id: str = pack.pack_id) -> None:
             """Read the captured source document under its admitted contract."""
-            print(f"{pack_id}: {index}/{total} {name}", flush=True)  # noqa: T201  # progress
+            print(f"{pack_id}: {index}/{total} {name}", flush=True)
 
         status = model_store.install_pack(store, pack, fetch, progress=progress)
         results[pack.pack_id] = status.status
@@ -225,7 +225,7 @@ def _bytes_printer(pack_id: str) -> model_store.Received:
         if done - shown.get(name, -step) >= step or done == total:
             shown[name] = done
             whole = f" of {total / 1e6:.1f}" if total else ""
-            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)  # noqa: T201  # progress
+            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)
 
     return received
 

@@ -559,7 +559,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             process = popen(command, **kwargs)
             if "--batch-command" in command:
                 stdin, sent[:] = process.stdin, b""
-                write = lambda data: sent.extend(data) or stdin.write(data)  # noqa: E731
+                write = lambda data: sent.extend(data) or stdin.write(data)
                 process.stdin = SimpleNamespace(write=write, flush=stdin.flush, close=stdin.close)
             return process
 

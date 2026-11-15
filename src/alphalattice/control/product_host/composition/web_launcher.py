@@ -199,7 +199,7 @@ def _refusal(
         answer["host_log"] = host_log
     if workspaces is not None:
         answer["workspaces"] = workspaces
-    print(json.dumps(answer), flush=True)  # noqa: T201  # bootstrap/lifecycle
+    print(json.dumps(answer), flush=True)
     return 2
 
 
@@ -472,16 +472,16 @@ def _served(
     if hasattr(stream, "reconfigure"):
         # Lifecycle text is UTF-8 even when Python chose a locale encoding for the pipe.
         stream.reconfigure(encoding="utf-8")
-    print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")  # noqa: T201  # bootstrap/lifecycle
-    print(launch)  # noqa: T201  # bootstrap/lifecycle
-    print(  # noqa: T201  # bootstrap/lifecycle
+    print(f"STARTED: a Host now serves {workspace} at {address[0] if address else 'its link'}.")
+    print(launch)
+    print(
         f"Loopback only. This Host (process {host.pid}) runs apart from the shell that "
         f"started it and outlives it; `alphalattice host stop` stops it. Log: {log_path}\n"
         f"{str(worded('host.idle')).format(seconds=DEFAULT_IDLE_TIMEOUT_SECONDS)}",
         flush=True,
     )
     if arguments.no_browser:
-        print(OPEN_THE_WORKBENCH, flush=True)  # noqa: T201  # bootstrap/lifecycle
+        print(OPEN_THE_WORKBENCH, flush=True)
     return 0
 
 
@@ -532,7 +532,7 @@ def _failed_start(
         }
         if "workbench" in body:
             served["workbench"] = body["workbench"]
-        print(  # noqa: T201  # bootstrap/lifecycle
+        print(
             json.dumps(
                 {"status": "ALREADY_SERVING", "next_action": "USE_THE_SERVING_HOST", **served}
             ),
@@ -631,8 +631,8 @@ def main(
             needed = partial(session.operations.automation.keeps_host, session.operations.goals)
         # A detached launch holds the key it handed over and prints it itself (never on disk).
         shown = re.sub(r"key=[^&#]+", HANDED_KEY, url) if handed else url
-        print(f"Portfolio Research workspace: {shown}")  # noqa: T201  # bootstrap/lifecycle
-        print(  # noqa: T201  # bootstrap/lifecycle
+        print(f"Portfolio Research workspace: {shown}")
+        print(
             (
                 "Loopback only. Send 'stop' or close stdin, or run "
                 "`alphalattice host stop`, to stop."
@@ -650,7 +650,7 @@ def main(
             flush=True,
         )
         if arguments.no_browser:
-            print(OPEN_THE_WORKBENCH, flush=True)  # noqa: T201  # bootstrap/lifecycle
+            print(OPEN_THE_WORKBENCH, flush=True)
         else:
             webbrowser.open(url)
         while not stop.wait(1):  # a timed wait keeps Ctrl-C heard
@@ -660,7 +660,7 @@ def main(
                 stopping()
     except KeyboardInterrupt:
         stopping()
-        print("\nStopping.")  # noqa: T201  # bootstrap/lifecycle
+        print("\nStopping.")
     finally:
         # Unbounded on purpose: it joins every request thread and the dispatcher
         # worker before releasing the lease, and a launcher that gave up early

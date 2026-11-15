@@ -470,7 +470,7 @@ class TaskCpuLeases:
     def lease(self, task_id: UUID, cores: int, ceiling: int) -> Iterator[int]:
         """Hold the Task's cores while it runs; yield how many other Tasks hold cores."""
         with self._turn:
-            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling  # noqa: E731
+            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling
             self._turn.wait_for(fits)
             self._held[task_id] = cores
             others = len(self._held) - 1

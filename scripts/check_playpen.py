@@ -24,7 +24,6 @@ COMMIT_STAGE_ONLY = frozenset(
     {
         "boundaries",
         "claude-host-materialization",
-        "docstrings",
         "evidence-bindings",
         "identity-closures",
         "import-contracts",
@@ -786,20 +785,6 @@ def _check_scoped_structural(*, staged: bool, base_ref: str = "develop") -> bool
     return done.returncode in (0, 5)  # 5: no per_file node selected
 
 
-def _check_docstrings() -> bool:
-    """Refuse a source file whose public docstring findings grew (a ratchet, lower only).
-
-    Ruff's Google-convention docstring rules over the public API of ``src/alphalattice``,
-    counted per file against ``config/docstring-baseline.json``; a new public file starts at
-    zero. ``scripts/check_docstrings.py --update`` only lowers the baseline.
-    """
-
-    started = perf_counter()
-    result = _relay("docstrings", [sys.executable, str(ROOT / "scripts" / "check_docstrings.py")])
-    print(f"PLAYPEN_GATE_TIMING docstrings {perf_counter() - started:.3f}s", flush=True)
-    return result.returncode == 0
-
-
 def _check_counts(*, staged: bool, base_ref: str = "develop") -> bool:
     """Refuse an unbounded wait or loop above ``config/wait-baseline.json`` and a ``type: ignore``
     above ``config/type-ignore-baseline.json``, in one child (scripts/check_counts.py): the staged
@@ -1302,7 +1287,6 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ),
         ("boundaries", lambda: _check_boundaries(staged=args.staged)),
         ("import-contracts", _check_import_contracts),
-        ("docstrings", _check_docstrings),
         ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
         (
             "test-shape",

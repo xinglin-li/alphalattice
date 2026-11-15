@@ -10,8 +10,6 @@
   "scripts/check_alpha_verification_impact.py::child-without-no-window": 5,
   "scripts/check_alpha_verification_impact.py::glob-suppresses-oserror": 3,
   "scripts/check_alpha_verification_impact.py::while-true-without-deadline": 1,
-  "scripts/check_docstrings.py::call-without-timeout": 1,
-  "scripts/check_docstrings.py::child-without-no-window": 1,
   "scripts/check_playpen.py::call-without-timeout": 15,
   "scripts/check_playpen.py::child-without-no-window": 15,
   "scripts/check_playpen.py::glob-suppresses-oserror": 1,

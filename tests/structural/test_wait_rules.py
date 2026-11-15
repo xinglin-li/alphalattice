@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from devtools.architecture import waits
+from devtools.architecture import type_ignores, waits
 
 TEST_SCOPE = "whole-tree"
 
@@ -255,3 +255,20 @@ def test_a_type_ignore_count_only_falls(
         assert json.loads(baseline.read_text("utf-8"))["counts"] == after
         subprocess.run([*git, "add", "-A"], check=True, timeout=30)
         assert check_counts.main(["--staged"]) == 0
+
+
+FINDING_CASES = {
+    "one-finding-per-code": (
+        "x = f()  # type: ignore[arg-type, call-arg]\n",
+        [(1, "type-ignore[arg-type]"), (1, "type-ignore[call-arg]")],
+    ),
+    "an-uncoded-ignore": ("x = f()  # type: ignore\n", [(1, "type-ignore")]),
+    "an-ignore-inside-a-string-is-not-one": ('x = "# type: ignore"\n', []),
+}
+
+
+@pytest.mark.proves("architecture.type_ignores_only_fall")
+@pytest.mark.parametrize(("text", "found"), FINDING_CASES.values(), ids=list(FINDING_CASES))
+def test_a_type_ignore_is_counted_per_error_code(text, found):
+    """An ignore comment is one finding per error code, an uncoded one its own; a string none."""
+    assert [(f.line, f.rule) for f in type_ignores.findings("a.py", text)] == found

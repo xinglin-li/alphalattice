@@ -118,7 +118,14 @@
       "lower_layer": "The refusal reads staged blobs, a staged move and the parent's baseline through Git, which a unit test cannot hold.",
       "owner": "devtools.architecture",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The finder was reached only through its script, so the module-proof guard was red on develop; a direct case of the deciding function repairs it",
+        "decided": "2026-11-15: the maintainer: fold the develop red's repair into the card it blocked, one direct case, no allowance raised"
+      }
     },
     "architecture.wait_baseline_only_falls": {
       "description": "A commit is refused when a staged source holds more wait findings than the baseline, or when the baseline rose above its parent.",
@@ -981,6 +988,20 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 10
+    },
+    "testing.lint_rules_improve_the_code": {
+      "description": "Lint refuses a print outside the command layer and a public definition with no docstring, and accepts a bound lambda and a docstring's form.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The verdicts come from Ruff run as an external process with the product's own configuration and its per-path scopes, which a unit mock cannot prove.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The source fell because a 141-line docstring checker became Ruff configuration, which the source count does not see; the goal asks one holder case per changed rule",
+        "decided": "2026-11-15: the maintainer: one table-driven case holds the three rule verdicts"
+      }
     },
     "testing.narrow_fixture_scratch_goes_with_it": {
       "description": "A fixture narrower than the session removes the temporary roots it made once its own teardown is done, unless a test failed while it lived; a session fixture keeps its roots to the session's end.",

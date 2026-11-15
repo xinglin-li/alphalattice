@@ -236,13 +236,13 @@ class _Parser(argparse.ArgumentParser):
         if (line := _PARSER_LINE.get()) is not None and line[2]:
             raise ValueError(message)
         self.print_usage(sys.stderr)  # noqa: TID251  # argparse usage
-        print(f"{self.prog}: error: {message}", file=sys.stderr)  # noqa: T201, TID251  # CLI stderr
+        print(f"{self.prog}: error: {message}", file=sys.stderr)  # noqa: TID251  # CLI stderr
         code = "local_client.usage_invalid"
         refusal = client_refusal(code)
         repair = _repair(self, message)
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=None,
@@ -1096,7 +1096,7 @@ def _restore(
             code = public_failure(error, "workspace_backup.restore_failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="WORKSPACE_RESTORE",
@@ -1115,7 +1115,7 @@ def _restore(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="WORKSPACE_RESTORE",
@@ -1175,7 +1175,7 @@ def _sandbox(
             code = public_failure(error, "model_sandbox.failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="MODEL_SANDBOX",
@@ -1194,7 +1194,7 @@ def _sandbox(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="MODEL_SANDBOX",
@@ -1221,7 +1221,7 @@ def _model_refused(args: argparse.Namespace, operation: str, started: float, cod
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=operation,
@@ -1265,7 +1265,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "declaration_file": str(written.resolve()),
             "next": f'model scaffold --file "{written}"',
         }
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=operation,
@@ -1292,7 +1292,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=operation,
@@ -1337,7 +1337,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     if args.operation_name not in known:
         # The registry's nearest names, where argparse answered only READ_HELP.
         refusal = client_refusal("local_client.operation_unknown")
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="SCHEMA",
@@ -1370,7 +1370,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 "detail": refusal.detail,
                 "next_action": refusal.next_action,
             }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SCHEMA",
@@ -1682,7 +1682,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **diagnostics,
         )
         exit_code = EXIT_CODES[refusal.outcome]
-    print(answer_json(result, default=client._json_value))  # noqa: T201  # serializer
+    print(answer_json(result, default=client._json_value))
     return exit_code
 
 
@@ -1717,7 +1717,7 @@ def _refused(
         detail = detail.replace("{subject}", context["selected_workspace"], 1).replace(
             "{subject}", context["requested_workspace"], 1
         )
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=None,
@@ -1775,7 +1775,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     except OSError as error:
         code = f"native_bridge.files_unavailable:{type(error).__name__}"
         return _refused(f"local_client.session_unbind_refused:{code}", started)
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SESSION_UNBIND",
@@ -1803,7 +1803,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
         )
     except NativeBridgeError as error:
         return _refused(str(error), started)
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="PROBLEM_REPORT",
@@ -1873,7 +1873,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
             or client_refusal("local_client.session_bind_refused:" + code).detail,
         }
     answer = bound
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SESSION_BIND",
@@ -2313,7 +2313,7 @@ def _read_lead(
 
         reason = safe_failure_code(receipt.get("reason")) or "native_bridge.lead_usage_read_failed"
         words = refusal_words(reason) or refusal_words("native_bridge.lead_usage_read_failed")
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "native_observation": {

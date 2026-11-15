@@ -42,7 +42,7 @@ def serve(arguments: list[str]) -> int:
     # Before anything starts: the project's completed first use in another workspace is its
     # daily road, unless the person said yes to separate new research.
     if not selected.new_research and (road := serve_road(selected.workspace)) is not None:
-        print(json.dumps(road))  # noqa: T201  # bootstrap/lifecycle
+        print(json.dumps(road))
         return 2
     arguments = [a for a in arguments if a != "--new-research"]
     manifest = (
@@ -59,7 +59,7 @@ def serve(arguments: list[str]) -> int:
         packaged or (checkout and interpreter.is_file())
     ):
         if not checkout or not interpreter.is_file():
-            print(  # noqa: T201  # bootstrap/lifecycle
+            print(
                 json.dumps(
                     {
                         "status": "REFUSED",
@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             os.dup2(sink.fileno(), sys.stdout.fileno())  # noqa: TID251  # stop shutdown flush
         from alphalattice.interface.local_application import cli_contract  # lazy: pipe refusal.
 
-        print(  # noqa: T201  # closed-pipe diagnostic
+        print(
             cli_contract.worded("cli.output_pipe_closed"),
             file=sys.stderr,  # noqa: TID251  # CLI stderr
         )
@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         # provides it; a missing product module is a broken tree and is raised as one.
         if error.name is None or error.name.split(".")[0] in {"alphalattice", "scripts"}:
             raise
-        print(  # noqa: T201  # bootstrap/lifecycle
+        print(
             json.dumps(
                 {
                     "status": "REFUSED",
