@@ -76,8 +76,8 @@ def _antipattern_cases(monkeypatch) -> None:
     assert shape.antipattern_growth({}, data)
     assert shape.antipattern_growth(found, found) == []
     assert shape.antipattern_growth({}, found)
-    old = {"src/old.py::C901::example": 12}
-    new = {"src/new.py::C901::example": 12}
+    old = {"src/old.py::PGH003": 1}
+    new = {"src/new.py::PGH003": 1}
     assert not shape.antipattern_growth(
         shape.relocated_antipatterns(old, {"src/new.py": "src/old.py"}), new
     )
@@ -125,6 +125,46 @@ def _split_antipattern_cases(monkeypatch, tmp_path) -> None:
     assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1}
     (tmp_path / private).write_text(json.dumps({"counts": {key: 2}}))
     assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1, key: 2}
+
+
+LONG = "def test_long():\n" + "    x = 1\n" * 50 + "    assert x\n"
+STEPS = "def main():\n" + "    if a:\n        b()\n" * 12 + "    c()\n" * 59
+MOCKED = (
+    "def test_mocks(monkeypatch):\n" + "    monkeypatch.setattr(a, b, c)\n" * 5 + "    assert a\n"
+)
+SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused rule, the signal
+    "a-51-statement-test-is-accepted": (PATH, None, LONG, None, "PLR0915 51 in test_long"),
+    "an-83-statement-script-is-accepted": ("scripts/step.py", None, STEPS, None, "C901 13 in main"),
+    "five-mocks-are-a-signal": (PATH, None, MOCKED, None, "test-too-many-mocks 5 in test_mocks"),
+    "a-giant-the-change-left-alone-says-nothing": (PATH, LONG, LONG + "X = 1\n", None, None),
+    "a-blanket-type-ignore-is-still-refused": (
+        "src/a.py",
+        None,
+        "x = y  # type: ignore\n",
+        "src/a.py::PGH003",
+        None,
+    ),
+}
+
+
+@pytest.mark.proves("testing.size_counts_are_review_signals")
+@pytest.mark.parametrize(
+    ("path", "old", "new", "refused", "signal"), SIZE_CASES.values(), ids=list(SIZE_CASES)
+)
+def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
+    capsys, path, old, new, refused, signal
+) -> None:
+    """A size or form count over its bound never refuses a commit, and is named as a signal only
+    in a function the change wrote; a blanket type ignore is still refused (the 11-14 verdict)."""
+    empty = json.dumps({"counts": {}})
+    texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty}
+    texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = empty
+    if old is not None:
+        texts["HEAD:" + path] = old
+    found = shape._antipattern_problems([path], [path], texts, ("HEAD",), ":", moves={})
+    assert [line.split(": ")[0] for line in found] == ([refused] if refused else [])
+    said = capsys.readouterr().out
+    assert (signal in said) if signal else "test_shape.signal" not in said
 
 
 @pytest.mark.large

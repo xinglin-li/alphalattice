@@ -222,6 +222,10 @@ ANTIPATTERN_SIDES = (ANTIPATTERN_BASELINE, ANTIPATTERN_PRIVATE)
 ANTIPATTERN_SEMGREP = "scripts/antipattern_rules.yml"
 ANTIPATTERN_CASES = "scripts/antipattern_examples.py.txt"
 ANTIPATTERN_RULES = "PGH,G,LOG,C901,PLR0912,PLR0915,S112,S113,DTZ005,ASYNC"
+SIGNAL_RULES = frozenset({"C901", "PLR0912", "PLR0915", "test-too-many-mocks"})
+"""Counts of size and form, measured and never refused: complying with a cap on them moves lines
+and improves nothing (the 11-14 gate verdict, which the maintainers' own tools follow too).
+The commit names each one over its bound in a function the change wrote as a review signal."""
 WAIT_RULES = ("S112", "S113", "DTZ005", "ASYNC")
 
 
@@ -282,12 +286,48 @@ def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
 
 
 def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]:
-    """A finding or allowance may fall, but neither may grow above the held count."""
+    """A finding or allowance may fall, but neither may grow above the held count; a size or form
+    count (SIGNAL_RULES) is never refused."""
     return [
         f"{key}: anti-pattern findings grow {held.get(key, 0)} -> {count}"
         for key, count in sorted(found.items())
-        if count > held.get(key, 0)
+        if count > held.get(key, 0) and key.split("::")[1] not in SIGNAL_RULES
     ]
+
+
+def _written_lines(old: str | None, new: str) -> set[int]:
+    """The new text's line numbers a change wrote: every line of a new file."""
+    lines = new.splitlines()
+    if old is None:
+        return set(range(1, len(lines) + 1))
+    opcodes = SequenceMatcher(None, old.splitlines(), lines, autojunk=False).get_opcodes()
+    return {n + 1 for tag, _, _, start, end in opcodes if tag != "equal" for n in range(start, end)}
+
+
+def antipattern_signals(
+    measured: dict[str, int], texts: dict[str, str], olds: dict[str, str | None]
+) -> list[str]:
+    """Each size or form count over its bound in a function the change wrote, as a review signal;
+    ``texts`` holds each changed source and ``olds`` its parent's text (None for a new file)."""
+    signals, spans, written = [], {}, {}
+    for key, score in sorted(measured.items()):
+        path, rule, name = [*key.split("::", 2), ""][:3]
+        if rule not in SIGNAL_RULES or path not in texts:
+            continue
+        if path not in spans:
+            spans[path] = {
+                found: (node.lineno, node.end_lineno or node.lineno)
+                for found, node in _definitions(_tree(texts[path]))
+                if isinstance(node, FUNCTION_TYPES)
+            }
+            written[path] = _written_lines(olds.get(path), texts[path])
+        start, end = spans[path].get(name, (0, -1))
+        if any(start <= line <= end for line in written[path]):
+            signals.append(
+                f"test_shape.signal: {path}:{start}: {rule} {score} in {name} "
+                "(a review signal, never refused)"
+            )
+    return signals
 
 
 def antipattern_baseline(text: str) -> dict[str, int]:
@@ -545,9 +585,11 @@ def _antipattern_problems(
     missing = [path for path in sources if head + path not in texts]
     if missing:
         raise ValueError(f"changed source unreadable: {missing[0]}")
-    measured = ruff_antipatterns(
-        {path: texts[head + path] for path in sources if path.endswith(".py")}
-    )
+    python = {path: texts[head + path] for path in sources if path.endswith(".py")}
+    measured = ruff_antipatterns(python)
+    olds = {path: texts.get(f"{parents[0]}:{moves.get(path, path)}") for path in python}
+    for signal in antipattern_signals(measured, python, olds):
+        print(signal, flush=True)
     measured.update(test_data_antipatterns(staged))
     measured.update(
         auxiliary_antipatterns(
@@ -1405,6 +1447,11 @@ def main(argv: list[str] | None = None) -> int:
         texts = _blobs(
             [head + path for path in selected]
             + [head + path for path in anti_sources]
+            + [  # where the change wrote, for the size signals
+                f"{parents[0]}:{identical.get(path, path)}"
+                for path in anti_sources
+                if path.endswith(".py")
+            ]
             + [parent + ":" + origin[path] for parent in parents for path in selected]
             + [parent + ":" + path for parent in parents for path in candidates]
             + [head + path for path in ANTIPATTERN_SIDES]

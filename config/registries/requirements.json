@@ -970,6 +970,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.size_counts_are_review_signals": {
+      "description": "A size or form count over its bound (C901, PLR0912, PLR0915, more than four mocks) never refuses a commit and is named as a signal in a function the change wrote; a blanket type ignore still refuses.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The counts come from Ruff run as an external process over the change's text, which a unit mock cannot prove."
+    },
     "testing.test_budgets_only_fall": {
       "description": "A raised or added test budget is refused at commit unless a budget admission carries a dated decision and a value at or above it.",
       "owner": "devtools.testing",
