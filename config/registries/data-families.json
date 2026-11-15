@@ -1,0 +1,3701 @@
+{
+  "schema": "alphalattice.data-families.v1",
+  "owner": "devtools.architecture",
+  "note": "Every family the 0.2.7 product persists, the evidence 0.2.8's cards read: its writers and readers by module, its location kind, its bytes on one real workspace (null when that workspace holds none), its data class (one of the eight below) and shape tier (1 core, 2 versioned definitions, 3 contract content, 4 opaque bodies), and the 0.2.8 table that takes it or the reason it retires. A writer is module:Class or module:function; the commit refuses a persisting writer no family lists. Only later cards move a family.",
+  "measured_on": "one real workspace, the QA original ls1-chain (15.3 GB, 4,138 files), read in place and read-only on 2026-11-14 on the workshop's main Windows machine (Intel Core, 32 logical CPUs) while the workshop's other lines ran; bytes are DuckDB blocks in use per table, SQLite pages per table, or file sizes under each path prefix, none of which depends on load. null: the measured workspace holds none of the family, or it lies outside a workspace",
+  "classes": [
+    "external-observation",
+    "reference",
+    "derived",
+    "sealed-result",
+    "event-log",
+    "authority-setting",
+    "cache-scratch",
+    "backup-install"
+  ],
+  "families": {
+    "market-current": {
+      "summary": "current market source-of-record rows: profiles, listings, provider symbols, current raw bars, corporate actions and provider adjusted closes",
+      "class": "external-observation",
+      "tier": 1,
+      "home": "catalog world.raw_bar, world.corporate_action, world.listing and world.provider_symbol; current state is the view world.raw_bar_latest",
+      "location": "workspace-database",
+      "bytes": 150208512,
+      "covers": [
+        "table:market_profile"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "market-revisions": {
+      "summary": "append-only revisions of bars, corporate actions, adjusted series and rebases",
+      "class": "external-observation",
+      "tier": 1,
+      "home": "catalog world.raw_bar and world.corporate_action, one row per value_version with known_at",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:bar_revision"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "universe-manifests": {
+      "summary": "content-addressed universe membership manifests",
+      "class": "reference",
+      "tier": 1,
+      "home": "catalog world.universe_member",
+      "location": "workspace-database",
+      "bytes": 524288,
+      "covers": [
+        "table:universe_manifest"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "universe-membership-journal": {
+      "summary": "the universe bootstrap boundary and its append-only membership events and source observations",
+      "class": "reference",
+      "tier": 1,
+      "home": "catalog world.universe_member, its admissions as log events",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:universe_bootstrap"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "market-quality-admission": {
+      "summary": "current data-quality and universe-quality admission state",
+      "class": "derived",
+      "tier": 3,
+      "home": "log measure, read through the log view admission",
+      "location": "workspace-database",
+      "bytes": 786432,
+      "covers": [
+        "table:data_quality"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "provider-attempts": {
+      "summary": "the bounded ledger of provider attempts and deferred hydrations",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:provider_attempt"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "universe-task-projection": {
+      "summary": "universe onboarding, maintenance and manifest transition control rows",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log task, task_step and wait",
+      "location": "workspace-database",
+      "bytes": 1835008,
+      "covers": [
+        "table:current_universe_onboarding"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "workspace-readiness": {
+      "summary": "the cross-domain workspace readiness projection",
+      "class": "derived",
+      "tier": 3,
+      "retire": "a projection the 0.2.8 read side computes on read from the log (read models are views or caches); no reader needs the stored file",
+      "location": "workspace-database",
+      "bytes": 1048576,
+      "covers": [
+        "table:workspace_readiness"
+      ],
+      "authority_owners": [
+        "workspace_runtime.storage.readiness.WorkspaceReadinessRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "data_platform.candidate_requalification",
+        "data_platform.readiness",
+        "feature_engine.storage.repositories",
+        "market_data_ops.storage.duckdb"
+      ]
+    },
+    "foundation-rebuild-requirement": {
+      "summary": "the post-membership research-foundation rebuild requirement",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log wait",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:feature_universe_rebuild_requirement"
+      ],
+      "authority_owners": [
+        "research_foundation.storage.ResearchFoundationStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "data_platform.candidate_requalification",
+        "data_platform.readiness",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "feature-input-state": {
+      "summary": "Feature input, eligibility, reference and sector state and their revisions",
+      "class": "derived",
+      "tier": 3,
+      "home": "catalog world.sector for sector classifications; the rest as derived cache validity in log cache_entry",
+      "location": "workspace-database",
+      "bytes": 2359296,
+      "covers": [
+        "table:market_reference_current"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "panel-availability": {
+      "summary": "Panel availability by factor, binding and session cross-section, current and revised",
+      "class": "derived",
+      "tier": 3,
+      "home": "log measure",
+      "location": "workspace-database",
+      "bytes": 9961472,
+      "covers": [
+        "table:panel_factor_availability_revision",
+        "table:panel_cross_section_availability",
+        "table:panel_cross_section_availability_revision",
+        "table:panel_factor_availability"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.PanelStateRepository"
+      ],
+      "writers": [
+        "feature_engine.storage.repositories:PanelStateRepository"
+      ],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "feature-values-current": {
+      "summary": "the single active listing-local base Feature values and their catalog binding",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.feature_set_<name>",
+      "location": "workspace-database",
+      "bytes": 509083648,
+      "covers": [
+        "table:feature_daily_current"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "feature-input-cutoffs": {
+      "summary": "the deduplicated active Feature input-cutoff dictionary",
+      "class": "derived",
+      "tier": 1,
+      "home": "log selection (cutoff_us)",
+      "location": "workspace-database",
+      "bytes": 1572864,
+      "covers": [
+        "table:feature_input_cutoff_set"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "verified-year-facts": {
+      "summary": "closed-year facts kept current for prefix proofs",
+      "class": "cache-scratch",
+      "tier": 3,
+      "retire": "re-proof on read retires in the 0.2.8 data layer: reads trust the catalog's registration, so no reader needs the stored proof",
+      "location": "workspace-database",
+      "bytes": null,
+      "covers": [
+        "table:verified_year_fact"
+      ],
+      "authority_owners": [
+        "workspace_runtime.verified_facts"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "feature-eligibility-runs": {
+      "summary": "Feature eligibility assessment generations",
+      "class": "derived",
+      "tier": 3,
+      "home": "log trial and measure",
+      "location": "workspace-database",
+      "bytes": 1310720,
+      "covers": [
+        "table:feature_ineligibility_run"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "market-audit-receipts": {
+      "summary": "market-data audit and remediation execution receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-database",
+      "bytes": 786432,
+      "covers": [
+        "table:action_audit_receipt"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "causal_outcomes.execution.readers",
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.inputs.quality",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.repositories",
+        "market_data_ops.publication.session_marks",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "market_data_ops.storage.source_prefix",
+        "portfolio_inputs.benchmark",
+        "portfolio_inputs.tradability.surface",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.returns"
+      ]
+    },
+    "feature-receipts": {
+      "summary": "Feature computation and sector reference receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event and event_artifact",
+      "location": "workspace-database",
+      "bytes": 786432,
+      "covers": [
+        "table:feature_materialization_receipt"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "panel-receipts": {
+      "summary": "Panel materialization receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event and event_artifact",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:panel_materialization_receipt"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.PanelStateRepository"
+      ],
+      "writers": [
+        "feature_engine.storage.repositories:PanelStateRepository"
+      ],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "panel-active-pointer": {
+      "summary": "the single active immutable Panel pointer",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log live_ref",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:active_feature_panel_binding"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.PanelStateRepository"
+      ],
+      "writers": [
+        "feature_engine.storage.repositories:PanelStateRepository"
+      ],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "panel-snapshots": {
+      "summary": "the immutable Panel snapshot registry",
+      "class": "sealed-result",
+      "tier": 1,
+      "home": "log artifact",
+      "location": "workspace-database",
+      "bytes": 262144,
+      "covers": [
+        "table:feature_panel_snapshot_manifest"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.PanelStateRepository"
+      ],
+      "writers": [
+        "feature_engine.storage.repositories:PanelStateRepository"
+      ],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "observation-ledger": {
+      "summary": "public-safe operational assertions and replay checkpoints",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": 385024,
+      "covers": [
+        "table:unified_observation"
+      ],
+      "authority_owners": [
+        "observation_runtime.ObservationLedger"
+      ],
+      "writers": [
+        "observation_runtime.ledger:ObservationLedger"
+      ],
+      "readers": [
+        "product_host.composition.workspace_activity"
+      ]
+    },
+    "refusal-counts": {
+      "summary": "counts of refused requests by day, operation, failure code, caller kind and agent vendor",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log measure",
+      "location": "workspace-runtime",
+      "bytes": 4096,
+      "covers": [
+        "table:refusal_count"
+      ],
+      "authority_owners": [
+        "observation_runtime.ObservationLedger"
+      ],
+      "writers": [
+        "observation_runtime.ledger:ObservationLedger"
+      ],
+      "readers": [
+        "product_host.composition.workspace_activity"
+      ]
+    },
+    "observation-store-metadata": {
+      "summary": "the observation store's schema and legacy-migration marker",
+      "class": "event-log",
+      "tier": 1,
+      "retire": "the log's schema version is its own SQLite user_version; no reader needs a separate marker",
+      "location": "workspace-runtime",
+      "bytes": 4096,
+      "covers": [
+        "table:observation_store_metadata"
+      ],
+      "authority_owners": [
+        "observation_runtime.ObservationLedger"
+      ],
+      "writers": [
+        "observation_runtime.ledger:ObservationLedger"
+      ],
+      "readers": [
+        "product_host.composition.workspace_activity"
+      ]
+    },
+    "task-control": {
+      "summary": "Task Control's Tasks: records, work items, executions, events, commands, stage receipts and their listing projection",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log task, task_step, wait and event",
+      "location": "workspace-runtime",
+      "bytes": 2621440,
+      "covers": [
+        "table:workspace_task"
+      ],
+      "authority_owners": [
+        "task_control.registry.DuckDbTaskControlRegistry"
+      ],
+      "writers": [],
+      "readers": [
+        "alternative_evidence.runtime.task_adapter",
+        "alternative_evidence.storage.inventory",
+        "chief_risk_officer.runtime.portfolio_review_task",
+        "product_host.composition.application_session",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_delivery",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_finalization",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.research_experiments",
+        "product_host.composition.resource_estimates",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.task_recovery",
+        "product_host.composition.task_supervision",
+        "product_host.composition.upgrade_overview",
+        "product_host.composition.workspace",
+        "product_host.composition.workspace_activity",
+        "product_host.data_preparation.remediation",
+        "product_host.data_preparation.research_strategy",
+        "product_host.maintenance.data_update",
+        "product_host.storage.backup",
+        "task_control.runner"
+      ]
+    },
+    "task-heartbeats": {
+      "summary": "a running Task's heartbeats beside its checkpoint",
+      "class": "cache-scratch",
+      "tier": 3,
+      "home": "log wait (a step's lease and deadline)",
+      "location": "workspace-runtime",
+      "bytes": 24576,
+      "covers": [
+        "table:workspace_task_heartbeat"
+      ],
+      "authority_owners": [
+        "task_control.runner._SqliteHeartbeatStore"
+      ],
+      "writers": [
+        "task_control.runner:_SqliteHeartbeatStore"
+      ],
+      "readers": [
+        "alternative_evidence.runtime.task_adapter",
+        "chief_risk_officer.runtime.portfolio_review_task",
+        "portfolio_strategy_lab.application.finalization_task",
+        "portfolio_strategy_lab.application.task",
+        "product_host.composition.application_session",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_application",
+        "product_host.composition.portfolio_finalization",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_experiments",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_scoring",
+        "product_host.composition.task_recovery",
+        "product_host.composition.verification_sweep",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.research_strategy",
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "maintenance-receipts": {
+      "summary": "workspace maintenance cycles, their events and the data update, audit-chain and remediation-failure receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-database",
+      "bytes": 1310720,
+      "covers": [
+        "table:action_audit_chain_receipt"
+      ],
+      "authority_owners": [
+        "data_platform.maintenance.registry.DuckDbWorkspaceMaintenanceRegistry"
+      ],
+      "writers": [],
+      "readers": [
+        "data_platform.maintenance.data_changes",
+        "data_platform.maintenance.orphaned_bind",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.storage.input_references"
+      ]
+    },
+    "knowledge-index": {
+      "summary": "the Evidence knowledge workspace and its hybrid index: source objects, documents, passages, full-text postings and dense vectors",
+      "class": "derived",
+      "tier": 4,
+      "home": "index passage, passage_fts and passage_vec; documents as catalog world.evidence_doc",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "table:cjk_fts",
+        "artifacts:runtime/evidence-knowledge"
+      ],
+      "authority_owners": [
+        "knowledge.hybrid.WorkspaceHybridKnowledgeIndex"
+      ],
+      "writers": [
+        "knowledge.hybrid:WorkspaceHybridKnowledgeIndex",
+        "knowledge.retrieval:WorkspaceKnowledgeLibrary"
+      ],
+      "readers": [
+        "alternative_evidence.documents.workspace",
+        "alternative_evidence.retrieval.service",
+        "alternative_evidence.retrieval.session",
+        "alternative_evidence.runtime.service",
+        "alternative_evidence.storage.inventory",
+        "knowledge.runtime",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.storage.evidence_references"
+      ]
+    },
+    "retired-feature-tables": {
+      "summary": "Feature tables the migrations already altered and dropped",
+      "class": "derived",
+      "tier": 3,
+      "retire": "dropped by the migrations that replaced them; no reader",
+      "location": "workspace-database",
+      "bytes": null,
+      "covers": [
+        "table:feature_ineligibility"
+      ],
+      "authority_owners": [
+        "feature_engine.storage.FeatureStateRepository"
+      ],
+      "writers": [],
+      "readers": [
+        "causal_outcomes.execution.readers",
+        "data_platform.delegation",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.orphaned_bind",
+        "data_platform.preflight",
+        "data_platform.readiness",
+        "data_platform.remediation_case",
+        "data_platform.runtime",
+        "feature_engine.inputs.gateway",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.producers.ineligibility",
+        "feature_engine.producers.reference_data",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.closure_genesis",
+        "feature_engine.runtime.service",
+        "feature_engine.storage.listing_proofs",
+        "portfolio_inputs.benchmark",
+        "product_host.composition.goals",
+        "product_host.composition.research_authoring",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.remediation",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "alpha-qualification": {
+      "summary": "Alpha qualification programs, candidate registries, qualification evidence and candidate sets",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial, selection and artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research/goal-driven"
+      ],
+      "authority_owners": [
+        "alpha_research.candidates.AlphaGoalResearchArtifactStore"
+      ],
+      "writers": [
+        "alpha_research.candidates.artifacts:AlphaGoalResearchArtifactStore",
+        "alpha_research.candidates.qualification_task:_import_study"
+      ],
+      "readers": [
+        "alpha_research.candidates.committer",
+        "product_host.composition.research_experiments",
+        "product_host.research_authoring.qualification_handoff"
+      ]
+    },
+    "alpha-results": {
+      "summary": "shared Alpha numerical children, registered-model decisions, refit state, formation scores, receipts and markers",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "catalog results.alpha_score and log artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research"
+      ],
+      "authority_owners": [
+        "alpha_research.publication.AlphaCurrentArtifactStore"
+      ],
+      "writers": [
+        "alpha_research.publication.artifacts:AlphaCurrentArtifactStore",
+        "alpha_research.scores.model_renewal:_array_file"
+      ],
+      "readers": [
+        "alpha_research.candidates.committer",
+        "alpha_research.candidates.qualification",
+        "alpha_research.candidates.qualification_task",
+        "alpha_research.experiments.lifecycle_authoring",
+        "alpha_research.scores.lifecycle_preparation",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_workspace",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_scoring",
+        "product_host.data_preparation.model_training",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.model_training",
+        "product_host.storage.input_references"
+      ]
+    },
+    "alpha-development-evidence": {
+      "summary": "immutable Alpha development evidence",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial and artifact; detail as catalog results.breakdown",
+      "location": "workspace-artifacts",
+      "bytes": 2891462788,
+      "covers": [
+        "artifacts:alpha-research/current"
+      ],
+      "authority_owners": [
+        "alpha_research.experiments.AlphaDevelopmentArtifactStore"
+      ],
+      "writers": [
+        "alpha_research.experiments.development_artifacts:AlphaDevelopmentArtifactStore"
+      ],
+      "readers": [
+        "alpha_research.candidates.qualification_task",
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.experiments.development_evidence",
+        "alpha_research.experiments.development_execution",
+        "alpha_research.experiments.dynamic_panel_development",
+        "alpha_research.experiments.execution",
+        "alpha_research.experiments.family_qualification",
+        "alpha_research.experiments.lifecycle_authoring",
+        "alpha_research.experiments.score_rows",
+        "alpha_research.experiments.verification",
+        "alpha_research.publication.artifacts",
+        "alpha_research.scores.model_renewal",
+        "alpha_research.simple_signal.authority",
+        "portfolio_strategy_lab.research_loop.paired_alpha_portfolio",
+        "portfolio_strategy_lab.research_loop.panel_methodology_execution",
+        "product_host.composition.strategy_activation",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff"
+      ]
+    },
+    "storage-retention": {
+      "summary": "storage retention state, physical availability, input cleanup plans and markers",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log live_ref and deletion_queue",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:storage-governance/availability",
+        "artifacts:storage-governance/input-cleanup-completed"
+      ],
+      "authority_owners": [
+        "product_host.storage.BoundedStorageRetentionOwner",
+        "workspace_runtime.BoundedStorageRetentionOwner"
+      ],
+      "writers": [
+        "product_host.storage.retention:BoundedStorageRetentionOwner"
+      ],
+      "readers": [
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.strategy_activation",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.research_strategy",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_research",
+        "product_host.storage.evidence_references",
+        "product_host.storage.input_references"
+      ]
+    },
+    "panel-sector-maps": {
+      "summary": "historical sector mappings and their reconstruction evidence",
+      "class": "reference",
+      "tier": 4,
+      "home": "catalog world.sector",
+      "location": "workspace-artifacts",
+      "bytes": 456408,
+      "covers": [
+        "artifacts:feature-panel/closure/sector-map-receipts"
+      ],
+      "authority_owners": [
+        "feature_engine.PanelClosurePublisher"
+      ],
+      "writers": [
+        "feature_engine.panels.closure:PanelClosurePublisher"
+      ],
+      "readers": [
+        "product_host.research_authoring.foundation"
+      ]
+    },
+    "panel-base-closure": {
+      "summary": "the consumed base-value closure behind each Panel",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.feature_set_<name>",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/closure/base-keys"
+      ],
+      "authority_owners": [
+        "feature_engine.PanelClosurePublisher"
+      ],
+      "writers": [
+        "feature_engine.panels.closure:PanelClosurePublisher",
+        "feature_engine.panels.closure_artifacts:PanelClosureArtifactStore"
+      ],
+      "readers": [
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.inputs.workspace",
+        "feature_engine.catalog.research_values",
+        "feature_engine.panels.development_overlay",
+        "feature_engine.panels.feature_closure_ledger",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.rematerialization",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.workspace",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.feature_research",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.panel_methodology_sources",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "panel-diagnostics": {
+      "summary": "Panel diagnostics and exact row receipt assignments",
+      "class": "derived",
+      "tier": 3,
+      "home": "log measure",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/closure/availability"
+      ],
+      "authority_owners": [
+        "feature_engine.PanelClosurePublisher"
+      ],
+      "writers": [
+        "feature_engine.panels.closure:PanelClosurePublisher"
+      ],
+      "readers": [
+        "product_host.research_authoring.foundation"
+      ]
+    },
+    "panel-recipes": {
+      "summary": "content-addressed historical Panel derivation recipes",
+      "class": "derived",
+      "tier": 2,
+      "home": "log recipe",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/closure/recipes"
+      ],
+      "authority_owners": [
+        "feature_engine.PanelClosurePublisher"
+      ],
+      "writers": [
+        "feature_engine.panels.closure:PanelClosurePublisher"
+      ],
+      "readers": [
+        "product_host.research_authoring.foundation"
+      ]
+    },
+    "panel-closure-runs": {
+      "summary": "closure proof receipts, marker-last completion and the safe operations projection",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/closure/retention-assessments"
+      ],
+      "authority_owners": [
+        "workspace_runtime.PanelStorageClosureRun"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "feature-ledger": {
+      "summary": "the append-only base Feature ledger: genesis roots, recovery roots, patches, receipts, markers and column first loads",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.feature_set_<name> for the values; the patches and receipts as log events",
+      "location": "workspace-artifacts",
+      "bytes": 759728722,
+      "covers": [
+        "artifacts:feature-panel/closure/feature-ledger/first-loads",
+        "artifacts:feature-panel/closure/feature-ledger/genesis-roots"
+      ],
+      "authority_owners": [
+        "feature_engine.FeatureClosureLedger",
+        "feature_engine.panels.FeatureClosureLedger"
+      ],
+      "writers": [
+        "feature_engine.panels.feature_closure_ledger:FeatureClosureLedger",
+        "feature_engine.panels.feature_closure_ledger:copy_sector_history"
+      ],
+      "readers": [
+        "alpha_research.inputs.workspace",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.recovery_binding",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.runtime.closure_genesis",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.workspace",
+        "product_host.research_authoring.frozen_portfolio",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "panel-recovery-bindings": {
+      "summary": "Panel closure checkpoints and map-before-activation evidence",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-artifacts",
+      "bytes": 52507,
+      "covers": [
+        "artifacts:feature-panel/closure/panel-recovery-bindings"
+      ],
+      "authority_owners": [
+        "feature_engine.panels.FeatureClosureLedger"
+      ],
+      "writers": [
+        "feature_engine.panels.feature_closure_ledger:FeatureClosureLedger"
+      ],
+      "readers": [
+        "alpha_research.inputs.workspace",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.recovery_binding",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.runtime.closure_genesis",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.workspace",
+        "product_host.research_authoring.frozen_portfolio",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "panel-logical-identity": {
+      "summary": "native Panel logical identity, physical encoding, derivation, semantic-index and marker-last mapping",
+      "class": "sealed-result",
+      "tier": 1,
+      "home": "log artifact (profile and digest) and recipe",
+      "location": "workspace-artifacts",
+      "bytes": 491445,
+      "covers": [
+        "artifacts:feature-panel/closure/logical/content-manifests"
+      ],
+      "authority_owners": [
+        "feature_engine.PanelLogicalIdentityPublisher"
+      ],
+      "writers": [
+        "feature_engine.panels.logical_identity:PanelLogicalArtifactStore",
+        "feature_engine.panels.logical_identity:PanelLogicalIdentityPublisher"
+      ],
+      "readers": [
+        "product_host.composition.workspace",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.foundation"
+      ]
+    },
+    "decision-reproducibility": {
+      "summary": "frozen-context Agent decision reproducibility observations and findings",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log trial and prediction, read through the view decision",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:research-decisions/reproducibility/candidate"
+      ],
+      "authority_owners": [
+        "research_decision.ResearchDecisionReproducibilityCoordinator"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "research-migrations": {
+      "summary": "marker-last migration receipts: Panel identity, logical rebinding and research decisions",
+      "class": "event-log",
+      "tier": 3,
+      "retire": "a 0.2.7 migration's receipts; the 0.2.8 one-shot upgrade after a full backup replaces the migration and no reader needs them after it",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/logical-identity-migrations/acceptance-markers",
+        "artifacts:factor-research/outcomes/logical-rebind-receipts",
+        "artifacts:research-decisions/reproducibility/candidate-migration-receipts"
+      ],
+      "authority_owners": [
+        "factor_research.publication.FactorResearchArtifactStore",
+        "product_host.migrations.PanelIdentityMigrationArtifactStore",
+        "product_host.migrations.research_program.ResearchDecisionMigrationPublisher"
+      ],
+      "writers": [
+        "factor_research.publication.artifacts:FactorResearchArtifactStore"
+      ],
+      "readers": [
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.panel_methodology_sources",
+        "research_foundation.mandate.foundation",
+        "research_foundation.publication.sponsorship",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "feature-catalog-crud": {
+      "summary": "disposable governed Feature Catalog revisions, increments, plans and transitions",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "disposable dogfood artifacts (DISPOSABLE_DOGFOOD_ONLY); no reader",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-catalog-crud/base-values"
+      ],
+      "authority_owners": [
+        "feature_engine.FeatureCatalogCrudArtifactStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "risk-covariance": {
+      "summary": "Risk covariance builds, chunks, diagnostics, surfaces and dossiers",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.factor_cov, derived.factor_loading and derived.specific_risk",
+      "location": "workspace-artifacts",
+      "bytes": 2580996920,
+      "covers": [
+        "artifacts:risk-research/covariance/builds",
+        "artifacts:risk-research/covariance/diagnostics"
+      ],
+      "authority_owners": [
+        "risk_research.publication.CurrentRiskService",
+        "risk_research.surfaces.RiskArtifactStore"
+      ],
+      "writers": [
+        "risk_research.experiments.development:build_development_covariance_surface",
+        "risk_research.experiments.execution:RiskDevelopmentExecutor",
+        "risk_research.experiments.execution:RiskExperimentExecutor",
+        "risk_research.surfaces.artifacts:RiskArtifactStore"
+      ],
+      "readers": [
+        "portfolio_strategy_lab.campaign.authority",
+        "portfolio_strategy_lab.campaign.upstream",
+        "portfolio_strategy_lab.publication.artifacts",
+        "product_host.composition.research_experiments",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.risk_handoff",
+        "risk_research.evaluation.campaign_metrics",
+        "risk_research.experiments.series",
+        "risk_research.experiments.verification"
+      ]
+    },
+    "panel-sector-activation": {
+      "summary": "sector activation markers and receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-artifacts",
+      "bytes": 2727,
+      "covers": [
+        "artifacts:feature-panel/closure/sector-activation-markers"
+      ],
+      "authority_owners": [
+        "feature_engine.panels.FeatureClosureLedger"
+      ],
+      "writers": [
+        "feature_engine.panels.feature_closure_ledger:FeatureClosureLedger"
+      ],
+      "readers": [
+        "alpha_research.inputs.workspace",
+        "feature_engine.panels.feature_closure_coordinator",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.recovery_binding",
+        "feature_engine.publication.sector_map_activation",
+        "feature_engine.runtime.closure_genesis",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.workspace",
+        "product_host.research_authoring.frozen_portfolio",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "panel-residue-receipts": {
+      "summary": "operational residue cleanup receipts after a logical cutover",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log deletion_queue",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:storage-governance/panel-residue-receipts"
+      ],
+      "authority_owners": [
+        "feature_engine.panels.PanelRetentionResidueOwner"
+      ],
+      "writers": [
+        "feature_engine.panels.retention_residue:PanelRetentionResidueOwner"
+      ],
+      "readers": [
+        "product_host.storage.input_references"
+      ]
+    },
+    "guardian-views": {
+      "summary": "Guanyin guardian, progress and safe projection views",
+      "class": "cache-scratch",
+      "tier": 3,
+      "retire": "a projection the 0.2.8 read side computes on read from the log (read models are views or caches); no reader needs the stored file",
+      "location": "workspace-artifacts",
+      "bytes": 802,
+      "covers": [
+        "artifacts:alpha-research/current-guardian.json",
+        "artifacts:alpha-research/stability-case",
+        "artifacts:feature-panel/closure/guardian",
+        "artifacts:feature-panel/logical-identity-migrations/guardian-current.json",
+        "artifacts:portfolio-management/current-foundation-guardian.json",
+        "artifacts:run-monitor/data-tradability-guardian.json",
+        "artifacts:run-monitor/panel-duckdb-exit-guardian.json",
+        "artifacts:run-monitor/storage-guardian.json",
+        "artifacts:run-monitor/portfolio-development-guardian.json",
+        "artifacts:run-monitor/portfolio-strategy-lab-guardian.json",
+        "artifacts:run-monitor/work-progress.json",
+        "artifacts:portfolio-management/guardian-projection.json",
+        "artifacts:feature-panel/snapshot-lifecycle.json"
+      ],
+      "authority_owners": [
+        "guanyin.alpha.AlphaResearchGuardianPublisher",
+        "guanyin.alpha.AlphaStabilityGuardianPublisher",
+        "guanyin.data.DataTradabilityGuardianPublisher",
+        "guanyin.data.PanelClosureGuardianPublisher",
+        "guanyin.data.PanelExitGuardianProjectionPublisher",
+        "guanyin.data.PanelIdentityMigrationGuardianPublisher",
+        "guanyin.data.StorageGuardianProjectionPublisher",
+        "guanyin.portfolio.PortfolioDevelopmentGuardianPublisher",
+        "guanyin.portfolio.PortfolioStrategyGuardianPublisher",
+        "guanyin.research.CurrentFoundationPMGuardianPublisher",
+        "observation_runtime.telemetry.WorkspaceProgressPublisher",
+        "portfolio_management.publication.PortfolioManagementArtifactStore",
+        "workspace_runtime.ArtifactResolver"
+      ],
+      "writers": [
+        "observation_runtime.telemetry.progress:WorkspaceProgressPublisher",
+        "workspace_runtime.artifacts:ArtifactResolver"
+      ],
+      "readers": [
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.experiments.dynamic_panel_development",
+        "alpha_research.inputs.workspace",
+        "alpha_research.simple_signal.authority",
+        "alpha_research.simple_signal.materialization",
+        "alternative_evidence.runtime.progress",
+        "causal_outcomes.execution.artifacts",
+        "causal_outcomes.execution.publication",
+        "data_platform.maintenance.coordinator",
+        "data_platform.runtime",
+        "data_platform.task_telemetry",
+        "factor_research.publication.artifacts",
+        "feature_engine.panels.artifacts",
+        "feature_engine.panels.closure",
+        "feature_engine.panels.closure_artifacts",
+        "feature_engine.panels.closure_source",
+        "feature_engine.panels.development_input",
+        "feature_engine.panels.development_overlay",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.observation_clock_authority",
+        "feature_engine.panels.reader",
+        "feature_engine.panels.recovery_binding",
+        "feature_engine.panels.rematerialization",
+        "feature_engine.panels.retention_residue",
+        "feature_engine.panels.semantic_index",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.service",
+        "market_data_ops.returns.semantic_revisions",
+        "market_data_ops.runtime.universe_maintenance",
+        "portfolio_inputs.tradability.publication",
+        "portfolio_inputs.tradability.surface",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_authoring",
+        "product_host.composition.research_experiments",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.model_training",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_activations",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.feature_research",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.research_authoring.timing",
+        "product_host.storage.input_references",
+        "research_foundation.mandate.foundation",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.artifacts",
+        "risk_research.surfaces.returns",
+        "sector_research.experiments.resolution",
+        "sector_research.experiments.service",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "portfolio-score-evidence": {
+      "summary": "development score model evidence and its pointer",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial and artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research/portfolio-scores/model-evidence"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.inputs.alpha_scores.AlphaPortfolioDevelopmentRuntime"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "portfolio-scores": {
+      "summary": "Portfolio score builds, chunks and the current pointer, in-sample and policy out-of-sample",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "catalog results.alpha_score; the pointer as log live_ref",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research/portfolio-scores",
+        "artifacts:alpha-research/portfolio-scores/policy-oos"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.inputs.alpha_scores.AlphaPortfolioScoreStore",
+        "portfolio_strategy_lab.inputs.alpha_scores.PortfolioOosAlphaScoreStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "pre-research-summaries": {
+      "summary": "pre-research authority summaries",
+      "class": "cache-scratch",
+      "tier": 3,
+      "retire": "a projection the 0.2.8 read side computes on read from the log (read models are views or caches); no reader needs the stored file",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:pre-research-authority/summaries"
+      ],
+      "authority_owners": [
+        "product_host.publication.PreResearchAuthoritySummaryStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "sector-context": {
+      "summary": "sector context manifests and surfaces",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog world.sector and derived cache rows",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research/sector-context"
+      ],
+      "authority_owners": [
+        "sector_research.inputs.SectorContextStore"
+      ],
+      "writers": [
+        "sector_research.inputs.storage:SectorContextStore"
+      ],
+      "readers": [
+        "product_host.research_authoring.panel_methodology_context",
+        "product_host.research_authoring.panel_methodology_sources"
+      ]
+    },
+    "execution-outcomes": {
+      "summary": "causal execution outcomes and the verified local QA preparation",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "catalog results.series and log artifact",
+      "location": "workspace-artifacts",
+      "bytes": 139701350,
+      "covers": [
+        "artifacts:data-operations/execution-outcomes"
+      ],
+      "authority_owners": [
+        "causal_outcomes.execution._ExecutionOutcomeArtifactStore"
+      ],
+      "writers": [
+        "causal_outcomes.execution.artifacts:_ExecutionOutcomeArtifactStore",
+        "causal_outcomes.execution.publication:CausalExecutionOutcomePublisher",
+        "causal_outcomes.execution.readers:CausalExecutionOutcomePolicyHoldoutReader"
+      ],
+      "readers": [
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.experiments.development_execution",
+        "alpha_research.inputs.folds",
+        "causal_outcomes.selection.listing_set",
+        "factor_research.programs.program",
+        "local_application.goals",
+        "portfolio_strategy_lab.application.decision_updates",
+        "portfolio_strategy_lab.application.resolution",
+        "portfolio_strategy_lab.inputs.development",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_update_automation",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.timing",
+        "product_host.storage.input_references",
+        "research_foundation.publication.sponsorship",
+        "sector_research.experiments.campaign_evidence",
+        "sector_research.experiments.resolution",
+        "sector_research.experiments.service",
+        "sector_research.experiments.verification"
+      ]
+    },
+    "research-current-pointers": {
+      "summary": "the sole current Factor Research and Risk pointers and markers",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log live_ref",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:factor-research/current",
+        "artifacts:risk-research/current"
+      ],
+      "authority_owners": [
+        "factor_research.publication.CurrentFactorResearchService",
+        "risk_research.publication.CurrentRiskService"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "factor-candidate-evidence": {
+      "summary": "Factor Research candidate evidence, markers and protocol health",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial, measure and artifact",
+      "location": "workspace-artifacts",
+      "bytes": 5989,
+      "covers": [
+        "artifacts:factor-research/candidates/evidence"
+      ],
+      "authority_owners": [
+        "factor_research.publication.FactorResearchArtifactStore"
+      ],
+      "writers": [
+        "factor_research.publication.artifacts:FactorResearchArtifactStore"
+      ],
+      "readers": [
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.panel_methodology_sources",
+        "research_foundation.mandate.foundation",
+        "research_foundation.publication.sponsorship",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "feature-overlay": {
+      "summary": "research feature preprocessing and materialized research feature columns",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.feature_set_<name>",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-panel/closure/research-feature-preprocessing"
+      ],
+      "authority_owners": [
+        "feature_engine.panels.DevelopmentFeatureOverlayService"
+      ],
+      "writers": [
+        "feature_engine.catalog.research_values:ResearchFormulaValues",
+        "feature_engine.panels.development_overlay:DevelopmentFeatureOverlayService",
+        "feature_engine.panels.development_overlay:_write_manifest",
+        "feature_engine.panels.development_overlay:_write_parquet",
+        "product_host.research_authoring.feature_materialization:materialize_feature_columns",
+        "product_host.research_authoring.feature_preprocessing:prepare_feature_overlay"
+      ],
+      "readers": [
+        "alpha_research.experiments.dynamic_panel_development",
+        "product_host.data_preparation.feature_research",
+        "product_host.research_authoring.panel_methodology_context",
+        "product_host.research_authoring.panel_methodology_sources"
+      ]
+    },
+    "session-marks": {
+      "summary": "published mark chunks and manifests",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog results.series",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:data-operations/session-marks"
+      ],
+      "authority_owners": [
+        "market_data_ops.publication.SessionMarkArtifactStore"
+      ],
+      "writers": [
+        "market_data_ops.publication.session_marks:SessionMarkArtifactStore"
+      ],
+      "readers": [
+        "portfolio_inputs.session_marks",
+        "portfolio_strategy_lab.campaign.authority",
+        "portfolio_strategy_lab.research_loop.paired_alpha_portfolio",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff"
+      ]
+    },
+    "protected-validation": {
+      "summary": "the validation gate's permits, claims and receipts",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event and artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:protected-validation"
+      ],
+      "authority_owners": [
+        "model_validation.ProtectedValidationStore"
+      ],
+      "writers": [],
+      "readers": [
+        "product_host.composition.portfolio_finalization"
+      ]
+    },
+    "portfolio-benchmark": {
+      "summary": "Portfolio benchmark input surfaces",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog results.series",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-benchmark/surfaces"
+      ],
+      "authority_owners": [
+        "portfolio_inputs.PortfolioBenchmarkStore"
+      ],
+      "writers": [
+        "portfolio_inputs.benchmark:PortfolioBenchmarkStore"
+      ],
+      "readers": [
+        "data_platform.preflight",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.research_authoring.panel_methodology_sources"
+      ]
+    },
+    "tradability": {
+      "summary": "tradability Parquet chunks and their JSON authorities",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived rows, a cache keyed by input digest in log cache_entry",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:data-operations/tradability"
+      ],
+      "authority_owners": [
+        "portfolio_inputs.tradability.TradabilityArtifactStore"
+      ],
+      "writers": [
+        "portfolio_inputs.tradability.publication:CurrentTradabilityDataService",
+        "portfolio_inputs.tradability.surface:HistoricalTradabilityBuilder",
+        "portfolio_inputs.tradability.surface:TradabilityArtifactStore"
+      ],
+      "readers": [
+        "portfolio_inputs.tradability.readback",
+        "portfolio_strategy_lab.application.resolution",
+        "portfolio_strategy_lab.inputs.development",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.strategy_calibration",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff"
+      ]
+    },
+    "portfolio-oos-consumption": {
+      "summary": "policy out-of-sample consumption records and the current pointer",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event and live_ref",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-policy-oos/consumption"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.evaluation.PortfolioPolicyOosStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "portfolio-inputs": {
+      "summary": "the research desk's Portfolio inputs and their pointer",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived rows and log live_ref",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:research-desk/portfolio-input"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.inputs._PortfolioInputStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "portfolio-signal-comparisons": {
+      "summary": "fast and slow return-signal comparison evidence",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial and measure",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-strategy-lab/development"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.inputs.return_signals.PortfolioSignalArtifactStore"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "portfolio-advancement": {
+      "summary": "advancement artifacts and the by-program receipt index",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event, read through the view decision",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-strategy-lab/advancement"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.publication.AdvancementLedgerStore"
+      ],
+      "writers": [
+        "portfolio_strategy_lab.publication.advancement_ledger:AdvancementLedgerStore",
+        "product_host.composition.decision_advancement:DecisionAdvancementApplication"
+      ],
+      "readers": [
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_history",
+        "product_host.composition.review_updates"
+      ]
+    },
+    "portfolio-finalization": {
+      "summary": "finalization artifacts behind four one-time commits, and frozen strategy authorities",
+      "class": "sealed-result",
+      "tier": 3,
+      "home": "log book and artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-strategy-lab/finalization"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.publication.PortfolioFinalizationStore"
+      ],
+      "writers": [
+        "product_host.research_authoring.frozen_portfolio:prepare_frozen_portfolio_authority"
+      ],
+      "readers": [
+        "chief_risk_officer.decision.book_evidence",
+        "portfolio_strategy_lab.application.candidate_freeze",
+        "portfolio_strategy_lab.application.finalization_task",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_finalization",
+        "product_host.data_preparation.research_strategy"
+      ]
+    },
+    "portfolio-public-ledger": {
+      "summary": "Strategy Lab content-addressed descendants and the by-program reuse index",
+      "class": "sealed-result",
+      "tier": 3,
+      "home": "log book and ledger_entry",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:portfolio-strategy-lab/public"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.publication.PortfolioLedgerStore"
+      ],
+      "writers": [
+        "portfolio_strategy_lab.publication.portfolio_ledger:ObservationStore",
+        "portfolio_strategy_lab.publication.portfolio_ledger:PortfolioLedgerStore"
+      ],
+      "readers": [
+        "chief_risk_officer.decision.book_evidence",
+        "portfolio_strategy_lab.application.candidate_freeze",
+        "portfolio_strategy_lab.application.executor",
+        "portfolio_strategy_lab.application.package_inspection",
+        "portfolio_strategy_lab.application.readback",
+        "portfolio_strategy_lab.publication.advancement_ledger",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.portfolio_application",
+        "product_host.composition.portfolio_finalization",
+        "product_host.composition.strategy_activation"
+      ]
+    },
+    "strategy-lab-evidence": {
+      "summary": "Strategy Lab evidence: JSON documents and packed lanes",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "catalog results.holding and results.series; log trial",
+      "location": "workspace-artifacts",
+      "bytes": 2313961,
+      "covers": [
+        "artifacts:portfolio-strategy-lab"
+      ],
+      "authority_owners": [
+        "portfolio_strategy_lab.publication.PortfolioResearchArtifactStore"
+      ],
+      "writers": [
+        "portfolio_strategy_lab.publication.artifacts:PortfolioResearchArtifactStore"
+      ],
+      "readers": [
+        "portfolio_strategy_lab.application.calibration",
+        "portfolio_strategy_lab.application.research_experiment",
+        "portfolio_strategy_lab.policies.lifecycle_research",
+        "portfolio_strategy_lab.research_loop.paired_alpha_portfolio",
+        "portfolio_strategy_lab.research_loop.panel_methodology_execution",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.data_preparation.research_strategy",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.risk_reports"
+      ]
+    },
+    "research-experiments": {
+      "summary": "an experiment's published research evidence",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial and artifact",
+      "location": "experiment-output",
+      "bytes": 127196,
+      "covers": [
+        "artifacts:research-evidence"
+      ],
+      "authority_owners": [
+        "product_host.composition.ResearchExperimentApplication"
+      ],
+      "writers": [
+        "product_host.composition.research_experiments:ResearchExperimentApplication"
+      ],
+      "readers": [
+        "product_host.composition.feature_trials",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_delivery",
+        "product_host.composition.research_history",
+        "product_host.composition.upgrade_overview",
+        "product_host.composition.verification_sweep"
+      ]
+    },
+    "workspace-data-requests": {
+      "summary": "the person's confirmed workspace data change requests",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "artifacts:workspace-data"
+      ],
+      "authority_owners": [
+        "product_host.maintenance.WorkspaceDataChanges"
+      ],
+      "writers": [
+        "data_platform.maintenance.data_changes:WorkspaceDataChanges"
+      ],
+      "readers": [
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "portfolio-research-pipeline": {
+      "summary": "the Host's Portfolio research pipeline records and Portfolio updates",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log task and event",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:product-host/portfolio-research"
+      ],
+      "authority_owners": [
+        "product_host.publication.PortfolioResearchPipelineStore"
+      ],
+      "writers": [
+        "product_host.composition.portfolio_updates:PortfolioUpdateApplication",
+        "product_host.publication.portfolio_research:PortfolioResearchPipelineStore"
+      ],
+      "readers": [
+        "product_host.composition.decision_advancement",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_application",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_history",
+        "product_host.composition.review_updates"
+      ]
+    },
+    "goals": {
+      "summary": "the Host's Goals",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log goal",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:product-host/goals"
+      ],
+      "authority_owners": [
+        "product_host.publication.GoalStore"
+      ],
+      "writers": [
+        "product_host.publication.goals:GoalStore"
+      ],
+      "readers": [
+        "product_host.composition.committee",
+        "product_host.composition.first_use_road",
+        "product_host.composition.goal_case_routes",
+        "product_host.composition.goal_check",
+        "product_host.composition.goals",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.research_delivery",
+        "product_host.composition.research_experiments",
+        "product_host.composition.research_update_automation",
+        "product_host.data_preparation.remediation",
+        "product_host.research_authoring.feature_extensions"
+      ]
+    },
+    "panel-semantic-index": {
+      "summary": "the Panel semantic index of bound factor inputs",
+      "class": "derived",
+      "tier": 2,
+      "home": "log definition",
+      "location": "workspace-artifacts",
+      "bytes": 349952,
+      "covers": [
+        "artifacts:feature-panel/semantic-index"
+      ],
+      "authority_owners": [
+        "product_host.research_authoring._bind_factor_inputs"
+      ],
+      "writers": [
+        "product_host.research_authoring.factor_inputs:_bind_factor_inputs"
+      ],
+      "readers": [
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_experiments",
+        "product_host.composition.strategy_activation",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.research_strategy",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_handoff",
+        "product_host.research_authoring.feature_extensions",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.feature_research",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.lifecycle_handoff",
+        "product_host.research_authoring.model_training",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.qualification_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.research_authoring.risk_reports",
+        "product_host.research_authoring.timing",
+        "product_host.storage.input_references"
+      ]
+    },
+    "pre-research-head": {
+      "summary": "the pre-research HEAD and marker store and its pending transition",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log live_ref and event",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:pre-research-revisions"
+      ],
+      "authority_owners": [
+        "research_foundation.runtime.PreResearchHeadStore"
+      ],
+      "writers": [
+        "research_foundation.runtime.delta:PreResearchHeadStore"
+      ],
+      "readers": [
+        "product_host.data_preparation.host",
+        "product_host.storage.input_references",
+        "research_foundation.runtime.delta_service"
+      ]
+    },
+    "risk-calibration": {
+      "summary": "compact common-mode calibration research evidence",
+      "class": "sealed-result",
+      "tier": 3,
+      "home": "log measure and artifact",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:risk-research/current/common-mode-calibration-research.json"
+      ],
+      "authority_owners": [
+        "risk_research.calibration.CommonModeCalibrationRepository"
+      ],
+      "writers": [],
+      "readers": []
+    },
+    "risk-returns": {
+      "summary": "Risk return Parquet chunks and their manifest",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived rows, a cache keyed by input digest",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:data-operations/risk-returns"
+      ],
+      "authority_owners": [
+        "risk_research.surfaces.RiskReturnArtifactStore"
+      ],
+      "writers": [
+        "risk_research.surfaces.returns:RiskReturnArtifactStore"
+      ],
+      "readers": [
+        "portfolio_strategy_lab.application.resolution",
+        "portfolio_strategy_lab.publication.artifacts",
+        "product_host.composition.portfolio_finalization",
+        "product_host.composition.portfolio_result_context",
+        "product_host.data_preparation.research_strategy",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.risk_handoff",
+        "risk_research.experiments.development",
+        "risk_research.experiments.execution",
+        "risk_research.experiments.window"
+      ]
+    },
+    "panel-chunks": {
+      "summary": "Panel chunks, manifests and DuckDB exit receipts",
+      "class": "derived",
+      "tier": 4,
+      "home": "catalog derived.feature_set_<name> and derived.training_sample",
+      "location": "workspace-artifacts",
+      "bytes": 590684437,
+      "covers": [
+        "artifacts:feature-panel/chunks"
+      ],
+      "authority_owners": [
+        "workspace_runtime.ArtifactResolver"
+      ],
+      "writers": [
+        "feature_engine.panels.artifacts:PanelArtifactCompositionOwner",
+        "feature_engine.panels.rematerialization:ArtifactOnlyPanelRematerializer",
+        "workspace_runtime.artifacts:ArtifactResolver"
+      ],
+      "readers": [
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.experiments.dynamic_panel_development",
+        "alpha_research.inputs.workspace",
+        "alpha_research.simple_signal.authority",
+        "alpha_research.simple_signal.materialization",
+        "causal_outcomes.execution.artifacts",
+        "causal_outcomes.execution.publication",
+        "data_platform.runtime",
+        "factor_research.publication.artifacts",
+        "feature_engine.panels.closure",
+        "feature_engine.panels.closure_artifacts",
+        "feature_engine.panels.closure_source",
+        "feature_engine.panels.development_input",
+        "feature_engine.panels.development_overlay",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.observation_clock_authority",
+        "feature_engine.panels.reader",
+        "feature_engine.panels.recovery_binding",
+        "feature_engine.panels.retention_residue",
+        "feature_engine.panels.semantic_index",
+        "feature_engine.publication.snapshots",
+        "feature_engine.runtime.service",
+        "market_data_ops.returns.semantic_revisions",
+        "portfolio_inputs.tradability.publication",
+        "portfolio_inputs.tradability.surface",
+        "portfolio_strategy_lab.application.resolution",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_authoring",
+        "product_host.composition.research_experiments",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.host",
+        "product_host.data_preparation.model_training",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.feature_activations",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.feature_research",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.research_authoring.timing",
+        "product_host.storage.input_references",
+        "research_foundation.mandate.foundation",
+        "research_foundation.runtime.delta_service",
+        "risk_research.surfaces.artifacts",
+        "risk_research.surfaces.returns",
+        "sector_research.experiments.resolution",
+        "sector_research.experiments.service",
+        "sector_research.inputs.membership"
+      ]
+    },
+    "research-input-copies": {
+      "summary": "sealed copies of the market store, Panels and outcomes an experiment reads, and the market inputs rebuilt for hand-offs",
+      "class": "derived",
+      "tier": 4,
+      "retire": "a copy of data the catalog holds once; a workspace is a tag and an experiment reads a selection with its knowledge cutoff, so no reader needs the copy",
+      "location": "workspace-file",
+      "bytes": 3384957740,
+      "covers": [
+        "artifacts:research-inputs",
+        "artifacts:research-market-inputs",
+        "artifacts:research-risk-inputs"
+      ],
+      "authority_owners": [
+        "product_host.research_authoring._bind_factor_inputs",
+        "product_host.research_authoring.prepare_portfolio_handoff",
+        "product_host.research_authoring.risk_workflow"
+      ],
+      "writers": [
+        "product_host.research_authoring.factor_inputs:_bind_factor_inputs",
+        "product_host.research_authoring.factor_inputs:_copy_input",
+        "product_host.research_authoring.factor_inputs:_record_input_publication",
+        "product_host.research_authoring.input_revisions:ResearchInputRevisions",
+        "product_host.storage.input_references:ResearchInputStorage"
+      ],
+      "readers": [
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.portfolio_application",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_experiments",
+        "product_host.composition.strategy_activation",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.research_strategy",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_handoff",
+        "product_host.research_authoring.feature_extensions",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.feature_research",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.lifecycle_handoff",
+        "product_host.research_authoring.model_training",
+        "product_host.research_authoring.qualification_handoff",
+        "product_host.research_authoring.risk_reports",
+        "product_host.research_authoring.timing"
+      ]
+    },
+    "research-programs": {
+      "summary": "an experiment's sealed Programs",
+      "class": "event-log",
+      "tier": 2,
+      "home": "log recipe and trial",
+      "location": "experiment-output",
+      "bytes": 184645,
+      "covers": [
+        "artifacts:research-programs"
+      ],
+      "authority_owners": [
+        "research_program.authoring.ResearchProgramStore"
+      ],
+      "writers": [
+        "research_program.authoring.workflow:ResearchProgramStore",
+        "research_program.authoring.workflow:_publish_immutable"
+      ],
+      "readers": [
+        "product_host.composition.research_authoring",
+        "product_host.composition.research_experiments",
+        "product_host.research_authoring.factor_handoff",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.lifecycle_handoff",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.qualification_handoff",
+        "product_host.research_authoring.risk_handoff"
+      ]
+    },
+    "evidence-records": {
+      "summary": "Evidence and CRO records: requests, registries, snapshots, document sets, retrieval generations, receipts, briefs, packages, publications and dossiers",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event and artifact; documents as catalog world.evidence_doc",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "artifacts:alternative-evidence"
+      ],
+      "authority_owners": [
+        "alternative_evidence.publication.AlternativeEvidenceArtifactStore"
+      ],
+      "writers": [
+        "alternative_evidence.publication.artifacts:AlternativeEvidenceArtifactStore"
+      ],
+      "readers": [
+        "alternative_evidence.publication.analysis",
+        "alternative_evidence.publication.usage",
+        "alternative_evidence.runtime.reuse",
+        "alternative_evidence.runtime.service",
+        "alternative_evidence.sources.acquisition",
+        "chief_risk_officer.portfolio_evidence.coverage.selections",
+        "chief_risk_officer.publication.portfolio_review",
+        "chief_risk_officer.runtime.portfolio_review_task",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_bundles",
+        "product_host.composition.evidence_review_delivery",
+        "product_host.composition.evidence_review_resume",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "evidence-install": {
+      "summary": "the Evidence install Task's stage outputs",
+      "class": "backup-install",
+      "tier": 4,
+      "home": "outside the data layer: install outputs stay files the Host owns, each registered by digest in log artifact",
+      "location": "workspace-file",
+      "bytes": null,
+      "covers": [
+        "artifacts:evidence-install"
+      ],
+      "authority_owners": [
+        "product_host.composition.evidence_authority_setup.EvidenceInstall"
+      ],
+      "writers": [
+        "product_host.composition.evidence_authority_setup:EvidenceInstall",
+        "product_host.composition.evidence_authority_setup:_publish"
+      ],
+      "readers": [
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "cpu-budget": {
+      "summary": "the workspace's CPU budget and the log of what each preparation ran with",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "log setting and event",
+      "location": "workspace-file",
+      "bytes": 20618,
+      "covers": [
+        "artifacts:runtime/execution"
+      ],
+      "authority_owners": [
+        "alternative_evidence.runtime.CpuBudgetStore"
+      ],
+      "writers": [
+        "alternative_evidence.runtime.execution:CpuBudgetStore"
+      ],
+      "readers": [
+        "alternative_evidence.runtime.service",
+        "alternative_evidence.runtime.task_adapter",
+        "product_host.composition.application_session",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.research_experiment_projection",
+        "product_host.composition.research_experiments",
+        "product_host.composition.resource_estimates",
+        "product_host.storage.backup"
+      ]
+    },
+    "upgrade-acknowledgement": {
+      "summary": "the installed identities the person last acknowledged",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "log setting",
+      "location": "workspace-file",
+      "bytes": 648,
+      "covers": [
+        "artifacts:runtime/upgrade-overview.json"
+      ],
+      "authority_owners": [
+        "product_host.composition.acknowledge_upgrade"
+      ],
+      "writers": [
+        "product_host.composition.upgrade_overview:acknowledge_upgrade"
+      ],
+      "readers": [
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "sector-staging": {
+      "summary": "sector reference inputs staged for the Feature build",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
+      "location": "workspace-file",
+      "bytes": 149658,
+      "covers": [
+        "artifacts:staging/sector-reference"
+      ],
+      "authority_owners": [
+        "feature_engine.producers.SectorRefreshStager"
+      ],
+      "writers": [
+        "feature_engine.producers.reference_data:SectorRefreshStager"
+      ],
+      "readers": [
+        "feature_engine.runtime.rebase_cutoff",
+        "feature_engine.runtime.service",
+        "portfolio_inputs.benchmark",
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "provider-cache": {
+      "summary": "a market data provider's own cache",
+      "class": "cache-scratch",
+      "tier": 4,
+      "home": "log cache_entry (a registered cache)",
+      "location": "workspace-file",
+      "bytes": null,
+      "covers": [
+        "artifacts:yfinance-cache"
+      ],
+      "authority_owners": [
+        "market_data_ops.sources.YFinanceMarketDataProvider"
+      ],
+      "writers": [],
+      "readers": [
+        "data_platform.candidate_requalification",
+        "data_platform.maintenance.coordinator",
+        "data_platform.maintenance.data_changes",
+        "data_platform.readiness",
+        "data_platform.runtime",
+        "feature_engine.producers.reference_data",
+        "feature_engine.runtime.service",
+        "market_data_ops.runtime.universe_maintenance",
+        "market_data_ops.runtime.universe_onboarding",
+        "product_host.composition.local_web_session",
+        "product_host.composition.workspace",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.host",
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "feature-trials": {
+      "summary": "one record per feature trial",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log trial",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "artifacts:feature-trials"
+      ],
+      "authority_owners": [
+        "product_host.composition.feature_trials.FeatureTrials"
+      ],
+      "writers": [
+        "product_host.composition.feature_trials:FeatureTrials"
+      ],
+      "readers": [
+        "product_host.composition.portfolio_research_operations",
+        "product_host.research_authoring.feature_extensions"
+      ]
+    },
+    "factor-development": {
+      "summary": "a Factor study's sealed evidence, lineage receipts and curation decisions",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log trial, selection and artifact",
+      "location": "experiment-output",
+      "bytes": 758312,
+      "covers": [
+        "artifacts:development/factor-deterministic-evidence",
+        "artifacts:development/factor-development-receipt",
+        "artifacts:development/factor-curation-receipt"
+      ],
+      "authority_owners": [
+        "factor_research.experiments.publish_factor_development_curation",
+        "factor_research.experiments.publish_factor_development_evidence",
+        "factor_research.experiments.publish_factor_development_receipt"
+      ],
+      "writers": [
+        "factor_research.experiments.development_evidence:_publish_json"
+      ],
+      "readers": [
+        "factor_research.experiments.execution",
+        "factor_research.experiments.verification",
+        "factor_research.research_loop.development_curation",
+        "local_application.cli",
+        "product_host.composition.research_experiments",
+        "product_host.composition.research_prerequisites",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_curation",
+        "product_host.research_authoring.factor_handoff",
+        "product_host.research_authoring.foundation",
+        "research_foundation.publication.sponsorship"
+      ]
+    },
+    "retrieval-model-copy": {
+      "summary": "the retained retrieval recipe's model copy",
+      "class": "backup-install",
+      "tier": 4,
+      "retire": "the machine's one model store holds each model once; no reader needs a workspace copy",
+      "location": "workspace-file",
+      "bytes": null,
+      "covers": [
+        "artifacts:evidence-cro-authority/semantic-model"
+      ],
+      "authority_owners": [
+        "knowledge.model_store.relink_retained_copy"
+      ],
+      "writers": [
+        "knowledge.model_store:relink_retained_copy"
+      ],
+      "readers": [
+        "local_application.native_setup",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_source_ways",
+        "product_host.composition.retrieval_pack_setup",
+        "product_host.composition.retrieval_recipe",
+        "product_host.storage.input_references"
+      ]
+    },
+    "daily-preparation-history": {
+      "summary": "immutable verified daily preparation history and its marker heads",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "covers": [
+        "artifacts:alpha-research/current/workspace-observation-history",
+        "artifacts:data-operations/execution-outcomes/local-qa-preparation"
+      ],
+      "authority_owners": [
+        "alpha_research.publication.AlphaCurrentArtifactStore",
+        "causal_outcomes.execution.PreparedLocalQASnapshotRows"
+      ],
+      "writers": [
+        "alpha_research.publication.artifacts:AlphaCurrentArtifactStore",
+        "alpha_research.publication.workspace_history:_WorkspaceObservationHistoryStore"
+      ],
+      "readers": [
+        "alpha_research.candidates.committer",
+        "alpha_research.candidates.qualification",
+        "alpha_research.candidates.qualification_task",
+        "alpha_research.experiments.canonical_development",
+        "alpha_research.experiments.development_execution",
+        "alpha_research.inputs.folds",
+        "alpha_research.scores.lifecycle_preparation",
+        "alpha_research.scores.model_renewal",
+        "causal_outcomes.selection.listing_set",
+        "factor_research.programs.program",
+        "local_application.goals",
+        "portfolio_strategy_lab.application.decision_updates",
+        "portfolio_strategy_lab.application.resolution",
+        "portfolio_strategy_lab.inputs.development",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_update_automation",
+        "product_host.composition.research_workspace",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.strategy_scoring",
+        "product_host.data_preparation.model_training",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.foundation",
+        "product_host.research_authoring.frozen_portfolio",
+        "product_host.research_authoring.model_training",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.portfolio_handoff",
+        "product_host.research_authoring.timing",
+        "product_host.storage.input_references",
+        "research_foundation.publication.sponsorship",
+        "sector_research.experiments.campaign_evidence",
+        "sector_research.experiments.resolution",
+        "sector_research.experiments.service",
+        "sector_research.experiments.verification"
+      ]
+    },
+    "workspace-manifest": {
+      "summary": "research-workspace.json: the workspace's identity, strategy installation and data update",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log workspace and tag",
+      "location": "workspace-file",
+      "bytes": 2528,
+      "writers": [
+        "product_host.composition.research_workspace:create_research_workspace_manifest",
+        "product_host.composition.research_workspace:update_research_workspace_manifest"
+      ],
+      "readers": [
+        "product_host.composition.decision_advancement",
+        "product_host.composition.entry",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_review_workspace",
+        "product_host.composition.first_use_road",
+        "product_host.composition.goals",
+        "product_host.composition.local_web_session",
+        "product_host.composition.plain_refusals",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.portfolio_updates",
+        "product_host.composition.research_experiment_plan",
+        "product_host.composition.research_experiments",
+        "product_host.composition.retrieval_pack_setup",
+        "product_host.composition.strategy_activation",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_score_inputs",
+        "product_host.composition.strategy_scoring",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.remediation",
+        "product_host.data_preparation.research_strategy",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.authority",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_handoff",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.research_authoring.input_revisions",
+        "product_host.research_authoring.lifecycle_handoff",
+        "product_host.research_authoring.model_training",
+        "product_host.research_authoring.risk_handoff",
+        "product_host.storage.backup",
+        "product_host.storage.input_references"
+      ]
+    },
+    "workspace-database-seal": {
+      "summary": "the workspace database's seal epoch record",
+      "class": "cache-scratch",
+      "tier": 1,
+      "retire": "re-proof on read retires in the 0.2.8 data layer: reads trust the catalog's registration, so no reader needs the stored proof",
+      "location": "workspace-file",
+      "bytes": null,
+      "writers": [
+        "workspace_runtime.database:_write_seal_record"
+      ],
+      "readers": [
+        "data_platform.maintenance.registry",
+        "feature_engine.inputs.closure_source",
+        "feature_engine.panels.closure_source",
+        "feature_engine.panels.retention_residue",
+        "feature_engine.storage.repositories",
+        "market_data_ops.storage.duckdb",
+        "product_host.composition.application_session",
+        "product_host.composition.workspace",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.storage.backup",
+        "research_foundation.storage.repository",
+        "task_control.registry",
+        "workspace_runtime.storage.readiness"
+      ]
+    },
+    "workspace-locks": {
+      "summary": "the workspace lock and writer lease files",
+      "class": "cache-scratch",
+      "tier": 1,
+      "retire": "the one Host per machine is the only writer, so no reader needs a lock or lease file",
+      "location": "workspace-file",
+      "bytes": 1,
+      "writers": [
+        "workspace_runtime.lock:WorkspaceLock",
+        "workspace_runtime.writer_lease:WorkspaceWriterLease"
+      ],
+      "readers": [
+        "alternative_evidence.sources.campaign",
+        "local_application.native_bridge",
+        "product_host.composition.application_session",
+        "product_host.composition.model_sandbox",
+        "product_host.composition.research_workspace",
+        "product_host.composition.workspace",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.storage.backup",
+        "research_foundation.runtime.delta_service",
+        "workspace_runtime.core"
+      ]
+    },
+    "verified-file-facts": {
+      "summary": "verified file facts kept for re-proof on read",
+      "class": "cache-scratch",
+      "tier": 3,
+      "retire": "re-proof on read retires in the 0.2.8 data layer: reads trust the catalog's registration, so no reader needs the stored proof",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "workspace_runtime.verified_facts:keep_file_facts",
+        "workspace_runtime.verified_facts:record_file_fact"
+      ],
+      "readers": [
+        "feature_engine.panels.closure",
+        "feature_engine.panels.logical_identity",
+        "feature_engine.panels.rematerialization",
+        "feature_engine.publication.current_storage",
+        "feature_engine.storage.repositories",
+        "market_data_ops.storage.duckdb",
+        "product_host.composition.strategy_score_inputs",
+        "workspace_runtime.content_store",
+        "workspace_runtime.writer_lease"
+      ]
+    },
+    "person-settings": {
+      "summary": "the person's settings: network access, the committee's daily run, the Task queue, the storage cap, the usage reading and evidence source consent",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "log setting",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "alternative_evidence.sources.admission:record_evidence_source_consent",
+        "local_application.native_bridge:_reading",
+        "local_application.native_bridge:set_usage_reading",
+        "product_host.composition.committee:set_daily",
+        "task_control.queue:write_queue_setting",
+        "workspace_runtime.network_access:set_network_access",
+        "workspace_runtime.storage.capacity:StorageCapStore"
+      ],
+      "readers": [
+        "data_platform.readiness",
+        "local_application.activity",
+        "local_application.cli",
+        "local_application.cli_contract",
+        "local_application.client",
+        "local_application.native_setup",
+        "observation_runtime.ledger",
+        "product_host.composition.application_session",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_bundles",
+        "product_host.composition.evidence_review_workspace",
+        "product_host.composition.evidence_source_ways",
+        "product_host.composition.first_use_road",
+        "product_host.composition.goal_check",
+        "product_host.composition.goals",
+        "product_host.composition.host_answer_submission",
+        "product_host.composition.local_web_session",
+        "product_host.composition.native_usage_reader",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.research_delivery",
+        "product_host.composition.review_updates",
+        "product_host.composition.workspace_activity",
+        "product_host.data_preparation.application",
+        "product_host.maintenance.data_update",
+        "product_host.storage.input_references",
+        "product_host.storage.inventory",
+        "task_control.registry"
+      ]
+    },
+    "task-requests": {
+      "summary": "each Task's frozen request, named by its digest",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log task",
+      "location": "workspace-runtime",
+      "bytes": 1106792,
+      "writers": [
+        "task_control.ledger:write_request"
+      ],
+      "readers": [
+        "product_host.composition.application_session",
+        "task_control.registry"
+      ]
+    },
+    "task-telemetry": {
+      "summary": "Task stage spans and telemetry",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event (a step is one event with its start time, as a span)",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "data_platform.task_telemetry:TaskTelemetry",
+        "task_control.timing:record_stage_spans"
+      ],
+      "readers": [
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.workspace_activity",
+        "product_host.data_preparation.application",
+        "product_host.maintenance.data_update",
+        "task_control.runner"
+      ]
+    },
+    "process-output": {
+      "summary": "a Task child's, the Host entry's and the web launcher's output streams",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "product_host.composition.entry:main",
+        "product_host.composition.web_launcher:_detach",
+        "task_control.child:_call"
+      ],
+      "readers": [
+        "causal_outcomes.execution.publication",
+        "feature_engine.runtime.service",
+        "product_host.composition.research_experiments",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.input_capture",
+        "product_host.research_authoring.factor_handoff",
+        "task_control.runner"
+      ]
+    },
+    "observation-storage-failure": {
+      "summary": "the record written when the observation ledger cannot store",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "observation_runtime.ledger:_write_storage_failure"
+      ],
+      "readers": [
+        "product_host.composition.workspace_activity"
+      ]
+    },
+    "content-store": {
+      "summary": "the content-addressed store: blobs by digest, its committed index and shared files",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log artifact and artifact_body; blobs addressed by digest",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "writers": [
+        "workspace_runtime.content_store:CommittedIndex",
+        "workspace_runtime.content_store:ContentAddressedStore",
+        "workspace_runtime.content_store:replace_shared_file"
+      ],
+      "readers": [
+        "alpha_research.experiments.development_artifacts",
+        "alpha_research.experiments.lifecycle_authoring",
+        "alpha_research.publication.artifacts",
+        "alpha_research.publication.workspace_history",
+        "alpha_research.scores.model_renewal",
+        "causal_outcomes.execution.artifacts",
+        "causal_outcomes.execution.readers",
+        "chief_risk_officer.runtime.portfolio_review_task",
+        "data_platform.maintenance.data_changes",
+        "feature_engine.panels.development_overlay",
+        "local_application.native_bridge",
+        "model_validation.protected_gate",
+        "observation_runtime.telemetry.progress",
+        "portfolio_strategy_lab.application.calibration",
+        "portfolio_strategy_lab.publication.advancement_ledger",
+        "portfolio_strategy_lab.publication.artifacts",
+        "portfolio_strategy_lab.publication.finalization_ledger",
+        "portfolio_strategy_lab.publication.portfolio_ledger",
+        "product_host.composition.committee",
+        "product_host.composition.decision_advancement",
+        "product_host.composition.feature_trials",
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.portfolio_result_context",
+        "product_host.composition.research_experiments",
+        "product_host.composition.research_update_automation",
+        "product_host.composition.research_workspace",
+        "product_host.maintenance.data_update",
+        "product_host.publication.goals",
+        "product_host.publication.portfolio_research",
+        "product_host.research_authoring.factor_inputs",
+        "product_host.storage.backup",
+        "workspace_runtime.network_access"
+      ]
+    },
+    "backups": {
+      "summary": "workspace backups: objects, exported tables and attempt records",
+      "class": "backup-install",
+      "tier": 4,
+      "home": "outside the data layer: backups stay files the Host owns, each registered by digest in log artifact",
+      "location": "backup-root",
+      "bytes": null,
+      "writers": [
+        "product_host.storage.backup:WorkspaceBackups",
+        "product_host.storage.backup:_Objects",
+        "product_host.storage.backup:_copy_file",
+        "product_host.storage.backup:_export_table",
+        "product_host.storage.backup:_record_attempt"
+      ],
+      "readers": [
+        "product_host.composition.entry",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "plan-previews": {
+      "summary": "previews of planned changes",
+      "class": "cache-scratch",
+      "tier": 3,
+      "home": "log cache_entry",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "product_host.storage.plan_previews:PreviewRegistry"
+      ],
+      "readers": [
+        "product_host.composition.research_experiments",
+        "product_host.composition.strategy_calibration",
+        "product_host.composition.strategy_scoring",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.input_capture",
+        "product_host.data_preparation.model_training",
+        "product_host.data_preparation.research_strategy",
+        "product_host.maintenance.data_update"
+      ]
+    },
+    "research-definitions": {
+      "summary": "the person's registered feature and model extensions and research feature definitions",
+      "class": "authority-setting",
+      "tier": 2,
+      "home": "log definition",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "product_host.research_authoring.feature_activations:FeatureExtensionRegistry",
+        "product_host.research_authoring.feature_activations:_keep",
+        "product_host.research_authoring.feature_research:ResearchFeatureDefinitions",
+        "product_host.research_authoring.model_extensions:ModelExtensionRegistry"
+      ],
+      "readers": [
+        "product_host.composition.model_sandbox",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.data_preparation.application",
+        "product_host.data_preparation.feature_research",
+        "product_host.data_preparation.host",
+        "product_host.maintenance.data_update",
+        "product_host.research_authoring.execution",
+        "product_host.research_authoring.factor_authoring",
+        "product_host.research_authoring.feature_extensions",
+        "product_host.research_authoring.feature_materialization",
+        "product_host.research_authoring.feature_preprocessing",
+        "product_host.research_authoring.panel_methodology_sources",
+        "product_host.research_authoring.qualification_handoff"
+      ]
+    },
+    "reference-ledger": {
+      "summary": "the ledger of reference prefixes the Host has handed out",
+      "class": "event-log",
+      "tier": 1,
+      "home": "log tag",
+      "location": "workspace-runtime",
+      "bytes": 254098,
+      "writers": [
+        "product_host.composition.reference_prefixes:ReferenceLedger"
+      ],
+      "readers": [
+        "product_host.composition.local_web_session"
+      ]
+    },
+    "incidents": {
+      "summary": "Guanyin's supervised Task incidents",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "guanyin.tasks.supervision:IncidentStore"
+      ],
+      "readers": [
+        "product_host.composition.task_recovery",
+        "product_host.composition.task_supervision"
+      ]
+    },
+    "sec-campaign-ledger": {
+      "summary": "the SEC fetch campaign's ledger",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "alternative_evidence.sources.campaign:SecCampaignLedger"
+      ],
+      "readers": [
+        "alternative_evidence.sources.admission",
+        "alternative_evidence.sources.sec_edgar"
+      ]
+    },
+    "evidence-documents": {
+      "summary": "fetched alternative evidence documents",
+      "class": "external-observation",
+      "tier": 4,
+      "home": "catalog world.evidence_doc",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "alternative_evidence.documents.workspace:AlternativeEvidenceDocumentPublisher"
+      ],
+      "readers": [
+        "alternative_evidence.retrieval.service",
+        "alternative_evidence.runtime.reuse",
+        "alternative_evidence.runtime.service",
+        "product_host.composition.evidence_authority_setup"
+      ]
+    },
+    "machine-model-store": {
+      "summary": "the machine's retrieval model store: installed packs, fetched models and their partial downloads, and the remembered store",
+      "class": "backup-install",
+      "tier": 4,
+      "home": "outside the data layer: models stay files the Host owns, each registered by digest in log artifact",
+      "location": "machine-model-store",
+      "bytes": null,
+      "writers": [
+        "knowledge.model_store:_transfer",
+        "knowledge.model_store:bind_retained_recipe",
+        "knowledge.model_store:hub_fetcher",
+        "knowledge.model_store:install_pack",
+        "knowledge.model_store:remember_store"
+      ],
+      "readers": [
+        "local_application.native_setup",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_source_ways",
+        "product_host.composition.retrieval_pack_setup",
+        "product_host.composition.retrieval_recipe",
+        "product_host.storage.input_references"
+      ]
+    },
+    "reranking-scores": {
+      "summary": "cached reranking pair scores",
+      "class": "cache-scratch",
+      "tier": 3,
+      "home": "log cache_entry",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "knowledge._reranking:PairScoreStore"
+      ],
+      "readers": []
+    },
+    "local-client": {
+      "summary": "the local application client's answer bundles and chained writes",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
+      "location": "host-home",
+      "bytes": null,
+      "writers": [
+        "local_application.client:_Chain",
+        "local_application.client:_write_bundle",
+        "local_application.client:_write_new"
+      ],
+      "readers": [
+        "local_application.answers",
+        "local_application.cli",
+        "local_application.native_setup",
+        "local_application.read_views",
+        "product_host.composition.local_web_connection",
+        "product_host.composition.local_web_session",
+        "product_host.composition.reference_prefixes",
+        "product_host.composition.web_launcher"
+      ]
+    },
+    "cli-launch-counts": {
+      "summary": "the CLI's launch count per agent session, one file per session in the system's temporary directory",
+      "class": "cache-scratch",
+      "tier": 1,
+      "home": "outside the data layer: a counter only the launching command reads, kept outside every workspace because the Host alone writes a workspace",
+      "location": "host-temp",
+      "bytes": null,
+      "writers": [
+        "local_application.cli_contract:count_launch"
+      ],
+      "readers": [
+        "local_application.activity",
+        "local_application.answers",
+        "local_application.cli",
+        "local_application.client",
+        "local_application.experiment_report",
+        "local_application.failure_codes",
+        "local_application.goals",
+        "local_application.host_lookup",
+        "local_application.native_bridge",
+        "local_application.native_setup",
+        "local_application.read_views",
+        "local_application.review_evidence",
+        "local_application.web",
+        "product_host.composition.application_session",
+        "product_host.composition.committee",
+        "product_host.composition.committee_words",
+        "product_host.composition.entry",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_delivery",
+        "product_host.composition.evidence_review_projection",
+        "product_host.composition.evidence_source_ways",
+        "product_host.composition.feature_trials",
+        "product_host.composition.first_use_road",
+        "product_host.composition.goal_check",
+        "product_host.composition.goals",
+        "product_host.composition.host_answer_submission",
+        "product_host.composition.local_web_session",
+        "product_host.composition.native_usage_reader",
+        "product_host.composition.plain_refusals",
+        "product_host.composition.portfolio_research_operations",
+        "product_host.composition.research_update_automation",
+        "product_host.composition.resource_estimates",
+        "product_host.composition.retrieval_pack_setup",
+        "product_host.composition.task_recovery",
+        "product_host.composition.task_supervision",
+        "product_host.composition.web_launcher",
+        "product_host.composition.workspace_activity",
+        "product_host.data_preparation.remediation",
+        "product_host.publication.goals",
+        "product_host.research_authoring.feature_extensions",
+        "product_host.research_authoring.risk_reports",
+        "product_host.storage.backup"
+      ]
+    },
+    "host-installs": {
+      "summary": "the product's installs on the machine: native host declarations and hooks, and the retrieval environment",
+      "class": "backup-install",
+      "tier": 4,
+      "home": "outside the data layer: installs stay files the Host owns, each registered by digest in log artifact",
+      "location": "install",
+      "bytes": null,
+      "writers": [
+        "local_application.native_setup:_create_or_match",
+        "local_application.native_setup:_install_declarations",
+        "local_application.native_setup:strip_product_hooks",
+        "local_application.retrieval_environment:_run_uv",
+        "local_application.retrieval_environment:create"
+      ],
+      "readers": [
+        "local_application.cli",
+        "local_application.native_bridge",
+        "product_host.composition.entry",
+        "product_host.composition.evidence_authority_setup",
+        "product_host.composition.evidence_source_ways",
+        "product_host.composition.local_web_session",
+        "product_host.composition.native_usage_reader",
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "sandbox-scratch": {
+      "summary": "model sandbox copies and saved-object readback probes",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "product_host.composition.model_sandbox:_copy",
+        "product_host.composition.model_sandbox:_probe",
+        "product_host.composition.saved_object_readback:_copy",
+        "product_host.composition.saved_object_readback:probe"
+      ],
+      "readers": [
+        "product_host.composition.entry"
+      ]
+    },
+    "agent-bundles": {
+      "summary": "the sealed input bundle written for an agent's model call",
+      "class": "event-log",
+      "tier": 4,
+      "home": "log artifact",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "actor_execution.bundles:AgentBundle"
+      ],
+      "readers": [
+        "alternative_evidence.analysis.views",
+        "chief_risk_officer.decision.views",
+        "local_application.native_bridge",
+        "local_application.native_usage",
+        "local_application.portfolio_research",
+        "product_host.composition.committee",
+        "product_host.composition.committee_materials",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_bundles",
+        "product_host.composition.goals",
+        "product_host.composition.host_answer_submission",
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "model-scaffolds": {
+      "summary": "a model extension's source scaffold, written into the person's extension folder",
+      "class": "authority-setting",
+      "tier": 4,
+      "home": "outside the data layer: the person's own source files stay files the Host owns, each registered by digest in log artifact",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "alpha_modeling.model_scaffold:scaffold_model"
+      ],
+      "readers": [
+        "local_application.cli"
+      ]
+    },
+    "study-verification": {
+      "summary": "the study verification sweep's records",
+      "class": "event-log",
+      "tier": 3,
+      "home": "log event",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "writers": [
+        "product_host.composition.verification_sweep:StudyVerificationSweep"
+      ],
+      "readers": [
+        "product_host.composition.local_web_session",
+        "product_host.composition.portfolio_research_operations"
+      ]
+    },
+    "cro-reviews": {
+      "summary": "the CRO's Portfolio review publications",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log artifact, read through the view decision",
+      "location": "workspace-artifacts",
+      "bytes": null,
+      "writers": [
+        "chief_risk_officer.publication.portfolio_review:PortfolioReviewPublicationService"
+      ],
+      "readers": [
+        "chief_risk_officer.runtime.portfolio_review_task",
+        "product_host.composition.evidence_review_application",
+        "product_host.composition.evidence_review_delivery",
+        "product_host.composition.local_web_session"
+      ]
+    },
+    "sector-development-evidence": {
+      "summary": "sector forecast development evidence",
+      "class": "sealed-result",
+      "tier": 4,
+      "home": "log trial and artifact",
+      "location": "experiment-output",
+      "bytes": null,
+      "writers": [
+        "sector_research.experiments.development_artifacts:SectorDevelopmentArtifactStore"
+      ],
+      "readers": [
+        "sector_research.evaluation.calibration",
+        "sector_research.experiments.campaign_evidence",
+        "sector_research.experiments.resolution",
+        "sector_research.experiments.service",
+        "sector_research.experiments.verification"
+      ]
+    },
+    "pre-factor-staging": {
+      "summary": "the pre-Factor workspace host's staged files",
+      "class": "cache-scratch",
+      "tier": 4,
+      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
+      "location": "workspace-file",
+      "bytes": null,
+      "writers": [
+        "product_host.data_preparation.host:PreFactorWorkspaceHost"
+      ],
+      "readers": [
+        "product_host.data_preparation.application"
+      ]
+    }
+  },
+  "helpers": {
+    "shared_kernel.persistence:write_new": "the shared create-only write; each caller is a family's writer",
+    "shared_kernel.persistence:replace_with_retry": "the shared atomic replace; each caller is a family's writer",
+    "workspace_runtime.reader_threads:connect_duckdb": "opens the workspace database for its repositories, whose tables the storage authorities list"
+  },
+  "not_persisting": {
+    "causal_outcomes.execution.artifacts:_local_qa_ipc": "serializes a table to an in-memory buffer (pa.BufferOutputStream)",
+    "factor_research.inputs.execution_target:_table_content_hash": "serializes a table to an in-memory buffer to hash it",
+    "feature_engine.panels.closure_artifacts:arrow_table_logical_hash": "serializes a table to an in-memory buffer to hash it",
+    "market_data_ops.storage.duckdb:_source_prefix_arrow_hash": "serializes a table to an in-memory buffer to hash it",
+    "sector_research.inputs.surface:_payload": "serializes a table to an in-memory buffer; the caller's store publishes the bytes",
+    "portfolio_strategy_lab.application.calibration:_legacy_npz_digest": "writes an npz to an in-memory buffer to hash it",
+    "knowledge.hybrid:_read_manifest": "opens the index's SQLite file to read its manifest",
+    "knowledge.hybrid:_verify_projection": "opens the index's SQLite file to verify it",
+    "task_control.runner:TaskHeartbeatReader": "opens the heartbeat SQLite file to read it",
+    "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
+    "portfolio_strategy_lab.publication.finalization_ledger:PortfolioFinalizationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
+    "model_validation.protected_gate:ProtectedValidationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
+    "product_host.composition.saved_object_readback:_request": "opens an HTTP request with urllib's opener",
+    "product_host.composition.web_launcher:main": "opens the person's browser at a URL with webbrowser.open",
+    "alternative_evidence.runtime.task_adapter:AlternativeEvidenceDocumentTaskAdapter": "applies a planned preparation's session width in memory (PREPARATIONS.open)",
+    "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
+    "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)"
+  }
+}

@@ -30,6 +30,8 @@ from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     ImportHygiene,
     PackageArchitectureRegistry,
+    data_family_violations,
+    discover_persistence_sites,
     discover_table_writes,
     import_contract_violations,
     load_storage_authority_registry,
@@ -402,6 +404,13 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     return out
 
 
+def data_family_problems(root: Path, sources: Sequence[Path]) -> tuple[str, ...]:
+    """A persisting writer in ``sources`` that no data family lists (the census, LAWS.md DA2)."""
+    registry = json.loads((root / REGISTRIES / "data-families.json").read_text("utf-8"))
+    sites = discover_persistence_sites(tuple(sources), source_root=root / "src")
+    return data_family_violations(sites, registry, whole_tree=False)
+
+
 def problems(root: Path, files: Sequence[str]) -> list[str]:
     """What ``files`` add to a registry without registering it."""
 
@@ -465,6 +474,7 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
                 whole_tree=False,
             )
         )
+        out.extend(data_family_problems(root, sources))
     known_host = baseline(root, "host-modules")
     for relative in files:
         if (
