@@ -11,7 +11,7 @@
         "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
       ]
     },
-    "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
+    "tests/integration/workspace_runtime/test_content_store.py::test_a_change_to_the_file_ends_its_fact": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py"
       ]
@@ -1599,11 +1599,6 @@
     },
     {
       "pattern": "tests/integration/knowledge/test_verified_pack_registry.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/workspace_runtime/test_verified_source_leases.py*",
       "owner": "tests.workspace_maintenance",
       "size": "medium"
     },

@@ -1075,7 +1075,7 @@ class DecisionAdvancementApplication:
         ):
             raise _Cancelled
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def execute_stage(
         self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
     ) -> StageExecutionResult:
@@ -1867,7 +1867,7 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.stage_unknown")
         return None
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def _record_kept(
         self,
         task: TaskRecord,

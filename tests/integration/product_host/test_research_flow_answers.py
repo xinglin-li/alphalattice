@@ -18,6 +18,10 @@ from alphalattice.control.product_host.composition.local_web_session import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.task_control.queue import write_queue_setting
+from alphalattice.control.workspace_runtime.content_store import (
+    ContentAddressedStoreError,
+    full_content_proof,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -1591,10 +1595,16 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["published_at"] = "2026-10-03T00:00:00+00:00"
     stored.write_text(json.dumps(payload), encoding="utf-8")
-    damaged = _json(live, "/api/research-update/automation")["runs_forward"][0]["latest_update"]
-    assert damaged["status"] == "REFUSED" and damaged["failure_code"] and damaged["detail"]
-    assert damaged["next_requests"]["task"] == {"operation": "STATUS", "task_id": str(task.task_id)}
-    assert "review_selector" not in damaged and "claim" not in damaged
+    # A read answers the sealed candidate at its name; full proof refuses the change (EV2).
+    held = _json(live, "/api/research-update/automation")["runs_forward"][0]["latest_update"]
+    assert held["claim"] == publication.claim
+    with full_content_proof(), pytest.raises(ContentAddressedStoreError, match="tampered"):
+        owner.ledger.content.load_model(
+            category="decision-candidates",
+            content_hash=publication.content_hash,
+            model=PortfolioUpdatePublication,
+            identity_field="content_hash",
+        )
 
 
 def test_a_strategys_latest_work_is_read_by_its_package_and_never_anothers(

@@ -3,6 +3,34 @@
   "owner": "devtools.testing",
   "note": "Each requirement a test proves, registered before its test exists. A row holds its id (<owner's last segment>.<words>), one description sentence, the owner package, its layer (unit, integration, contract, e2e or native; a layer's limit is test-sizes.json's for its size) and its seconds budget; a test names the ids it proves with @pytest.mark.proves. Holders, lifecycle (proposed, active, quarantined, retired) and the commit that added a row are derived, never stored. An id is never reused: a retired row stays. Find before writing one: python scripts/tests_registry.py find \"<words>\".",
   "entries": {
+    "alpha_research.current_artifacts_full_proof_refuses_tamper": {
+      "description": "If full proof passed an Alpha artifact changed under its name, an export or the scrub would carry bytes its commitment no longer names.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads real sealed files through the owner's store and the process memory, which a unit test of one function cannot hold."
+    },
+    "alpha_research.current_artifacts_read_once_per_process": {
+      "description": "If a sealed Alpha observation or feature artifact were read and decoded again for each request, every daily read would pay work its sealed name already settled.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads real sealed files through the owner's store and the process memory, which a unit test of one function cannot hold."
+    },
+    "alpha_research.lifecycle_arrays_full_proof_refuses_tamper": {
+      "description": "If full proof passed lifecycle arrays changed under their name, an install, an activation or the scrub would admit bytes never proved.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads real sealed files through the owner's store and the process memory, which a unit test of one function cannot hold."
+    },
+    "alpha_research.lifecycle_arrays_kept_per_process": {
+      "description": "If sealed lifecycle arrays were read and decoded again for each admission, every daily score would repeat work their sealed name already settled.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads real sealed files through the owner's store and the process memory, which a unit test of one function cannot hold."
+    },
     "alpha_research.sealed_selection_survives_added_members": {
       "description": "If members added later could move a sealed inner selection, an Alpha study's recorded choice would stop matching the evidence it came from.",
       "owner": "alphalattice.investment.alpha_research",
@@ -158,6 +186,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.goal_export_proves_its_sources": {
+      "description": "If a Goal export answered from kept sources, a changed sealed result could leave the workspace without a fresh proof.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "It composes a Goal over a real Host reading a sealed result through the reader the Goal application calls."
+    },
     "composition.keyed_analyst_submissions_keep_first_outcome": {
       "description": "Concurrent keyed Analyst submissions receive definite outcomes, filed outcomes replay exactly, and refusals that filed nothing are retryable.",
       "owner": "alphalattice.control.product_host.composition",
@@ -176,6 +211,20 @@
       "layer": "integration",
       "seconds": 1,
       "lower_layer": "The Goal composition owner imports Host facilities that the unit layer cannot load."
+    },
+    "composition.replay_refuses_a_tampered_input": {
+      "description": "If a replay ran from a tampered input bundle, it would claim to reproduce a result from bytes that were never bound.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 60,
+      "lower_layer": "It tampers a bound input copy and replays through a real Host and its worker."
+    },
+    "composition.scrub_finds_a_changed_study_and_export_refuses_it": {
+      "description": "If a sealed file changed under its name went unnoticed, an export would leave with changed bytes; the scrub must find it and the study must refuse until its bytes check again.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "It plants a change in a published study's evidence and drives reads, an export and the scrub through a real Host."
     },
     "composition.sealed_review_update_verified_once": {
       "description": "Concurrent readers of one sealed review update share one verification, each with its own copy, and a failed verification is never kept.",
@@ -1165,6 +1214,20 @@
       "layer": "integration",
       "seconds": 10
     },
+    "workspace_runtime.changed_file_ends_its_fact": {
+      "description": "If a file's kept digest survived a change to its bytes, a later read would trust content it never hashed.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "The fact journal is keyed by the file's bytes and stamps on disk, which only a filesystem test can change."
+    },
+    "workspace_runtime.full_proof_refuses_a_changed_sealed_file": {
+      "description": "If full proof trusted a sealed file's name or stamps, an export or the scrub would pass bytes changed under that name.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The change is planted in a real file under its sealed name with its stamps restored, which only a filesystem test can do."
+    },
     "workspace_runtime.host_stop_reaches_parallel_work_items": {
       "description": "A Host stop reaches each concurrent work-item thread and leaves the admitted Task recoverable after its workers return.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -1178,17 +1241,53 @@
       "seconds": 5,
       "lower_layer": "The native DuckDB statement parser and registration APIs define this boundary; an in-memory policy double cannot prove that SQL and method calls reach it."
     },
+    "workspace_runtime.parallel_source_checks_are_bounded_and_isolated": {
+      "description": "If parallel source checks shared contexts, ran unbounded or lost a failure, a check could leak another's memory, starve the process or pass a refusal.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It drives the shared check pool from several threads at once, which a unit test of one callback cannot exercise."
+    },
     "workspace_runtime.seal_record_survives_a_held_file": {
       "description": "A file another process holds neither stops a store's open while the hold is brief nor kills a worker at its close.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 10
     },
+    "workspace_runtime.sealed_read_leaves_nothing_behind": {
+      "description": "If reading sealed bytes left a watching thread or an open handle, the Host would spend CPU on every read and a file could not be renamed or removed.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "Open handles and live threads are process facts a unit test cannot observe without the real store and filesystem."
+    },
+    "workspace_runtime.sealed_reads_share_one_producer": {
+      "description": "If concurrent readers of one sealed source each built it, or a failed build were kept, the Host would repeat the work or answer from a refusal.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It runs real threads against the process memory's single producer, which a unit test of one call cannot interleave."
+    },
+    "workspace_runtime.sealed_value_built_once_per_process": {
+      "description": "If a value built from sealed sources were built again on every read, each read would pay a proof the Host's only-writer rule already settled; full proof must still build it from the bytes.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads real sealed files through the store's process memory across request scopes, which a unit test of one function cannot hold."
+    },
     "workspace_runtime.source_lease_failure_evidence": {
       "description": "A failed sealed-source mutation check names the written and observed bytes, restored and observed metadata, and the unavailable lease event.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
-      "seconds": 2
+      "seconds": 2,
+      "retired": "2026-11-15: read leases retired; a sealed file is proved at its edges (LAWS.md EV2)"
+    },
+    "workspace_runtime.source_owner_keeps_one_copy": {
+      "description": "If an owner's complete value kept a second copy of its nested bytes, or kept a mutable result, memory would double or one caller could change another's read.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It counts decodes and reads across nested owners on real files through the process memory, beyond one function's reach."
     }
   }
 }

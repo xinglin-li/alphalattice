@@ -267,7 +267,7 @@ class ExperimentReadbackAnswer(_Answer):
     task_id: str
     """The study, by its Task."""
     verification_basis: str | None = None
-    """How this read was proved: `FULL`, or `FILES_UNCHANGED ...` naming what it checked."""
+    """How this read was proved: `FULL`, or `SEALED <time>`, the full check it answered from."""
     document: dict[str, Any] | None = None
     """The study's normalized declaration."""
     next_requests: dict[str, Any] | None = None

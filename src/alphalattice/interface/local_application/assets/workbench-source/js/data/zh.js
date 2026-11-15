@@ -4993,7 +4993,6 @@ window.ALPHA_ZH = {
   "study|Target": "预测目标",
   "Computed": "计算于",
   "in full: every sealed file read": "完整验证：逐一读取每个封存文件",
-  "files unchanged since the full check": "自完整检查以来文件未变",
   "Where and how it was computed was not recorded when it ran.": "运行时未记录其计算的地点与方式。",
   "{cores} of {processors} processors": "{processors} 个处理器中的 {cores} 个",
   "{n} LightGBM thread": "{n} 个 LightGBM 线程",

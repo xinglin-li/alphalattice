@@ -263,7 +263,7 @@ class AlphaLifecycleExperiment:
             parameter_domain_hash=canonical_hash({"seeds": list(rule.seeds)}),
         )
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def execute(
         self,
@@ -467,7 +467,7 @@ def lifecycle_program_scheme(
     return None
 
 
-@verified_model_read_scope(reuse_verified=True)
+@verified_model_read_scope()
 @verified_lifecycle_admissions()
 def verify_lifecycle_research(
     *,

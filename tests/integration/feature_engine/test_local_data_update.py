@@ -19,6 +19,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     WorkspaceDataUpdateApplication,
     bind_existing_data_workspace,
 )
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
@@ -232,7 +233,8 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
         stored = owner.changes.content.root / "data-update-plans" / (plan["plan_hash"] + ".json")
         original = stored.read_bytes()
         stored.write_text(original.decode().replace('"UNIVERSE"', '"OTHER"'))
-        with pytest.raises(ValueError):
+        # The changed plan is refused where it is proved: in full proof (LAWS.md EV2).
+        with full_content_proof(), pytest.raises(ValueError):
             owner.confirm(plan["plan_hash"], caller="HUMAN")
         stored.write_bytes(original)
 

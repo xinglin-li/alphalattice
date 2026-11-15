@@ -30,7 +30,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests._support.lease_age import age_lease_file
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
     NOW,
@@ -956,11 +955,17 @@ def test_goal_show_reuses_identical_owner_read_but_verifies_every_reference(goal
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")]
 
 
-@pytest.mark.parametrize("operation", ["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"])
-def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamper(
+@pytest.mark.proves("composition.goal_export_proves_its_sources")
+@pytest.mark.parametrize(
+    "operation",
+    ["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"],
+    ids=["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"],
+)
+def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamper(
     live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
 ):
-    """The Host enables EV2 leases without retaining an owner's current answer or gaps."""
+    """tamper: a Goal read answers from its sealed source kept since the attach, and a Goal export
+    proves it in full and refuses a change by name."""
     from alphalattice.control.workspace_runtime.content_store import (
         ContentAddressedStore,
         verified_model_read_scope,
@@ -994,7 +999,7 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
         assert request.operation == "EXPERIMENT_READBACK"
         assert request.task_id == task.task_id
         # A nested numerical owner's opt-in joins the Host's outer policy.
-        with verified_model_read_scope(reuse_verified=True):
+        with verified_model_read_scope():
             result = store.load_model(
                 category="results",
                 content_hash=value.content_hash,
@@ -1028,7 +1033,6 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
         )
     )
     assert attached.get("failure_code") is None, attached
-    age_lease_file(path)
     calls.clear()
     source_reads = []
     original_open = Path.open
@@ -1048,11 +1052,13 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
     def reference(answer):
         return answer["reference"] if operation == "GOAL_REFERENCE" else answer["references"][0]
 
+    exported = operation == "GOAL_EXPORT"
     first = live.operations.execute(request)
     first_reads = len(source_reads)
     second = live.operations.execute(request)
-    assert first_reads == 1
-    assert len(source_reads) == (first_reads if os.name == "nt" else first_reads + 1)
+    # A read answers from the value kept since the attach; an export reads the bytes each time.
+    assert first_reads == (1 if exported else 0)
+    assert len(source_reads) == 2 * first_reads
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")] * 2
     assert first == second
     assert reference(second)["state"] == "VERIFIED_READBACK"
@@ -1081,6 +1087,9 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
     assert (path.stat().st_size, path.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
     tampered = live.operations.execute(request)
     assert len(calls) == 4
+    if not exported:
+        assert reference(tampered)["state"] == "VERIFIED_TASK_STATE"
+        return
     assert reference(tampered)["state"] == "UNAVAILABLE"
     assert reference(tampered)["failure_code"] == "content_store.artifact_tampered"
     assert "summary" not in reference(tampered)
@@ -1969,7 +1978,10 @@ def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> No
 
 def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
     """CONTRACT: a kept head's lost revision offers recovery, not an invalid-pointer claim."""
-    from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
+    from alphalattice.control.workspace_runtime.content_store import (
+        ContentAddressedStoreError,
+        full_content_proof,
+    )
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
     app, opened, calls, _body, _tasks = goal_app
@@ -1978,12 +1990,16 @@ def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
     original = revision.read_bytes()
     revision.unlink()
     request = Request(operation="GOAL_SHOW", goal_id=UUID(int=1))
-    with pytest.raises(ContentAddressedStoreError) as missing:
+    # A sealed revision is proved under full proof (an export, the scrub; EV2).
+    with full_content_proof(), pytest.raises(ContentAddressedStoreError) as missing:
         app.operate(request, "HUMAN")
     assert str(missing.value) == f"content_store.artifact_missing:{identity}"
     assert "restore a backup" in refusal_words(str(missing.value))["detail"]
     revision.write_bytes(b"{}")
-    with pytest.raises(ContentAddressedStoreError, match=r"^content_store\.artifact_tampered$"):
+    with (
+        full_content_proof(),
+        pytest.raises(ContentAddressedStoreError, match=r"^content_store\.artifact_tampered$"),
+    ):
         app.operate(request, "HUMAN")
     revision.write_bytes(original)
     assert app.operate(request, "HUMAN")["goal_hash"] == identity

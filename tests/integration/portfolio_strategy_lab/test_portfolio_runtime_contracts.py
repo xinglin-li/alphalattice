@@ -15,6 +15,7 @@ from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressUpdate,
     WorkspaceProgressPublisher,
 )
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     CurrentPortfolioResearchMarker,
     CurrentPortfolioResearchPointer,
@@ -385,7 +386,11 @@ def test_current_readback_requires_complete_dossier_rfc_and_review(tmp_path: Pat
         store.read_current()
 
 
-@pytest.mark.parametrize("reader", ["model", "columns", "packed", "document"])
+@pytest.mark.parametrize(
+    "reader",
+    ["model", "columns", "packed", "document"],
+    ids=["model", "columns", "packed", "document"],
+)
 def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     tmp_path: Path, reader: str
 ) -> None:
@@ -412,8 +417,12 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     folder.mkdir(parents=True)
     extension = "parquet" if reader in {"columns", "packed"} else "json"
     (folder / f"{identity}.{extension}").write_bytes(b"corrupt")
-    with pytest.raises(
-        PortfolioPublicationError, match=r"^portfolio_strategy_lab\.artifact_tampered$"
+    # Corrupt bytes are refused by name where they are proved: under full proof (LAWS.md EV2).
+    with (
+        full_content_proof(),
+        pytest.raises(
+            PortfolioPublicationError, match=r"^portfolio_strategy_lab\.artifact_tampered$"
+        ),
     ):
         load(identity)
 

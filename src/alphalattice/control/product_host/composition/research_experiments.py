@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime
@@ -165,7 +164,11 @@ from alphalattice.control.task_control.runner import (
     StageExecutionResult,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.control.workspace_runtime.content_store import (
+    full_content_proof,
+    full_proof,
+    replace_shared_file,
+)
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
     TASK_LEASES,
     CpuBudgetStore,
@@ -335,32 +338,18 @@ def retryable_block(failure_code: str | None) -> str | None:
 _VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
     "research_experiment_verified_evidence", default=None
 )
-_REUSE_VERIFIED: ContextVar[bool] = ContextVar("research_experiment_reuse_verified", default=False)
-
-LEDGER_READ_OPERATIONS = frozenset(
-    {
-        "EXPERIMENT_READBACK",
-        "EXPERIMENT_DRAFT",
-        "EXPERIMENT_PORTFOLIO_DRAFT",
-        "EXPERIMENT_CURATION",
-        "EXPERIMENT_HANDOFF_PREVIEW",
-    }
-)
-"""The reads that may answer from a study's earlier full verification.
-
-Fail-closed: every other operation that reads a study (export, publication, admission,
-comparison, replay, a run, a stage's verification) verifies it in full.
-"""
 
 _LEDGER_ENTRIES = 8
 """Studies whose verification is kept; each keeps only what a read shows (an Alpha study's
 verified graph holds about 130 MB of chunk tables on the real workspace, none of it kept)."""
 
 VERIFICATION_LEDGER_DIRECTORY = "verification-ledger"
-"""Under the workspace's `runtime/`: each Alpha study's last full verification, kept on disk as
-a read shows it, so a restart does not verify it in full again (V89, decision 5). Only there,
-since only there is hashing a measured cost (an Alpha readback re-derives every sealed chunk's
-hash, about 2 s on the real workspace; the other kinds read in 0.1-0.5 s)."""
+"""Under the workspace's `runtime/`: each study's last full verification, kept on disk as a read
+shows it, so a restart or a copy does not verify it in full again (EV2: a sealed file is proved
+at entry, at export and by the scrub, never on a read)."""
+_LEDGER_SCHEMA = 2
+"""Version 1 entries named the study's files by path, size, time and identity; they are not read,
+so a study kept by one costs one full check."""
 
 
 def _sealed_admission(workspace: Path, admission_hash: str) -> ResearchFoundationAdmission:
@@ -387,14 +376,12 @@ class _VerifiedStudy:
     currency: dict[str, object]
     view: object
     record_hash: str
-    fingerprint: str
     verified_at: datetime
-    files: int
     implementation: str
 
 
 @contextmanager
-def verified_study_evidence(*, reuse_verified: bool = False) -> Iterator[None]:
+def verified_study_evidence() -> Iterator[None]:
     """Verify each study's evidence once per operation, then release.
 
     A study page or a research case reads several studies, and a comparison inside
@@ -406,25 +393,22 @@ def verified_study_evidence(*, reuse_verified: bool = False) -> Iterator[None]:
     operation run inside another (a case reading its studies) joins the scope
     already open.
 
-    Across requests, a read in ``LEDGER_READ_OPERATIONS`` (``reuse_verified``) may
-    answer from the owner's ledger: the last full verification of the same Task
-    record, while no file under the study's output or input bundle changed its
-    path, size, modification time or file identity. A change that
-    keeps all four is caught by every export, publication and admission, which
-    verify in full, and by the sweep. Its answer says so (``verification_basis``).
+    Across requests, a read outside full proof answers from the owner's ledger: the
+    last full verification of the same Task record under the same installed
+    implementation. Its sealed files were proved when the study wrote them; an
+    export proves them again in full, and the scrub finds a changed one and drops
+    the study's ledger entry (EV2). Its answer says so (``verification_basis``).
     """
     if _VERIFIED_EVIDENCE.get() is not None:
         yield
         return
     token = _VERIFIED_EVIDENCE.set({})
-    reuse = _REUSE_VERIFIED.set(reuse_verified)
     try:
         yield
     finally:
         scope = _VERIFIED_EVIDENCE.get()
         if scope is not None:
             scope.clear()
-        _REUSE_VERIFIED.reset(reuse)
         _VERIFIED_EVIDENCE.reset(token)
 
 
@@ -3030,25 +3014,6 @@ class ResearchExperimentApplication:
             scope[key] = (evidence, workflow, stored[0])
         return evidence, workflow, stored[0]
 
-    def _study_fingerprint(self, plan: ExperimentPlan) -> tuple[str, int]:
-        """Every file a study's verification reads, by path, size, modification time and file
-        identity (decision 5: a copy, a restore or a sync changes one of them), and how many."""
-
-        roots = (
-            confined(self.session.workspace, plan.document["experiment"]["output_workspace"]),
-            factor_input_paths(self.session.workspace, plan.binding.binding_hash)[0].parent,
-        )
-        rows = []
-        for root in roots:
-            for directory, _dirs, names in os.walk(root):
-                for name in names:
-                    stat = os.stat(os.path.join(directory, name))
-                    rows.append(
-                        f"{directory}/{name}\t{stat.st_size}\t{stat.st_mtime_ns}\t{stat.st_ino}"
-                    )
-        digest = hashlib.sha256("\n".join(sorted(rows)).encode("utf-8")).hexdigest()
-        return digest, len(rows)
-
     def _installed_implementation(self, plan: ExperimentPlan) -> str:
         role = plan_implementation_role(plan)
         if role not in self._installed:
@@ -3064,11 +3029,14 @@ class ResearchExperimentApplication:
             / f"{key[0]}-{mode}.json"
         )
 
+    def _refused_path(self, task_id: UUID) -> Path:
+        return self._ledger_path((task_id, False)).with_name(f"{task_id}-refused.json")
+
     def _kept_on_disk(self, key: tuple[UUID, bool]) -> _VerifiedStudy | None:
-        """An Alpha study's verification kept on disk; a damaged entry costs a full check."""
+        """A study's verification kept on disk; a damaged entry costs a full check."""
         try:
             entry = json.loads(self._ledger_path(key).read_text(encoding="utf-8"))
-            if entry["schema_version"] != 1 or entry["task_id"] != str(key[0]):
+            if entry["schema_version"] != _LEDGER_SCHEMA or entry["task_id"] != str(key[0]):
                 return None
             return _VerifiedStudy(
                 evidence=ResearchExecutionEvidence.model_validate(entry["evidence"]),
@@ -3076,25 +3044,21 @@ class ResearchExperimentApplication:
                 currency=dict(entry["currency"]),
                 view=dict(entry["view"]),
                 record_hash=str(entry["record_hash"]),
-                fingerprint=str(entry["fingerprint"]),
                 verified_at=datetime.fromisoformat(entry["verified_at"]),
-                files=int(entry["files"]),
                 implementation=str(entry["implementation"]),
             )
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
     def _keep_on_disk(self, key: tuple[UUID, bool], study: _VerifiedStudy) -> None:
-        """Keep an Alpha study's full verification as its read shows it."""
+        """Keep a study's full verification as its read shows it."""
         try:
             text = json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": _LEDGER_SCHEMA,
                     "task_id": str(key[0]),
                     "recorded_readback": key[1],
                     "record_hash": study.record_hash,
-                    "fingerprint": study.fingerprint,
-                    "files": study.files,
                     "implementation": study.implementation,
                     "verified_at": study.verified_at.isoformat(),
                     "evidence": study.evidence.model_dump(mode="json"),
@@ -3130,52 +3094,50 @@ class ResearchExperimentApplication:
     ) -> tuple[_VerifiedStudy, str]:
         """The study as its last full verification proved it, or verified in full now.
 
-        Answers with the basis: ``FULL``, or ``FILES_UNCHANGED ...`` when a ledger read
-        answered from an earlier full verification of the same Task record under the same
-        installed implementation, whose files all kept their path, size, modification time
-        and file identity: what was checked, and no more. A caller that takes the
-        Alpha graph itself (``graph_sink``, a comparison) always verifies in full.
+        Answers with the basis: ``FULL``, or ``SEALED <time>`` when a read answered from the
+        full verification of the same Task record under the same installed implementation at
+        that time (EV2: its sealed files are proved at entry, at export and by the scrub). A
+        read in full proof, and a caller that takes the Alpha graph itself (``graph_sink``, a
+        comparison), always verify in full.
         """
 
         key = (task.task_id, recorded_readback)
-        fingerprint, files = self._study_fingerprint(plan)
         installed = self._installed_implementation(plan)
-        if _REUSE_VERIFIED.get() and graph_sink is None:
+        # A study the scrub refused is proved in full by every read until a check passes; its
+        # mark is read first, so an interrupted refusal holds
+        refused = self._refused_path(task.task_id).exists()
+        if not refused and not full_proof() and graph_sink is None:
             with self._ledger_lock:
                 kept = self._ledger.get(key)
-            if kept is None and plan.alpha_source is not None:
+            if kept is None:
                 kept = self._kept_on_disk(key)
             if (
                 kept is not None
                 and kept.record_hash == task.record_hash
-                and kept.fingerprint == fingerprint
                 and kept.implementation == installed
             ):
-                return kept, (
-                    f"FILES_UNCHANGED {kept.files} files kept their path, size, time and "
-                    f"identity since the full check at {kept.verified_at.isoformat()}"
-                )
-        evidence, workflow, original = self._verified_evidence(
-            task, recorded_readback=recorded_readback, plan_actor=(plan, actor)
-        )
-        study = _VerifiedStudy(
-            evidence=evidence,
-            original=original,
-            currency=method_currency(workflow.verifier(plan.program.kind)),
-            view=self._verified_view(plan, evidence, workflow, output, graph_sink),
-            record_hash=task.record_hash,
-            fingerprint=fingerprint,
-            verified_at=self.clock(),
-            files=files,
-            implementation=installed,
-        )
+                return kept, f"SEALED {kept.verified_at.isoformat()}"
+        with full_content_proof() if refused else nullcontext():
+            evidence, workflow, original = self._verified_evidence(
+                task, recorded_readback=recorded_readback, plan_actor=(plan, actor)
+            )
+            study = _VerifiedStudy(
+                evidence=evidence,
+                original=original,
+                currency=method_currency(workflow.verifier(plan.program.kind)),
+                view=self._verified_view(plan, evidence, workflow, output, graph_sink),
+                record_hash=task.record_hash,
+                verified_at=self.clock(),
+                implementation=installed,
+            )
+        if refused:
+            self._refused_path(task.task_id).unlink(missing_ok=True)
         with self._ledger_lock:
             self._ledger.pop(key, None)
             self._ledger[key] = study
             while len(self._ledger) > _LEDGER_ENTRIES:
                 self._ledger.pop(next(iter(self._ledger)))
-        if plan.alpha_source is not None:
-            self._keep_on_disk(key, study)
+        self._keep_on_disk(key, study)
         return study, "FULL"
 
     def _verified_view(
@@ -3997,27 +3959,33 @@ class ResearchExperimentApplication:
         return evidence
 
     def verify_saved_study(self, task: TaskRecord) -> None:
-        """Verify a saved study's sealed evidence in full, in the worker (the sweep, V89).
+        """Verify a saved study's sealed evidence in full, in the worker (the scrub, V89).
 
-        What reads keep of the study stands where its files are still the ones just verified:
-        the kept check's time moves to now. A study that does not verify raises.
+        What reads keep of the study stands, its check's time moved to now, and a refusal the
+        scrub left on it clears. A study that does not verify raises, and the scrub refuses it
+        (``refuse_verification``).
         """
-        plan, _actor = self._of(task)
-        fingerprint, _files = self._study_fingerprint(plan)
         self._verify_in_worker(task)
+        self._refused_path(task.task_id).unlink(missing_ok=True)
         now = self.clock()
         for key in ((task.task_id, True), (task.task_id, False)):
             with self._ledger_lock:
                 kept = self._ledger.get(key)
-                if kept is not None and kept.fingerprint == fingerprint:
+                if kept is not None:
                     self._ledger[key] = replace(kept, verified_at=now)
-            if plan.alpha_source is not None:
-                on_disk = self._kept_on_disk(key)
-                if on_disk is not None and on_disk.fingerprint == fingerprint:
-                    self._keep_on_disk(key, replace(on_disk, verified_at=now))
+            on_disk = self._kept_on_disk(key)
+            if on_disk is not None:
+                self._keep_on_disk(key, replace(on_disk, verified_at=now))
 
-    def forget_verification(self, task_id: UUID) -> None:
-        """Drop what reads keep of a study, so its next read verifies it in full."""
+    def refuse_verification(self, task_id: UUID, failure_code: str) -> None:
+        """Mark a study the scrub found changed and drop what reads keep of it.
+
+        Every read then proves it in full and refuses by name until a full check passes again
+        (EV2).
+        """
+        path = self._refused_path(task_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"failure_code": failure_code}), encoding="utf-8")
         for key in ((task_id, True), (task_id, False)):
             with self._ledger_lock:
                 self._ledger.pop(key, None)
@@ -4414,6 +4382,8 @@ def verify_task_evidence(
 ) -> ResearchExecutionEvidence:
     """The worker's side of a Task's check: its sealed evidence read back through its verifier.
 
+    Every sealed byte is proved (full proof: a stage's check of what it wrote, and the scrub).
+
     Args:
         workspace: The research workspace.
         binding_hash: The Task's research input.
@@ -4434,13 +4404,14 @@ def verify_task_evidence(
         executors=(),
         verifier_kinds=(kind,),
     )
-    return workflow.readback_sealed(
-        document,
-        program_hash=program_hash,
-        actor_kind=actor.actor_kind,
-        actor_id=actor.actor_id,
-        agent_execution=actor.agent_execution,
-        authority=authority,
-        recorded_readback=False,
-        stored_sink=[],
-    )[0]
+    with full_content_proof():
+        return workflow.readback_sealed(
+            document,
+            program_hash=program_hash,
+            actor_kind=actor.actor_kind,
+            actor_id=actor.actor_id,
+            agent_execution=actor.agent_execution,
+            authority=authority,
+            recorded_readback=False,
+            stored_sink=[],
+        )[0]

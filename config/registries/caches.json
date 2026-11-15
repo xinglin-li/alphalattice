@@ -846,7 +846,7 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_SCOPE"
       ],
-      "definition_line": 50,
+      "definition_line": 58,
       "key": "store/category/hash/model + verified file identity/bytes",
       "dependency_coverage": "Yes: exact payload/stamp and type checked",
       "invalidation_rule": "scope exit/reset",
@@ -866,10 +866,10 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_CACHE"
       ],
-      "definition_line": 56,
-      "key": "same typed content + payload SHA/file identity",
-      "dependency_coverage": "Yes: fresh bytes read before parse reuse",
-      "invalidation_rule": "new identity; opt-in scope",
+      "definition_line": 61,
+      "key": "store path + content hash + model + identity field",
+      "dependency_coverage": "Yes: a sealed name's bytes never change (EV2); full proof reads them again",
+      "invalidation_rule": "full proof rebuilds; LRU",
       "size_bound": "128 entries (no byte cap)",
       "bound_scope": "128 entries (no byte cap)",
       "eviction": "LRU",
@@ -879,14 +879,14 @@
         "path_expression": "In-memory _VERIFIED_MODEL_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches verified immutable artifact models across opted-in reads, missing on changed file or content identity and dropping the least recently used excess."
+      "description": "Caches validated immutable artifact models by sealed name and content across requests, answering outside full proof and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_SCOPE::verified-array-request-scope": {
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_SCOPE"
       ],
-      "definition_line": 61,
+      "definition_line": 66,
       "key": "caller identity tuple; immutable/copy policy",
       "dependency_coverage": "Conditional: caller must supply complete identity",
       "invalidation_rule": "scope exit or replacement",
@@ -906,47 +906,27 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_CACHE"
       ],
-      "definition_line": 70,
-      "key": "caller identity; source paths + valid read leases where used",
-      "dependency_coverage": "Conditional: exact identity + valid held OS proof",
-      "invalidation_rule": "lease break/identity mismatch/replacement",
+      "definition_line": 73,
+      "key": "caller identity + absolute source paths",
+      "dependency_coverage": "Yes: a sealed name's bytes never change (EV2); full proof reads them again",
+      "invalidation_rule": "full proof rebuilds; byte-bounded LRU",
       "size_bound": "512 MiB",
       "bound_scope": "512 MiB",
       "eviction": "LRU",
-      "safe_to_drop": "Yes through owner, close leases",
+      "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_ARRAY_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches decoded array values across opted-in reads, rebuilding when the source lease breaks or identity changes and evicting values at the byte limit."
-    },
-    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_SOURCE_LEASES::source-read-lease-proof-reuse": {
-      "owner": "alphalattice.control.workspace_runtime",
-      "defined_by": [
-        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_SOURCE_LEASES"
-      ],
-      "definition_line": 74,
-      "key": "file-read-lease + logical identity + absolute source paths",
-      "dependency_coverage": "Yes only while all path/OS read leases unchanged",
-      "invalidation_rule": "oplock break, replacement, eviction, release",
-      "size_bound": "512 handles",
-      "bound_scope": "512 handles",
-      "eviction": "LRU coupled to array entries",
-      "safe_to_drop": "Conditional: close handles via owner",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory _VERIFIED_SOURCE_LEASES in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches source-file read leases for retained decoded values, closing them on lease break, replacement, eviction or process exit."
+      "description": "Caches immutable values built from sealed sources across requests, answering outside full proof and evicting values at the byte limit."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_SCOPE::verified-proof-request-set": {
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_SCOPE"
       ],
-      "definition_line": 91,
+      "definition_line": 88,
       "key": "caller proof identity tuple",
       "dependency_coverage": "Conditional: caller-supplied identity",
       "invalidation_rule": "scope exit",
@@ -966,10 +946,10 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_CACHE"
       ],
-      "definition_line": 94,
+      "definition_line": 91,
       "key": "exact immutable proof identity",
       "dependency_coverage": "Conditional: producer proof contract",
-      "invalidation_rule": "new identity/process end",
+      "invalidation_rule": "new identity; full proof repeats; LRU",
       "size_bound": "4096 entries",
       "bound_scope": "4096 entries",
       "eviction": "LRU",
@@ -979,7 +959,7 @@
         "path_expression": "In-memory _VERIFIED_PROOF_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches successful exact-identity proofs across opted-in reads, requiring new proofs for changed identities and dropping the least recently used excess."
+      "description": "Caches successful exact-identity proofs across requests, answering outside full proof and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._KEPT::held-workspace-file-fact-maps-kept": {
       "owner": "alphalattice.control.workspace_runtime",

@@ -815,7 +815,7 @@ def _check_prepared_values(prepared: AlphaPreparedRefit, values: dict[str, Float
 def _verify_prepared_values(
     store: AlphaDevelopmentArtifactStore, prepared: AlphaPreparedRefit
 ) -> None:
-    """Retain a complete training-binding proof while every source lease remains valid."""
+    """Keep a complete training-binding proof of the sealed sources it read (LAWS.md EV2)."""
     semantic_identity = (
         prepared.content_hash,
         prepared.array_file_hash,

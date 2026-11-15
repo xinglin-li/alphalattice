@@ -527,7 +527,7 @@ class PortfolioForwardPrewarm:
         """Return the existing maintenance owner's bounded read failure code."""
         return self._host.last_error_code
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def _read_once(self) -> None:
         if self._stopping.is_set() or self.operations.activations is None:

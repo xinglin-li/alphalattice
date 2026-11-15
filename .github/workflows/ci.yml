@@ -406,59 +406,6 @@ jobs:
                   return (yield)
               finally:
                   _event("end", node=item.nodeid)
-
-
-          @pytest.hookimpl(wrapper=True)
-          def pytest_runtest_makereport(item, call):
-              report = yield
-              if report.failed and "test_verified_source_leases.py::" in item.nodeid:
-                  store = sys.modules.get("alphalattice.control.workspace_runtime.content_store")
-                  try:
-                      if store is None:
-                          _event("lease", node=item.nodeid, status="module_not_loaded")
-                      elif not store._VERIFIED_ARRAY_CACHE_LOCK.acquire(blocking=False):
-                          _event("lease", node=item.nodeid, status="cache_busy")
-                      else:
-                          try:
-                              leases = [
-                                  lease for group in store._VERIFIED_SOURCE_LEASES.values() for lease in group
-                              ]
-                              hits, misses = (
-                                  store._VERIFIED_ARRAY_PROCESS_CACHE_HITS,
-                                  store._VERIFIED_ARRAY_PROCESS_CACHE_MISSES,
-                              )
-                          finally:
-                              store._VERIFIED_ARRAY_CACHE_LOCK.release()
-                          states = []
-                          for lease in leases:
-                              if not lease.lock.acquire(blocking=False):
-                                  states.append({"status": "lease_busy"})
-                                  continue
-                              try:
-                                  states.append(
-                                      {
-                                          "path_name": lease.path.name,
-                                          "identity": lease.identity[1:],
-                                          "pending": lease.pending,
-                                          "handle_open": lease.handle is not None,
-                                          "event_wait": lease.kernel.WaitForSingleObject(lease.event, 0)
-                                          if lease.event
-                                          else None,
-                                      }
-                                  )
-                              finally:
-                                  lease.lock.release()
-                          _event(
-                              "lease",
-                              node=item.nodeid,
-                              status="observed",
-                              hits=hits,
-                              misses=misses,
-                              leases=states,
-                          )
-                  except Exception as error:
-                      _event("lease", node=item.nodeid, status="unmeasured", reason=type(error).__name__)
-              return report
           PY
       - name: Run this shard of every public test
         env:

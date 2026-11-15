@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStoreError,
+    full_content_proof,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     LocalPortfolioResearchService,
@@ -1871,7 +1872,7 @@ def test_one_comparison_opens_each_artifact_once(tmp_path: Path) -> None:
 
 
 def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path: Path) -> None:
-    """A later operation re reads rather than trusting earlier bytes."""
+    """A later operation in full proof re-reads rather than trusting earlier bytes (EV2)."""
 
     with _harness(tmp_path) as harness:
         result = _run(harness, PortfolioResearchSpec.default())
@@ -1885,7 +1886,10 @@ def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path:
         assert report_file.is_file()
         report_file.write_bytes(b"{}")
 
-        with pytest.raises(ContentAddressedStoreError, match="artifact_tampered"):
+        with (
+            full_content_proof(),
+            pytest.raises(ContentAddressedStoreError, match="artifact_tampered"),
+        ):
             service.readouts(result.result_hash)
         assert ledger.reads["reports"] == 2
 

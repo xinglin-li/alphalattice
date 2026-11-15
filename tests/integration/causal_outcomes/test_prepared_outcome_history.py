@@ -17,6 +17,7 @@ import pytest
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
+    full_content_proof,
     verified_model_read_scope,
 )
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
@@ -117,10 +118,7 @@ def _head(root, inventory):
     return LocalQAOutcomePreparationHead.model_validate_json(path.read_bytes())
 
 
-@pytest.mark.parametrize("reuse_verified", [False, True])
-def test_artifact_preparation_keeps_the_source_owners_complete_validation(
-    tmp_path, monkeypatch, reuse_verified
-):
+def test_artifact_preparation_keeps_the_source_owners_complete_validation(tmp_path, monkeypatch):
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
     store.publish_model(category="market-inputs", value=source, identity_field="content_hash")
@@ -132,7 +130,7 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(
         return validate(payload, **kwargs)
 
     monkeypatch.setattr(LocalQAMarketSnapshot, "model_validate_json", classmethod(counted))
-    with verified_model_read_scope(reuse_verified=reuse_verified):
+    with verified_model_read_scope():
         value = store.load_model(
             category="market-inputs",
             content_hash=source.content_hash,
@@ -155,10 +153,14 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(
         assert prepared.rows(sessions=_days(value), through=value.through)[1] == expected_bars
 
 
-@pytest.mark.parametrize("damage", ["content", "address", "delete"])
+@pytest.mark.parametrize(
+    "damage", ["content", "address", "delete"], ids=["content", "address", "delete"]
+)
 def test_artifact_preparation_refuses_a_changed_source_after_the_owners_first_load(
     tmp_path, damage
 ):
+    """tamper: a source changed or gone after its owner's first load is refused by name under
+    full proof (an export, the scrub; EV2)."""
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
     store.publish_model(category="market-inputs", value=source, identity_field="content_hash")
@@ -180,7 +182,10 @@ def test_artifact_preparation_refuses_a_changed_source_after_the_owners_first_lo
             changed = _source(changed_open=123.0)
             path.write_text(changed.model_dump_json(), encoding="utf-8", newline="\n")
         code = "artifact_missing" if damage == "delete" else "artifact_tampered"
-        with pytest.raises(ContentAddressedStoreError, match=rf"content_store\.{code}"):
+        with (
+            full_content_proof(),
+            pytest.raises(ContentAddressedStoreError, match=rf"content_store\.{code}"),
+        ):
             PreparedLocalQASnapshotRows.from_artifact(
                 source_root=store.root,
                 source_category="market-inputs",

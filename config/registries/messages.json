@@ -176,6 +176,24 @@
         "zh-CN": "已拒绝：审阅受阻，答复未记录"
       }
     },
+    "workbench.study_sealed_since_check": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "sealed since the full check",
+        "zh-CN": "自完整检查以来保持封存"
+      }
+    },
+    "factor_research.review_decision_policy_not_installed_detail": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Factor study's curation was decided under a review decision policy this installation no longer holds; the study still reads as history. Read the study, curate it again under the installed policy, then plan from its handoff.",
+        "zh-CN": "该因子研究的筛选决定是在本安装已不再持有的评审决定策略下做出的；该研究仍可作为历史读取。请重新读取研究，在已安装的策略下重新做筛选决定，然后从它的交接规划。"
+      }
+    },
     "alpha_research.development_artifact_identity_invalid_detail": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",

@@ -557,7 +557,7 @@ def forward_update_read_requests(
     return tuple(result)
 
 
-@verified_model_read_scope(reuse_verified=True)
+@verified_model_read_scope()
 @verified_lifecycle_admissions()
 def read_portfolio(
     operations: Any,

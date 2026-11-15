@@ -909,10 +909,9 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
                 assert len(registry.tasks()) == before_controls
         finally:
             bad_path.unlink()
-        not_installed = (
-            "factor_research.evidence_curation_not_host_admitted:"
-            "factor_research.review_decision_policy_not_installed"
-        )
+        # The Factor study answers from its kept full check (EV2); the Foundation's own
+        # policy check names the uninstalled policy.
+        not_installed = "factor_research.review_decision_policy_not_installed"
         with monkeypatch.context() as m:
             m.setattr(decisions, "factor_research_decision_policy_hash", lambda *_a, **_k: "f" * 64)
             historical = listed()
@@ -2185,9 +2184,12 @@ def _study_on_the_bound_input(session: LocalPortfolioWebSession) -> str:
     return str(run["task_id"])
 
 
-def test_input_and_result_tamper_refuse_without_losing_historical_readback(
+@pytest.mark.proves("composition.replay_refuses_a_tampered_input")
+def test_input_tamper_refuses_a_replay_without_losing_historical_readback(
     inputs: Path, published
 ) -> None:
+    """tamper: a replay from a tampered input copy is refused by name, and the study's historical
+    readback is unchanged."""
     with _session(inputs) as session:
         task_id = _study_on_the_bound_input(session)
         old = _json(session, f"/api/experiments/readback?task_id={task_id}")
@@ -2207,54 +2209,44 @@ def test_input_and_result_tamper_refuse_without_losing_historical_readback(
             assert _facts(again) == _facts(old)
         finally:
             chunk.write_bytes(original)
-        output = inputs / old["document"]["experiment"]["output_workspace"] / "research-evidence"
-        evidence_file = next(output.glob("*.json"))
-        original = evidence_file.read_bytes()
-        try:
-            evidence_file.write_bytes(b"{}")
-            refused = _json(session, f"/api/experiments/readback?task_id={task_id}")
-            assert refused["status"] == "REFUSED"
-        finally:
-            evidence_file.write_bytes(original)
-        again = _json(session, f"/api/experiments/readback?task_id={task_id}")
-        assert _facts(again) == _facts(old)
 
 
-def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
-    inputs: Path, published, monkeypatch
+@pytest.mark.proves("composition.scrub_finds_a_changed_study_and_export_refuses_it")
+def test_a_read_answers_from_the_full_check_and_the_scrub_finds_a_planted_change(
+    inputs: Path, published
 ) -> None:
-    """A read reuses the study verification while its files are unchanged."""
+    """tamper: a study read answers from its full check, a planted change is refused at export and
+    found by the scrub, and the study refuses until it checks again."""
 
-    root = inputs
     task_id = published[0]
-    with _session(root) as live:
+    with _session(inputs) as live:
         readback = f"/api/experiments/readback?task_id={task_id}"
         export = f"/api/experiments/export?task_id={task_id}"
         first, second = _json(live, readback), _json(live, readback)
         assert first["verification_basis"] == "FULL"
-        assert second["verification_basis"].startswith("FILES_UNCHANGED ")
-        assert _facts(second) == _facts(first)
-        output = root / first["document"]["experiment"]["output_workspace"] / "research-evidence"
-        evidence_file = next(output.glob("*.json"))
-        original, stat = evidence_file.read_bytes(), evidence_file.stat()
-        # Same size, same modification time: the fingerprint cannot see it.
-        evidence_file.write_bytes(original.replace(b'"', b"'", 1))
-        os.utime(evidence_file, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        assert _json(live, readback)["verification_basis"].startswith("FILES_UNCHANGED ")
+        assert second["verification_basis"].startswith("SEALED ")
+        output = inputs / first["document"]["experiment"]["output_workspace"] / "research-evidence"
+        sealed = next(output.glob("*.json"))
+        original, stat = sealed.read_bytes(), sealed.stat()
+        sealed.write_bytes(original.replace(b'"', b"'", 1))
+        os.utime(sealed, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        held = _json(live, readback)
+        assert held["verification_basis"].startswith("SEALED ") and _facts(held) == _facts(first)
         assert _json(live, export)["status"] == "REFUSED"
         sent = live.operations.verify_all()
         assert sent["status"] == "ADMITTED" and sent["saved_studies"] >= 1, sent
         live.dispatcher.drain_for_tests()
         failed = live.operations.sweep.failed_studies()
         assert str(task_id) in failed
+        mark = next((live.workspace / "runtime").rglob(f"{task_id}-refused.json"))
         assert _json(live, readback)["status"] == "REFUSED"
-        overview = _json(live, "/api/upgrade")
-        (row,) = [study for study in overview["studies"] if study["task_id"] == str(task_id)]
+        (row,) = [s for s in _json(live, "/api/upgrade")["studies"] if s["task_id"] == str(task_id)]
         assert row["state"] == "INTEGRITY_FAILED" and row["failure_code"] == failed[str(task_id)]
-        evidence_file.write_bytes(original)
+        sealed.write_bytes(original)
         assert _json(live, readback)["verification_basis"] == "FULL"
-        evidence_file.write_bytes(b"{}")
-        assert _json(live, readback)["status"] == "REFUSED"
+        mark.write_text("{}")  # a refusal stopped before the kept check left
+        assert _json(live, readback)["verification_basis"] == "FULL"
+        assert _json(live, export)["status"] != "REFUSED"
 
 
 def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
@@ -2284,16 +2276,11 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
         readback = f"/api/experiments/readback?task_id={sent['task_id']}"
         first = _json(live, readback)
         assert first["verification_basis"] == "FULL", first
+        first_check = _json(live, readback)["verification_basis"].removeprefix("SEALED ")
     with _session(root) as restarted:
         again = _json(restarted, readback)
-        assert again["verification_basis"].startswith("FILES_UNCHANGED "), again
-        assert "path, size, time and identity" in again["verification_basis"]
+        assert again["verification_basis"] == f"SEALED {first_check}", again
         assert _facts(again) == _facts(first)
-        output = root / first["document"]["experiment"]["output_workspace"]
-        moved = next(path for path in sorted(output.rglob("*")) if path.is_file())
-        stat = moved.stat()
-        os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
-        assert _json(restarted, readback)["verification_basis"] == "FULL"
     monkeypatch.setattr(owner, "plan_implementation_hash", lambda _plan: "0" * 64)
     with _session(root) as upgraded:
         assert _json(upgraded, readback)["verification_basis"] == "FULL"

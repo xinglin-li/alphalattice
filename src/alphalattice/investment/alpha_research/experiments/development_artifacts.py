@@ -38,6 +38,7 @@ from alphalattice.capabilities.causal_inputs.contracts import (
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
+    full_proof,
     staging_directory,
     verified_npz_arrays,
     verified_request_value,
@@ -261,7 +262,7 @@ def model_fit_sidecar_scope() -> Iterator[None]:
 
     One lifecycle formation reads every child's sidecar three or four times: the planned-refit
     check, the child's renewal, the model set's verification and the score. The first read in
-    the block runs every check, the lease ones included; a later read of the same operation in
+    the block runs every check its proof mode asks for; a later read of the same operation in
     the same store gets the verified sidecar and receipt and its own copy of the estimator.
     Nothing survives the block, so each formation verifies every child again.
     """
@@ -456,11 +457,10 @@ class AlphaDevelopmentArtifactStore:
     def _frozen_payload_with_identity(
         self, category: str, content_hash: str
     ) -> tuple[bytes, tuple[str, ...]]:
-        """Return exact verified bytes without retaining a second packed-byte cache.
+        """Return a sealed payload's bytes without retaining a second packed-byte cache.
 
-        The descriptor identity distinguishes atomic replacements at one resolved path.
-        Each cold or invalidated read computes the digest in full. Path metadata alone never
-        permits reuse; write/admission paths and platforms without leases always read in full.
+        The bytes are taken at their content-addressed name; full proof (an export, a stage's
+        check of what it wrote, the scrub) hashes them and refuses a mismatch (LAWS.md EV2).
         """
         path = self._path(f"current/{category}", content_hash, "bin")
         resolved = path.resolve()
@@ -471,8 +471,11 @@ class AlphaDevelopmentArtifactStore:
             before = os.fstat(stream.fileno())
             payload = stream.read()
             after = os.fstat(stream.fileno())
-        with span("hash", "alpha_packed"):
-            observed_hash = sha256(payload).hexdigest()
+        if full_proof():
+            with span("hash", "alpha_packed"):
+                observed_hash = sha256(payload).hexdigest()
+        else:
+            observed_hash = content_hash
         if (
             observed_hash != content_hash
             or len(payload) != before.st_size
@@ -493,7 +496,7 @@ class AlphaDevelopmentArtifactStore:
     def _frozen_arrays_with_identity(
         self, category: str, content_hash: str
     ) -> tuple[dict[str, npt.NDArray[Any]], tuple[str, ...]]:
-        """Retain only immutable decoded arrays behind their exact packed-source lease."""
+        """Retain only immutable decoded arrays, kept under their sealed name (LAWS.md EV2)."""
         path = self._path(f"current/{category}", content_hash, "bin")
 
         def verify() -> tuple[tuple[tuple[str, npt.NDArray[Any]], ...], tuple[str, ...]]:
@@ -578,13 +581,14 @@ class AlphaDevelopmentArtifactStore:
                 raise AlphaDevelopmentArtifactReadbackError(
                     "Alpha JSON requested identity is invalid"
                 )
-            identity = dict(payload)
-            identity.pop(identity_field)
-            with span("hash", "alpha_json"):
-                if canonical_hash(identity) != content_hash:
-                    raise AlphaDevelopmentArtifactReadbackError(
-                        "Alpha JSON payload hash is invalid"
-                    )
+            if full_proof():
+                identity = dict(payload)
+                identity.pop(identity_field)
+                with span("hash", "alpha_json"):
+                    if canonical_hash(identity) != content_hash:
+                        raise AlphaDevelopmentArtifactReadbackError(
+                            "Alpha JSON payload hash is invalid"
+                        )
             file_identity = (
                 str(resolved),
                 str(after.st_dev),
@@ -592,7 +596,6 @@ class AlphaDevelopmentArtifactStore:
                 str(after.st_size),
                 str(after.st_mtime_ns),
                 str(after.st_ctime_ns),
-                sha256(raw).hexdigest(),
                 content_hash,
                 identity_field,
             )

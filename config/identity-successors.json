@@ -15044,6 +15044,90 @@
    "successor": "b4e98a97c128c94179695add42f8acf0bd2c9faf679786fc870cb1d9fedfd67b",
    "change": "New workspaces prepare Evidence about 30% faster with int8 retrieval",
    "reason": "Evidence retrieval gains a faster int8 recipe whose indexes, vectors and pair scores are bound to the machine class that computed them, so results from one kind of processor are never reused on another; the existing fp32 recipe keeps every identity, hash and sealed canary unchanged"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "d988ce47555817709d8a422f003c3ddccd79718ab8015538ac6c9260997a50e3",
+   "successor": "e7037d16c547d615143e4e4534082b0afcf9dae2b3e40ff23aeb5d7be653d5a2",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "739fff03778aad9ac9cf662c7c75df0175cb505ced55b8d4daf6a101d780e547",
+   "successor": "a256bdab7436d7af98403b3e576323d5ee2ef3d340ecf6d4cda767e08cad2358",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "3a3505dc3c4da713f1b5e293cd3312e807895130f0c4fc2fae157eaa9df36661",
+   "successor": "5d14fde1aea40a93e4dc09837d5b86934e79ab5e8a7c556253503cd4911d1c4c",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "b46ec3a84123b33e0b57ada0cd01af74eeebdfc13fb13816b22a1e38376a528d",
+   "successor": "19afda46fa6cb2afbee98184f50232fbceb5c686e66cf6d24ec4a44436c6ed59",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c830dee393ca0cd35126245da20ddb3335b1d985aa129b76aa11aacabf833b79",
+   "successor": "5ef4193ed2d274903fba3f88d02b367a64cc8d02fcf35de6ed9bb6bb428369ce",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "9980ca7bd25e2955d72732a54a1e5715e47e78ecb46452a14ee552e0897c4e08",
+   "successor": "af1602595d82f00fbffcb43800789e154cefa77bcf14a15ca242da2e56f6ab0f",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "964b4fd4b1b08ec1f17b89e73b60396b6098145312ab08f2110a409dc6a8840e",
+   "successor": "c209a2c83f4926e744b0eba5f35ee7b05c9c56a249f055d3f982f8839537508d",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "fabe1e346498002b56c88f9388a1ab8251eec5d0f58a1867f51cc7817fb04900",
+   "successor": "5c36308cf95cfadc9e6caefad6df46c59a220de0f6b86c995547617bdc209ce6",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "successor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "successor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "552d62654276f4c7cb7929988832227026c43ad328d5b9dba2b26a0dc2d80add",
+   "successor": "b1bb1ecfb62af98a0ff89c0d87409d25e9fe8cb93fd6187d73004e6aa056aa15",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "5a5a66649d1a8f5d692ea81158697aa7924a272b35e3360848f5728b05a783bb",
+   "successor": "be660fae1790536200994d0a754d77214971d0d1f9d230d1552f536737b6ef75",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
   }
  ]
 }

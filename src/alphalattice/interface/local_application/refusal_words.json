@@ -444,6 +444,11 @@
   "detail": "The declaration's Alpha section names factors, or a factor evidence handle, other than the ones its curation selected; leave them to the handoff, which fills them.",
   "next_action": "EDIT_DECLARATION_AND_PLAN"
  },
+ "factor_research.review_decision_policy_not_installed": {
+  "message_id": "factor_research.review_decision_policy_not_installed_detail",
+  "detail": "factor_research.review_decision_policy_not_installed_detail",
+  "next_action": "READ_THE_STUDY_AND_CURATE_AGAIN"
+ },
  "factor_research.review_limitations_incomplete": {
   "detail": "A curation acknowledges every limitation the study's review states, and `{subject}` is not acknowledged; add it to `limitations_acknowledged`, as the curation template lists them.",
   "next_action": "EDIT_THE_CURATION_AND_SUBMIT_AGAIN"

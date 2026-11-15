@@ -11,7 +11,7 @@ import json
 import re
 import threading
 from collections.abc import Callable, Mapping
-from contextlib import nullcontext, suppress
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
@@ -107,13 +107,12 @@ from alphalattice.control.product_host.composition.portfolio_updates import (
     update_refusal,
 )
 from alphalattice.control.product_host.composition.research_experiments import (
-    LEDGER_READ_OPERATIONS,
+    TASK_KIND as RESEARCH_EXPERIMENT_TASK_KIND,
+)
+from alphalattice.control.product_host.composition.research_experiments import (
     ResearchExperimentApplication,
     review_requests,
     verified_study_evidence,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    TASK_KIND as RESEARCH_EXPERIMENT_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.research_history import ResearchHistory
 from alphalattice.control.product_host.composition.research_update_automation import (
@@ -270,6 +269,7 @@ from alphalattice.control.task_control.timing import read_stage_spans, task_timi
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     ContentAddressedStoreError,
+    full_content_proof,
     verified_model_read_scope,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import (
@@ -521,6 +521,31 @@ def _read_at(request: PortfolioResearchOperationRequest) -> datetime | None:
     return (
         None if request.review_read_at is None else datetime.fromisoformat(request.review_read_at)
     )
+
+
+FULL_PROOF_OPERATIONS = frozenset(
+    {
+        "EXPERIMENT_CURATE",
+        "EXPERIMENT_PROMOTE",
+        "EXPERIMENT_FOUNDATION_SEAL",
+        "FEATURE_ACTIVATE",
+        "MODEL_ACTIVATE",
+        "STRATEGY_ACTIVATE",
+        "RESEARCH_STRATEGY_INSTALL",
+        "FREEZE",
+        "FINALIZATION",
+        "EXPERIMENT_REPLAY",
+    }
+)
+"""Publications seal a decision from sealed evidence; a replay derives a result again."""
+
+
+def edge_proof(operation: str) -> AbstractContextManager[None]:
+    """An export, publication or replay proves its sealed bytes in full (LAWS.md EV2)."""
+    edge = (
+        operation == "EXPORT" or operation.endswith("_EXPORT") or operation in FULL_PROOF_OPERATIONS
+    )
+    return full_content_proof() if edge else nullcontext()
 
 
 @dataclass(slots=True)
@@ -1196,29 +1221,10 @@ class PortfolioResearchOperations:
                     else replace(request, recovery_task_id=None, recovery_task_hash=None)
                 )
                 with (
-                    verified_model_read_scope(
-                        reuse_verified=request.operation
-                        in (
-                            LEDGER_READ_OPERATIONS
-                            | {
-                                "REPORT",
-                                "PORTFOLIO_READBACK",
-                                "RESEARCH_UPDATE_READBACK",
-                                "PORTFOLIO_UPDATE_READBACK",
-                                # Dossier rebuilds otherwise reread the reviewed update.
-                                "CRO_REVIEW_SUBMIT",
-                                "AGENT_ANSWER_SUBMIT",
-                                "EVIDENCE_CRO",
-                                "GOAL_SHOW",
-                                "GOAL_EXPORT",
-                                "GOAL_REFERENCE",
-                            }
-                        )
-                    ),
+                    edge_proof(request.operation),
+                    verified_model_read_scope(),
                     verified_lifecycle_admissions(),
-                    verified_study_evidence(
-                        reuse_verified=request.operation in LEDGER_READ_OPERATIONS
-                    ),
+                    verified_study_evidence(),
                     verified_evidence_records(),
                     trial_reads_once(),
                 ):
