@@ -1992,6 +1992,7 @@ CODE_CASES = {  # case -> (file under low, its text, landed by a card's merge or
         "staged source",
         "absent ignore rules",
     ],
+    ids=str,
 )
 def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasured(
     tmp_path, monkeypatch, case
@@ -2048,7 +2049,10 @@ def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasu
         registry.write_text(json.dumps({"packages": []}))
         _git(root, "commit", "-q", "-am", "no packages")
     found = health.code(root, store, day_start=start)
-    rows = {"sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity"}
+    rows = {
+        *("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity"),
+        "docstrings",
+    }
     assert set(found["seconds"]) == rows  # every row measured on a first report
     kept = next(iter(sorted(store.glob("*.json"))), None) if store.is_dir() else None
     measured = sorted(name for name in rows if "unmeasured" not in found[name])

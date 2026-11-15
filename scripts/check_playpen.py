@@ -324,7 +324,7 @@ def _python_targets(*, staged: bool, all_python: bool) -> tuple[str, ...]:
                 str(path.relative_to(ROOT)).replace("\\", "/")
                 for root in roots
                 for path in (ROOT / root).rglob("*.py")
-                if not {"experiments", "tmp", "workspaces"} & set(path.relative_to(ROOT).parts)
+                if not {"tmp", "workspaces"} & set(path.relative_to(ROOT).parts)
             )
         )
     if staged:

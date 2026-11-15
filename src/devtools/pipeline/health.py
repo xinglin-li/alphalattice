@@ -930,7 +930,7 @@ CODE_SECONDS = 300
 """One code-health tool's bound; one that overruns reads unmeasured."""
 READ = ("config/package-architecture.json", "pyproject.toml", ".gitignore")
 """What the rows read beside src's modules: the registry, the project metadata, the ignore rules."""
-ROWS = ("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity")
+ROWS = ("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity", "docstrings")
 GRAPH = """import json, sys
 import grimp
 graph = grimp.build_graph(*sys.argv[1:], cache_dir=None)
@@ -945,6 +945,13 @@ RUFF = (
     *("-m", "ruff", "check", "--isolated", "--select", "C901,PLR0912,PLR0915"),
     *("--output-format", "json", "--no-cache", "src"),
 )
+DOCSTRINGS = (
+    *("-m", "ruff", "check", "--select", "D10,D419"),
+    *("--output-format", "json", "--no-cache", "src"),
+)
+"""The library's public definitions with no docstring, or an empty one, by the repository's own
+configuration: the debt a commit leaves (scripts/check_test_shape.py refuses the definitions a
+change writes), so the count only falls."""
 
 
 def code(
@@ -991,6 +998,7 @@ def code(
         "dead_code": lambda: _dead_code(root),
         "dependencies": lambda: _dependencies(root),
         "complexity": lambda: _complexity(root),
+        "docstrings": lambda: _complexity(root, DOCSTRINGS),
     }
     seconds: dict[str, float] = {}
     rows = {
@@ -1133,6 +1141,7 @@ SHAPES: dict[str, TypeAdapter[Any]] = {
     "dead_code": TypeAdapter(_Named),
     "dependencies": TypeAdapter(_Dependencies),
     "complexity": TypeAdapter(_Complexity),
+    "docstrings": TypeAdapter(_Complexity),
 }
 """Each measured row's whole shape, the one a kept row must have to be reused."""
 
@@ -1321,8 +1330,9 @@ def _dependencies(root: Path) -> dict[str, Any]:
     }
 
 
-def _complexity(root: Path) -> dict[str, Any]:
-    (owner, _), rows = _owner(root), json.loads(_run(root, *RUFF, ok=(0, 1)) or "[]")
+def _complexity(root: Path, command: tuple[str, ...] = RUFF) -> dict[str, Any]:
+    """A Ruff selection's findings over src: their count, by rule and by owning package."""
+    (owner, _), rows = _owner(root), json.loads(_run(root, *command, ok=(0, 1)) or "[]")
     where = [Path(r["filename"]).resolve().relative_to(root.resolve()).as_posix() for r in rows]
     return {
         "findings": len(rows),

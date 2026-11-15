@@ -180,16 +180,19 @@ override-dependencies = [
 target-version = "py312"
 line-length = 100
 src = ["src", "scripts", "tests", "benchmark", "probe", "case-study"]
-extend-exclude = ["experiments", "tmp", "workspaces"]
+extend-exclude = ["/experiments", "tmp", "workspaces"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # S113, ASYNC and DTZ005: blocking calls with no timeout and naive wall clocks (the wait rules
 # in scripts/check_counts.py hold the rest); none existed when they came in.
-# D100 to D107 and D419: a public definition of the library with no docstring, or an empty one,
-# leaves its page in the published API reference blank. The docstring form rules stay out:
-# complying with them moves blank lines and quotes and leaves the code no better.
-extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005", "D10", "D419"]
+# D100 to D107 and D419 (a public definition of the library with no docstring, or an empty one,
+# leaves its page in the published API reference blank) are not selected here: run on a whole file
+# they refuse a touched file's untouched debt. scripts/check_test_shape.py refuses them on the
+# definitions a change adds or edits, by the per-file-ignores below, and the code health report
+# counts the rest. The docstring form rules stay out: complying with them moves blank lines and
+# quotes and leaves the code no better.
+extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005"]
 # E731: a lambda bound to a local name is the same callable as a def; complying turns one line into
 # two and leaves the code no better.
 ignore = ["E731"]

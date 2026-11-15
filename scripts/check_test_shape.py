@@ -256,6 +256,80 @@ def _mock_scores(path: str, definitions: list) -> dict[str, int]:
     return scores
 
 
+DOCSTRING_RULES = ("D10", "D419")
+"""Ruff's docstring rules: a public library definition with no docstring, or an empty one. A
+change answers for the definitions it writes; the rest is counted by the code health report."""
+
+
+def ruff_docstrings(
+    snapshots: dict[str, str], config: str
+) -> dict[str, tuple[tuple[str, int], ...]]:
+    """Each source snapshot's docstring findings (rule, line), keyed by its path: one Ruff
+    invocation under the repository's own configuration, each snapshot at its own path so the
+    per-file-ignores apply as they do in the tree."""
+    if not snapshots:
+        return {}
+    with tempfile.TemporaryDirectory(prefix="docstrings-") as folder:
+        root = Path(folder)
+        (root / "pyproject.toml").write_text(config, encoding="utf-8", newline="\n")
+        for path, text in snapshots.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
+        done = subprocess.run(
+            [
+                *(sys.executable, "-m", "ruff", "check", "--config", "pyproject.toml"),
+                *("--select", ",".join(DOCSTRING_RULES), "--no-cache"),
+                *("--output-format", "json", *snapshots),
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=120,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if done.returncode not in (0, 1):
+            raise ValueError("ruff could not read the staged sources' docstrings")
+        found: dict[str, list[tuple[str, int]]] = {path: [] for path in snapshots}
+        for row in json.loads(done.stdout):
+            path = Path(row["filename"]).resolve().relative_to(root.resolve()).as_posix()
+            found[path].append((row["code"], row["location"]["row"]))
+    return {path: tuple(sorted(rows)) for path, rows in found.items()}
+
+
+def _as_written(node: ast.AST) -> str:
+    """A definition's signature and body, without its decorators: what a change writes when it
+    adds or edits it. A class holds its own statements only: each definition in it is judged
+    alone, so adding, removing or editing a method leaves its class as written."""
+    if isinstance(node, ast.ClassDef):
+        own = [item for item in node.body if not isinstance(item, DEFINITION_TYPES)]
+        node = ast.ClassDef(node.name, node.bases, node.keywords, own, [], node.type_params)
+    elif isinstance(node, FUNCTION_TYPES):
+        node = type(node)(node.name, node.args, node.body, [], node.returns, None, node.type_params)
+    return ast.dump(node, include_attributes=False)
+
+
+def undocumented(
+    path: str, old: str | None, new: str, findings: tuple[tuple[str, int], ...]
+) -> list[str]:
+    """Each docstring finding on a definition this change adds, or whose signature or body it
+    edits; a changed module answers for its own docstring. An untouched definition keeps its
+    debt, which only falls: no change can add an undocumented one."""
+    was = defaultdict(set)
+    for name, node in _definitions(_tree(old or "")):
+        was[name].add(_as_written(node))
+    now = {node.lineno: (name, node) for name, node in _definitions(_tree(new))}
+    found = []
+    for rule, line in findings:
+        name, node = now.get(line, ("the module", None))
+        if node is None or _as_written(node) not in was[name]:
+            found.append(
+                f"{path}:{line}: {name} has no docstring (Ruff {rule}); "
+                "document the definition this change writes"
+            )
+    return found
+
+
 def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
     """Count rules by file and complex functions by their measured score."""
     rows = _ruff(snapshots, "--select", ANTIPATTERN_RULES)
@@ -1195,8 +1269,10 @@ def problems(
     old: str | None,
     new: str,
     ruff: tuple[dict[int, int], dict[int, int]] | tuple[tuple, tuple] | None = None,
+    docstrings: tuple[tuple[str, int], ...] = (),
 ) -> list[str]:
-    """Growth a staged source or test change refuses; existing debt only shrinks."""
+    """Growth a staged source or test change refuses; existing debt only shrinks. A source's
+    ``docstrings`` are its head's Ruff docstring findings (``ruff_docstrings``)."""
     if path in GENERATED:
         return []
     if path.startswith("src/"):
@@ -1206,6 +1282,7 @@ def problems(
         if size > CAP_BYTES and grew and path not in WORD_CATALOGS | VENDORED_DATA:
             found.append(f"{path}:1: source size {size} > {CAP_BYTES}; split at its owner")
         if path.endswith(".py"):
+            found += undocumented(path, old, new, docstrings)
             before, after = _tree(old or ""), _tree(new)
             was = {
                 name: _metrics(node, ruff[0] if ruff else None)
@@ -1491,6 +1568,7 @@ def main(argv: list[str] | None = None) -> int:
             + ([head + ANTIPATTERN_CASES] if args.semgrep else [])
             + [parent + ":" + path for parent in parents for path in ANTIPATTERN_SIDES]
             + ([head + "config/registries/requirements.json"] if candidates else [])
+            + [head + "pyproject.toml"]
         )
         found, corpus = (
             _data_file_problems(staged, moved, parents, head)
@@ -1543,6 +1621,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         scores = ruff_decisions({spec: texts[spec] for spec in specs if spec in texts})
         scores.update(ruff_test_findings({s: texts[s] for s in test_specs if s in texts}))
+        config = texts.get(head + "pyproject.toml")  # a tree without one declares no rules
+        docstrings = (
+            ruff_docstrings(
+                {path: texts[head + path] for path in python_sources if head + path in texts},
+                config,
+            )
+            if config is not None
+            else {}
+        )
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(
             f"TEST-LAYOUT Ruff measurement unavailable: {error}; restore Ruff and retry",
@@ -1564,7 +1651,7 @@ def main(argv: list[str] | None = None) -> int:
                     else None
                 )
                 try:
-                    current = problems(path, old, new, measurement)
+                    current = problems(path, old, new, measurement, docstrings.get(path, ()))
                 except (ValueError, KeyError) as error:
                     print(
                         f"TEST-LAYOUT Ruff measurement unavailable: {error}; retry", file=sys.stderr
