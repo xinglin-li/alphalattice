@@ -52,7 +52,7 @@ from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     target_sessions,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, run_node
+from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
 
@@ -1096,9 +1096,25 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         assert last["continued"]["lifecycle"] == "QUEUED"
         assert last["continued"]["task_id"] == str(stopped.task_id), last
         assert last["next_requests"]["status"]["task_id"] == str(stopped.task_id)
+        from alphalattice.control.product_host.data_preparation import application as preparing
+        from alphalattice.control.product_host.research_authoring import factor_inputs
+
+        answered = []  # a request the Host answers right after each of the publication's writes
+        for owner in (preparing, factor_inputs):
+
+            def written(
+                *args: Any, write: Any = owner.update_research_workspace_manifest, **kw: Any
+            ):
+                result = write(*args, **kw)
+                answered.append(_request(live, "/api/experiments/controls")[2])
+                return result
+
+            monkeypatch.setattr(owner, "update_research_workspace_manifest", written)
         live.dispatcher.drain_for_tests(timeout=900)
         continued = registry.task(stopped.task_id)
         assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
+        assert len(answered) == 2  # the experiment input's write, then the data update's
+        assert not [body for body in answered if b"configuration_changed_restart" in body]
         assert [t.task_kind for t in registry.tasks()].count("workspace_preparation") == 1
         applied = panel.feature_input_resolution(decided["case_token"])
         assert applied["receipt"] == resolution["receipt"]

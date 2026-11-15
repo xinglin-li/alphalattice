@@ -136,6 +136,9 @@ from alphalattice.kernel.shared_kernel.source_identity import source_rule_closur
 
 TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")
+PUBLISHING = "publishing"
+"""Each manifest a preparation is about to publish, recorded under the mutation gate before the
+write, so a request in between finds the Host's own manifest owned (the stage record follows)."""
 
 
 ListingUnitState = Literal[
@@ -1656,13 +1659,39 @@ class WorkspacePreparationApplication:
             manifest_hash: Exact manifest identity.
 
         Returns:
-            Whether a retained preparation stage published this manifest.
+            Whether a retained preparation stage published, or is publishing, this manifest.
         """
         return any(
-            record is not None and record["manifest_hash"] == manifest_hash
+            manifest_hash in (claimed or {}).get("manifest_hashes", ())
+            or (record is not None and record["manifest_hash"] == manifest_hash)
             for task in self.tasks()
-            for record in (self._load(task.task_id, STAGES[3], optional=True),)
+            for claimed, record in (
+                (
+                    self._load(task.task_id, PUBLISHING, optional=True),
+                    self._load(task.task_id, STAGES[3], optional=True),
+                ),
+            )
         )
+
+    def _publish(self, task: TaskRecord, **bindings: Any) -> ResearchWorkspaceManifest:
+        """Bind `bindings` onto the manifest as it stands under the gate (an installation since
+        stays), claiming the result as this preparation's before it is written."""
+
+        def bind(current: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
+            updated = current.with_bindings(**bindings)
+            self._claim(task, updated)
+            return updated
+
+        gate = self.session.mutation_gate
+        return update_research_workspace_manifest(self.session.workspace, bind, gate=gate)[1]
+
+    def _claim(self, task: TaskRecord, manifest: ResearchWorkspaceManifest) -> None:
+        """Record that this preparation publishes `manifest`, before the manifest is written."""
+        claimed = self._load(task.task_id, PUBLISHING, optional=True)
+        hashes = [] if claimed is None else claimed["manifest_hashes"]
+        if manifest.manifest_hash not in hashes:
+            hashes = [*hashes, manifest.manifest_hash]
+            self._save(task, PUBLISHING, {"manifest_hashes": hashes}, progress=True)
 
     def execute_stage(
         self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
@@ -1880,13 +1909,9 @@ class WorkspacePreparationApplication:
                 panel_snapshot_hash=feature["snapshot_hash"],
                 completed_at=self.clock(),
                 bind_configuration=True,
+                claim=lambda manifest: self._claim(task, manifest),
             )
-            # Onto the manifest as it stands: an installation since does not go.
-            _, updated = update_research_workspace_manifest(
-                root,
-                lambda current: current.with_bindings(data_update=plan.binding),
-                gate=self.session.mutation_gate,
-            )
+            updated = self._publish(task, data_update=plan.binding)
             return {"binding_hash": binding.binding_hash, "manifest_hash": updated.manifest_hash}
         if stage == STAGES[4]:
             inputs = self._load(task.task_id, STAGES[3])

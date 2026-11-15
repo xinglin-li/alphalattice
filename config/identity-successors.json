@@ -15149,6 +15149,20 @@
    "successor": "4527626637e7901bec7fc42800e2780ab0d295ea33f2c24dd8a50898bb364297",
    "change": "A portfolio readback reports a deleted or changed artifact as failed",
    "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6c7a3414549f169177a8473cc7a86e2771e0aab1805305e9c7154cddb9c0b86c",
+   "successor": "448af902a9973d38fdd15fd868d39d2e6946c79f020c3f5d51385a5f626e2f07",
+   "change": "The Host no longer asks for a restart while it prepares data",
+   "reason": "Data preparation now records each manifest it is about to publish under the mutation gate before writing it; two product host roles' implementation fingerprints move with that ownership record, while their inputs, computation and every other identity are unchanged (77 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "205459793ffcf23441b50202504a7f3b1514dc6e8edd15e0298537188339f5b1",
+   "successor": "4e52960f3376090348764c303a2d86dc7bcb9a37d92242c8e05bdf05d1531834",
+   "change": "The Host no longer asks for a restart while it prepares data",
+   "reason": "Data preparation now records each manifest it is about to publish under the mutation gate before writing it; two product host roles' implementation fingerprints move with that ownership record, while their inputs, computation and every other identity are unchanged (77 of 79 readout values equal)."
   }
  ]
 }

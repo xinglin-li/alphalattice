@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -508,8 +508,10 @@ def publish_prepared_factor_inputs(
     panel_snapshot_hash: str,
     completed_at: datetime,
     bind_configuration: bool,
+    claim: Callable[[ResearchWorkspaceManifest], None] | None = None,
 ) -> ResearchWorkspaceExperimentInput:
-    """One Outcome/logical-Panel/bundle handoff for first use and later capture."""
+    """One Outcome/logical-Panel/bundle handoff for first use and later capture; `claim` records
+    the Host's ownership of the manifest that binds it, under the gate before it is written."""
     task = session.task_control_registry.task(task_id)
     expected_kind = "workspace_preparation" if bind_configuration else "research_input_capture"
     if not session.writer_lease.held or task.task_kind != expected_kind:
@@ -540,6 +542,7 @@ def publish_prepared_factor_inputs(
         include_alpha_handoff=True,
         gate=session.mutation_gate,
         bind_configuration=bind_configuration,
+        claim=claim,
     )
 
 
@@ -553,6 +556,7 @@ def _bind_factor_inputs(
     include_alpha_handoff: bool,
     gate: WorkspaceMutationGate,
     bind_configuration: bool = True,
+    claim: Callable[[ResearchWorkspaceManifest], None] | None = None,
 ) -> ResearchWorkspaceExperimentInput:
     manifest = read_research_workspace_manifest(workspace)
     if not confined(source, "market-data.duckdb").is_file():
@@ -778,13 +782,12 @@ def _bind_factor_inputs(
     if not bind_configuration:
         return binding
 
-    # Onto the manifest as it stands under the gate, not the one read before the copy:
-    # a writer in between keeps what it wrote (WM).
+    # Onto the manifest as it stands under the gate (WM): a writer since keeps what it wrote.
     def bind(current: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
         existing = tuple(v for v in current.experiment_inputs or () if v.input_id != input_id)
         updated = current.with_bindings(experiment_inputs=(*existing, binding))
         if updated != current:
-            _record_input_publication(parent, input_id, binding, current, updated)
+            _record_input_publication(parent, input_id, binding, current, updated, claim)
         return updated
 
     update_research_workspace_manifest(workspace, bind, gate=gate)
@@ -797,8 +800,10 @@ def _record_input_publication(
     binding: ResearchWorkspaceExperimentInput,
     manifest: ResearchWorkspaceManifest,
     updated: ResearchWorkspaceManifest,
+    claim: Callable[[ResearchWorkspaceManifest], None] | None,
 ) -> None:
-    """Seal the receipt of one input's publication before the manifest names it."""
+    """Seal the receipt of one input's publication, and its writer's claim on the manifest that
+    names it, before that manifest is written."""
     prior_hash = next(
         (v.binding_hash for v in manifest.experiment_inputs or () if v.input_id == input_id),
         None,
@@ -824,6 +829,8 @@ def _record_input_publication(
             staged_receipt = Path(temporary) / "receipt.json"
             staged_receipt.write_text(payload, encoding="utf-8")
             staged_receipt.rename(target)
+    if claim is not None:
+        claim(updated)
 
 
 @dataclass(frozen=True)
