@@ -15128,6 +15128,27 @@
    "successor": "be660fae1790536200994d0a754d77214971d0d1f9d230d1552f536737b6ef75",
    "change": "Prove saved studies at their edges, not on every read",
    "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "a256bdab7436d7af98403b3e576323d5ee2ef3d340ecf6d4cda767e08cad2358",
+   "successor": "0e324664b9dda855c4c10b7225d5bfb3f6cb2728bb46511191134e4cff0493b1",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "5d14fde1aea40a93e4dc09837d5b86934e79ab5e8a7c556253503cd4911d1c4c",
+   "successor": "86e38efcd5e4b1d5ae68e3a493d12ffe69f859ffa928876169780a83ce26d287",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c209a2c83f4926e744b0eba5f35ee7b05c9c56a249f055d3f982f8839537508d",
+   "successor": "4527626637e7901bec7fc42800e2780ab0d295ea33f2c24dd8a50898bb364297",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
   }
  ]
 }

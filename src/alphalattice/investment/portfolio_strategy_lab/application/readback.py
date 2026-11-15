@@ -48,6 +48,7 @@ from alphalattice.capabilities.portfolio_backtesting.execution import (
     drift_holdings,
     execute_orders,
 )
+from alphalattice.control.workspace_runtime.content_store import at_the_edge
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     PortfolioLedgerCoverage,
 )
@@ -573,6 +574,7 @@ def _upstream_layer(
     return _layer(layer_id, "VERIFIED", proved_detail, identity)
 
 
+@at_the_edge  # readback reports VERIFIED, so it proves (LAWS.md EV2)
 def exact_readback(
     store: PortfolioLedgerStore,
     *,

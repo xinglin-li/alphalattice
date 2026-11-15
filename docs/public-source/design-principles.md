@@ -90,7 +90,7 @@ Every product is recorded under an identity, kept where its kind belongs, and fo
 **Checking should be nearly free,** because slow verification invites skipping it. The direction:
 - compute a digest once, when a record is written, and carry it;
 - compose identities from their parts' digests, so a check reads only what changed;
-- verify fully at the edges: where a record enters (its write, an import, a stage's check), where it leaves (export, publication, replay), and in an idle scrub that finds a file changed under its name; never on an ordinary read;
+- verify fully at the edges: where a record enters (its write, an import, a stage's check), where it leaves (export, publication, replay, an exact readback), and in an idle scrub that finds a file changed under its name; never on an ordinary read;
 - keep the hashing in compiled code.
 
 Measurement leads the work. In one early profile, nearly half of a publication's time went to hashing the same objects up to five times; removing the repeats left every digest byte-identical.

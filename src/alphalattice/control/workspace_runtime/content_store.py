@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import functools
 import hashlib
 import json
 import marshal
@@ -110,6 +111,18 @@ def full_content_proof() -> Iterator[None]:
         yield
     finally:
         _FULL_PROOF.reset(token)
+
+
+def at_the_edge[**P, R](read: Callable[P, R]) -> Callable[P, R]:
+    """`read` as an edge: each call runs inside ``full_content_proof()``, so what it reports as
+    verified is proved from the bytes on disk, never from a value an earlier read kept."""
+
+    @functools.wraps(read)
+    def proved(*args: P.args, **kwargs: P.kwargs) -> R:
+        with full_content_proof():
+            return read(*args, **kwargs)
+
+    return proved
 
 
 def full_proof() -> bool:

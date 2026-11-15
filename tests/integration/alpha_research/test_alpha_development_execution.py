@@ -44,6 +44,7 @@ from alphalattice.control.product_host.research_authoring.foundation import (
     build_alpha_development_foundation,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
@@ -956,7 +957,8 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
     assert other_graph.batch.program_hash != batch.program_hash
 
     def read(handle: str) -> None:
-        reader.read(handle)
+        with full_content_proof():  # each walk proves the files on disk, as the scrub does
+            reader.read(handle)
 
     current = store_root / "alpha-research" / "current"
 
