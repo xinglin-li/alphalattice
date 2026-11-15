@@ -50,9 +50,10 @@ holds the installation and launch procedure.
 
    Run the retrieval runtime's offline fill exactly as the doctor prints it.
    If its package cache is cold, follow its returned network form within the
-   stated download permission. If the installed command is off PATH, you run
-   `uv tool update-shell` once and restart the session or terminal, then the agent
-   repeats the doctor. Dependency repairs outside the lock require your permission.
+   stated download permission. If the installed command is off PATH, the agent can
+   use the absolute binding the setup returns without restarting the shell. You can
+   instead run `uv tool update-shell` and restart the session or terminal. Dependency
+   repairs outside the lock require your permission.
 
 3. Configure the agent project from the same checkout root:
 
@@ -79,8 +80,9 @@ holds the installation and launch procedure.
    On Claude Code desktop, the agent can start it in the app's Terminal panel.
    Without a panel, the first start can ask you to run the offered
    `terminal_command` once in a terminal you own, outside the agent's command
-   shell. Tell the agent when it is running so it can continue. Codex detaches
-   the Host itself. A detached Host stays up between sessions and stops by itself
+   shell. Tell the agent when it is running so it can continue. If Codex cannot
+   detach the Host, follow its offered terminal route as well. A detached Host stays
+   up between sessions and stops by itself
    once no work is owed and it has been idle for its configured period. This startup step is separate from the network-permission
    question. Follow the returned startup answer and keep its ready link.
 
@@ -122,9 +124,9 @@ both supported uses:
 - **First use:** start in a new folder with your intent, or
   `Positions for <date>, reviewed.` The agent prepares data and the strategy,
   then follows the date's positions through review, committee discussion and a report.
-  It stops once to ask whether daily updates may keep the network on for market
-  data and SEC filings within the default budget (3 per issuer, 600 documents
-  and 3 GB overall). **Work waits until you answer yes or no.** Your yes is a
+  It asks once whether daily updates may keep the network on for market data and
+  SEC filings within the default budget (3 per issuer, 600 documents and 3 GB
+  overall). First use continues without waiting for your answer. Your yes is a
   continuing setting until you tell it to stop. At the first-use report, the
   agent also asks whether daily updates should convene the investment committee;
   without that setting, later updates get the portfolio manager's view on the
@@ -146,7 +148,7 @@ Follow Tasks, results and review in the Workbench. Deactivate the book on
 **Portfolio**. To stop the goal, use **Stop** in Local Web or ask the agent to
 abandon it; cancel a running Task separately.
 
-Each answer names its next step. A refusal can identify a data shortfall, missing
+An answer can name a next step. A refusal can identify a data shortfall, missing
 permission or required decision; read its explanation and permitted continuation.
 A provider deferral retains fetched listings and names when the existing
 preparation can resume. After a disconnect, the agent reads the existing Task.

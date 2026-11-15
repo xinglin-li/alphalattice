@@ -112,8 +112,8 @@ same agent project, ask for your next daily update as usual, for example
 `Positions for <next session>, reviewed.`
 
 The first daily update after an upgrade may need a one-time rebuild of derived
-work. Allow it to finish; later updates can reuse that work. Earlier sealed goals
-and reports keep verifying, and your existing research history stays available.
+work. Allow it to finish; later updates can reuse that work. Keep your earlier
+sealed goals, reports and research history in the existing workspace.
 
 ## If a command refuses
 

@@ -24,7 +24,7 @@ The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
 `detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
 When observed, `session_launches` counts this session's CLI launches, including
 help and schema reads. `data` contains the owner answer or its display projection.
-An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. The same permission source is kept in activity, including automated updates.
+An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. Activity records the same permission source when available, including for automated updates; observation gaps are named.
 A refusal names the code, explanation and permitted continuation. Keep its
 references and follow that continuation.
 

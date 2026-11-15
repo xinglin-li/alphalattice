@@ -11,7 +11,7 @@ At first use, your agent asks once, in the product's exact words:
 
 Your relayed yes sets the workspace network and the default SEC acquisition consent. It is your own continuing permission, separate from the first-use goal's 24-hour delegation. The delegation never overwrites your network setting, including a setting that keeps it off. A research run's offline hold and the operator's offline switch still take precedence.
 
-An admitted network step reports `network_use`, with `under` naming whose setting allowed it and `words` giving the one-line disclosure. Activity records the same permission source, including for automated updates.
+An admitted network step reports `network_use`, with `under` naming whose setting allowed it and `words` giving the one-line disclosure. Activity records the same permission source when available, including for automated updates; observation gaps are named.
 
 Say "Turn AlphaLattice's network off" to your agent, or turn it off in **Settings**. Your stop also blocks SEC acquisition before its next request; a data update already fetching finishes its current stage unless its Task is cancelled. A delegation cannot reopen your setting after that stop. A later change needs your decision again. Earlier inputs, Evidence and activity records remain available. Source and model terms are in [Downloads and data terms](third-party-and-data.md).
 

@@ -18,7 +18,7 @@ step, and a nested part's own hint describes only that part.
 `.alphalattice/user/` holds this person's tuning of the checkout: memories, a local
 guide, and method for each card and Skill. No release contains or writes it. Read
 its index and guide first, as above, and `agent-notes/INDEX.md` in a workspace you
-continue. They refine this
+continue when that file exists. They refine this
 guide and never widen what it permits; a memory is background, so verify what it
 names before acting on it. A sealing goal answer offers `RECORD_THE_EXPERIENCE`:
 follow it through the alphalattice-maintenance Skill, using its Goal and Task reads.
