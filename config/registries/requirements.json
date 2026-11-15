@@ -1066,7 +1066,7 @@
       "seconds": 5
     },
     "pipeline.static_refusals_are_named_in_one_attempt": {
-      "description": "The fast guard runs every independent static check to its end and names each refusal and each unrunnable check in one attempt, before any slow step.",
+      "description": "The fast guard runs every independent static check to its end, side by side in their own processes, and names each refusal and each unrunnable check in one attempt, before any slow step.",
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5,
@@ -1081,6 +1081,13 @@
     },
     "pipeline.the_hook_leaves_whole_tree_checks_to_the_commit_stage": {
       "description": "If the hook ran the checks that read the whole tree, each commit would wait half a minute; the commit stage runs them, and strict typing runs when its inputs are staged.",
+      "owner": "devtools.pipeline",
+      "layer": "unit",
+      "seconds": 1,
+      "retired": "2026-11-15: the hook runs every check that judges a change, side by side; pipeline.the_hook_runs_every_check_that_judges_a_change proves it."
+    },
+    "pipeline.the_hook_runs_every_check_that_judges_a_change": {
+      "description": "If the hook left a check that judges a change to the commit stage, its red would cost a whole stage instead of seconds; strict typing runs when its inputs are staged.",
       "owner": "devtools.pipeline",
       "layer": "unit",
       "seconds": 1

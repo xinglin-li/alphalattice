@@ -2,6 +2,7 @@
 
 ## Process policy
 
+- Run every static check that judges a change at commit, the whole-tree ones included (`COMMIT_STAGE_ONLY` names any left to the stage), so its red costs seconds rather than a stage. Run the guard's steps side by side, one process each, the slowest first, `GUARD_WORKERS` at once.
 - Keep the impact runner's file-per-process default; batch only through its audited safe list and revoke batching on a process-global framework import.
 - Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing; a structural file must declare whole-tree scope and contain no fenced guard.
 - Run a structural guard with no declared `reach` in the commit stage only when its own file changed, the tree a

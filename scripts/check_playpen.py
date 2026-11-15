@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import importlib
 import json
 import os
 import re
@@ -12,7 +13,8 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 from time import perf_counter
@@ -20,21 +22,58 @@ from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
-COMMIT_STAGE_ONLY = frozenset(
-    {
-        "boundaries",
-        "claude-host-materialization",
-        "evidence-bindings",
-        "identity-closures",
-        "import-contracts",
-        "operation-registry",
-        "scoped-structural",
-    }
+COMMIT_STAGE_ONLY: frozenset[str] = frozenset()
+"""The guard's checks the hook leaves to the commit stage: none. Each check that judges a change
+runs at commit, where its red costs seconds rather than a whole stage (11-15: 22 of 99 commit
+stages failed at the guard, 18 of them at checks this set then held: scoped-structural,
+boundaries, import-contracts, evidence-bindings). Its steps run at once (GUARD_WORKERS), so the
+hook costs about its slowest step. A check too slow for the hook's budget is named here."""
+GUARD_WORKERS = 6
+"""The guard steps that run at once, each in its own process: a step changes the working
+directory, the environment or the import path, and most are pure Python, so only processes run
+them side by side. Measured on the 32-core workshop host, staged, with the slowest started
+first: one at a time 112 to 123 s, four 56 to 59 s, six 26 to 34 s, eight 28 to 33 s; six ends
+near the slowest step. ALPHALATTICE_GUARD_WORKERS overrides it."""
+SLOWEST_FIRST = (
+    "scoped-structural",
+    "test-shape",
+    "operation-registry",
+    "identity-closures",
+    "identity-reach",
+    "boundaries",
+    "import-contracts",
 )
-"""The guard's checks that read the whole tree or the product's import graph to judge a change.
-Triggered by the source they read, they would run on nearly every edit, so the hook
-(`--staged --fast --hook`) leaves them out; the commit stage and the queue run the same guard
-without --hook over the card's whole change, so every one of them before READY."""
+"""The steps measured slowest (11-15, staged and over a card's change), started first so the
+guard ends near its slowest step; the others fill the pool behind them."""
+STEP_SECONDS = 1200.0
+"""One guard step's bound: well above the slowest step's measured 30 s, and below a stage's."""
+REAP_SECONDS = 30.0
+"""How long a step's ended process tree is given to go, before its end is named unproved."""
+
+
+def _end_tree(pid: int) -> None:
+    """End a step and every process it started, deepest first: a pytest a step started keeps
+    the step's output open, and only its whole tree's end releases the gate."""
+    psutil = importlib.import_module("psutil")  # the workspace environment's; untyped, read as Any
+    try:
+        root = psutil.Process(pid)
+        tree = [*root.children(recursive=True), root]
+    except psutil.NoSuchProcess:
+        return
+    for process in reversed(tree):
+        _kill(psutil, process)
+    _, alive = psutil.wait_procs(tree, timeout=REAP_SECONDS)
+    if alive:
+        raise ChildProcessError(f"processes {[p.pid for p in alive]} outlived their step's end")
+
+
+def _kill(psutil: Any, process: Any) -> None:
+    try:
+        process.kill()
+    except psutil.NoSuchProcess:
+        return  # it ended on its own: its end is what was asked
+
+
 STRICT_INPUTS = frozenset({"config/mypy-strict-modules.txt", "pyproject.toml", "uv.lock"})
 """Strict mypy's inputs besides its modules: their list, its settings, its version and stubs.
 With follow_imports = "skip" an unlisted module types as Any, so these and the listed modules
@@ -232,6 +271,51 @@ def static_refusals(
             passed = False
         if not passed:
             refused.append(label)
+    return refused
+
+
+def concurrent_refusals(
+    commands: Mapping[str, Sequence[str]], workers: int, *, bound: float = STEP_SECONDS
+) -> list[str]:
+    """Run each step's command as its own process, at most ``workers`` at once and the slowest
+    started first; print each step's words in the steps' order once it ends, and return the
+    labels that refused. A child that cannot start, or outlives ``bound``, is named as
+    unmeasured and refused; at its bound the step's whole process tree is ended, so no child it
+    started keeps the gate waiting."""
+
+    def one(label: str) -> tuple[int | None, str]:
+        with tempfile.TemporaryFile() as log:  # a file, not a pipe: no child holds the gate open
+            try:
+                step = subprocess.Popen(
+                    tuple(commands[label]),
+                    cwd=ROOT,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except OSError as error:
+                return None, f"PLAYPEN_GATE_UNMEASURED {label}: {type(error).__name__}: {error}\n"
+            try:
+                code: int | None = step.wait(timeout=bound)
+                stopped = ""
+            except subprocess.TimeoutExpired:
+                _end_tree(step.pid)
+                step.wait(timeout=REAP_SECONDS)
+                code, stopped = None, f"PLAYPEN_GATE_UNMEASURED {label}: past its {bound:.0f} s\n"
+            log.seek(0)
+            return code, log.read().decode("utf-8", errors="replace") + stopped
+
+    refused = []
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        rank = {name: place for place, name in enumerate(SLOWEST_FIRST)}
+        order = sorted(commands, key=lambda name: rank.get(name, len(rank)))
+        started = {label: pool.submit(one, label) for label in order}
+        for label, future in ((label, started[label]) for label in commands):
+            code, words = future.result(timeout=bound + 2 * REAP_SECONDS)
+            print(words, end="", flush=True)
+            if code != 0:
+                refused.append(label)
     return refused
 
 
@@ -1169,13 +1253,19 @@ def _parser() -> argparse.ArgumentParser:
             "repeated here."
         ),
     )
+    parser.add_argument("--only", help=argparse.SUPPRESS)  # one step, run by the guard's pool
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("ALPHALATTICE_GUARD_WORKERS") or GUARD_WORKERS),
+        help="guard steps run at once, each in its own process (1: in order, in this process)",
+    )
     parser.add_argument(
         "--hook",
         action="store_true",
         help=(
-            "with --staged, the commit hook: the whole-tree checks (COMMIT_STAGE_ONLY) and the "
-            "semgrep source rules (4 s on one file) are left to the commit stage and the queue, "
-            "which run them all; strict mypy runs when a path it reads is staged"
+            "with --staged, the commit hook: every check that judges the staged change runs, "
+            "save COMMIT_STAGE_ONLY's; strict mypy runs when a path it reads is staged"
         ),
     )
     return parser
@@ -1229,10 +1319,11 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
         return 0
 
-    at_commit = commit_scope(commit=args.hook and args.staged)  # the stage and queue run all
-    if args.fast:
+    only = args.only is not None  # one step, as a child of the concurrent guard below
+    at_commit = commit_scope(commit=args.hook and args.staged and not only)
+    if args.fast and not only:
         _check_host_materialization(at_commit)
-    if not args.fast and not _require_private_structural_inputs():
+    if not args.fast and not only and not _require_private_structural_inputs():
         return 1
     # The static checks below each read the same immutable tree and none feeds another, so
     # each runs to its end and every refusal is named in one attempt; the slow steps after
@@ -1295,9 +1386,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
         (
             "test-shape",
-            lambda: _check_test_shape(
-                staged=args.staged, base_ref=args.base, semgrep=not args.hook
-            ),
+            lambda: _check_test_shape(staged=args.staged, base_ref=args.base, semgrep=True),
         ),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
         (
@@ -1305,7 +1394,18 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             lambda: _check_develop_conflict(staged=args.staged, base_ref=args.base),
         ),
     ]
-    refused = static_refusals(steps, runs=at_commit)
+    if only:
+        chosen = [(label, check) for label, check in steps if label == args.only]
+        if not chosen:
+            parser.error(f"--only names no step of this gate: {args.only}")
+        return 1 if static_refusals(chosen) else 0
+    admitted = [(label, check) for label, check in steps if at_commit(label)]
+    if args.workers > 1 and len(admitted) > 1:
+        script = (sys.executable, str(Path(__file__).resolve()), *sys.argv[1:], "--only")
+        commands = {label: (*script, label) for label, _ in admitted}
+        refused = concurrent_refusals(commands, args.workers)
+    else:
+        refused = static_refusals(admitted)
     if refused:
         print(
             f"PLAYPEN_GATE_REFUSED {len(refused)} static check(s): {', '.join(refused)}. "
