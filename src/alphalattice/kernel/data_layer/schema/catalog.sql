@@ -28,8 +28,9 @@ CREATE SCHEMA IF NOT EXISTS results;
 --                  knowledge time nobody recorded; nothing is invented here (rule 17)
 --   known_asof     the knowledge time a point-in-time read uses, `known_asof <= cutoff`, on every row alike. It
 --                  equals known_at where that is known. For a legacy row it is derived: the provider's publication
---                  time, or the valid date plus the source's registered lag rule; a bar's lag counts from its
---                  session's close_utc in world.session, so half days and time zones hold. Being derived, a legacy row's
+--                  time, or the valid date plus the source's registered lag rule, counted from the close_utc in
+--                  world.session of its market's first session on or after that date, so half days, time zones and
+--                  a date between sessions hold. The admission names the rule's version. Being derived, a legacy row's
 --                  value is rewritten when that rule changes version, so an earlier, wrong value cannot stay
 --                  readable; an observed row's never changes
 --   retracted      true on a version that withdraws the fact: the provider deleted the bar, or the action never
@@ -97,7 +98,8 @@ CREATE TABLE world.sector (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (provider, listing_id, session_date, value_digest). The provider's raw daily bar; adjusted prices are computed.
+-- key: (provider, listing_id, session_date, value_digest). The provider's raw daily bar; adjusted prices are computed,
+-- and adjusted_close keeps the provider's own adjusted close beside them, as 0.2.7 kept it to check them.
 CREATE TABLE world.raw_bar (
   provider VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
@@ -108,6 +110,7 @@ CREATE TABLE world.raw_bar (
   low DOUBLE,
   close DOUBLE,
   volume DOUBLE,
+  adjusted_close DOUBLE,          -- the provider's adjusted close, when it gives one
   published_at TIMESTAMPTZ,       -- the provider's own publication time, when it gives one
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
@@ -129,6 +132,8 @@ CREATE TABLE world.corporate_action (
   amount DOUBLE,                  -- delisting: the cash per share paid at delisting, 0 when worthless
   currency VARCHAR,
   pay_date DATE,                  -- a cash distribution's payment date, when given
+  provisional BOOLEAN NOT NULL,   -- announced or estimated, not yet final
+  provenance VARCHAR NOT NULL,    -- how it was learned, such as provider-observation
   published_at TIMESTAMPTZ,
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
@@ -261,6 +266,32 @@ CREATE TABLE results.series (
   name VARCHAR NOT NULL,
   session_date DATE NOT NULL,
   value DOUBLE NOT NULL
+);
+
+-- key: (artifact_id, listing_id, formation_session). One execution outcome: a formation close, the actual entry and
+-- holding-end opens after it, their statuses, and the return between them; a price that was missing leaves its value
+-- and the return null. The hashes name the source rows and the row itself, as 0.2.7 wrote them.
+CREATE TABLE results.execution_outcome (
+  artifact_id VARCHAR NOT NULL,
+  listing_id VARCHAR NOT NULL,
+  symbol VARCHAR NOT NULL,
+  sequence INTEGER NOT NULL,
+  formation_session DATE NOT NULL,
+  formation_close_at TIMESTAMPTZ NOT NULL,
+  entry_session DATE NOT NULL,
+  entry_open_at TIMESTAMPTZ NOT NULL,
+  holding_end_session DATE NOT NULL,
+  holding_end_open_at TIMESTAMPTZ NOT NULL,
+  actual_session_span SMALLINT NOT NULL,
+  entry_status VARCHAR NOT NULL,
+  holding_end_status VARCHAR NOT NULL,
+  entry_open_split_adjusted DOUBLE,
+  holding_end_open_split_adjusted DOUBLE,
+  period_dividend_split_adjusted DOUBLE,
+  simple_return DOUBLE,
+  entry_source_row_hash VARCHAR NOT NULL,
+  holding_end_source_row_hash VARCHAR NOT NULL,
+  row_hash VARCHAR NOT NULL
 );
 
 -- key: (artifact_id, metric, metric_version, dims). The fine breakdown behind a measure, such as IC by date and

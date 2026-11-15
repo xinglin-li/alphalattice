@@ -3,6 +3,7 @@ collection, the deletion queue, the live_ref guard and the writer's fences."""
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import statistics
@@ -20,10 +21,17 @@ from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer import log as host
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog, envelope
-from alphalattice.kernel.data_layer.store import StorePort, delete, repair, stage
+from alphalattice.kernel.data_layer.store import (
+    RESULTS_KEYS,
+    WORLD_KEYS,
+    StorePort,
+    delete,
+    repair,
+    stage,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
-LISTING = str(uuid.UUID(int=7))
+LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
 CHILD = {
     "env": os.environ | {"PYTHONPATH": str(Path(host.__file__).parents[3])},
     "stdin": subprocess.DEVNULL,
@@ -43,6 +51,40 @@ def bars(count: int, close: float = 1.0) -> list[dict]:
     """`count` daily bars of one listing from 2024-01-01."""
     days = (f"2024-{day // 28 + 1:02d}-{day % 28 + 1:02d}" for day in range(count))
     return [{"listing_id": LISTING, "session_date": day, "close": close} for day in days]
+
+
+def outcome(day: str, simple_return: float | None = 0.1) -> dict:
+    """One execution outcome of artifact art-1, formed on `day`: its 19 fields and its artifact."""
+    at = f"{day} 14:30:00+00"
+    rows = {"artifact_id": "art-1", "listing_id": LISTING, "symbol": "AAA", "sequence": 1}
+    rows |= dict.fromkeys(("formation_session", "entry_session", "holding_end_session"), day)
+    rows |= dict.fromkeys(("formation_close_at", "entry_open_at", "holding_end_open_at"), at)
+    rows |= dict.fromkeys(("entry_status", "holding_end_status"), "verified")
+    rows |= {"entry_open_split_adjusted": 1.0, "holding_end_open_split_adjusted": None}
+    rows |= {"period_dividend_split_adjusted": 0.0, "simple_return": simple_return}
+    rows |= {"entry_source_row_hash": "e", "holding_end_source_row_hash": "h", "row_hash": "r"}
+    return rows | {"actual_session_span": 2}
+
+
+def seed(root: Path, log: HostLog, sessions: list[tuple[str, str, bool]]) -> StorePort:
+    """A Host whose log holds lag rule yf-close v1 (one hour) and whose world holds the listing
+    on XNYS and its sessions, as (date, close, half day); returns its open StorePort."""
+    rule = {"family": "lag_rule", "name": "yf-close", "version": 1, "text": "an hour after"}
+    attrs = {key: rule[key] for key in ("family", "name", "version")}
+    text = canonical(rule | {"spec": {"lag_seconds": 3600}}).decode()
+    log.record("definition.registered", ("definition", "yf-close"), attrs, text=text)
+    port = StorePort.open(root, log)
+    days = [
+        {"market": "XNYS", "session_date": day, "close_utc": f"{day} {close}+00", "half_day": half}
+        for day, close, half in sessions
+    ]
+    for table, rows in (
+        ("listing", [{"listing_id": LISTING, "market": "XNYS"}]),
+        ("session", days),
+    ):
+        with stage(root, table, "calendar", rows) as staged:
+            port.commit(staged)
+    return port
 
 
 def owe(port: StorePort) -> dict:
@@ -91,22 +133,36 @@ def test_the_next_start_repairs_an_owed_event_once_even_below_the_floor(root):
 
 
 KILL = """
-import os, sys, uuid
+import json, os, sys
 from pathlib import Path
 from alphalattice.kernel.data_layer import store
 from alphalattice.kernel.data_layer.log import HostLog
-root, point = Path(sys.argv[1]), sys.argv[2]
-days = (f"{2000 + d // 336}-{d % 336 // 28 + 1:02d}-{d % 28 + 1:02d}" for d in range(1500))
-rows = [{"listing_id": str(uuid.UUID(int=7)), "session_date": day, "close": 1.0} for day in days]
+root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
+lag = batch["lag"] and tuple(batch["lag"])
 with HostLog.open(root) as log:
     port = store.StorePort.open(root, log)
-    with store.stage(root, "raw_bar", "yf", rows) as staged:
+    with store.stage(root, batch["table"], "yf", batch["rows"], lag=lag) as staged:
         setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
         port.commit(staged)
 """
+DAYS = [f"{2000 + d // 336}-{d % 336 // 28 + 1:02d}-{d % 28 + 1:02d}" for d in range(1500)]
+BATCHES = {
+    "observed": ("raw_bar", None, [{"listing_id": LISTING, "session_date": d} for d in DAYS]),
+    "legacy": (
+        "raw_bar",
+        ["yf-close", 1],
+        [{"listing_id": LISTING, "session_date": d} for d in DAYS],
+    ),
+    "results": (
+        "execution_outcome",
+        None,
+        [outcome(d, None if i % 3 else 0.1) for i, d in enumerate(DAYS)],
+    ),
+}
 
 
 @pytest.mark.proves("data_layer.write_order_recovers_from_a_kill_at_each_point")
+@pytest.mark.parametrize("batch", list(BATCHES), ids=list(BATCHES))
 @pytest.mark.parametrize(
     ("point", "rows", "repaired"),
     [
@@ -115,16 +171,31 @@ with HostLog.open(root) as log:
         pytest.param("delete", 1500, False, id="after the event"),
     ],
 )
-def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(root, point, rows, repaired):
-    """A Host killed at each point of the write order leaves no half snapshot: the next start finds
-    all the rows or none, the owed event once if its snapshot committed, and no staging left."""
-    child = subprocess.run([sys.executable, "-c", KILL, str(root), point], **CHILD, timeout=120)
+def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
+    root, batch, point, rows, repaired
+):
+    """A Host killed at each point of an observed, legacy or results write order leaves no half
+    snapshot: the next start finds all its rows or none, its event once, and no staging left."""
+    table, lag, given = BATCHES[batch]
+    if lag:
+        with HostLog.open(root) as log:
+            seed(root, log, [("2005-01-03", "21:00:00", False)]).close()
+    sent = root.parent / "batch.json"  # a file: 1,500 rows exceed a Windows command line
+    sent.write_text(json.dumps({"table": table, "lag": lag, "rows": given}))
+    child = subprocess.run(
+        [sys.executable, "-c", KILL, str(root), point, str(sent)], **CHILD, timeout=120
+    )
     assert child.returncode == 9
     assert len(list((root / "staging").iterdir())) == 2  # the folder and its dead producer's lock
+    schema = "world" if table in WORLD_KEYS else "results"
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
-        found = port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchone()[0]
-        events = log.read("SELECT event_id FROM event WHERE type = 'admission.committed'")
+        found = port.lake.execute(f"SELECT count(*) FROM lake.{schema}.{table}").fetchone()[0]
+        events = log.read(
+            "SELECT event_id FROM event e JOIN admission a ON a.admission_id = e.subject_id"
+            " WHERE e.type = 'admission.committed' AND a.dataset = ?",
+            (table,),
+        )
         port.close()
     assert (found, len(events)) == (rows, int(rows > 0))
     assert port.started["repaired"] == [row[0] for row in events if repaired]
@@ -257,6 +328,99 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     assert recorded == sorted(set(recorded))
     assert seen == [(0, None), (3, 1.0), (3, 2.0)]
     assert replaced == [(correction.admission_id,)]
+
+
+@pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")
+def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_trip(root):
+    """Every catalog table is admitted. A legacy row has no known_at and is known its rule's lag
+    after its market's first session close on or after its valid date; a batch out of a key's
+    known order, or whose listing changed market, is refused; typed columns read back whole."""
+    bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
+    action = {"listing_id": LISTING, "effective_date": "2024-01-06", "kind": "split"}
+    action |= {"action_id": "s1", "provisional": True, "provenance": "derived"}
+    symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
+    rule, noon = ("yf-close", 1), "2024-01-07 12:00:00+00"  # Saturday's action counts from Monday
+    batches = [
+        ("raw_bar", [bar, bar | {"session_date": "2024-01-08"}], rule),  # a half day's close
+        ("corporate_action", [action, action | {"action_id": "s2", "published_at": noon}], rule),
+        ("provider_symbol", [symbol, symbol | {"symbol": "B", "valid_to": "2024-01-08"}], rule),
+        ("execution_outcome", [outcome("2024-01-02"), outcome("2024-01-03", None)], None),
+        ("raw_bar", [bar], ("yf-close", 2)),
+        ("raw_bar", [bar | {"session_date": "2024-01-09"}], rule),
+        ("raw_bar", [bar | {"published_at": "2024-01-05 21:30:00+00"}], rule),  # before 22:00
+        ("listing", [{"listing_id": MOVED, "market": "XNYS"}], None),
+        ("listing", [{"listing_id": MOVED, "market": "XNAS"}], None),
+        ("raw_bar", [bar | {"listing_id": MOVED}], rule),
+        ("execution_outcome", [outcome("2024-01-02")], None),
+    ]
+    refused = []
+    with HostLog.open(root) as log:
+        port = seed(
+            root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
+        )
+        for table, rows, lag in batches:
+            with stage(root, table, "yf", rows, lag=lag) as staged:
+                try:
+                    port.commit(staged)
+                except DataError as error:
+                    refused.append(error.failure.code)
+        read = port.lake.execute
+        known = [
+            read(
+                "SELECT count(known_at), list(strftime(known_asof, '%d %H') ORDER BY known_asof)"
+                f" FROM lake.world.{table}"
+            ).fetchone()
+            for table in ("raw_bar", "corporate_action", "provider_symbol")
+        ]
+        carried = read(
+            "SELECT (SELECT list(DISTINCT adjusted_close) FROM lake.world.raw_bar),"
+            " provisional, provenance FROM lake.world.corporate_action"
+        ).fetchone()
+        outcomes = read(
+            "SELECT simple_return, holding_end_open_split_adjusted, epoch_us(formation_close_at)"
+            " FROM lake.results.execution_outcome ORDER BY 3"
+        ).fetchall()
+        ten_pm = 1_704_492_000_000_000  # 2024-01-05 22:00 UTC, the first bar's known_asof
+        seen = [
+            read(f"SELECT count(*) FROM raw_bar_asof({c})").fetchone()[0]
+            for c in (ten_pm - 1, ten_pm)
+        ]
+        tables = read(
+            "SELECT schema_name, list(table_name ORDER BY table_name) FROM duckdb_tables()"
+            " WHERE database_name = 'lake' GROUP BY ALL"
+        ).fetchall()
+        columns = read(
+            "SELECT column_name, data_type, is_nullable FROM duckdb_columns() WHERE database_name"
+            " = 'lake' AND table_name = 'execution_outcome' AND column_name <> 'artifact_id'"
+            " ORDER BY column_index"
+        ).fetchall()
+        admitted = log.read(
+            "SELECT json_extract(attrs, '$.lag_rule_version'), json_extract(attrs, '$.parts')"
+            " FROM event WHERE type = 'admission.committed' AND json_extract(attrs, '$.dataset')"
+            " = 'raw_bar'"
+        )
+        port.close()
+    schemas = dict(tables)
+    assert sorted(WORLD_KEYS) == [table for table in schemas["world"] if table != "superseded"]
+    assert set(RESULTS_KEYS) <= set(schemas["results"])
+    at = "TIMESTAMP WITH TIME ZONE"  # 0.2.7's types in its field order; only its doubles are null
+    types = ["VARCHAR"] * 2 + ["INTEGER"] + ["DATE", at] * 3 + ["SMALLINT"] + ["VARCHAR"] * 2
+    types += ["DOUBLE"] * 4 + ["VARCHAR"] * 3
+    assert [(kind, null) for _, kind, null in columns] == [(t, t == "DOUBLE") for t in types]
+    assert {name for name, *_ in columns} == set(outcome("2024-01-02")) - {"artifact_id"}
+    assert known == [(0, ["05 22", "08 19"]), (0, ["07 12", "08 19"]), (0, ["05 22", "08 19"])]
+    assert carried == ([0.5], True, "derived")
+    assert outcomes == [(0.1, None, 1_704_205_800_000_000), (None, None, 1_704_292_200_000_000)]
+    assert seen == [0, 1]
+    part = {"part": "2024", "min_known_asof_us": ten_pm, "max_known_asof_us": 1_704_740_400_000_000}
+    assert [(version, json.loads(parts)) for version, parts in admitted] == [(1, [part])]
+    assert refused == [
+        "data_layer.lag_rule_unknown",
+        "data_layer.legacy_anchor_missing",
+        "data_layer.admission_out_of_order",
+        "data_layer.legacy_anchor_missing",
+        "data_layer.result_key_present",
+    ]
 
 
 STAGE = """

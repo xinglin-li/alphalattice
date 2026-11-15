@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.store import delete, digested
+from alphalattice.kernel.data_layer.store import as_columns, delete, digested
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 
@@ -39,20 +39,40 @@ ROW = {"listing_id": str(uuid.UUID(int=7)), "session_date": "2024-01-02"}
 
 @pytest.mark.proves("data_layer.stage_refuses_what_it_cannot_admit")
 @pytest.mark.parametrize(
-    ("table", "rows", "code"),
+    ("table", "rows", "legacy", "code"),
     [
         pytest.param(
-            "raw_bar", [ROW, ROW | {"close": 2.0}], "admission_key_repeated", id="a key twice"
+            "raw_bar", [ROW, ROW | {"close": 2.0}], False, "admission_key_repeated", id="key twice"
         ),
-        pytest.param("sector", [ROW], "world_table_not_admitted", id="a table it does not admit"),
+        pytest.param("alpha_score", [ROW], False, "world_table_not_admitted", id="not admitted"),
+        pytest.param("session", [ROW], True, "legacy_table_unanchored", id="legacy, no date"),
     ],
 )
-def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, code):
-    """Two versions of one key in one admission, or a world table StorePort does not admit, are
-    refused by name; a row set it admits is digested with its provider."""
+def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, legacy, code):
+    """Two versions of one key in one admission, a table StorePort does not admit, or a legacy
+    batch with no valid date are refused by name; a world row is digested with its provider where
+    its key has one, and a results row is kept as it is."""
     with pytest.raises(DataError) as refused:
-        digested(table, "yf", rows)
+        digested(table, "yf", rows, legacy=legacy)
     assert refused.value.failure.code == f"data_layer.{code}"
-    assert [sorted(row) for row in digested("raw_bar", "yf", rows[:1])] == [
-        ["listing_id", "provider", "session_date", "value_digest"]
+    world = [
+        sorted(row) for table in ("raw_bar", "listing") for row in digested(table, "yf", [ROW])
     ]
+    assert world == [
+        ["listing_id", "provider", "session_date", "value_digest"],
+        ["listing_id", "session_date", "value_digest"],
+    ]
+    outcome = ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}
+    assert digested("execution_outcome", "yf", [outcome]) == [outcome]
+
+
+@pytest.mark.proves("data_layer.staging_keeps_every_rows_columns")
+def test_staging_keeps_a_column_only_a_later_row_carries():
+    """A field only a later row of an admission carries is kept as a column, empty in the rows
+    without it, as an interval's closing version carries its end."""
+    closing = ROW | {"valid_to": "2024-01-09"}
+    assert as_columns([ROW, closing]) == {
+        "listing_id": [ROW["listing_id"]] * 2,
+        "session_date": ["2024-01-02"] * 2,
+        "valid_to": [None, "2024-01-09"],
+    }

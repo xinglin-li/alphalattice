@@ -6516,6 +6516,26 @@
 "category": "INVALID_ARGUMENT",
 "classification_note": "StorePort deletes only a file or folder inside the data root's staging/, data/ or blobs/."
 },
+"data_layer.lag_rule_unknown": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy batch names a lag rule version the log does not hold with a whole lag; the rule is registered first."
+},
+"data_layer.admission_out_of_order": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A key's versions are admitted in their known_asof order, so a row known before a version already admitted is refused, never superseding it backwards."
+},
+"data_layer.legacy_anchor_missing": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy row's known time counts from its market's session close, so its listing, with one market, and its sessions are admitted first; the batch is refused whole."
+},
+"data_layer.legacy_table_unanchored": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Only a world table with a valid date takes legacy rows; a lag rule counts from that date."
+},
 "data_layer.live_ref_held": {
 "owner": "data_layer",
 "category": "FAILED_PRECONDITION",
@@ -6526,6 +6546,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Another Host holds the data root's lock and is its only writer; other processes attach read-only."
 },
+"data_layer.result_key_present": {
+"owner": "data_layer",
+"category": "ALREADY_EXISTS",
+"classification_note": "A results row is an artifact's body, written once; a key the catalog already holds is refused, never written twice."
+},
 "data_layer.staging_taken": {
 "owner": "data_layer",
 "category": "ABORTED",
@@ -6534,7 +6559,7 @@
 "data_layer.world_table_not_admitted": {
 "owner": "data_layer",
 "category": "INVALID_ARGUMENT",
-"classification_note": "StorePort admits only the world tables it names; a further table is added with its first source."
+"classification_note": "StorePort admits the world tables the catalog defines and the results tables on its allow-list; a further results table is added with its first store."
 },
 "data_tradability.adv20_warmup_unavailable": {
 "owner": "data_tradability",

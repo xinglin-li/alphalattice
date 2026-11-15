@@ -312,6 +312,13 @@
       "layer": "integration",
       "seconds": 15
     },
+    "data_layer.legacy_rows_are_known_from_their_lag_rule": {
+      "description": "StorePort admits every catalog table; a legacy row's known_at is empty and its known_asof its lag rule's lag after its market's next session close; typed columns, 0.2.7's outcome types included, read back as admitted.",
+      "lower_layer": "The lag rule is read from a real log's definition and the session close from a real DuckLake catalog.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.live_ref_bodies_are_never_collected": {
       "description": "A blob whose artifact a live reference holds is refused deletion by name and stays, while an unheld blob is deleted.",
       "lower_layer": "The hold is a live_ref row in a real SQLite log.",
@@ -369,7 +376,13 @@
       "seconds": 5
     },
     "data_layer.stage_refuses_what_it_cannot_admit": {
-      "description": "Staging refuses by name two versions of one key in one admission and a world table StorePort does not admit, before anything is staged.",
+      "description": "Staging refuses by name two versions of one key in one admission, a table StorePort does not admit and a legacy batch with no valid date, before anything is staged.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.staging_keeps_every_rows_columns": {
+      "description": "Staging writes every column any row of an admission carries, not only the first row's, so a field a later row gives is kept.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -395,11 +408,11 @@
       "seconds": 5
     },
     "data_layer.write_order_recovers_from_a_kill_at_each_point": {
-      "description": "A Host killed after an admission's files, catalog commit or event leaves no half snapshot: the next start finds all its rows or none, its event once, and no staging.",
+      "description": "A Host killed after an observed, legacy or results admission's files, catalog commit or event leaves no half snapshot: the next start finds all its rows or none, its event once, and no staging.",
       "lower_layer": "A kill is a real process's death between a real DuckLake commit and a real log append.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
-      "seconds": 30
+      "seconds": 60
     },
     "data_platform.session_authority_is_content_addressed": {
       "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
