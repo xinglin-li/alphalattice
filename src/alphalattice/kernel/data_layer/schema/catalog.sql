@@ -22,7 +22,8 @@ CREATE SCHEMA IF NOT EXISTS results;
 
 -- ===== world: what the outside world said, and when we knew it =====
 -- Append-only and bitemporal. Every table has its valid-time key and these five columns:
---   value_version  blake3 of the canonical row; a correction is a new version, and the old row stays
+--   value_digest  blake3 content digest of the canonical row; a correction is a new version of the fact,
+--                 identified by its digest, and the old row stays
 --   known_at       when we observed it: the admission's own moment. Empty on a row migrated from 0.2.7, whose
 --                  knowledge time nobody recorded; nothing is invented here (rule 17)
 --   known_asof     the knowledge time a point-in-time read uses, `known_asof <= cutoff`, on every row alike. It
@@ -40,10 +41,10 @@ CREATE SCHEMA IF NOT EXISTS results;
 -- the open one, known_asof from its start plus the lag, and the closing one, known_asof from its end plus the lag,
 -- so a cutoff between them sees the interval open and never its future end.
 
--- key: (listing_id, value_version)
+-- key: (listing_id, value_digest)
 CREATE TABLE world.listing (
   listing_id UUID NOT NULL,       -- our stable id; a symbol is an alias that changes
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   market VARCHAR NOT NULL,
   currency VARCHAR,
   issuer_name VARCHAR,
@@ -55,12 +56,12 @@ CREATE TABLE world.listing (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (provider, symbol, valid_from, value_version)
+-- key: (provider, symbol, valid_from, value_digest)
 CREATE TABLE world.provider_symbol (
   provider VARCHAR NOT NULL,
   symbol VARCHAR NOT NULL,
   valid_from DATE NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   valid_to DATE,
   listing_id UUID NOT NULL,
   known_at TIMESTAMPTZ,
@@ -69,12 +70,12 @@ CREATE TABLE world.provider_symbol (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (universe_id, listing_id, valid_from, value_version). Membership by interval: today's members never stand in for the past.
+-- key: (universe_id, listing_id, valid_from, value_digest). Membership by interval: today's members never stand in for the past.
 CREATE TABLE world.universe_member (
   universe_id VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
   valid_from DATE NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   valid_to DATE,
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
@@ -82,12 +83,12 @@ CREATE TABLE world.universe_member (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (scheme, listing_id, valid_from, value_version)
+-- key: (scheme, listing_id, valid_from, value_digest)
 CREATE TABLE world.sector (
   scheme VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
   valid_from DATE NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   valid_to DATE,
   sector_code VARCHAR NOT NULL,
   known_at TIMESTAMPTZ,
@@ -96,12 +97,12 @@ CREATE TABLE world.sector (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (provider, listing_id, session_date, value_version). The provider's raw daily bar; adjusted prices are computed.
+-- key: (provider, listing_id, session_date, value_digest). The provider's raw daily bar; adjusted prices are computed.
 CREATE TABLE world.raw_bar (
   provider VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
   session_date DATE NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   open DOUBLE,
   high DOUBLE,
   low DOUBLE,
@@ -115,7 +116,7 @@ CREATE TABLE world.raw_bar (
 );
 ALTER TABLE world.raw_bar SET PARTITIONED BY (year(session_date));
 
--- key: (provider, listing_id, effective_date, kind, action_id, value_version). An announced action is known from its
+-- key: (provider, listing_id, effective_date, kind, action_id, value_digest). An announced action is known from its
 -- announcement; an adjustment as of a date applies only actions effective by then.
 CREATE TABLE world.corporate_action (
   provider VARCHAR NOT NULL,
@@ -123,7 +124,7 @@ CREATE TABLE world.corporate_action (
   effective_date DATE NOT NULL,
   kind VARCHAR NOT NULL,          -- split | dividend | spinoff | delisting
   action_id VARCHAR NOT NULL,     -- the provider's id, or the digest of its defining fields: two same-day dividends stay two
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   ratio DOUBLE,
   amount DOUBLE,                  -- delisting: the cash per share paid at delisting, 0 when worthless
   currency VARCHAR,
@@ -135,11 +136,11 @@ CREATE TABLE world.corporate_action (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (market, session_date, value_version). Holidays, half days and time zones are versioned inputs.
+-- key: (market, session_date, value_digest). Holidays, half days and time zones are versioned inputs.
 CREATE TABLE world.session (
   market VARCHAR NOT NULL,
   session_date DATE NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   open_utc TIMESTAMPTZ,
   close_utc TIMESTAMPTZ,
   half_day BOOLEAN NOT NULL,
@@ -149,13 +150,13 @@ CREATE TABLE world.session (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (doc_digest, value_version). An outside evidence document (a filing; later, news); its body is under blobs/,
+-- key: (doc_digest, value_digest). An outside evidence document (a filing; later, news); its body is under blobs/,
 -- addressed by doc_digest. A withdrawal is a new version with retracted, as in every world table. The listings a
 -- document names are the index's entities. A legacy document without published_at is known from the time 0.2.7
 -- acquired it, never earlier.
 CREATE TABLE world.evidence_doc (
   doc_digest VARCHAR NOT NULL,
-  value_version VARCHAR NOT NULL,
+  value_digest VARCHAR NOT NULL,
   source VARCHAR NOT NULL,
   title VARCHAR,
   published_at TIMESTAMPTZ,
@@ -165,7 +166,7 @@ CREATE TABLE world.evidence_doc (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (table_name, value_version, admission_id). When a newer version of a key becomes known, the Host appends one
+-- key: (table_name, value_digest, admission_id). When a newer version of a key becomes known, the Host appends one
 -- row for the version it replaced, naming the moment its replacement became known, in the same catalog commit as the
 -- new row. Point-in-time reads anti-join it instead of ranking every version on read: Step M on mac1, 12.6 million bars
 -- with 126,000 corrections, read the newest cutoff in 1.7 s this way against 3.3 s by a window (0.7 s against 1.7 s at
@@ -174,7 +175,7 @@ CREATE TABLE world.evidence_doc (
 -- move together when the lag rule's version moves.
 CREATE TABLE world.superseded (
   table_name VARCHAR NOT NULL,           -- the world table, such as raw_bar
-  value_version VARCHAR NOT NULL,        -- the replaced row's version
+  value_digest VARCHAR NOT NULL,        -- the replaced row's digest
   admission_id VARCHAR NOT NULL,         -- the replaced row's admission: one value may return in a later admission
   superseded_asof TIMESTAMPTZ NOT NULL,  -- when its replacement became known
   by_admission_id VARCHAR NOT NULL       -- the admission that replaced it
