@@ -208,6 +208,28 @@ def test_a_test_that_reaches_an_os_only_api_names_its_os(case: str) -> None:
     )  # a kept test is not judged
 
 
+SHORT, LONG = "user/temp", "run/" + "r" * 100  # a user's temp, and a stage's run-allocated one
+SCANNER_TEMPS = {  # TEMP, LOCALAPPDATA, on Windows, the folder semgrep is given (None: TEMP)
+    "a-short-windows-temp-is-kept": (SHORT, "user/local", True, None),
+    "a-stage-run-temp-is-shortened": (LONG, "user/local", True, "user/local/Temp"),
+    "no-user-temp-keeps-the-default": (LONG, "", True, None),
+    "elsewhere-the-default-holds": (LONG, "", False, None),
+}
+
+
+@pytest.mark.proves("testing.the_semgrep_scan_gets_a_short_temp_on_windows")
+@pytest.mark.parametrize(
+    ("temp", "local", "windows", "given"), SCANNER_TEMPS.values(), ids=SCANNER_TEMPS.keys()
+)
+def test_the_semgrep_scan_gets_a_short_temp_on_windows(
+    temp: str, local: str, windows: bool, given: str | None
+) -> None:
+    """semgrep-core fails once its TEMP passes about 80 characters on Windows, as a stage's run
+    TEMP does: there the scan goes under the user's own temp folder; elsewhere nothing changes."""
+    found = shape.scanner_temp(temp, {"LOCALAPPDATA": local}, windows=windows)
+    assert (Path(found) if found else None) == (Path(given) if given else None)
+
+
 def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
     """New finding keys or swapped owners refuse, while retained and fixed findings pass."""
     row = dict(state="floor", mutation="shape", refusal_code="shape", owner="committee.py")

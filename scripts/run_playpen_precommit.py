@@ -263,8 +263,21 @@ def run_hooks() -> int:
             os.environ["SKIP"] = skipped
 
 
+def _keep_bytecode() -> None:
+    """Let the hook's Python children keep their bytecode outside the checkout.
+
+    A caller that forbids bytecode (PYTHONDONTWRITEBYTECODE, set to keep the tree clean) made
+    every check compile the product's modules again on every commit, seconds each. The cache
+    lives beside the pre-commit cache, never in the tree; the commit stage keeps its own setting.
+    """
+    os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
+    cache = Path(tempfile.gettempdir()) / "alphalattice-playpen-hooks" / "pycache"
+    os.environ["PYTHONPYCACHEPREFIX"] = str(cache)
+
+
 def main() -> int:
     try:
+        _keep_bytecode()
         _prepare_environment()
         _format_staged()
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

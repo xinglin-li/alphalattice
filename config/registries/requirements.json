@@ -528,6 +528,12 @@
       "seconds": 5,
       "lower_layer": "The check asks Git to merge a staged tree into a real develop branch, so only a real repository can show the conflict it refuses."
     },
+    "pipeline.a_gate_tool_off_its_lock_is_refused": {
+      "description": "If a gate tool's installed version differed from uv.lock, an older Ruff would pass a commit without the rules it lacks, with no word of why.",
+      "owner": "devtools.pipeline",
+      "layer": "unit",
+      "seconds": 1
+    },
     "pipeline.a_row_skipped_for_documents_names_them": {
       "description": "A provider may record a row as skipped for a change of documents only by naming those documents, and such a row classes no red.",
       "owner": "devtools.pipeline",
@@ -703,6 +709,19 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "The guard's main sequences its checks in one process over a tree, and no unit test of one check can show that all of them run to their ends."
+    },
+    "pipeline.the_hook_keeps_its_bytecode_outside_the_checkout": {
+      "description": "If the hook obeyed a caller's ban on bytecode, every check would compile the product's modules again on every commit; if it wrote bytecode into the checkout, the tree would carry caches.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The hook's runner imports pre-commit and the process helpers it launches the hooks with, which no unit test may load; its environment is set where it runs."
+    },
+    "pipeline.the_hook_leaves_whole_tree_checks_to_the_commit_stage": {
+      "description": "If the hook ran the checks that read the whole tree, each commit would wait half a minute; the commit stage runs them, and strict typing runs when its inputs are staged.",
+      "owner": "devtools.pipeline",
+      "layer": "unit",
+      "seconds": 1
     },
     "pipeline.the_whole_public_tree_closes_at_release": {
       "description": "If the release tree stopped closing over its manifest, the export would publish a file whose dependency users cannot get, with the gate silent.",
@@ -924,6 +943,12 @@
     },
     "testing.tests_grow_no_faster_than_source": {
       "description": "A change whose net test lines outgrow its net source past the policy's floor is refused by name, unless each new test's requirement carries the test manager's decided growth exception.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.the_semgrep_scan_gets_a_short_temp_on_windows": {
+      "description": "If semgrep ran under a stage's long TEMP on Windows, semgrep-core would fail on the path limit and the source rules would refuse every change unmeasured.",
       "owner": "devtools.testing",
       "layer": "unit",
       "seconds": 1

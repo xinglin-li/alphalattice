@@ -47,6 +47,6 @@ repos:
       # (LAWS TE7); a card is handed back on this gate and its smallest tests.
       - id: playpen-fast-guard
         name: playpen fast guard (changed files)
-        entry: python scripts/check_playpen.py --staged --fast
+        entry: python scripts/check_playpen.py --staged --fast --hook
         language: system
         pass_filenames: false

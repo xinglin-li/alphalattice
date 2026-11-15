@@ -335,9 +335,31 @@ def test_data_antipatterns(paths: list[str]) -> dict[str, int]:
     }
 
 
+SCANNER_TEMP_LIMIT = 64
+"""The longest TEMP semgrep is given on Windows: semgrep-core writes its own files under TEMP, and
+past about 80 characters they cross the 260-character path limit and it exits 2 (1114-T1-13)."""
+
+
+def scanner_temp(default: str, environ: dict[str, str], *, windows: bool) -> str | None:
+    """Where semgrep's scratch and its TEMP go: the default (None), unless on Windows it is longer
+    than SCANNER_TEMP_LIMIT, as a stage's run-allocated TEMP is; then the user's own temp folder."""
+    if not windows or len(default) <= SCANNER_TEMP_LIMIT or not environ.get("LOCALAPPDATA"):
+        return None
+    return str(Path(environ["LOCALAPPDATA"]) / "Temp")
+
+
+def _scanner_folder(prefix: str) -> tempfile.TemporaryDirectory[str]:
+    return tempfile.TemporaryDirectory(
+        prefix=prefix,
+        dir=scanner_temp(tempfile.gettempdir(), dict(os.environ), windows=os.name == "nt"),
+    )
+
+
 def _semgrep_environment(root: Path) -> dict[str, str]:
+    short = scanner_temp(tempfile.gettempdir(), dict(os.environ), windows=os.name == "nt")
     return {
         **os.environ,
+        **({"TEMP": short, "TMP": short} if short else {}),
         "SEMGREP_SETTINGS_FILE": str(root / "settings.yml"),
         "SEMGREP_LOG_FILE": str(root / "semgrep.log"),
         "SEMGREP_VERSION_CACHE_PATH": str(root / "version"),
@@ -345,7 +367,7 @@ def _semgrep_environment(root: Path) -> dict[str, str]:
 
 
 def _semgrep_selftest(rules: str, cases: str) -> None:
-    with tempfile.TemporaryDirectory(prefix="antipattern-cases-") as folder:
+    with _scanner_folder("antipattern-cases-") as folder:
         root = Path(folder)
         (root / "rules.yml").write_text(rules, encoding="utf-8")
         (root / "rules.py").write_text(cases, encoding="utf-8")
@@ -390,7 +412,7 @@ def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int
     """Run the slower rules on the same committed or staged source snapshots."""
     if not snapshots:
         return {}
-    with tempfile.TemporaryDirectory(prefix="antipattern-") as folder:
+    with _scanner_folder("antipattern-") as folder:
         root = Path(folder)
         config = root / "rules.yml"
         config.write_text(rules, encoding="utf-8")

@@ -7,6 +7,7 @@ import datetime as dt
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,26 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
+COMMIT_STAGE_ONLY = frozenset(
+    {
+        "boundaries",
+        "claude-host-materialization",
+        "docstrings",
+        "evidence-bindings",
+        "identity-closures",
+        "import-contracts",
+        "operation-registry",
+        "scoped-structural",
+    }
+)
+"""The guard's checks that read the whole tree or the product's import graph to judge a change.
+Triggered by the source they read, they would run on nearly every edit, so the hook
+(`--staged --fast --hook`) leaves them out; the commit stage and the queue run the same guard
+without --hook over the card's whole change, so every one of them before READY."""
+STRICT_INPUTS = frozenset({"config/mypy-strict-modules.txt", "pyproject.toml", "uv.lock"})
+"""Strict mypy's inputs besides its modules: their list, its settings, its version and stubs.
+With follow_imports = "skip" an unlisted module types as Any, so these and the listed modules
+are all it reads; staged, the hook runs it over its whole target set."""
 STRUCTURAL_TESTS = (
     ROOT / "tests" / "structural" / "test_structural_guards.py",
     ROOT / "tests" / "structural" / "test_playpen_gate_routing.py",
@@ -137,19 +158,66 @@ def _run(label: str, *args: str) -> None:
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
 
 
+def runs_at_commit(label: str, staged: Iterable[str], strict: Iterable[str] = ()) -> bool:
+    """Whether the hook runs this check on these staged paths: never one the commit stage owns
+    (COMMIT_STAGE_ONLY), strict mypy when a path it reads is staged, every other check (it judges
+    the staged files themselves) always. ``strict`` is the strict-typing list, files and folders."""
+    if label in COMMIT_STAGE_ONLY:
+        return False
+    if label != "strict-mypy":
+        return True
+    listed = tuple(strict)
+    folders = tuple(name.rstrip("/") + "/" for name in listed)
+    return any(p in STRICT_INPUTS or p in listed or p.startswith(folders) for p in staged)
+
+
+def commit_scope(*, commit: bool) -> Callable[[str], bool]:
+    """At commit (the hook), whether a check runs on the staged paths, naming each one it skips;
+    elsewhere (the commit stage, the full gate) every check runs."""
+    if not commit:
+        return lambda label: True
+    staged = _git_lines("diff", "--cached", "--name-only", "--no-renames")
+    strict = _strict_targets()
+
+    def runs(label: str) -> bool:
+        if runs_at_commit(label, staged, strict):
+            return True
+        print(f"PLAYPEN_GATE_SKIPPED {label}: the commit stage runs it", flush=True)
+        return False
+
+    return runs
+
+
+def _check_host_materialization(at_commit: Callable[[str], bool]) -> None:
+    """The host files' drift check, a stop before the static checks: they read its derivatives."""
+    if at_commit("claude-host-materialization"):
+        _run(
+            "claude-host-materialization",
+            sys.executable,
+            str(ROOT / "scripts" / "materialize_claude_host.py"),
+            "--check",
+        )
+
+
 def budget_base(environ: Mapping[str, str]) -> str:
     """The test budget's base: the tip a merge lands on, as its committer names it, else develop."""
     return environ.get("ALPHALATTICE_TEST_BUDGET_BASE") or "develop"
 
 
-def static_refusals(steps: Iterable[tuple[str, Callable[[], object]]]) -> list[str]:
-    """Run each static check to its end, in order, and return the labels that refused.
+def static_refusals(
+    steps: Iterable[tuple[str, Callable[[], object]]],
+    runs: Callable[[str], bool] = lambda label: True,
+) -> list[str]:
+    """Run each static check that ``runs`` admits to its end, in order, and return the labels
+    that refused.
 
     A command step returns None and raises CalledProcessError when it refuses; a guard returns
     its verdict. A check that cannot run is named as unmeasured and counts as refused.
     """
     refused = []
     for label, check in steps:
+        if not runs(label):
+            continue
         try:
             passed = check() is not False
         except subprocess.CalledProcessError:
@@ -779,6 +847,50 @@ def _develop_conflicts(*, staged: bool, target: str = "develop") -> list[str]:
     raise RuntimeError(f"git merge-tree exited {done.returncode}: {done.stderr.strip()[:200]}")
 
 
+GATE_TOOLS = (
+    "actionlint-py",
+    "import-linter",
+    "mypy",
+    "pre-commit",
+    "pre-commit-hooks",
+    "ruff",
+    "semgrep",
+    "shellcheck-py",
+)
+"""The Python packages the gate's checks run; each must be the version uv.lock pins."""
+
+
+def tool_version_drift(lock: str, installed: Callable[[str], str | None]) -> list[str]:
+    """Each gate tool whose installed version is not uv.lock's, or that is missing. An older Ruff
+    passes the hook without the rules it lacks (11-14: 0.15.22 against 0.17.4 missed five)."""
+    found = []
+    for name in GATE_TOOLS:
+        pin = re.search(rf'^name = "{re.escape(name)}"\nversion = "([^"]+)"$', lock, re.M)
+        have = installed(name)
+        if pin is None or have != pin[1]:
+            locked = pin[1] if pin else "not in uv.lock"
+            found.append(f"{name} {have or 'missing'} installed, {locked} locked")
+    return found
+
+
+def _check_tool_versions() -> bool:
+    """Refuse a gate tool off its lock, naming the sync that restores it."""
+    from importlib import metadata
+
+    def installed(name: str) -> str | None:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            return None
+
+    started = perf_counter()
+    found = tool_version_drift((ROOT / "uv.lock").read_text(encoding="utf-8"), installed)
+    for line in found:
+        print(f"TOOL-VERSION {line}: run uv sync --locked --all-extras", flush=True)
+    print(f"PLAYPEN_GATE_TIMING tool-versions {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
 def _check_develop_conflict(*, staged: bool, base_ref: str = "develop") -> bool:
     """Refuse a change that would conflict with develop, as the harness's commit does with main."""
     started = perf_counter()
@@ -1027,10 +1139,9 @@ def _require_private_structural_inputs() -> bool:
     return False
 
 
-def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environment) -> int:
-    """Run the gate; `ensure_environment` enters the workspace .venv (a test passes its own)."""
-    ensure_environment()
-    gate_started, parser = perf_counter(), argparse.ArgumentParser()
+def _parser() -> argparse.ArgumentParser:
+    """The gate's command line."""
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--staged",
         action="store_true",
@@ -1046,12 +1157,6 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         default=budget_base(os.environ),
         help="base commit for the test budget (default: $ALPHALATTICE_TEST_BUDGET_BASE, the tip a "
         "merge commit lands on when it is not develop, else develop)",
-    )
-    parser.add_argument(
-        "--semgrep",
-        action="store_true",
-        help="with --fast, still run the semgrep source rules on the change: the commit stage's "
-        "guard, whose bound holds their seconds; the commit hook leaves them out",
     )
     parser.add_argument(
         "--fast",
@@ -1072,6 +1177,22 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             "repeated here."
         ),
     )
+    parser.add_argument(
+        "--hook",
+        action="store_true",
+        help=(
+            "with --staged, the commit hook: the whole-tree checks (COMMIT_STAGE_ONLY) and the "
+            "semgrep source rules (4 s on one file) are left to the commit stage and the queue, "
+            "which run them all; strict mypy runs when a path it reads is staged"
+        ),
+    )
+    return parser
+
+
+def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environment) -> int:
+    """Run the gate; `ensure_environment` enters the workspace .venv (a test passes its own)."""
+    ensure_environment()
+    gate_started, parser = perf_counter(), _parser()
     args = parser.parse_args()
     if args.strict_mypy_only:
         _run(
@@ -1116,13 +1237,9 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
         return 0
 
+    at_commit = commit_scope(commit=args.hook and args.staged)  # the stage and queue run all
     if args.fast:
-        _run(
-            "claude-host-materialization",
-            sys.executable,
-            str(ROOT / "scripts" / "materialize_claude_host.py"),
-            "--check",
-        )
+        _check_host_materialization(at_commit)
     if not args.fast and not _require_private_structural_inputs():
         return 1
     # The static checks below each read the same immutable tree and none feeds another, so
@@ -1131,8 +1248,10 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     # read the derivatives it verifies.
     python_targets = _python_targets(staged=args.staged, all_python=args.all_python)
     ruff = (sys.executable, "-m", "ruff")
-    lint = (*ruff, "check", "--config", "pyproject.toml")
-    form = (*ruff, "format", "--check", "--config", "pyproject.toml")
+    lint, form = (
+        (*ruff, "check", "--config", "pyproject.toml"),
+        (*ruff, "format", "--check", "--config", "pyproject.toml"),
+    )
     # Always the full strict set, never a subset. With follow_imports = "skip",
     # a module absent from the command line types as Any, so narrowing the list
     # both invents errors and hides real ones -- it is not the same check on
@@ -1140,6 +1259,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     # about a second, and was never what made this gate slow.
     mypy = (sys.executable, "-m", "mypy", "--config-file", "pyproject.toml")
     steps: list[tuple[str, Callable[[], object]]] = [
+        ("tool-versions", _check_tool_versions),
         *(
             [
                 (
@@ -1185,7 +1305,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         (
             "test-shape",
             lambda: _check_test_shape(
-                staged=args.staged, base_ref=args.base, semgrep=not args.fast or args.semgrep
+                staged=args.staged, base_ref=args.base, semgrep=not args.hook
             ),
         ),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
@@ -1194,7 +1314,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             lambda: _check_develop_conflict(staged=args.staged, base_ref=args.base),
         ),
     ]
-    refused = static_refusals(steps)
+    refused = static_refusals(steps, runs=at_commit)
     if refused:
         print(
             f"PLAYPEN_GATE_REFUSED {len(refused)} static check(s): {', '.join(refused)}. "
