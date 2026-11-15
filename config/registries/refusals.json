@@ -6429,6 +6429,76 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "A data root database was made by another schema version; it is only read and never migrated or rebuilt in place."
 },
+"data_layer.artifact_body_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An inline artifact is appended with its body, in the same unit as its event."
+},
+"data_layer.artifact_trial_unregistered": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A trial's artifact is appended after the trial's registration."
+},
+"data_layer.artifact_body_unexpected": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Only an inline artifact's event carries a body."
+},
+"data_layer.chain_broken": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The log's events no longer fold to its chain head; the Host does not open it, and it is restored from its last backup."
+},
+"data_layer.definition_not_owner": {
+"owner": "data_layer",
+"category": "PERMISSION_DENIED",
+"classification_note": "A definition's status is moved only by its owning node, the person or the host."
+},
+"data_layer.definition_superseded": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "New work never writes under a superseded definition version; it writes under its successor."
+},
+"data_layer.event_attrs_form": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A field readers cast to a number, or an admission's parts, has the wrong form."
+},
+"data_layer.event_attrs_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event lacks an attribute its registered type requires."
+},
+"data_layer.event_secret": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's attributes, text or inline body would make a credential permanent; a keychain reference goes in its place."
+},
+"data_layer.event_text_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event whose type requires a text, or a live event naming a text digest, is appended without its text."
+},
+"data_layer.event_text_unbound": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's text does not match the digest the event names."
+},
+"data_layer.event_text_unexpected": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event names a text its registered type does not carry."
+},
+"data_layer.event_type_unregistered": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's type and version are not registered event types."
+},
+"data_layer.host_running": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Another Host holds the data root's lock and is its only writer; other processes attach read-only."
+},
 "data_tradability.adv20_warmup_unavailable": {
 "owner": "data_tradability",
 "category": "FAILED_PRECONDITION"

@@ -3674,13 +3674,15 @@
       ]
     },
     "data-root": {
-      "summary": "the 0.2.8 data root's databases: the event log with its definition registry, and the search index",
+      "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), index.sqlite (index.sql) and the DuckLake catalog (catalog.sql)",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) and machine/host.lock, the one Host's lock naming its holder",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [
+        "data_layer.log:HostLog",
+        "data_layer.log:_take_lock",
         "data_layer.root:_database"
       ],
       "readers": []
@@ -3708,6 +3710,7 @@
     "product_host.composition.web_launcher:main": "opens the person's browser at a URL with webbrowser.open",
     "alternative_evidence.runtime.task_adapter:AlternativeEvidenceDocumentTaskAdapter": "applies a planned preparation's session width in memory (PREPARATIONS.open)",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
-    "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)"
+    "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
+    "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes"
   }
 }

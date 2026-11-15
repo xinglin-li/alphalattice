@@ -1,0 +1,506 @@
+"""The Host's one write path into log.sqlite, and the lock that makes it the only one.
+
+One Host per machine holds the data root's lock (machine/host.lock) and is the only writer; any
+other process reads through `attach`, read-only, and a second `HostLog.open` is refused by name
+with the holder it found. Every row of log.sqlite comes from `HostLog.append`: it admits the event
+(admit.py), then writes the event, its text, the chain's new head, its projection and an inline
+artifact's body as one unit, all of it or none of it.
+
+Ordinary events commit in batches under synchronous NORMAL: a batch commits at BATCH_SIZE events,
+BATCH_SECONDS after its first, at `flush` and at `close`. Each event is its own savepoint inside
+the batch, so a refused event leaves the batch's others whole. An event whose type is durable in
+the registry commits at once under FULL, after the batch before it. A crash loses at most the open
+batch, never part of an event, and the chain verifies after it.
+
+This card projects the registry's own two event types, the chain's checkpoint and
+`artifact.produced`, whose profile row an inline body's foreign key needs in the same unit; every
+other type's projection is added by its own card, and its events are kept meanwhile.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import sqlite3
+import sys
+import threading
+import time
+import uuid
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import IO, Any, Final
+
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.admit import admit
+from alphalattice.kernel.data_layer.chain import (
+    CHAIN_VERSION,
+    ENVELOPE,
+    LINKS,
+    canonical,
+    digest,
+    fold,
+    fold_segments,
+)
+
+BATCH_SIZE: Final = 64
+"""Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256)."""
+BATCH_SECONDS: Final = 0.2
+"""The longest an ordinary event waits for its batch's commit."""
+ENDED: Final = ("completed", "failed", "cancelled")
+LOCK_NAME: Final = "host.lock"
+LOCK_AT: Final = 1 << 30
+"""The byte a Windows Host locks: past any name the lock file holds."""
+
+
+def uuid7(now_ns: int | None = None) -> str:
+    """A UUIDv7 (RFC 9562): 48 bits of Unix milliseconds, then 74 random bits."""
+    ms = (time.time_ns() if now_ns is None else now_ns) // 1_000_000
+    value = (ms & (1 << 48) - 1) << 80 | 0x7 << 76 | secrets.randbits(12) << 64
+    return str(uuid.UUID(int=value | 0b10 << 62 | secrets.randbits(62)))
+
+
+def envelope(
+    type_: str,
+    subject: tuple[str | None, str | None] = (None, None),
+    attrs: Mapping[str, Any] | None = None,
+    *,
+    text: str | None = None,
+    phase: str | None = None,
+    workspace: str | None = None,
+    actor: tuple[str, str] = ("host", "host"),
+    node: str = "kernel",
+    trace: str | None = None,
+    span: str | None = None,
+    parent_span: str | None = None,
+    cause: int | None = None,
+    started_us: int | None = None,
+    occurred_us: int | None = None,
+) -> dict[str, Any]:
+    """A new event's envelope, with a UUIDv7 id and, when it carries text, the text's digest."""
+    now = time.time_ns() // 1000
+    at = now if occurred_us is None else occurred_us
+    return {
+        "event_id": uuid7(),
+        "type": type_,
+        "type_version": 1,
+        "phase": phase,
+        "occurred_us": at,
+        "started_us": (at if started_us is None else started_us) if phase in ENDED else None,
+        "recorded_us": now,
+        "actor_kind": actor[0],
+        "actor_id": actor[1],
+        "node": node,
+        "workspace_id": workspace,
+        "subject_kind": subject[0],
+        "subject_id": subject[1],
+        "trace_id": trace or uuid.uuid4().hex,
+        "span_id": span or (secrets.token_hex(8) if phase else None),
+        "parent_span_id": parent_span,
+        "cause_seq": cause,
+        "attrs": canonical(dict(attrs or {})).decode(),
+        "text_digest": None if text is None else digest(text.encode()),
+        "legacy": 0,
+    }
+
+
+class HostLog:
+    """The machine's one writer of log.sqlite; open it with `HostLog.open`."""
+
+    def __init__(self, con: sqlite3.Connection, lock: IO[bytes], *, batch: int, seconds: float):
+        """Hold `con` and the data root's `lock`; `open` is the way to make one."""
+        self._con, self._lock_file = con, lock
+        self._batch, self._seconds = batch, seconds
+        self._guard = threading.RLock()
+        self._pending = 0
+        self._timer: threading.Timer | None = None
+
+    @classmethod
+    def open(
+        cls,
+        root: Path,
+        *,
+        batch: int = BATCH_SIZE,
+        seconds: float = BATCH_SECONDS,
+        now_us: int | None = None,
+    ) -> HostLog:
+        """Take the data root's lock and open its log as the only writer.
+
+        It verifies the chain from its last checkpoint, seeds a new log with `registry.seeded`,
+        and checkpoints the head in a month that has none. Refused by name:
+        `data_layer.host_running` when another Host holds the lock, `data_layer.chain_broken` when
+        the log no longer matches its head.
+        """
+        lock = _take_lock(root / "machine" / LOCK_NAME)
+        try:
+            con = sqlite3.connect(
+                root / "machine" / "log.sqlite", isolation_level=None, check_same_thread=False
+            )
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA foreign_keys = ON")
+            con.execute("PRAGMA synchronous = NORMAL")
+            if not verify_from_checkpoint(con):
+                con.close()
+                raise DataError(
+                    f"{root / 'machine' / 'log.sqlite'} does not match its chain head; restore "
+                    "it from its last backup",
+                    code="data_layer.chain_broken",
+                )
+        except BaseException:
+            lock.close()
+            raise
+        log = cls(con, lock, batch=batch, seconds=seconds)
+        if con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None:
+            count = con.execute("SELECT count(*) FROM definition").fetchone()[0]
+            log.append(envelope("registry.seeded", attrs={"count": count}), None)
+        log._checkpoint_month(time.time_ns() // 1000 if now_us is None else now_us)
+        log.flush()
+        return log
+
+    def _checkpoint_month(self, now_us: int) -> None:
+        """Keep the head at its moment once a month, so start-up folds at most a month of events."""
+        month = "strftime('%Y-%m', ? / 1000000, 'unixepoch')"
+        newest = "SELECT max(at_us) FROM chain_checkpoint WHERE kind = 'month'"
+        if self._con.execute(
+            f"SELECT {month} = {month}", (now_us, self._newest(newest))
+        ).fetchone()[0]:
+            return
+        seq, head = self._con.execute("SELECT seq, head FROM chain_head WHERE id = 1").fetchone()
+        attrs = {"kind": "month", "seq": seq, "head": head, "chain_version": CHAIN_VERSION}
+        self.append(envelope("chain.checkpointed", attrs=attrs, occurred_us=now_us), None)
+
+    def _newest(self, sql: str) -> int:
+        found = self._con.execute(sql).fetchone()[0]
+        return -1 if found is None else int(found)
+
+    def append(
+        self,
+        row: Mapping[str, Any],
+        text: str | None = None,
+        body: bytes | None = None,
+        *,
+        live: bool = True,
+    ) -> int:
+        """Admit one event and write it as one unit; returns its seq.
+
+        The unit is the event, its text, the chain, its projection and an inline artifact's body.
+        A durable type is committed on return; an ordinary one with its batch.
+        """
+        with self._guard:
+            con = self._con
+            spec = _spec(con, row)
+            admit(row, text, spec, _superseded(con), live=live, body=body)
+            durable = bool(spec.get("durable"))
+            if durable:
+                self._commit()
+                con.execute("PRAGMA synchronous = FULL")
+            try:
+                if self._pending == 0:
+                    con.execute("BEGIN IMMEDIATE")
+                    self._arm()
+                con.execute("SAVEPOINT event")
+                try:
+                    seq = _write(con, row, text, body, live=live)
+                except BaseException:
+                    con.execute("ROLLBACK TO event")
+                    con.execute("RELEASE event")
+                    if self._pending == 0:
+                        self._end("ROLLBACK")
+                    raise
+                con.execute("RELEASE event")
+                self._pending += 1
+                if durable or self._pending >= self._batch:
+                    self._commit()
+            finally:
+                if durable:
+                    con.execute("PRAGMA synchronous = NORMAL")
+            return seq
+
+    def record(
+        self,
+        type_: str,
+        subject: tuple[str | None, str | None] = (None, None),
+        attrs: Mapping[str, Any] | None = None,
+        *,
+        text: str | None = None,
+        body: bytes | None = None,
+        **more: Any,
+    ) -> int:
+        """Append a new event of `type_`, its envelope made by `envelope`."""
+        return self.append(envelope(type_, subject, attrs, text=text, **more), text, body)
+
+    def flush(self) -> None:
+        """Commit the open batch, if any."""
+        with self._guard:
+            self._commit()
+
+    def read(self, sql: str, args: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+        """Rows as the Host sees them, its open batch included."""
+        with self._guard:
+            return self._con.execute(sql, args).fetchall()
+
+    def close(self) -> None:
+        """Commit the open batch and release the data root's lock."""
+        with self._guard:
+            self._commit()
+            self._con.close()
+            self._lock_file.close()
+
+    def __enter__(self) -> HostLog:
+        """The log itself; leaving the block closes it."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the log, committing its batch and releasing the lock."""
+        self.close()
+
+    def _arm(self) -> None:
+        self._timer = threading.Timer(self._seconds, self.flush)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _commit(self) -> None:
+        if self._pending:
+            self._end("COMMIT")
+
+    def _end(self, statement: str) -> None:
+        self._con.execute(statement)
+        self._pending = 0
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+
+def attach(root: Path) -> sqlite3.Connection:
+    """A read-only connection to the data root's log, for any process but the Host."""
+    uri = f"file:{(root / 'machine' / 'log.sqlite').as_posix()}?mode=ro"
+    con = sqlite3.connect(uri, uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def verify_from_checkpoint(con: sqlite3.Connection) -> bool:
+    """Whether the events after the last checkpoint fold from its head to the stored head."""
+    stored = con.execute("SELECT head, chain_version FROM chain_head WHERE id = 1").fetchone()
+    if stored is None:
+        return con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None
+    last = con.execute("SELECT seq, head FROM chain_checkpoint ORDER BY seq DESC LIMIT 1")
+    start, head = last.fetchone() or (0, "")
+    events = con.execute("SELECT * FROM event WHERE seq > ? ORDER BY seq", (start,))
+    return bool(fold(head, events, stored[1]) == stored[0])
+
+
+def verify_whole(con: sqlite3.Connection) -> bool:
+    """Whether the whole log, each segment under its checkpoint's encoding, folds to the head."""
+    stored = con.execute("SELECT head, chain_version FROM chain_head WHERE id = 1").fetchone()
+    if stored is None:
+        return con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None
+    bounds = con.execute("SELECT seq, chain_version FROM chain_checkpoint ORDER BY seq").fetchall()
+    events = con.execute("SELECT * FROM event ORDER BY seq")
+    return bool(fold_segments(events, [(b[0], b[1]) for b in bounds], stored[1]) == stored[0])
+
+
+def _take_lock(path: Path) -> IO[bytes]:
+    """The data root's lock, held by its open handle for the Host's life.
+
+    The locked byte lies past the file's end (LOCK_AT), so the holder's name at its start stays
+    readable to the process the refusal names it to.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+b", buffering=0)
+    try:
+        _lock_byte(handle)
+    except OSError as error:
+        handle.seek(0)
+        holder = handle.read(512).decode(errors="replace").strip() or "an unnamed process"
+        handle.close()
+        raise DataError(
+            f"another Host ({holder}) holds this data root and is its only writer; read it "
+            "through data_layer.log.attach, or stop that Host first",
+            code="data_layer.host_running",
+        ) from error
+    handle.truncate(0)
+    handle.write(f"pid {os.getpid()}, {Path(sys.argv[0]).name or 'python'}".encode())
+    return handle
+
+
+def _lock_byte(handle: IO[bytes]) -> None:
+    if sys.platform == "win32":
+        import msvcrt  # lazy: the module exists only on Windows
+
+        handle.seek(LOCK_AT)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl  # lazy: the module exists only on POSIX
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _spec(con: sqlite3.Connection, row: Mapping[str, Any]) -> dict[str, Any]:
+    found = con.execute(
+        "SELECT spec FROM definition WHERE family = 'event_type' AND name = ? AND version = ?",
+        (row["type"], row["type_version"]),
+    ).fetchone()
+    if found is None:
+        raise DataError(
+            f"{row['type']} v{row['type_version']} is not a registered event type",
+            code="data_layer.event_type_unregistered",
+        )
+    spec: dict[str, Any] = json.loads(found[0])
+    return spec
+
+
+def _superseded(con: sqlite3.Connection) -> Callable[[str, Any, Any], bool]:
+    def superseded(family: str, name: Any, version: Any) -> bool:
+        sql = "SELECT 1 FROM definition WHERE family = ? AND name = ? AND version = ?"
+        found = con.execute(f"{sql} AND status = 'superseded'", (family, name, version))
+        return found.fetchone() is not None
+
+    return superseded
+
+
+def _write(
+    con: sqlite3.Connection,
+    row: Mapping[str, Any],
+    text: str | None,
+    body: bytes | None,
+    *,
+    live: bool,
+) -> int:
+    """The unit `append` commits: the event, its text, the chain, the projection, the body."""
+    columns = [column for column in ENVELOPE if column in row]
+    insert = f"INSERT INTO event ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})"
+    seq = con.execute(insert, [row[column] for column in columns]).lastrowid
+    assert seq is not None  # an INSERT's rowid
+    if text is not None:
+        con.execute("INSERT INTO event_text VALUES (?, ?)", (seq, text))
+    stored = con.execute("SELECT * FROM event WHERE seq = ?", (seq,)).fetchone()
+    _fold(con, stored)
+    _project(con, stored, text)
+    _body(con, stored, body, live=live)
+    return seq
+
+
+def _fold(con: sqlite3.Connection, event: sqlite3.Row) -> None:
+    head = con.execute("SELECT head FROM chain_head WHERE id = 1").fetchone()
+    new = LINKS[CHAIN_VERSION](head[0] if head else "", event)
+    con.execute(
+        "INSERT OR REPLACE INTO chain_head VALUES (1, ?, ?, ?)", (event["seq"], new, CHAIN_VERSION)
+    )
+
+
+def _project(con: sqlite3.Connection, event: sqlite3.Row, text: str | None) -> None:
+    handler = PROJECTIONS.get(event["type"])
+    if handler is not None:
+        handler(con, event, json.loads(event["attrs"]), text)
+
+
+def _body(con: sqlite3.Connection, event: sqlite3.Row, body: bytes | None, *, live: bool) -> None:
+    attrs = json.loads(event["attrs"])
+    inline = event["type"] == "artifact.produced" and attrs.get("storage") == "inline"
+    if body is not None and not inline:
+        raise DataError(
+            "only an inline artifact carries a body", code="data_layer.artifact_body_unexpected"
+        )
+    if inline and body is None and live:
+        raise DataError(
+            "an inline artifact is written with its body", code="data_layer.artifact_body_missing"
+        )
+    if body is not None:
+        con.execute("INSERT INTO artifact_body VALUES (?, ?)", (event["subject_id"], body))
+
+
+def _json(value: Any) -> str | None:
+    return None if value is None else canonical(value).decode()
+
+
+def _definition(
+    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
+) -> None:
+    d = json.loads(text or "{}")
+    values = [d["family"], d["name"], d["version"], d.get("status", "experimental")]
+    values += [d.get("relation"), _json(d.get("conversion")), _json(d.get("spec", {})), d["text"]]
+    values += [d.get("code_ref"), _json(d.get("golden")), d.get("owner", event["node"])]
+    con.execute(
+        f"INSERT INTO definition VALUES ({', '.join('?' * 13)}, NULL)",
+        (*values, event["seq"], event["seq"]),
+    )
+
+
+def _definition_status(
+    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
+) -> None:
+    key = (attrs["family"], attrs["name"], attrs["version"])
+    where = "WHERE family = ? AND name = ? AND version = ?"
+    owner = con.execute(f"SELECT owner FROM definition {where}", key).fetchone()
+    if owner is None or (
+        owner[0] != event["node"] and event["actor_kind"] not in ("person", "host")
+    ):
+        raise DataError(
+            "a definition's status is moved by its owner, the person or the host",
+            code="data_layer.definition_not_owner",
+        )
+    con.execute(
+        f"UPDATE definition SET status = ?, status_seq = ?, status_reason = ? {where}",
+        (attrs["status"], event["seq"], attrs.get("reason"), *key),
+    )
+
+
+def _checkpoint(
+    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
+) -> None:
+    con.execute(
+        "INSERT INTO chain_checkpoint VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            attrs["seq"],
+            attrs["kind"],
+            attrs["head"],
+            event["occurred_us"],
+            attrs.get("note"),
+            attrs.get("chain_version", CHAIN_VERSION),
+        ),
+    )
+
+
+def _artifact(
+    con: sqlite3.Connection, event: sqlite3.Row, attrs: dict[str, Any], text: str | None
+) -> None:
+    """An artifact's profile: what it means, how it is identified and where its body is."""
+    trial = attrs.get("trial_id")
+    if trial and con.execute("SELECT 1 FROM trial WHERE trial_id = ?", (trial,)).fetchone() is None:
+        raise DataError(
+            "a trial's artifact follows the trial's registration",
+            code="data_layer.artifact_trial_unregistered",
+        )
+    values = [
+        event["subject_id"],
+        attrs["identity_kind"],
+        attrs["type"],
+        attrs.get("type_version", 1),
+    ]
+    values += [attrs["meaning"], attrs.get("recipe_key"), attrs.get("selection_id"), trial]
+    values += [_json(attrs.get("shape")), attrs.get("valid_from"), attrs.get("valid_to")]
+    values += [attrs.get("row_count"), attrs.get("size_bytes"), attrs.get("content_digest")]
+    state = "never_stored" if attrs["storage"] == "none" else "present"
+    con.execute(
+        "INSERT INTO artifact (artifact_id, identity_kind, type, type_version, meaning, recipe_key,"
+        " selection_id, trial_id, shape, valid_from, valid_to, row_count, size_bytes,"
+        f" content_digest, storage, body_state, produced_seq) VALUES ({', '.join('?' * 17)})",
+        (*values, attrs["storage"], state, event["seq"]),
+    )
+    if attrs["storage"] != "none":  # a kept trial keeps what it produces later too
+        con.execute(
+            "INSERT OR IGNORE INTO live_ref SELECT ?, 'trial', trial_id, ? FROM trial"
+            " WHERE trial_id = ? AND kept = 1",
+            (event["subject_id"], event["seq"], trial),
+        )
+
+
+Projection = Callable[[sqlite3.Connection, sqlite3.Row, dict[str, Any], str | None], None]
+PROJECTIONS: Final[dict[str, Projection]] = {
+    "definition.registered": _definition,
+    "definition.status_changed": _definition_status,
+    "chain.checkpointed": _checkpoint,
+    "artifact.produced": _artifact,
+}
+"""Each projected event type's handler; it reads the event, its attributes and its text only."""

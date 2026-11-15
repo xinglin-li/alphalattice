@@ -4915,10 +4915,14 @@
     },
     "data layer": {
       "description": "The data layer holds the 0.2.8 data root: its event log, definition registry, catalog schema and search index, so every later reader shares one store.",
-      "covers": "the data root's folders, the DDL of log.sqlite, the DuckLake catalog and index.sqlite, the seed registry and the schema version a data root is refused by",
+      "covers": "the data root's folders, the DDL of log.sqlite, the DuckLake catalog and index.sqlite, the seed registry, the schema version a data root is refused by, and the Host's one write path into the log: its admission checks, hash chain, lock and span exporter",
       "owner": "alphalattice.kernel.data_layer",
       "defined_by": [
-        "alphalattice.kernel.data_layer.root"
+        "alphalattice.kernel.data_layer.admit",
+        "alphalattice.kernel.data_layer.chain",
+        "alphalattice.kernel.data_layer.log",
+        "alphalattice.kernel.data_layer.root",
+        "alphalattice.kernel.data_layer.spans"
       ],
       "folds_in": []
     }

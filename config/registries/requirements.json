@@ -189,6 +189,46 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.append_admits_only_a_keepable_event": {
+      "description": "The append boundary refuses by name a missing attribute, an unbound, missing or unexpected text, a malformed count or part, a credential and a live write under a superseded definition.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.chain_catches_a_rewritten_event": {
+      "description": "The chain verifies whole and from its last checkpoint, a new log is seeded and checkpointed monthly, and an event rewritten past its trigger breaks the fold.",
+      "lower_layer": "The chain folds rows of a real SQLite log, rewritten past its trigger.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.durable_events_commit_at_once": {
+      "description": "An ordinary event is committed by its batch's size, its deadline or a durable event after it, and a durable event is committed when its append returns.",
+      "lower_layer": "Commit visibility is what another SQLite connection reads.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.event_ids_are_uuidv7": {
+      "description": "A new event's id is a UUIDv7 whose leading 48 bits are the Unix milliseconds it was minted in.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.host_append_is_all_or_nothing": {
+      "description": "Each append writes the event, its text, the chain head, its projection and an inline body as one unit: a refused event leaves no trace and its batch's other events whole.",
+      "lower_layer": "The unit is a SQLite transaction and its savepoints; only a real database holds them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.kill_inside_append_leaves_the_log_whole": {
+      "description": "A process killed after an event's row, after its chain fold or after its projection leaves a log the next Host opens whole, with the chain verifying.",
+      "lower_layer": "A kill is a real process ending inside a SQLite transaction.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 15
+    },
     "data_layer.log_refuses_what_its_rules_forbid": {
       "description": "Each rule of the data root's event log refuses its breach by name and leaves the log unchanged.",
       "lower_layer": "The rules are SQLite triggers and constraints of log.sql; only a real database holds them.",
@@ -199,6 +239,13 @@
     "data_layer.log_views_read_as_defined": {
       "description": "Each view of the data root's event log reads a settled log as defined, and each hot read uses its index.",
       "lower_layer": "The views and query plans are SQLite's; only a real database holds them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.one_host_writes_the_data_root": {
+      "description": "A second Host is refused the data root's lock by name with its holder, and other processes read the log through a read-only attach that refuses a write.",
+      "lower_layer": "The lock is an operating-system file lock and the attach a SQLite connection.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
@@ -216,6 +263,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 1
+    },
+    "data_layer.spans_are_step_events": {
+      "description": "Each span ended through the OpenTelemetry SDK is appended as its step event with its trace, parent, times, phase, actor and attributes, and a span the log refuses is counted by its code, never raised.",
+      "lower_layer": "The exporter writes into a real Host log through the SDK's span processor.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
     },
     "data_layer.vector_table_defers_without_extension_loading": {
       "description": "Without extension loading a data root still creates every index table but the vector table, and names that table deferred.",
