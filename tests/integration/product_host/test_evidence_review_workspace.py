@@ -474,6 +474,22 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     with pytest.raises(ValueError, match="entity_scope_outside_universe"):
         setup.materialize(args)
     args.entities = ["AAPL"]
+    with monkeypatch.context() as missing_runtime:
+        missing_runtime.setattr(setup, "load", lambda: False)
+
+        def missing_pack(*_args):
+            raise setup.model_store.ModelStoreError("model_store.pack_not_installed:fixture:ABSENT")
+
+        missing_runtime.setattr(setup.model_store, "bind_retained_recipe", missing_pack)
+        missing_runtime.setattr(args, "semantic_model", None)
+        with pytest.raises(
+            (RuntimeError, ValueError), match=r"semantic_capability_not_ready|pack_not_installed"
+        ) as refused:
+            setup.materialize(args)
+        assert str(refused.value) == "evidence_review.semantic_capability_not_ready"
+        missing_runtime.setattr(setup, "load", lambda: True)
+        with pytest.raises(ValueError, match=r"model_store\.pack_not_installed:fixture:ABSENT"):
+            setup.materialize(args)
     with monkeypatch.context() as unavailable:
         unavailable.setattr(
             setup,

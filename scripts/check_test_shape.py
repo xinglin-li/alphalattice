@@ -665,7 +665,8 @@ def _antipattern_problems(
     carried = len(parents) > 1 and any(
         parent + ":" + ANTIPATTERN_BASELINE in texts for parent in parents
     )
-    for parent in parents:
+    held: dict[str, int] | None = None  # a merge holds each count at its highest parent's: it adds
+    for parent in parents:  # nothing either side had, so it refuses only what exceeds every parent
         previous = texts.get(parent + ":" + ANTIPATTERN_BASELINE)
         if previous is None:
             if not carried and (
@@ -673,13 +674,18 @@ def _antipattern_problems(
             ):
                 raise ValueError("anti-pattern baseline missing from parent")
         else:
-            held = relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves)
-            seeds = seeded_rules(held, baseline, staged)
-            found += [
-                line
-                for line in antipattern_growth(held, baseline)
-                if line.split(": ", 1)[0].partition("::")[2] not in seeds
-            ]
+            side = relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves)
+            held = {
+                key: max(side.get(key, 0), (held or {}).get(key, 0))
+                for key in {*side, *(held or {})}
+            }
+    if held is not None:
+        seeds = seeded_rules(held, baseline, staged)
+        found += [
+            line
+            for line in antipattern_growth(held, baseline)
+            if line.split(": ", 1)[0].partition("::")[2] not in seeds
+        ]
     missing = [path for path in sources if head + path not in texts]
     if missing:
         raise ValueError(f"changed source unreadable: {missing[0]}")

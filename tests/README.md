@@ -158,6 +158,7 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Reuse unchanged passing proof; rerun changed or failed nodes.
 - Use normal stage producers for steps a failed stage never reached.
 - Keep mandatory files and declared reach in selection; a size edit alone cannot defer them.
+- Name a file mandatory (`mandatory` in `config/registries/test-sizes.json`) only when it is a second-scale static scan any change can break; every other test, structural ones included, runs by reach on a commit and whole in the nightly.
 - Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run.
 - Declare structural reach in `config/registries/test-sizes.json`; undeclared structural checks stay whole.
 - Make `per_file` scans read Python through `scanned()` or `in_scope()` in `tests/structural/source_shape_samples.py`.

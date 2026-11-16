@@ -2358,6 +2358,78 @@
       "owner": "tests.workspace_readiness",
       "reason": "Builds and hydrates a workspace before checking cancellation and recovery at the chunk boundary.",
       "admitted": "2026-10-30: measured 11.163 s on Windows; size registration pilot admits the Large classification."
+    },
+    {
+      "pattern": "tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
+      "owner": "tests.structural",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 16 passes at most 48.3 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 51.8 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_published_update_survives_process_death",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 61 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 47.4 s and 1 red at 76 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_partial_membership_update_reopens_its_exact_approved_task[[]True[]]",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 65 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request",
+      "owner": "tests.alternative_evidence_desk",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Failed its teardown check (an answer does not hold its published model) under a loaded reached leg on 11-16, as the large web-factor tests did that passed in a quiet rerun of their file; a test that goes red under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 4.6 s and 1 red at 2 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Could not open its DuckDB store from a second connection under a loaded reached leg on 11-16; a test that goes red under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 9.4 s and 1 red at 3 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/local_application/test_local_web_client.py::test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Lost its served child process (psutil NoSuchProcess) under a loaded reached leg on 11-16; a test that goes red under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 60,
+      "admitted": "2026-11-16: 11 passes at most 10.6 s and 1 red at 6 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     }
   ],
   "budget_admissions": [
@@ -2370,6 +2442,51 @@
       "budget": "large:tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
       "value": 120,
       "admitted": "2026-11-14: The whole-tree Ruff and semgrep scan ran 17-22 s on its build run of 11-14; 120 s is the smallest of the steps 60, 120, 300, 600, 900, 1800, 3600 and 5400 s at or above three times the slowest"
+    },
+    {
+      "budget": "large:tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
+      "value": 60,
+      "admitted": "2026-11-16: 16 passes at most 48.3 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 51.8 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update_runs.py::test_published_update_survives_process_death",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 61 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 47.4 s and 1 red at 76 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_a_partial_membership_update_reopens_its_exact_approved_task[[]True[]]",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 65 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 4.6 s and 1 red at 2 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 9.4 s and 1 red at 3 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "budget": "large:tests/integration/local_application/test_local_web_client.py::test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced",
+      "value": 60,
+      "admitted": "2026-11-16: 11 passes at most 10.6 s and 1 red at 6 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     }
   ],
   "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Every test budget (a size limit, an admission limit, the growth floor, a Large timeout) only falls; a raised or added one carries a budget_admissions row with its value and a dated decision. Resource confinement is a separate boundary.",
@@ -2896,7 +3013,15 @@
     }
   ],
   "mandatory": [
-    "tests/structural/*",
+    "tests/structural/test_import_contract.py*",
+    "tests/structural/test_public_closure.py*",
+    "tests/structural/test_moved_names.py*",
+    "tests/structural/test_retired_spellings.py*",
+    "tests/structural/test_documented_commands.py*",
+    "tests/structural/test_wait_caps.py*",
+    "tests/structural/test_repository_root.py*",
+    "tests/structural/test_data_families.py*",
+    "tests/structural/test_task_replans.py*",
     "tests/integration/local_application/test_cli_contract.py*"
   ],
   "growth": {

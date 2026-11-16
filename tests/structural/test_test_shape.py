@@ -94,6 +94,20 @@ def _antipattern_cases(monkeypatch) -> None:
         shape._antipattern_problems([], [], snapshots, ("MERGE_HEAD",), ":", moves={})
     snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {"src/a.py::PGH003": 2}})
     assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
+    seeded = {
+        "src/a.py::PGH003": 1,
+        "tests/conftest.py::new-rule": 1,
+    }  # a card branched before a rule landed
+    snapshots |= {
+        "HEAD:" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": seeded}),
+        "MERGE_HEAD:" + shape.ANTIPATTERN_BASELINE: baseline,
+        ":" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": seeded}),
+    }
+    assert not shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
+    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps(
+        {"counts": {**seeded, "tests/conftest.py::new-rule": 2}}
+    )
+    assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
     seed = {"src/a.py::PGH003": 1, "tests/a/test_b.py::new-rule": 4}  # a new rule's first counts
     held = {"src/a.py::PGH003": 1}
     assert shape.seeded_rules(held, seed, [shape.TEST_ANTIPATTERN_RULES]) == {"new-rule"}

@@ -735,9 +735,14 @@ class _Setup:
 
         A retrieval runtime filled after this process started is read first (`load`).
         """
-        load()
+        runtime_ready = load()
         arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
-        semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
+        try:
+            semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
+        except ValueError as error:
+            if not runtime_ready and str(error).startswith("model_store.pack_not_installed:"):
+                raise RuntimeError("evidence_review.semantic_capability_not_ready") from error
+            raise
         try:
             semantic_relative = semantic_root.relative_to(workspace).as_posix()
         except ValueError as error:

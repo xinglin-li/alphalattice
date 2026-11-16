@@ -75,8 +75,11 @@ def validate_policy(value: Any) -> dict[str, Any]:
         raise ValueError("test_size.rule")
     if any(r.get("size") not in {"small", "medium"} for r in value["defaults"]):
         raise ValueError("test_size.default_size")
+    # Mandatory files run on every commit: second-scale static scans any change can break; every
+    # other test, structural ones included, joins by reach, and the nightly runs them all.
     if "mandatory" in value and (
-        not isinstance(value["mandatory"], list) or "tests/structural/*" not in value["mandatory"]
+        not isinstance(value["mandatory"], list)
+        or any(not isinstance(p, str) or not p.startswith("tests/") for p in value["mandatory"])
     ):
         raise ValueError("test_size.mandatory_missing")
     _post_merge_only(value)

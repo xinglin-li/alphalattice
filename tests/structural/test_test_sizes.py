@@ -1285,6 +1285,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         return
     if case == "timeout":
         policy["limits"]["medium"] = 0.05
+    if lane:  # a mandatory Large file runs in the merge lane; only named files are mandatory
+        policy["mandatory"].append("tests/structural/test_mandatory.py*")
     policy_file.write_text(json.dumps(policy), encoding="utf-8")
     target = tmp_path / "test_example.py"
     target.write_text(
