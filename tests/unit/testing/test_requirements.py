@@ -34,6 +34,13 @@ def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch)
     assert requirements.growth(policy, 0, 47, new, rows) == []  # each new test's decision covers it
     assert requirements.growth(policy, 0, 47, [*new, SimpleNamespace(ids=("r.open",))], rows)
     assert requirements.growth(policy, 0, 47, [], rows)  # grown tests have no new row to decide
+    # a rewrite adding no test function: its decision sits on each changed test's requirement
+    rewrite = [new[0], SimpleNamespace(ids=())]  # a changed test proving nothing has no row
+    assert requirements.growth(policy, 0, 47, [], rows, rewrite) == []
+    undecided = SimpleNamespace(ids=("r.open",))
+    assert requirements.growth(policy, 0, 47, [], rows, [*rewrite, undecided])
+    assert requirements.growth(policy, 0, 47, [], rows, rewrite[1:])  # no row decides it
+    assert requirements.growth(policy, 0, 47, [undecided], rows, rewrite)  # new tests decide
     for unread in (None, "{", "{}"):  # absent from the snapshot, unreadable, or no floor
         (said,) = requirements.growth(unread, 10, -5)
         assert said.startswith("TEST-GROWTH unmeasured, refused")

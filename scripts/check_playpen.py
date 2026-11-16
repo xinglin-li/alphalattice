@@ -1073,6 +1073,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         pairs = staged_changes(ROOT, base=None if staged else base, tree=None if staged else "HEAD")
         fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
+        changed = [test for test in later if test.node in old_nodes and test not in earlier]
         added = [test.node for test in fresh if test.node not in old_nodes]
         removed_sources = set(
             git(
@@ -1138,7 +1139,9 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         policy = git("show", f":{sizes}") if git("ls-files", "--", sizes).strip() else None
     else:
         policy = (ROOT / sizes).read_text("utf-8") if (ROOT / sizes).is_file() else None
-    refused = requirements.growth(policy, source, tests, fresh, declared_rows) + requirements.guard(
+    refused = requirements.growth(
+        policy, source, tests, fresh, declared_rows, changed
+    ) + requirements.guard(
         ROOT,
         fresh,
         declared,

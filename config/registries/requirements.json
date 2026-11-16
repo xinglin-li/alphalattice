@@ -102,7 +102,14 @@
       "description": "A change no consumer map resolves stops the verification runner at its exit code; it never plans nothing and passes.",
       "owner": "devtools.architecture",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
       "description": "A module's discovered imports are kept in the process by its place under the source root and its bytes, so changed bytes or another place miss and a read or parse error is raised every time.",
@@ -912,7 +919,14 @@
       "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "pipeline.cost_receipt_contains_required_nodes": {
       "description": "A cost commit stage runs required Small and Medium test families and records their bounded outcomes; slow tests run separately.",
@@ -943,13 +957,27 @@
       "description": "The test-health owner derives quarantine candidates from distinct verified flake observations, registered owners and review dates.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "pipeline.health_report_counts_the_test_metrics": {
       "description": "The daily test-health report counts test and source lines, registered and multiply held requirements, large files, quarantines, stage verdicts, flakes and slow tests, ranks each test's seconds from healthy runs only, and leaves a rate unknown without receipts.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "pipeline.public_closure_needs_every_file_a_public_file_uses": {
       "description": "If a public file could import, link, run or read a private file, the published checkout would break for its users or point at private work.",
@@ -1016,7 +1044,14 @@
       "description": "A stage receipt verifies only when every announced event arrived and it meets the requested stage, host, head, result and optional passing test and time-limit checks.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "pipeline.result_cache_hits_only_on_unchanged_inputs": {
       "description": "A result-cache entry hits only while every file, listing, probe and variable value its group read is unchanged, and its declared key is the same.",
@@ -1266,7 +1301,14 @@
       "description": "Registered unit layers obey resource and own-phase time boundaries, while integration layers retain their declared database and file access.",
       "owner": "devtools.testing",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
+        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+      }
     },
     "testing.lint_rules_improve_the_code": {
       "description": "Lint refuses a print outside the command layer and a public definition with no docstring, and accepts a bound lambda and a docstring's form.",
@@ -1348,7 +1390,14 @@
       "description": "A change whose net test lines outgrow its net source past the policy's floor is refused by name, unless each new test's requirement carries the test manager's decided growth exception.",
       "owner": "devtools.testing",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The rule's own test gains the planted case of a rewrite that adds no test function",
+        "decided": "2026-11-15: Lead: fix the rule with one planted case in the existing growth test"
+      }
     },
     "testing.the_semgrep_scan_gets_a_short_temp_on_windows": {
       "description": "If semgrep ran under a stage's long TEMP on Windows, semgrep-core would fail on the path limit and the source rules would refuse every change unmeasured.",

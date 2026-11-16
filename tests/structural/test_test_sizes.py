@@ -9,6 +9,7 @@ import textwrap
 from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -24,6 +25,99 @@ from tests.structural.size_fixture_support import (
     _registry_tree,
 )
 
+# The plain layer cases: one file each, one child configuration, each judged by its own JUnit node.
+PLAIN_LAYER_EXPECTED = {
+    "native-file": "dependency numpy.",
+    "native-local": "dependency numpy.",
+    "native-memmap": "dependency numpy.",
+    "numpy-save": "file outside temporary root",
+}
+# The cases needing their own session: a checkout, plugin, lane, timing probe or in-process check.
+OWN_SESSION = ("fd-provenance", "network-caught", "observe", "own-", "primary-", "root-", "shape")
+OWN_SESSION += ("size-live-", "slow")
+
+
+def _sample(case, header, body):
+    """A layer case's test file: its header, the fixtures its case asks for, its body."""
+    fixtures = {
+        "own-subtests": "tmp_path, subtests",
+        "size-live-factory": "tmp_path_factory",
+        "size-live-factory-base": "tmp_path_factory",
+        "size-live-factory-mixed": "tmp_path, tmp_path_factory",
+        "size-live-factory-under": "tmp_path, tmp_path_factory",
+        "size-live-factory-teardown": "tail",
+    }.get(case, "tmp_path")
+    body = textwrap.indent(textwrap.dedent(body).strip(), "    ")
+    return f"{header}def test_sample({fixtures}):\n{body}\n"
+
+
+def _layer_child(root, cwd, target, extra=(), timeout=20, **given):
+    """One nested pytest of the layer cases: the collection plugin and the repository's pytest
+    configuration, no conftest, the outer run's lane, stage, selection and events cleared."""
+    environment = {
+        "ALPHALATTICE_TEST_LANE": "",
+        "ALPHALATTICE_PIPELINE_REQUIRED_TESTS": "[]",
+        "ALPHALATTICE_PIPELINE_STAGE": "",
+        "ALPHALATTICE_PIPELINE_EVENTS": "",
+    } | given
+    return subprocess.run(
+        [
+            *(sys.executable, "-B", "-m", "pytest", "-p", "devtools.testing.collection"),
+            *("-p", "pytest_timeout", *extra, "--junitxml", str(cwd / "child.xml")),
+            *("-c", str(root / "pyproject.toml"), "--rootdir", str(cwd), "--confcutdir", str(cwd)),
+            *("--noconftest", "--basetemp", str(cwd / "child-temp"), "-o", "addopts=", "-q"),
+            str(target),
+        ],
+        cwd=cwd,
+        env=child_environment(
+            PYTHONPATH=os.pathsep.join([str(cwd), str(root / "src")]),
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            PYTEST_PLUGINS="",
+            **environment,
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=timeout,
+        creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+
+@pytest.fixture(scope="session")
+def plain_layer_run(tmp_path_factory):
+    """Run every plain layer case as one file of one nested pytest session.
+
+    The cases differ only in their file, never in configuration, environment or child plugins,
+    so one child session serves them all. Each case reads its own JUnit node (a collection
+    error keeps its file's name) and asserts what its own run used to assert.
+    """
+    root = Path(__file__).resolve().parents[2]
+    shared = tmp_path_factory.mktemp("plain-layer")
+    for case in LAYER_CASES:
+        name, layer, header, body, _refused = getattr(case, "values", case)
+        if name.startswith(OWN_SESSION):
+            continue
+        target = shared / "tests" / layer / ("test_" + name.replace("-", "_") + ".py")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if name == "integration-import-hostname":
+            (shared / "hostname_import.py").write_text(
+                "import socket\nsocket.getaddrinfo('example.invalid', 80)\n", "utf-8"
+            )
+        target.write_text(_sample(name, header, body), encoding="utf-8")
+    result = _layer_child(
+        root, shared, shared / "tests", ["--continue-on-collection-errors"], timeout=120
+    )
+    nodes: dict[str, list] = {}
+    for element in ET.parse(shared / "child.xml").iter("testcase"):
+        name = element.get("name", "")
+        if name.endswith(".py"):  # a collection error is named by its file
+            key = Path(name).stem
+        else:
+            key = element.get("classname", "").rsplit(".", 1)[-1]
+        nodes.setdefault(key, []).append(element)
+    return {"nodes": nodes, "output": result.stdout + result.stderr}
+
 
 @pytest.mark.proves("testing.layer_contract")
 @pytest.mark.parametrize(
@@ -32,7 +126,7 @@ from tests.structural.size_fixture_support import (
     ids=LAYER_IDS,
 )
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
-    tmp_path, monkeypatch, case, layer, header, body, refused
+    tmp_path, monkeypatch, plain_layer_run, case, layer, header, body, refused
 ):
     if case == "network-caught":
         import socket
@@ -53,6 +147,17 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
         return
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
+        return
+    if not case.startswith(OWN_SESSION):
+        nodes = plain_layer_run["nodes"].get("test_" + case.replace("-", "_"), [])
+        assert len(nodes) == 1, plain_layer_run["output"]
+        failures = [child for child in nodes[0] if child.tag in {"failure", "error"}]
+        text = "\n".join((child.get("message") or "") + (child.text or "") for child in failures)
+        assert bool(failures) == refused, text
+        if refused:
+            assert PLAIN_LAYER_EXPECTED.get(case, "testing.layer_contract") in text, text
+        if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
+            assert len(failures) == 1, text
         return
     if case in {"temporary", "root-pure"}:
         monkeypatch.setenv(
@@ -210,27 +315,7 @@ def _memory_checks_read_no_host():
         return
     target = tmp_path / "tests" / layer / "test_sample.py"
     target.parent.mkdir(parents=True)
-    if case == "integration-import-hostname":
-        (tmp_path / "hostname_import.py").write_text(
-            "import socket\nsocket.getaddrinfo('example.invalid', 80)\n", "utf-8"
-        )
-    target.write_text(
-        header
-        + (
-            "def test_sample(tmp_path, subtests):\n"
-            if case == "own-subtests"
-            else "def test_sample(tmp_path_factory):\n"
-            if case in {"size-live-factory", "size-live-factory-base"}
-            else "def test_sample(tmp_path, tmp_path_factory):\n"
-            if case in {"size-live-factory-mixed", "size-live-factory-under"}
-            else "def test_sample(tail):\n"
-            if case == "size-live-factory-teardown"
-            else "def test_sample(tmp_path):\n"
-        )
-        + textwrap.indent(textwrap.dedent(body).strip(), "    ")
-        + "\n",
-        encoding="utf-8",
-    )
+    target.write_text(_sample(case, header, body), encoding="utf-8")
     phase_args = (
         ["-p", "devtools.pipeline.receipt", "-p", "xdist.plugin", "-n", "2"]
         if case.startswith("observe")
@@ -333,67 +418,33 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args = ["-p", "phase_probe", "--log-file", str(tmp_path / "events.log")]
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-B",
-            "-m",
-            "pytest",
-            "-p",
-            "devtools.testing.collection",
-            "-p",
-            "pytest_timeout",
-            *phase_args,
-            "--junitxml",
-            str(tmp_path / "child.xml"),
-            "-c",
-            str(root / "pyproject.toml"),
-            "--rootdir",
-            str(tmp_path),
-            "--confcutdir",
-            str(tmp_path),
-            "--noconftest",
-            "--basetemp",
-            str(tmp_path / "child-temp"),
-            "-o",
-            "addopts=",
-            "-q",
-            str(target),
-        ],
-        cwd=tmp_path,
-        env=child_environment(
-            PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
-            ALPHALATTICE_TEST_LANE="merge"
-            if case in {"size-live-large-merge", "size-live-large-missing"}
-            else "nightly"
-            if case == "size-live-large-nightly"
-            else "",
-            ALPHALATTICE_PIPELINE_REQUIRED_TESTS=json.dumps(
-                [f"tests/{layer}/test_sample.py::test_sample"]
-            )
-            if case == "size-live-large-merge"
-            else "[]",
-            ALPHALATTICE_PIPELINE_STAGE="nightly"
-            if case == "size-live-large-nightly"
-            else "post-merge"
-            if case == "size-live-large-missing"
-            else "commit"
-            if case.startswith("size-live-")
-            else "",
-            ALPHALATTICE_PIPELINE_EVENTS=(
-                str(tmp_path / "test-events.jsonl")
-                if case.startswith("observe") or case.startswith("size-live-")
-                else ""
-            ),
-            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-            PYTEST_PLUGINS="",
+    result = _layer_child(
+        root,
+        tmp_path,
+        target,
+        phase_args,
+        ALPHALATTICE_TEST_LANE="merge"
+        if case in {"size-live-large-merge", "size-live-large-missing"}
+        else "nightly"
+        if case == "size-live-large-nightly"
+        else "",
+        ALPHALATTICE_PIPELINE_REQUIRED_TESTS=json.dumps(
+            [f"tests/{layer}/test_sample.py::test_sample"]
+        )
+        if case == "size-live-large-merge"
+        else "[]",
+        ALPHALATTICE_PIPELINE_STAGE="nightly"
+        if case == "size-live-large-nightly"
+        else "post-merge"
+        if case == "size-live-large-missing"
+        else "commit"
+        if case.startswith("size-live-")
+        else "",
+        ALPHALATTICE_PIPELINE_EVENTS=(
+            str(tmp_path / "test-events.jsonl")
+            if case.startswith("observe") or case.startswith("size-live-")
+            else ""
         ),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=20,
-        creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
-        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     output = result.stdout + result.stderr
     if case == "size-live-large-missing":
@@ -571,21 +622,11 @@ def _memory_checks_read_no_host():
             assert rows[0]["database"] is True
         if case == "observe-network":
             assert rows[0]["network"] is True
-    if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
-        from xml.etree import ElementTree as ET
-
-        cases = list(ET.parse(tmp_path / "child.xml").iter("testcase"))
-        assert len(cases) == 1
-        assert sum(len(c.findall("error")) + len(c.findall("failure")) for c in cases) == 1
     if case in {"own-over", "size-live-time-over", "size-live-over"}:  # over on seconds only
         logged = (tmp_path / "events.log").read_text("utf-8")
         assert ('"event": "TIMEOUT"' in logged) == (case != "size-live-over"), logged
         if case == "size-live-time-over":
             assert '"heavy_place_holders": [{"line": "probe", "path": "h"}]' in logged, logged
-    if case == "numpy-save":
-        assert "file outside temporary root" in output
-    if case in {"native-file", "native-local", "native-memmap"}:
-        assert "dependency numpy." in output
 
 
 @pytest.mark.parametrize(
@@ -595,6 +636,7 @@ def _memory_checks_read_no_host():
         pytest.param(("required-file",), id="required-file"),
         pytest.param(("commit-tier",), id="commit-tier"),
     ],
+    ids=lambda declared: "-".join(declared) or "undeclared",
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
@@ -1233,9 +1275,14 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         contract = "tests/portfolio_strategy_lab/test_cli_contract.py"
         policy["mandatory"] = list(dict.fromkeys([*policy["mandatory"], contract + "*"]))
         policy["post_merge_only"] = [contract]
-    if case in faults:
+    if case in faults:  # a malformed catalog is refused by the same validator collection loads with
+        from devtools.testing.sizes import validate_policy
+
         record, key, value, refusal = faults[case]
         record[key] = value
+        with pytest.raises(ValueError, match=rf"test_size\.{refusal}"):
+            validate_policy(policy)
+        return
     if case == "timeout":
         policy["limits"]["medium"] = 0.05
     policy_file.write_text(json.dumps(policy), encoding="utf-8")
@@ -1341,9 +1388,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     if post_stage == "commit":
         assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
         return
-    if case in faults:
-        assert result.returncode != 0 and "test_size." + refusal in result.stderr
-    elif case == "timeout":
+    if case == "timeout":
         assert result.returncode != 0 and "Timeout" in result.stdout + result.stderr
         assert "test_example" in result.stdout + result.stderr
     elif len(set(declared)) > 1:

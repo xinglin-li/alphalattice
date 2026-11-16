@@ -897,13 +897,15 @@ def growth(
     tests: int,
     new: Iterable[Holder] = (),
     rows: Mapping[str, Mapping[str, Any]] | None = None,
+    changed: Iterable[Holder] = (),
 ) -> list[str]:
     """A change's net test lines may not exceed its net source plus the size policy's floor
     (tools/instructions/testing.md), and a change whose tests do not grow passes; judged against
     `policy`, the test-sizes.json text of the same snapshot as the measured diff: past it the
-    change is refused by name, unless each new
-    test function's requirement carries the test manager's decided "growth" exception. An
-    absent, unreadable or malformed policy is never a pass."""
+    change is refused by name, unless each new test function's requirement carries the test
+    manager's decided "growth" exception. A change that adds no test function (a rewrite of
+    existing tests) has its decision on each changed function's requirement instead, and needs
+    one such function. An absent, unreadable or malformed policy is never a pass."""
     try:
         loaded = validate_policy(json.loads(policy)) if policy is not None else {}
         floor = (loaded.get("growth") or {}).get("floor_lines")
@@ -918,17 +920,19 @@ def growth(
         source + floor, 0
     ):  # a change whose tests do not grow never outgrows its source
         return []
-    new, rows = list(new), rows or {}
-    if new and all(
+    rows = rows or {}
+    holders = list(new) or [test for test in changed if test.ids]
+    if holders and all(
         any(_decided(rows.get(key, {}).get("exception"), ["growth"]) for key in test.ids)
-        for test in new
+        for test in holders
     ):
         return []
     return [
         f"TEST-GROWTH refused: net tests {tests:+d} outgrow net source {source:+d} by more than "
         f"{floor} lines. Turn cases into unit tests of the deciding function, keep one journey per "
         "distinct path and delete what the change made redundant (tools/instructions/testing.md); "
-        "or record the test manager's decision on each new test's requirement row: "
+        "or record the test manager's decision on each new test's requirement row, or on each "
+        "changed test's when the change adds none: "
         '"exception": {"kinds": ["growth"], "why": "<why>", "decided": "<date>: <the decision>"}.'
     ]
 

@@ -2660,7 +2660,8 @@
       "inputs": [
         "scripts/build_local_web_ui.py",
         "scripts/check_ui_parameters.py",
-        "src/*",
+        "src/alphalattice/interface/local_application/assets/*",
+        "src/alphalattice/interface/local_application/labels.json",
         "config/registries/agent-surface.json",
         "config/registries/messages.json",
         "config/registries/refusals.json",
