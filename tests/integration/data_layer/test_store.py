@@ -21,6 +21,7 @@ from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer import log as host
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog, envelope
+from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.store import (
     RESULTS_KEYS,
     WORLD_KEYS,
@@ -32,6 +33,7 @@ from alphalattice.kernel.data_layer.store import (
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
+YF, CALENDAR = definition_id("provider", "yf"), definition_id("provider", "calendar")
 CHILD = {
     "env": os.environ | {"PYTHONPATH": str(Path(host.__file__).parents[3])},
     "stdin": subprocess.DEVNULL,
@@ -42,8 +44,13 @@ CHILD = {
 
 @pytest.fixture
 def root(tmp_path):
-    """A new data root with its catalog."""
+    """A new data root with its catalog, whose log registers the providers yf and calendar."""
     create_data_root(tmp_path / "data")
+    with HostLog.open(tmp_path / "data") as log:
+        for name in ("yf", "calendar"):
+            key = {"family": "provider", "name": name, "version": 1}
+            text = canonical(key | {"text": f"The {name} provider."}).decode()
+            log.record("definition.registered", ("definition", f"provider/{name}"), key, text=text)
     return tmp_path / "data"
 
 
@@ -82,14 +89,14 @@ def seed(root: Path, log: HostLog, sessions: list[tuple[str, str, bool]]) -> Sto
         ("listing", [{"listing_id": LISTING, "market": "XNYS"}]),
         ("session", days),
     ):
-        with stage(root, table, "calendar", rows) as staged:
+        with stage(root, table, CALENDAR, rows) as staged:
             port.commit(staged)
     return port
 
 
 def owe(port: StorePort) -> dict:
     """A catalog commit that carries its owed event, with no event in the log: the crash."""
-    attrs = {"provider": "yf", "dataset": "raw_bar", "row_count": 1, "known_us": 1}
+    attrs = {"provider_id": YF, "dataset": "raw_bar", "row_count": 1, "known_us": 1}
     owed = envelope("admission.committed", ("admission", "adm-1"), attrs, workspace="w1")
     owed |= {"actor_id": "store", "occurred_us": 123}  # the writer's own
     info = canonical(owed).decode().replace("'", "''")
@@ -113,7 +120,7 @@ def test_the_next_start_repairs_an_owed_event_once_even_below_the_floor(root):
         port.close()
         with (
             pytest.raises(DataError, match="free-space floor") as refused,
-            stage(root, "raw_bar", "yf", bars(1), floor_bytes=1 << 62),
+            stage(root, "raw_bar", YF, bars(1), floor_bytes=1 << 62),
         ):
             pass
         port = StorePort.open(root, log)
@@ -123,13 +130,13 @@ def test_the_next_start_repairs_an_owed_event_once_even_below_the_floor(root):
             " WHERE event_id = ?",
             (owed["event_id"],),
         )
-        admission = log.read("SELECT provider, row_count, catalog_snapshot FROM admission")
+        admission = log.read("SELECT provider_id, row_count, catalog_snapshot FROM admission")
         snapshot = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
         port.close()
     assert refused.value.failure.code == "data_layer.below_free_floor"
     assert (port.started["repaired"], again) == ([owed["event_id"]], [])
     assert tuple(kept[0]) == (1, "w1", "store", 123, owed["trace_id"])
-    assert tuple(admission[0]) == ("yf", 1, snapshot[0])
+    assert tuple(admission[0]) == (YF, 1, snapshot[0])
 
 
 KILL = """
@@ -141,7 +148,8 @@ root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]
 lag = batch["lag"] and tuple(batch["lag"])
 with HostLog.open(root) as log:
     port = store.StorePort.open(root, log)
-    with store.stage(root, batch["table"], "yf", batch["rows"], lag=lag) as staged:
+    yf = store.definition_id("provider", "yf")
+    with store.stage(root, batch["table"], yf, batch["rows"], lag=lag) as staged:
         setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
         port.commit(staged)
 """
@@ -207,7 +215,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
 def test_start_collects_orphan_staging_and_unnamed_data_files(root, monkeypatch):
     """Start collects staging no producer holds and data files no snapshot names, keeps a held
     producer's and every named file, and a producer paused before its lock commits or is refused."""
-    with HostLog.open(root) as log, stage(root, "raw_bar", "yf", bars(300)) as staged:
+    with HostLog.open(root) as log, stage(root, "raw_bar", YF, bars(300)) as staged:
         port = StorePort.open(root, log)
         port.commit(staged)
         port.lake.execute("CALL ducklake_flush_inlined_data('lake')").complete()  # to files
@@ -216,7 +224,7 @@ def test_start_collects_orphan_staging_and_unnamed_data_files(root, monkeypatch)
     (root / "staging" / "adm-crashed").mkdir()
     orphan = named[0].parent / f"ducklake-{uuid.UUID(int=1)}.parquet"
     orphan.write_bytes(b"PAR1")
-    with HostLog.open(root) as log, stage(root, "raw_bar", "yf", bars(3, 2.0)) as live:
+    with HostLog.open(root) as log, stage(root, "raw_bar", YF, bars(3, 2.0)) as live:
         first = StorePort.open(root, log)  # a Host restarting while a producer stages
         first.commit(live)
         first.close()
@@ -241,7 +249,7 @@ def test_start_collects_orphan_staging_and_unnamed_data_files(root, monkeypatch)
 
         monkeypatch.setattr(host, "lock_byte", start_then_lock)
         try:
-            with stage(root, "raw_bar", "yf", bars(1, 3.0)) as late:
+            with stage(root, "raw_bar", YF, bars(1, 3.0)) as late:
                 port = StorePort.open(root, log)
                 port.commit(late)
                 port.close()
@@ -305,10 +313,10 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     monkeypatch.setattr(host, "time", type("Wall", (), {"time_ns": staticmethod(lambda: wall[0])}))
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
-        with stage(root, "raw_bar", "yf", bars(3)) as first:
+        with stage(root, "raw_bar", YF, bars(3)) as first:
             port.commit(first)
         wall[0] -= 3_600 * 10**9  # an hour back
-        with stage(root, "raw_bar", "yf", bars(1, close=2.0)) as correction:
+        with stage(root, "raw_bar", YF, bars(1, close=2.0)) as correction:
             port.commit(correction)
         a, b = (
             dict(log.read("SELECT admission_id, known_us FROM admission"))[s.admission_id]
@@ -332,14 +340,16 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
 
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")
 def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_trip(root):
-    """Every catalog table is admitted. A legacy row has no known_at and is known its rule's lag
-    after its market's first session close on or after its valid date; a batch out of a key's
-    known order, or whose listing changed market, is refused; typed columns read back whole."""
+    """Every catalog table is admitted; a legacy row is known its rule's lag after its market's
+    first close on or after its valid date; a batch out of known order, moving a listing's market
+    or naming an unregistered scheme is refused; typed columns read back whole."""
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
     action = {"listing_id": LISTING, "effective_date": "2024-01-06", "kind": "split"}
     action |= {"action_id": "s1", "provisional": True, "provenance": "derived"}
     symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
     rule, noon = ("yf-close", 1), "2024-01-07 12:00:00+00"  # Saturday's action counts from Monday
+    sector = {"scheme_id": definition_id("sector_scheme", "gics"), "listing_id": LISTING}
+    sector |= {"valid_from": "2024-01-05", "sector_code": "45"}
     batches = [
         ("raw_bar", [bar, bar | {"session_date": "2024-01-08"}], rule),  # a half day's close
         ("corporate_action", [action, action | {"action_id": "s2", "published_at": noon}], rule),
@@ -352,6 +362,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         ("listing", [{"listing_id": MOVED, "market": "XNAS"}], None),
         ("raw_bar", [bar | {"listing_id": MOVED}], rule),
         ("execution_outcome", [outcome("2024-01-02")], None),
+        ("sector", [sector], None),  # gics is no registered sector_scheme lineage
     ]
     refused = []
     with HostLog.open(root) as log:
@@ -359,7 +370,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
         )
         for table, rows, lag in batches:
-            with stage(root, table, "yf", rows, lag=lag) as staged:
+            with stage(root, table, YF, rows, lag=lag) as staged:
                 try:
                     port.commit(staged)
                 except DataError as error:
@@ -420,17 +431,18 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         "data_layer.admission_out_of_order",
         "data_layer.legacy_anchor_missing",
         "data_layer.result_key_present",
+        "data_layer.lineage_unregistered",
     ]
 
 
 STAGE = """
 import sys, uuid
 from pathlib import Path
-from alphalattice.kernel.data_layer.store import stage
+from alphalattice.kernel.data_layer.store import definition_id, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
          "close": float(i)} for i in range(100_000)]
 print("hashing", flush=True)
-with stage(Path(sys.argv[1]), "raw_bar", "yf", rows) as staged:
+with stage(Path(sys.argv[1]), "raw_bar", definition_id("provider", "yf"), rows) as staged:
     print(staged.row_count, flush=True)
 """
 

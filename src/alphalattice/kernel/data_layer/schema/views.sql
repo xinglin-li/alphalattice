@@ -7,17 +7,18 @@
 -- What we knew at `cutoff_us`: among the versions known by then, the one no later version had replaced by then, unless
 -- it withdraws the fact. A version is replaced when world.superseded says so, which the Host writes with the replacing
 -- row, so no read ranks every version. Every world table gets this macro; a selection's cutoff_us is the argument.
+-- world.superseded names a table by its lineage's id; the log's definition_name finds it by any name it held.
 -- A decision at session t reads knowledge no later than the lesser of its selection's cutoff and t's decision time.
 CREATE MACRO raw_bar_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.raw_bar r
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_name = 'raw_bar' AND s.value_digest = r.value_digest
+  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = (SELECT definition_id FROM log.definition_name WHERE family = 'world_table' AND name = 'raw_bar') AND s.value_digest = r.value_digest
                   AND s.admission_id = r.admission_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
 
 CREATE MACRO corporate_action_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.corporate_action r
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_name = 'corporate_action' AND s.value_digest = r.value_digest
+  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = (SELECT definition_id FROM log.definition_name WHERE family = 'world_table' AND name = 'corporate_action') AND s.value_digest = r.value_digest
                   AND s.admission_id = r.admission_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
 
 -- Every version with the moment the next one replaced it (world.superseded), for a walk-forward read over many decision times in one
@@ -26,16 +27,16 @@ WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
 -- effective_date <= t.
 CREATE VIEW raw_bar_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.raw_bar r
-LEFT JOIN lake.world.superseded s ON s.table_name = 'raw_bar' AND s.value_digest = r.value_digest AND s.admission_id = r.admission_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = (SELECT definition_id FROM log.definition_name WHERE family = 'world_table' AND name = 'raw_bar') AND s.value_digest = r.value_digest AND s.admission_id = r.admission_id;
 
 CREATE VIEW corporate_action_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.corporate_action r
-LEFT JOIN lake.world.superseded s ON s.table_name = 'corporate_action' AND s.value_digest = r.value_digest AND s.admission_id = r.admission_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = (SELECT definition_id FROM log.definition_name WHERE family = 'world_table' AND name = 'corporate_action') AND s.value_digest = r.value_digest AND s.admission_id = r.admission_id;
 
 -- What we know now.
 CREATE VIEW raw_bar_latest AS
 SELECT r.* FROM lake.world.raw_bar r
-WHERE NOT r.retracted AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_name = 'raw_bar' AND s.value_digest = r.value_digest
+WHERE NOT r.retracted AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = (SELECT definition_id FROM log.definition_name WHERE family = 'world_table' AND name = 'raw_bar') AND s.value_digest = r.value_digest
                   AND s.admission_id = r.admission_id);
 
 -- ===== Steps =====
@@ -53,10 +54,14 @@ FROM log.event WHERE phase IN ('completed', 'failed', 'cancelled');
 
 -- ===== Experience =====
 -- Every measure of every artifact a trial made: its results at once, and its `outcome` artifacts, which record
--- what happened at a horizon after it. A trial has many artifacts; its measures are all of theirs.
+-- what happened at a horizon after it. A trial has many artifacts; its measures are all of theirs. The log keeps
+-- lineage ids; every view shows each one's current name.
 CREATE VIEW trial_measure AS
-SELECT a.trial_id, a.artifact_id, a.type AS artifact_type, m.metric, m.metric_version, m.dims, m.value, m.recorded_seq
+SELECT a.trial_id, a.artifact_id, tl.name AS artifact_type, m.metric_id, ml.name AS metric, m.metric_version, m.dims,
+       m.value, m.recorded_seq
 FROM log.artifact a JOIN log.measure m ON m.artifact_id = a.artifact_id
+JOIN log.definition_lineage tl ON tl.definition_id = a.type_id
+JOIN log.definition_lineage ml ON ml.definition_id = m.metric_id
 WHERE a.trial_id IS NOT NULL;
 
 -- One row per trial, as state, action, effect and new state: what an agent studies before it tries something.
@@ -68,7 +73,7 @@ SELECT t.trial_id, t.workspace_id,
        s.universe, s.valid_from, s.valid_to,
        t.product_version, t.model, t.context, t.reads_legacy,
        -- action
-       r.method, r.method_version, t.recipe_key, r.params, t.seeds,
+       rl.name AS method, r.method_version, t.recipe_key, r.params, t.seeds,
        -- effect: at once and at each horizon
        t.state AS outcome, sp.seconds, a.artifact_id, a.meaning, a.body_state, m.measures,
        -- new state
@@ -78,6 +83,7 @@ SELECT t.trial_id, t.workspace_id,
 FROM log.trial t
 JOIN log.selection s ON s.selection_id = t.selection_id
 JOIN log.recipe r ON r.recipe_key = t.recipe_key
+JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
 JOIN log.event reg ON reg.seq = t.registered_seq
 LEFT JOIN span sp ON sp.seq = t.ended_seq
 LEFT JOIN log.artifact a ON a.artifact_id = t.result_artifact
@@ -108,26 +114,27 @@ LEFT JOIN (SELECT DISTINCT a.trial_id FROM log.event e
 -- Code is deterministic; the world is random. One approach's results are draws: this is their spread, so a new
 -- result is read against it and a redo outside it stands out. One draw is one trial: its headline artifact alone.
 CREATE VIEW approach_spread AS
-SELECT t.recipe_key, any_value(r.method) AS method, any_value(r.method_version) AS method_version,
+SELECT t.recipe_key, any_value(rl.name) AS method, any_value(r.method_version) AS method_version,
        m.artifact_type, m.metric, m.metric_version, m.dims,
        count(m.value) AS n, avg(m.value) AS mean, stddev_samp(m.value) AS sd,
        min(m.value) AS lo, median(m.value) AS mid, max(m.value) AS hi
 FROM log.trial t
 JOIN log.recipe r ON r.recipe_key = t.recipe_key
+JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
 JOIN trial_measure m ON m.trial_id = t.trial_id AND m.artifact_id = t.result_artifact
-GROUP BY t.recipe_key, m.artifact_type, m.metric, m.metric_version, m.dims;
+GROUP BY t.recipe_key, m.artifact_type, m.metric_id, m.metric, m.metric_version, m.dims;
 
 -- How wide the search was, over every method: every trial counts, failed and cancelled ones included, and a trial
 -- that evaluated many configurations counts each. The deflated Sharpe ratio and the probability of backtest
 -- overfitting read `candidates`. By goal, and by selection for trials with no goal.
 CREATE VIEW search_size AS
-SELECT t.workspace_id, t.goal_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method) AS methods,
+SELECT t.workspace_id, t.goal_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
        count(DISTINCT t.recipe_key) AS recipes, count(*) FILTER (WHERE t.state = 'completed') AS completed
 FROM log.trial t JOIN log.recipe r ON r.recipe_key = t.recipe_key
 GROUP BY t.workspace_id, t.goal_id;
 
 CREATE VIEW search_size_by_selection AS
-SELECT t.workspace_id, t.selection_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method) AS methods,
+SELECT t.workspace_id, t.selection_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
        count(DISTINCT t.recipe_key) AS recipes, count(*) FILTER (WHERE t.state = 'completed') AS completed
 FROM log.trial t JOIN log.recipe r ON r.recipe_key = t.recipe_key
 GROUP BY t.workspace_id, t.selection_id;
@@ -139,21 +146,22 @@ GROUP BY t.workspace_id, t.selection_id;
 CREATE VIEW decision_scorecard AS
 SELECT p.prediction_id, p.trial_id, p.workspace_id, e.actor_kind, e.actor_id,
        make_timestamptz(e.occurred_us) AS registered_at, make_timestamptz(p.horizon_us) AS horizon,
-       p.confidence, p.score, p.score_metric, p.score_metric_version
-FROM log.prediction p JOIN log.event e ON e.seq = p.registered_seq;
+       p.confidence, p.score, sl.name AS score_metric, p.score_metric_version
+FROM log.prediction p JOIN log.event e ON e.seq = p.registered_seq
+LEFT JOIN log.definition_lineage sl ON sl.definition_id = p.score_metric_id;
 
 -- The scoreboards read the log's daily totals, never the whole history.
 CREATE VIEW agent_daily AS
 SELECT CAST(day AS DATE) AS day, actor_id,
-       sum(n) FILTER (WHERE type = 'agent.turn') AS turns,
+       sum(n) FILTER (WHERE ty.name = 'agent.turn') AS turns,
        sum(tokens_in) AS tokens_in, sum(tokens_out) AS tokens_out, sum(cost_microusd) / 1e6 AS cost_usd,
-       sum(n) FILTER (WHERE type = 'agent.turn' AND outcome = 'completed') AS completed,
-       sum(n) FILTER (WHERE type = 'agent.turn' AND outcome = 'failed') AS failed
-FROM log.daily_span WHERE actor_kind = 'agent'
+       sum(n) FILTER (WHERE ty.name = 'agent.turn' AND outcome = 'completed') AS completed,
+       sum(n) FILTER (WHERE ty.name = 'agent.turn' AND outcome = 'failed') AS failed
+FROM log.daily_span d JOIN log.definition_lineage ty ON ty.definition_id = d.type_id WHERE actor_kind = 'agent'
 GROUP BY ALL;
 
 CREATE VIEW node_io AS
-SELECT CAST(day AS DATE) AS day, node, sum(n) AS calls,
+SELECT CAST(day AS DATE) AS day, nl.name AS node, sum(n) AS calls,
        sum(bytes_read) AS bytes_read, sum(bytes_written) AS bytes_written, sum(micros) / 1e6 AS seconds
-FROM log.daily_span
+FROM log.daily_span d JOIN log.definition_lineage nl ON nl.definition_id = d.node_id
 GROUP BY ALL;

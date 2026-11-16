@@ -161,7 +161,7 @@ class HostLog:
             raise
         log = cls(con, lock, batch=batch, seconds=seconds)
         if con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None:
-            count = con.execute("SELECT count(*) FROM definition").fetchone()[0]
+            count = con.execute("SELECT count(*) FROM definition_version").fetchone()[0]
             log.append(envelope("registry.seeded", attrs={"count": count}), None)
         log._checkpoint_month(time.time_ns() // 1000 if now_us is None else now_us)
         log.flush()

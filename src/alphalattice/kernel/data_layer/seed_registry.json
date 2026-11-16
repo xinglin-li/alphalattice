@@ -1,6 +1,6 @@
 {
   "schema": "alphalattice.data_layer.seed_registry.v1",
-  "note": "The definitions 0.2.8 starts with, each a version-1 row of log.sqlite's definition table (from the 0.2.8 reference schemas' definitions). A family's spec is contract content the Host checks for form.",
+  "note": "The definitions 0.2.8 starts with, each version 1 of a definition lineage in log.sqlite, whose id is the digest of its family and this first name (from the 0.2.8 reference schemas' definitions). A family's spec is contract content the Host checks for form.",
   "families": {
     "event_type": "what may be written to the log, and the shape of its attributes",
     "artifact_type": "what an artifact is, where its body lives and which measures every one of its kind records",
@@ -10,7 +10,11 @@
     "source": "an outside data source: its world table, its key and its fields",
     "lag_rule": "how long after its valid date a source's row became known, for rows with no known time of their own",
     "tag": "a tag key and the values it admits",
-    "node": "a module: what it provides, uses, emits and owns"
+    "node": "a module: what it provides, uses, emits and owns",
+    "provider": "an outside data provider; world rows name it by its lineage's id",
+    "sector_scheme": "a sector classification; world.sector rows name it by its lineage's id",
+    "universe": "a set of listings over time; world.universe_member rows name it by its lineage's id",
+    "world_table": "a world table of the catalog; world.superseded names it by its lineage's id"
   },
   "event_types": [
     {
@@ -50,6 +54,19 @@
       "text": "optional",
       "durable": false,
       "description": "A version became standard, deprecated or superseded."
+    },
+    {
+      "name": "definition.renamed",
+      "work": false,
+      "subject": "definition",
+      "required": [
+        "family",
+        "name",
+        "to"
+      ],
+      "text": "optional",
+      "durable": false,
+      "description": "A definition lineage took a new name; its id, versions and every name it held stay."
     },
     {
       "name": "workspace.created",
@@ -187,7 +204,7 @@
       "work": false,
       "subject": "admission",
       "required": [
-        "provider",
+        "provider_id",
         "dataset",
         "row_count",
         "catalog_snapshot",
@@ -756,6 +773,40 @@
       "name": "quality",
       "values": null,
       "description": "How far the subject can be trusted."
+    }
+  ],
+  "world_tables": [
+    {
+      "name": "listing",
+      "description": "The catalog's world.listing."
+    },
+    {
+      "name": "provider_symbol",
+      "description": "The catalog's world.provider_symbol."
+    },
+    {
+      "name": "universe_member",
+      "description": "The catalog's world.universe_member."
+    },
+    {
+      "name": "sector",
+      "description": "The catalog's world.sector."
+    },
+    {
+      "name": "raw_bar",
+      "description": "The catalog's world.raw_bar."
+    },
+    {
+      "name": "corporate_action",
+      "description": "The catalog's world.corporate_action."
+    },
+    {
+      "name": "session",
+      "description": "The catalog's world.session."
+    },
+    {
+      "name": "evidence_doc",
+      "description": "The catalog's world.evidence_doc."
     }
   ]
 }

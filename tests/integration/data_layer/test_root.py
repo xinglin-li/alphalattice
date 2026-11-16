@@ -13,6 +13,7 @@ import pytest
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer.project import definition_id, register
 from alphalattice.kernel.data_layer.reading import reading_session
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
@@ -55,9 +56,20 @@ def _event(con, type_, subject, *, phase=None, attrs=None, span=None, text=None)
     return seq
 
 
-MOMENTUM = {"family": "method", "name": "momentum", "version": 1, "status": "standard"}
-MOMENTUM |= {"spec": "{}", "text": "Past return over a lookback.", "owner": "research"}
-MOMENTUM |= {"registered_seq": 1, "status_seq": 1}
+METHOD, METRIC = definition_id("method", "momentum"), definition_id("metric", "sharpe")
+BACKTEST = definition_id("artifact_type", "backtest")
+MOMENTUM = (
+    "standard",
+    None,
+    None,
+    "{}",
+    "Past return over a lookback.",
+    None,
+    None,
+    "research",
+    1,
+    1,
+)
 
 
 @pytest.fixture(scope="module")
@@ -75,20 +87,20 @@ def log(tmp_path_factory):
     made = _event(con, "selection.made", ("selection", "s1"), attrs={"cutoff_us": 1})
     selection = ("s1", "w1", T0, "sp500", "2015-01-01", "2024-12-31", "{}", made)
     con.execute(f"INSERT INTO selection VALUES ({', '.join('?' * 8)})", selection)
-    con.execute(*_insert("definition", **MOMENTUM))
+    register(con, "method", "momentum", 1, *MOMENTUM, None)
     recipe = _event(con, "recipe.defined", ("recipe", "r1"))
-    con.execute("INSERT INTO recipe VALUES ('r1', 'momentum', 1, '{}', '[]', ?)", (recipe,))
+    con.execute("INSERT INTO recipe VALUES ('r1', ?, 1, '{}', ?)", (METHOD, recipe))
     registered = _event(con, "trial.registered", ("trial", "t1"))
     trial = {"trial_id": "t1", "workspace_id": "w1", "selection_id": "s1", "recipe_key": "r1"}
     trial |= {"seeds": "[7]", "product_version": "0.2.8", "state": "registered"}
     con.execute(*_insert("trial", **trial, registered_seq=registered))
     produced = _event(con, "artifact.produced", ("artifact", "a1"), attrs={"type": "backtest"})
-    artifact = {"artifact_id": "a1", "identity_kind": "recipe", "type": "backtest"}
+    artifact = {"artifact_id": "a1", "identity_kind": "recipe", "type_id": BACKTEST}
     artifact |= {"type_version": 1, "meaning": "A fixture backtest.", "recipe_key": "r1"}
     artifact |= {"selection_id": "s1", "trial_id": "t1", "storage": "table"}
     con.execute(*_insert("artifact", **artifact, body_state="present", produced_seq=produced))
     result = _event(con, "result.recorded", ("artifact", "a1"))
-    con.execute("INSERT INTO measure VALUES ('a1', 'sharpe', 1, '', 0.9, ?)", (result,))
+    con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '', 0.9, ?)", (METRIC, result))
     active = _event(con, "book.activated", ("book", "b1"))
     con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
     fill = _event(con, "ledger.posted", ("book", "b1"))
@@ -96,11 +108,11 @@ def log(tmp_path_factory):
         "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, ?, ?)",
         [(fill, 1, "book", "AAPL", 10 * N), (fill, 2, "market", "AAPL", -10 * N)],
     )
-    yield con, {"first": first, "note": note, "registered": registered}
+    yield con, {"first": first, "note": note, "registered": registered, "metric": METRIC}
     con.close()
 
 
-SHARPE = {"family": "metric", "name": "sharpe", "version": 2, "status": "standard"}
+SHARPE = {"definition_id": METRIC, "version": 2, "status": "standard"}
 SHARPE |= {"relation": "convertible", "conversion": '{"offset": 0.0, "scale": 1.2035}'}
 SHARPE |= {"spec": '{"unit": "ratio", "params": {"periods": 365}}', "text": "Annualized."}
 SHARPE |= {"owner": "kernel", "registered_seq": 1, "status_seq": 1}
@@ -140,34 +152,46 @@ REFUSALS = {
         "never edited",
     ),
     "a definition is never edited": (
-        "UPDATE definition SET spec = '{}' WHERE name = 'sharpe'",
+        "UPDATE definition_version SET spec = '{}' WHERE definition_id = :metric",
         "never edited",
     ),
     "a definition is never deleted": (
-        "DELETE FROM definition WHERE name = 'sharpe'",
+        "DELETE FROM definition_version WHERE definition_id = :metric",
         "never deleted",
     ),
     "a version follows the one before it": (
-        _insert("definition", **SHARPE | {"version": 3}),
+        _insert("definition_version", **SHARPE | {"version": 3}),
         "follows the one before",
     ),
     "a later version says how it relates": (
-        _insert("definition", **SHARPE | {"relation": None, "conversion": None}),
+        _insert("definition_version", **SHARPE | {"relation": None, "conversion": None}),
         r"\(version = 1\) = \(relation IS NULL\)",
     ),
     "a conversion is a scale and an offset": (
-        _insert("definition", **SHARPE | {"conversion": "old * 1.2"}),
+        _insert("definition_version", **SHARPE | {"conversion": "old * 1.2"}),
         r"json_valid\(conversion\)",
+    ),
+    "a name names one lineage forever": (
+        "UPDATE definition_name SET definition_id = 'x' WHERE definition_id = :metric",
+        "never moved",
+    ),
+    "a lineage keeps its id": (
+        "UPDATE definition_lineage SET definition_id = 'x' WHERE definition_id = :metric",
+        "keeps its id",
     ),
     "a selection is never edited": ("UPDATE selection SET cutoff_us = 0", "never edited"),
     "a recipe names a registered method": (
-        "INSERT INTO recipe VALUES ('r0', 'reversal', 1, '{}', '[]', 1)",
-        "not registered",
+        "INSERT INTO recipe VALUES ('r0', 'reversal', 1, '{}', 1)",
+        "FOREIGN KEY",
+    ),
+    "a recipe reads registered recipes": (
+        "INSERT INTO recipe_upstream VALUES ('r1', 0, 'no-such-recipe')",
+        "FOREIGN KEY",
     ),
     "a trial ends after its registration": (LATE_TRIAL, "ended_seq > registered_seq"),
     "a measure names a registered metric version": (
-        "INSERT INTO measure VALUES ('a1', 'sharpe', 9, '', 1.0, 1)",
-        "not registered",
+        "INSERT INTO measure VALUES ('a1', :metric, 9, '', 1.0, 1)",
+        "FOREIGN KEY",
     ),
     "a recorded measure never moves": ("UPDATE measure SET value = 9", "never moves"),
     "an artifact's profile is kept forever": ("DELETE FROM artifact", "kept forever"),
@@ -200,7 +224,7 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
     measures = {
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
-    assert (len(rows), {row[2:5] for row in rows}) == (81, {(1, 1, 1)})
+    assert (len(rows), {row[2:5] for row in rows}) == (94, {(1, 1, 1)})
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
     assert "registry.seeded" in named["event_type"]
@@ -215,10 +239,11 @@ def settled(tmp_path_factory):
     create_data_root(root)
     con = sqlite3.connect(root / "machine" / "log.sqlite", isolation_level=None)
     con.execute("PRAGMA foreign_keys = ON")  # log.sql's first pragma holds per connection
-    con.execute(*_insert("definition", **SHARPE))
+    con.execute(*_insert("definition_version", **SHARPE))
     con.execute(
-        "UPDATE definition SET status = 'deprecated', status_seq = 2"
-        " WHERE name = 'sharpe' AND version = 1"
+        "UPDATE definition_version SET status = 'deprecated', status_seq = 2"
+        " WHERE definition_id = ? AND version = 1",
+        (METRIC,),
     )
     con.execute("INSERT INTO workspace VALUES ('w1', 'main', NULL, 'active', 1, NULL)")
     active = _event(con, "book.activated", ("book", "b1"))
@@ -248,7 +273,7 @@ PLANS = {
         "event_subject",
     ),
     "a metric's measures": (
-        "measure WHERE metric = 'sharpe' AND metric_version = 2",
+        f"measure WHERE metric_id = '{METRIC}' AND metric_version = 2",
         "measure_by_metric",
     ),
     "a recipe's trials": ("trial WHERE recipe_key = 'r1'", "trial_recipe"),
@@ -360,8 +385,8 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         "index_meta",
     }
     con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
-    con.execute("PRAGMA user_version = 2")
+    con.execute("PRAGMA user_version = 9")
     con.close()
-    with pytest.raises(DataError, match="schema version 2") as refused:
+    with pytest.raises(DataError, match="schema version 9") as refused:
         create_data_root(tmp_path)
     assert refused.value.failure.code == "data_layer.schema_mismatch"

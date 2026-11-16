@@ -258,6 +258,13 @@
       "layer": "integration",
       "seconds": 20
     },
+    "data_layer.a_rename_moves_no_key": {
+      "description": "A renamed method, metric or feature set keeps its lineage's id, so no recipe key, measure, cache entry or derived partition moves, and every old name still finds it.",
+      "lower_layer": "A rename is an event projected inside the log's own SQLite transaction; only a real log shows the rows it leaves.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.admission_is_read_as_of_before_and_after_a_correction": {
       "description": "One admission's rows share one known_at that never steps back with the wall clock; the as-of read before its correction sees them, after it sees the correction, and the replaced version is superseded in the same commit.",
       "lower_layer": "The as-of read is DuckDB's macro over a real DuckLake catalog.",
@@ -364,6 +371,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.lineage_id_is_its_first_registration": {
+      "description": "A definition lineage's id is a digest of its family and the name it was first registered under, never a name.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.live_ref_bodies_are_never_collected": {
       "description": "A blob whose artifact a live reference holds is refused deletion by name and stays, while an unheld blob is deleted.",
       "lower_layer": "The hold is a live_ref row in a real SQLite log.",
@@ -420,7 +433,7 @@
       "seconds": 1
     },
     "data_layer.recipe_key_is_its_content": {
-      "description": "A recipe's key is the digest of its method, version, parameters and upstream recipes, whatever order they are written in.",
+      "description": "A recipe's key is the digest of its method's lineage, version, parameters and upstream recipes, whatever order they are written in, and never a name.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1

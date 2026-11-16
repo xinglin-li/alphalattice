@@ -53,7 +53,8 @@ def compare(con: sqlite3.Connection, a: str, b: str) -> list[dict[str, Any]]:
     sides: dict[str, dict[tuple[str, str], dict[int, float | None]]] = {"a": {}, "b": {}}
     for side, artifact in (("a", a), ("b", b)):
         rows = con.execute(
-            "SELECT metric, metric_version, dims, value FROM measure WHERE artifact_id = ?",
+            "SELECT l.name, m.metric_version, m.dims, m.value FROM measure m"
+            " JOIN definition_lineage l ON l.definition_id = m.metric_id WHERE m.artifact_id = ?",
             (artifact,),
         )
         for metric, version, dims, value in rows:

@@ -15,8 +15,9 @@ import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import backup, create_data_root
-from alphalattice.kernel.data_layer.chain import digest
+from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
+from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.store import StorePort, stage
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
@@ -32,7 +33,14 @@ def _admit(root, port, close=1.0, count=1500):
         }
         for n in range(count)
     ]
-    with stage(root, "raw_bar", "synthetic", rows, floor_bytes=0) as staged:
+    key = {"family": "provider", "name": "synthetic", "version": 1}
+    if not port.log.read("SELECT 1 FROM definition_name WHERE family = 'provider'"):
+        text = canonical(key | {"text": "Synthetic bars."}).decode()
+        port.log.record(
+            "definition.registered", ("definition", "provider/synthetic"), key, text=text
+        )
+    provider = definition_id("provider", "synthetic")
+    with stage(root, "raw_bar", provider, rows, floor_bytes=0) as staged:
         return port.commit(staged)
 
 

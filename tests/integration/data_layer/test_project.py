@@ -8,6 +8,7 @@ import sqlite3
 import time
 import uuid
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 
@@ -16,13 +17,22 @@ from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer import project as projections
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, digest
 from alphalattice.kernel.data_layer.log import HostLog, replay, verify_whole
-from alphalattice.kernel.data_layer.project import PROJECTED, differences, recipe_key
+from alphalattice.kernel.data_layer.project import (
+    PROJECTED,
+    definition_id,
+    differences,
+    recipe_key,
+)
+from alphalattice.kernel.data_layer.reading import reading_session
+from alphalattice.kernel.data_layer.store import StorePort, feature_table
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC
 AGENT = {"workspace": "w1", "actor": ("agent", "claude"), "node": "research"}
 PERSON = {"workspace": "w1", "actor": ("person", "me")}
 N = 10**9  # ledger quantities are nano-units
+MOMENTUM, OUTCOME = definition_id("method", "momentum"), definition_id("method", "realized_outcome")
+SHARPE, FACTORS = definition_id("metric", "sharpe"), definition_id("feature_set", "momentum_set")
 
 
 def _define(log, family, name, version=1, *, text, **more):
@@ -105,14 +115,14 @@ def _research(log):
     _define(log, "method", "realized_outcome", text="What a signal earned after its cutoff.")
     keys = {}
     for lookback in (12, 6):
-        keys[lookback] = recipe_key("momentum", 1, {"lookback": lookback})
+        keys[lookback] = recipe_key(MOMENTUM, 1, {"lookback": lookback})
         attrs = {"method": "momentum", "method_version": 1, "params": {"lookback": lookback}}
         log.record("recipe.defined", ("recipe", keys[lookback]), attrs, **AGENT)
     trials = (("t1", 12, 0.9, "table"), ("t2", 12, 1.3, "none"), ("t3", 6, 0.4, "table"))
     return {t: _trial(log, t, keys[lookback], s, storage) for t, lookback, s, storage in trials}
 
 
-def _aftermath(log, artifacts):
+def _aftermath(root, log, artifacts):
     """What follows the trials: notes, a prediction, a kept trial and its outcome, tags, a task,
     a book and its ledger, a setting, a new metric version, a forgotten note, a checkpoint."""
     text = "Positive but weak after costs."
@@ -128,8 +138,11 @@ def _aftermath(log, artifacts):
     score = {"score": 0.16, "metric": "brier", "metric_version": 1}
     log.record("prediction.scored", ("prediction", "p1"), score)
     log.record("trial.kept", ("trial", "t1"), **PERSON)
-    horizon = recipe_key("realized_outcome", 1, {"horizon": "63d"})
+    horizon = recipe_key(
+        OUTCOME, 1, {"horizon": "63d"}, [recipe_key(MOMENTUM, 1, {"lookback": 12})]
+    )
     attrs = {"method": "realized_outcome", "method_version": 1, "params": {"horizon": "63d"}}
+    attrs["upstream"] = [recipe_key(MOMENTUM, 1, {"lookback": 12})]  # the signal it scores
     log.record("recipe.defined", ("recipe", horizon), attrs)
     outcome = digest(f"{horizon}/t1".encode())
     meaning = "What the t1 signal earned over the 63 sessions after its cutoff."
@@ -173,9 +186,49 @@ def _aftermath(log, artifacts):
     moved = {"family": "metric", "name": "sharpe", "version": 1, "status": "deprecated"}
     log.record("definition.status_changed", ("definition", "metric/sharpe"), moved)
     log.record("record.forgotten", ("event", str(note)), {"seq": note}, **PERSON)
+    _renames(root, log)
     seq, head = log.read("SELECT seq, head FROM chain_head")[0]
     mark = {"kind": "backup", "seq": seq, "head": head, "chain_version": CHAIN_VERSION}
     log.record("chain.checkpointed", attrs=mark)
+
+
+def _renames(root, log):
+    """A feature set over momentum, its cache entry and derived partition, then a method, a metric
+    and that feature set renamed; momentum is defined again under its new name: the same recipe."""
+    spec = {"method": "momentum", "method_version": 1, "factors": ["mom_12_1"]}
+    _define(log, "feature_set", "momentum_set", text="Momentum factors.", spec=spec, **AGENT)
+    _cached(root, log, recipe_key(definition_id("method", "momentum"), 1, {"lookback": 12}))
+    for family, name, to, who in (
+        ("method", "momentum", "price_momentum", AGENT),
+        ("metric", "sharpe", "sharpe_ratio", PERSON),
+        ("feature_set", "momentum_set", "momentum_factors", AGENT),
+    ):
+        renamed = {"family": family, "name": name, "to": to}
+        log.record("definition.renamed", ("definition", f"{family}/{name}"), renamed, **who)
+    again = {"method": "price_momentum", "method_version": 1, "params": {"lookback": 12}}
+    log.record(
+        "recipe.defined", ("recipe", recipe_key(MOMENTUM, 1, {"lookback": 12})), again, **AGENT
+    )
+
+
+def _cached(root, log, key):
+    """The cache entry and derived partition a first computation leaves, as their writers keep them:
+    the entry keyed by the recipe, the partition's table named by the feature set's lineage."""
+    with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con, con:
+        entry = "INSERT INTO cache_entry VALUES (?, '2024', 'rows', 1, 8, 1, ?, ?)"
+        con.execute(entry, (key, T0, T0))
+    port = StorePort.open(root, log)
+    try:
+        table = f"lake.derived.{feature_table(definition_id('feature_set', 'momentum_set'))}"
+        columns = "recipe_key VARCHAR, input_digest VARCHAR, session_date DATE, mom_12_1 DOUBLE"
+        port.lake.execute(f"CREATE TABLE {table} ({columns})").complete()
+        port.lake.execute(f"ALTER TABLE {table} SET PARTITIONED BY (year(session_date))").complete()
+        # past the catalog's 1000-row inlining, so the year's rows land as a Parquet partition
+        days = "DATE '2024-01-02' + CAST(i % 300 AS INTEGER)"
+        rows = f"INSERT INTO {table} SELECT ?, 'rows', {days}, 0.5 FROM range(1200) r(i)"
+        port.lake.execute(rows, [key]).complete()
+    finally:
+        port.close()
 
 
 @pytest.fixture(scope="module")
@@ -185,7 +238,7 @@ def history(tmp_path_factory):
     create_data_root(root)
     with HostLog.open(root, now_us=T0) as log:
         artifacts = _research(log)
-        _aftermath(log, artifacts)
+        _aftermath(root, log, artifacts)
     return root, artifacts
 
 
@@ -213,7 +266,8 @@ def test_the_projections_hold_the_research_memory(history):
     root, artifacts = history
     with closing(_log(root)) as con:
         found = con.execute(
-            "SELECT subject_id FROM tag WHERE key = 'instrument' AND value = 'AAPL' ORDER BY 1"
+            "SELECT subject_id FROM tag WHERE key_id = ? AND value = 'AAPL' ORDER BY 1",
+            (definition_id("tag", "instrument"),),
         ).fetchall()
         assert [r[0] for r in found] == ["t1", "t2", "t3"]
         state = con.execute("SELECT state, kept FROM trial WHERE trial_id = 't1'").fetchone()
@@ -229,6 +283,43 @@ def test_the_projections_hold_the_research_memory(history):
         assert con.execute(f"{measured} IN ('t1', 't2', 't3')").fetchone()[0] == 10
         note = "SELECT text FROM research_note WHERE subject_id = 't1'"
         assert con.execute(note).fetchone()[0] is None  # forgotten; its event stays
+
+
+@pytest.mark.proves("data_layer.a_rename_moves_no_key")
+def test_a_rename_moves_no_recipe_measure_cache_or_partition_key(history):
+    """A renamed method, metric and feature set keep their lineage's id: every recipe, measure,
+    cache entry and derived partition keyed by it stays, every old name still finds it, and the
+    reading views show the new names."""
+    root, _ = history
+    with closing(_log(root)) as con:
+        lineages = dict(con.execute("SELECT name, definition_id FROM definition_lineage"))
+        assert (lineages["price_momentum"], lineages["sharpe_ratio"]) == (MOMENTUM, SHARPE)
+        assert lineages["momentum_factors"] == FACTORS
+        assert "momentum" not in lineages and "sharpe" not in lineages
+        recipes = con.execute("SELECT recipe_key FROM recipe WHERE method_id = ?", (MOMENTUM,))
+        keys = {recipe_key(MOMENTUM, 1, {"lookback": n}) for n in (12, 6)}
+        assert {row[0] for row in recipes} == keys  # one approach under either name: one recipe
+        held = "SELECT definition_id FROM definition WHERE family = ? AND name = ? AND version = 1"
+        assert con.execute(held, ("metric", "sharpe")).fetchone()[0] == SHARPE
+        measured = "SELECT count(*) FROM measure WHERE metric_id = ? AND metric_version = 1"
+        assert con.execute(measured, (SHARPE,)).fetchone()[0] == 4
+        refs = "SELECT ref_id, ref_version FROM definition_ref WHERE definition_id = ?"
+        assert [tuple(r) for r in con.execute(refs, (FACTORS,))] == [(MOMENTUM, 1)]
+        shown = "SELECT DISTINCT metric FROM metric WHERE metric_id = ?"
+        assert [tuple(r) for r in con.execute(shown, (SHARPE,))] == [("sharpe_ratio",)]
+        cached = "SELECT input_digest FROM cache_entry WHERE recipe_key = ? AND part = '2024'"
+        renamed = recipe_key(lineages["price_momentum"], 1, {"lookback": 12})
+        assert con.execute(cached, (renamed,)).fetchone()[0] == "rows"
+    reading = reading_session(root)
+    try:  # the partition written under the old names is found, in place, under the new
+        table = feature_table(lineages["momentum_factors"])
+        listed = "SELECT data_file FROM ducklake_list_files('lake', ?, schema => 'derived')"
+        [(path,)] = reading.execute(listed, [table]).fetchall()
+        assert Path(path).parent.name == "year=2024" and Path(path).parent.parent.name == table
+        held = f"SELECT count(*), min(recipe_key), max(recipe_key) FROM lake.derived.{table}"
+        assert reading.execute(held).fetchone() == (1200, renamed, renamed)
+    finally:
+        reading.close()
 
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
@@ -251,24 +342,94 @@ def test_a_projection_that_reads_the_clock_fails_replay_by_name(tmp_path, monkey
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
 def test_a_projection_refusal_leaves_no_event(tmp_path):
-    """An unbalanced posting, a recipe under another key and an untagged key leave no trace."""
+    """An unbalanced posting, a recipe under another key or reading an unknown recipe, an
+    untagged key, a trial outside its selection's workspace or its hypothesis's goal and a rename
+    onto a name another lineage holds leave no trace."""
     copy = tmp_path / "data"
     create_data_root(copy)
     with HostLog.open(copy, now_us=T0) as log:
-        log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
+        for workspace in ("w1", "w2"):
+            log.record("workspace.created", ("workspace", workspace), {"name": workspace})
         log.record("book.activated", ("book", "b1"), {"mode": "paper"}, **PERSON)
+        _define(log, "method", "momentum", text="Past return over a lookback.", **AGENT)
+        window = {"cutoff_us": 1, "universe": "sp500"}
+        there = AGENT | {"workspace": "w2"}
+        log.record("selection.made", ("selection", "s2"), window, **there)
+        log.record(
+            "goal.set",
+            ("goal", "g2"),
+            {"title": "Find a value signal"},
+            **PERSON | {"workspace": "w2"},
+        )
+        log.record(
+            "hypothesis.stated",
+            ("hypothesis", "h2"),
+            {"goal_id": "g2"},
+            text="Value pays.",
+            **there,
+        )
         before = log.read("SELECT count(*) FROM event")[0][0]
-        for code, type_, subject, attrs in (
-            ("ledger_unbalanced", "ledger.posted", ("book", "b1"), {"lines": [["fees", "USD", N]]}),
+        reads = recipe_key(MOMENTUM, 1, {}, ["no-such-recipe"])
+        mine = {"selection_id": "s2", "recipe_key": "r", "seeds": [], "product_version": "0.2.8"}
+        renamed = {"family": "metric", "name": "sharpe", "to": "ann_return"}
+        for code, type_, subject, attrs, who in (
+            (
+                "ledger_unbalanced",
+                "ledger.posted",
+                ("book", "b1"),
+                {"lines": [["fees", "USD", N]]},
+                AGENT,
+            ),
             (
                 "recipe_key_mismatch",
                 "recipe.defined",
                 ("recipe", "not-its-digest"),
                 {"method": "momentum", "method_version": 1, "params": {}},
+                AGENT,
             ),
-            ("tag_unregistered", "tag.added", ("trial", "t1"), {"key": "no_such", "value": 1}),
+            (
+                "recipe_upstream_unknown",
+                "recipe.defined",
+                ("recipe", reads),
+                {
+                    "method": "momentum",
+                    "method_version": 1,
+                    "params": {},
+                    "upstream": ["no-such-recipe"],
+                },
+                AGENT,
+            ),
+            (
+                "tag_unregistered",
+                "tag.added",
+                ("trial", "t1"),
+                {"key": "no_such", "value": 1},
+                AGENT,
+            ),
+            ("trial_workspace_disagrees", "trial.registered", ("trial", "t9"), mine, AGENT),
+            (
+                "trial_goal_disagrees",
+                "trial.registered",
+                ("trial", "t9"),
+                mine | {"hypothesis_id": "h2"},
+                there,
+            ),
+            (
+                "trial_goal_disagrees",
+                "trial.registered",
+                ("trial", "t9"),
+                mine | {"goal_id": "g1"},
+                there,
+            ),
+            (
+                "definition_name_taken",
+                "definition.renamed",
+                ("definition", "metric/sharpe"),
+                renamed,
+                PERSON,
+            ),
         ):
             with pytest.raises(DataError) as refused:
-                log.record(type_, subject, attrs, **AGENT)
+                log.record(type_, subject, attrs, **who)
             assert refused.value.failure.code == f"data_layer.{code}"
         assert log.read("SELECT count(*) FROM event")[0][0] == before

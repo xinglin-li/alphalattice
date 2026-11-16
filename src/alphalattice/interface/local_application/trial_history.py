@@ -66,7 +66,10 @@ def started(sealed: SealedSubmission) -> Trial | None:
         "desk_program": program.desk_program_hash,
     }
     history.define("method", program.kind, f"The {program.kind} Desk's sealed research program.")
-    recipe = recipe_key(program.kind, 1, params)
+    method = history.definition_id("method", program.kind)
+    if method is None:  # deferred between the two calls: the history records nothing
+        return None
+    recipe = recipe_key(method, 1, params)
     defined = {"method": program.kind, "method_version": 1, "params": params}
     history.record("recipe.defined", ("recipe", recipe), defined, actor=actor)
     trial = uuid7()

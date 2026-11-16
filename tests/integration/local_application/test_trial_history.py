@@ -44,9 +44,14 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
         ).fetchall()
         assert trials == [("completed", first.evidence_hash, "[0]"), ("completed", None, "[0]")]
         assert con.execute("SELECT count(*) FROM selection").fetchone()[0] == 1
-        recipe = con.execute("SELECT method FROM recipe").fetchall()
+        recipe = con.execute(
+            "SELECT l.name FROM recipe r JOIN definition_lineage l ON l.definition_id = r.method_id"
+        ).fetchall()
         assert recipe == [(first.kind,)]
-        artifact = con.execute("SELECT type, storage, trial_id IS NOT NULL FROM artifact")
+        artifact = con.execute(
+            "SELECT l.name, a.storage, a.trial_id IS NOT NULL FROM artifact a"
+            " JOIN definition_lineage l ON l.definition_id = a.type_id"
+        )
         assert artifact.fetchall() == [("research_evidence", "none", 1)]
         with closing(replay(con, tmp_path / "replayed.sqlite")) as target:
             assert differences(con, target) == []

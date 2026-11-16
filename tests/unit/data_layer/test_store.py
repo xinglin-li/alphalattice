@@ -50,8 +50,8 @@ ROW = {"listing_id": str(uuid.UUID(int=7)), "session_date": "2024-01-02"}
 )
 def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, legacy, code):
     """Two versions of one key in one admission, a table StorePort does not admit, or a legacy
-    batch with no valid date are refused by name; a world row is digested with its provider where
-    its key has one, and a results row is kept as it is."""
+    batch with no valid date are refused by name; a world row is digested with its provider's
+    lineage where its key has one, and a results row is kept as it is."""
     with pytest.raises(DataError) as refused:
         digested(table, "yf", rows, legacy=legacy)
     assert refused.value.failure.code == f"data_layer.{code}"
@@ -59,7 +59,7 @@ def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, leg
         sorted(row) for table in ("raw_bar", "listing") for row in digested(table, "yf", [ROW])
     ]
     assert world == [
-        ["listing_id", "provider", "session_date", "value_digest"],
+        ["listing_id", "provider_id", "session_date", "value_digest"],
         ["listing_id", "session_date", "value_digest"],
     ]
     outcome = ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}

@@ -38,22 +38,31 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
+from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import load_extensions, schema_text, statements
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
 WORLD_KEYS: Final = {
     "listing": ("listing_id",),
-    "provider_symbol": ("provider", "symbol", "valid_from"),
+    "provider_symbol": ("provider_id", "symbol", "valid_from"),
     "universe_member": ("universe_id", "listing_id", "valid_from"),
-    "sector": ("scheme", "listing_id", "valid_from"),
-    "raw_bar": ("provider", "listing_id", "session_date"),
-    "corporate_action": ("provider", "listing_id", "effective_date", "kind", "action_id"),
+    "sector": ("scheme_id", "listing_id", "valid_from"),
+    "raw_bar": ("provider_id", "listing_id", "session_date"),
+    "corporate_action": ("provider_id", "listing_id", "effective_date", "kind", "action_id"),
     "session": ("market", "session_date"),
     "evidence_doc": ("doc_digest",),
 }
 """Each world table catalog.sql defines, with its key less value_digest. An observed row is known
 from its admission's moment: known_at and known_asof are both the log's clock."""
+TABLE_IDS: Final = {table: definition_id("world_table", table) for table in WORLD_KEYS}
+"""Each world table's lineage id, as the seed registers it: world.superseded names a table by it."""
+LINEAGES: Final = {
+    "provider_id": "provider",
+    "scheme_id": "sector_scheme",
+    "universe_id": "universe",
+}
+"""The world columns that name a lineage, with its family: a row names a registered one."""
 RESULTS_KEYS: Final = {"execution_outcome": ("artifact_id", "listing_id", "formation_session")}
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused."""
@@ -79,7 +88,8 @@ class Staged(NamedTuple):
 
     admission_id: str
     table: str
-    provider: str
+    provider_id: str
+    """The provider's lineage, as the log registers it."""
     row_count: int
     lag: tuple[str, int] | None
     """A legacy batch's lag rule, by name and version; None for an observed one."""
@@ -120,9 +130,10 @@ class StorePort:
     def commit(self, staged: Staged) -> int:
         """Commit one staged admission as one catalog snapshot, then its owed event; returns the
         snapshot. The event is durable, so it is on disk when this returns. Refused by name: a
-        lag rule the log does not hold, legacy rows with no session to count from, and results
-        keys already admitted."""
+        lag rule the log does not hold, legacy rows with no session to count from, results keys
+        already admitted, and a provider, scheme or universe no lineage in the log registers."""
         with self._writer:
+            self._registered(staged)
             lag = None if staged.lag is None else self._lag_seconds(*staged.lag)
             self._catalog_commit(staged, self.log.clock(), lag)
             repair(self.log, self.lake)
@@ -136,6 +147,31 @@ class StorePort:
     def close(self) -> None:
         """Close the Host's DuckDB session; the log is the caller's."""
         self.lake.close()
+
+    def _registered(self, staged: Staged) -> None:
+        """Refuse an admission naming a lineage the log does not register in its family."""
+        parquet = self.root / "staging" / staged.admission_id / f"{staged.table}.parquet"
+        columns = {
+            row[0]
+            for row in self.lake.execute(
+                f"DESCRIBE SELECT * FROM '{parquet.as_posix()}'"
+            ).fetchall()
+        }
+        named = {("provider", staged.provider_id)}
+        for column, family in LINEAGES.items():
+            if column in columns and column != "provider_id":
+                found = self.lake.execute(f"SELECT DISTINCT {column} FROM '{parquet.as_posix()}'")
+                named |= {(family, value) for (value,) in found.fetchall()}
+        for family, value in sorted(named):
+            known = self.log.read(
+                "SELECT 1 FROM definition_lineage WHERE family = ? AND definition_id = ?",
+                (family, value),
+            )
+            if not known:
+                raise DataError(
+                    f"no {family} lineage has the id {value}; register the {family}, then commit",
+                    code="data_layer.lineage_unregistered",
+                )
 
     def _lag_seconds(self, name: str, version: int) -> int:
         """The lag a registered lag_rule version adds to a session's close, in seconds."""
@@ -181,10 +217,11 @@ class StorePort:
             ).complete()
             if world:
                 run(
-                    f"INSERT INTO lake.world.superseded SELECT '{table}', t.value_digest,"
+                    f"INSERT INTO lake.world.superseded SELECT '{TABLE_IDS[table]}',"
+                    " t.value_digest,"
                     f" t.admission_id, n.known_asof, '{admission}' FROM {target} t, ({rows}) n"
                     f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-                    f" WHERE s.table_name = '{table}' AND s.value_digest = t.value_digest"
+                    f" WHERE s.table_id = '{TABLE_IDS[table]}' AND s.value_digest = t.value_digest"
                     " AND s.admission_id = t.admission_id)"
                 ).complete()
                 rows = f"SELECT *, false AS retracted, '{admission}' AS admission_id FROM ({rows})"
@@ -263,7 +300,7 @@ class StorePort:
         """The `admission.committed` event the catalog commit carries."""
         whole = [{"part": "all", "min_known_asof_us": known, "max_known_asof_us": known}]
         attrs: dict[str, Any] = {
-            "provider": staged.provider,
+            "provider_id": staged.provider_id,
             "dataset": staged.table,
             "row_count": staged.row_count,
             "known_us": known,
@@ -287,17 +324,19 @@ class StorePort:
 def stage(
     root: Path,
     table: str,
-    provider: str,
+    provider_id: str,
     rows: Iterable[Mapping[str, Any]],
     *,
     lag: tuple[str, int] | None = None,
     floor_bytes: int = FREE_FLOOR_BYTES,
 ) -> Iterator[Staged]:
     """Digest one admission's rows and write them under staging; the commit request it yields is
-    all the writer needs. Its producer holds the admission's lock until the block ends, so a Host
-    that starts meanwhile leaves it: commit it inside the block. A legacy batch, rows 0.2.7 kept
-    with no knowledge time, names its source's lag rule as `lag=(name, version)`. Refused by name
-    below the free-space floor, and as `digested` refuses."""
+    all the writer needs. `provider_id` is the provider's lineage in the log. Its producer holds
+    the admission's lock until the block ends, so a Host that starts meanwhile leaves it: commit
+    it inside the block. A legacy batch, rows 0.2.7 kept with no knowledge time, names its
+    source's lag rule as `lag=(name, version)`. Refused by name below the free-space floor, and
+    as `digested` refuses.
+    """
     short = free_floor_shortfall(root, floor_bytes)
     if short:
         raise DataError(
@@ -306,7 +345,7 @@ def stage(
             code="data_layer.below_free_floor",
         )
     admission = uuid7()  # first: the rows and the staging folder carry it
-    staged = digested(table, provider, rows, legacy=lag is not None)
+    staged = digested(table, provider_id, rows, legacy=lag is not None)
     import pyarrow as pa  # lazy: the optional data extra, as DuckDB
     import pyarrow.parquet as pq  # lazy: as pyarrow
 
@@ -323,16 +362,22 @@ def stage(
         pq.write_table(
             pa.table(as_columns(staged)), root / "staging" / admission / f"{table}.parquet"
         )
-        yield Staged(admission, table, provider, len(staged), lag)
+        yield Staged(admission, table, provider_id, len(staged), lag)
     finally:
         drop(held, lock)
 
 
+def feature_table(feature_set_id: str) -> str:
+    """A feature set's table in `derived`, named by its lineage's id and never its name, so a
+    renamed feature set keeps every cached partition: feature_set_ and the id's hex digits."""
+    return "feature_set_" + feature_set_id.removeprefix("blake3:")
+
+
 def digested(
-    table: str, provider: str, rows: Iterable[Mapping[str, Any]], *, legacy: bool = False
+    table: str, provider_id: str, rows: Iterable[Mapping[str, Any]], *, legacy: bool = False
 ) -> list[dict[str, Any]]:
-    """Each world row with its value_digest, the digest of the row with its provider where its
-    table keys one; a results row as it is.
+    """Each world row with its value_digest, the digest of the row with its provider's lineage
+    where its table keys one, so a renamed provider moves no digest; a results row as it is.
 
     Refused by name: a table StorePort does not admit, a legacy batch for a table with no valid
     date to count a lag from, and two rows of one key, since DuckLake keeps no keys.
@@ -352,7 +397,7 @@ def digested(
     staged: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
     for given in rows:
-        row = {**given, "provider": provider} if "provider" in key else dict(given)
+        row = {**given, "provider_id": provider_id} if "provider_id" in key else dict(given)
         values = tuple(row[k] for k in key)
         if values in seen:
             raise DataError(
@@ -465,7 +510,7 @@ def _current(table: str) -> str:
     """A world table's current versions, as a subquery: those not withdrawn and not replaced."""
     return (
         f"(SELECT * FROM lake.world.{table} x WHERE NOT x.retracted AND NOT EXISTS (SELECT 1"
-        f" FROM lake.world.superseded s WHERE s.table_name = '{table}'"
+        f" FROM lake.world.superseded s WHERE s.table_id = '{TABLE_IDS[table]}'"
         " AND s.value_digest = x.value_digest AND s.admission_id = x.admission_id))"
     )
 

@@ -27,9 +27,10 @@ from typing import Any, Final
 import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 """`PRAGMA user_version` of the databases this code creates; it refuses any other."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
@@ -39,6 +40,7 @@ SPEC_FIELDS: Final = {
     "metrics": ("metric", ("unit", "direction", "params")),
     "artifact_types": ("artifact_type", ("storage", "table", "measures", "keep")),
     "tags": ("tag", ("values",)),
+    "world_tables": ("world_table", ()),
 }
 """Each seed list's definition family and the fields its rows keep as their spec."""
 
@@ -58,7 +60,8 @@ def schema_text(name: str) -> str:
 
 
 def seed_rows(owner: str = "kernel", seq: int = 1) -> list[tuple]:
-    """Every seed definition as a version-1 `definition` row, registered by the event at `seq`."""
+    """Every seed definition as a version-1 row, (family, name, version, then definition_version's
+    columns after its version), registered by the event at `seq`."""
     text = resources.files(__package__).joinpath("seed_registry.json").read_text(encoding="utf-8")
     seed = json.loads(text)
     out = [("family", name, {}, words) for name, words in seed["families"].items()]
@@ -84,8 +87,8 @@ def build_log(connection: sqlite3.Connection) -> None:
     """log.sql's tables in `connection`, with every seed definition registered at seq 1."""
     connection.executescript(schema_text("log.sql"))
     with connection:
-        rows = seed_rows()
-        connection.executemany(f"INSERT INTO definition VALUES ({', '.join('?' * 14)})", rows)
+        for family, name, version, *fields in seed_rows():
+            register(connection, family, name, version, *fields)
 
 
 def _build_index(connection: sqlite3.Connection) -> None:

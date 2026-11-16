@@ -184,6 +184,21 @@ def define(family: str, name: str, text: str, spec: Mapping[str, Any] | None = N
     )
 
 
+def definition_id(family: str, name: str) -> str | None:
+    """The lineage `name` names in `family`, by any name it held: what a recipe or a row keys by,
+    never the name. None outside a Host, while deferred, or when nothing registers it."""
+    log = _open.get("log")
+    found = (
+        None
+        if log is None
+        else log.read(
+            "SELECT definition_id FROM definition_name WHERE family = ? AND name = ?",
+            (family, name),
+        )
+    )
+    return str(found[0][0]) if found else None
+
+
 @contextmanager
 def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[None]:
     """One span for one step the Host serves, in the trace `headers` (W3C) name, working for the

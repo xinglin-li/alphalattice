@@ -57,9 +57,11 @@ CREATE TABLE world.listing (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (provider, symbol, valid_from, value_digest)
+-- No key holds a name: a provider, a sector scheme, a universe and a world table are each a lineage in the log's
+-- definition registry, named here by its id; its name is the lineage's, which a rename moves and these rows keep.
+-- key: (provider_id, symbol, valid_from, value_digest). A row is one alias: a changed symbol is a new row, by design.
 CREATE TABLE world.provider_symbol (
-  provider VARCHAR NOT NULL,
+  provider_id VARCHAR NOT NULL,    -- the provider's lineage
   symbol VARCHAR NOT NULL,
   valid_from DATE NOT NULL,
   value_digest VARCHAR NOT NULL,
@@ -73,7 +75,7 @@ CREATE TABLE world.provider_symbol (
 
 -- key: (universe_id, listing_id, valid_from, value_digest). Membership by interval: today's members never stand in for the past.
 CREATE TABLE world.universe_member (
-  universe_id VARCHAR NOT NULL,
+  universe_id VARCHAR NOT NULL,    -- the universe's lineage
   listing_id UUID NOT NULL,
   valid_from DATE NOT NULL,
   value_digest VARCHAR NOT NULL,
@@ -84,9 +86,9 @@ CREATE TABLE world.universe_member (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (scheme, listing_id, valid_from, value_digest)
+-- key: (scheme_id, listing_id, valid_from, value_digest)
 CREATE TABLE world.sector (
-  scheme VARCHAR NOT NULL,
+  scheme_id VARCHAR NOT NULL,      -- the sector scheme's lineage
   listing_id UUID NOT NULL,
   valid_from DATE NOT NULL,
   value_digest VARCHAR NOT NULL,
@@ -98,10 +100,10 @@ CREATE TABLE world.sector (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (provider, listing_id, session_date, value_digest). The provider's raw daily bar; adjusted prices are computed,
--- and adjusted_close keeps the provider's own adjusted close beside them, as 0.2.7 kept it to check them.
+-- key: (provider_id, listing_id, session_date, value_digest). The provider's raw daily bar; adjusted prices are
+-- computed, and adjusted_close keeps the provider's own adjusted close beside them, as 0.2.7 kept it to check them.
 CREATE TABLE world.raw_bar (
-  provider VARCHAR NOT NULL,
+  provider_id VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
   session_date DATE NOT NULL,
   value_digest VARCHAR NOT NULL,
@@ -119,10 +121,11 @@ CREATE TABLE world.raw_bar (
 );
 ALTER TABLE world.raw_bar SET PARTITIONED BY (year(session_date));
 
--- key: (provider, listing_id, effective_date, kind, action_id, value_digest). An announced action is known from its
--- announcement; an adjustment as of a date applies only actions effective by then.
+-- key: (provider_id, listing_id, effective_date, kind, action_id, value_digest). An announced action is known from
+-- its announcement; an adjustment as of a date applies only actions effective by then. kind is a closed vocabulary;
+-- action_id is the provider's own identifier, kept as it gave it.
 CREATE TABLE world.corporate_action (
-  provider VARCHAR NOT NULL,
+  provider_id VARCHAR NOT NULL,
   listing_id UUID NOT NULL,
   effective_date DATE NOT NULL,
   kind VARCHAR NOT NULL,          -- split | dividend | spinoff | delisting
@@ -141,7 +144,8 @@ CREATE TABLE world.corporate_action (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (market, session_date, value_digest). Holidays, half days and time zones are versioned inputs.
+-- key: (market, session_date, value_digest). Holidays, half days and time zones are versioned inputs. market is the
+-- ISO 10383 MIC, a standard code designed as an identifier, so it stays a key.
 CREATE TABLE world.session (
   market VARCHAR NOT NULL,
   session_date DATE NOT NULL,
@@ -171,7 +175,7 @@ CREATE TABLE world.evidence_doc (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (table_name, value_digest, admission_id). When a newer version of a key becomes known, the Host appends one
+-- key: (table_id, value_digest, admission_id). When a newer version of a key becomes known, the Host appends one
 -- row for the version it replaced, naming the moment its replacement became known, in the same catalog commit as the
 -- new row. Point-in-time reads anti-join it instead of ranking every version on read: Step M on mac1, 12.6 million bars
 -- with 126,000 corrections, read the newest cutoff in 1.7 s this way against 3.3 s by a window (0.7 s against 1.7 s at
@@ -179,7 +183,7 @@ CREATE TABLE world.evidence_doc (
 -- admitted in their known_asof order; a legacy row's derived known_asof and the superseded_asof its replacement gives
 -- move together when the lag rule's version moves.
 CREATE TABLE world.superseded (
-  table_name VARCHAR NOT NULL,           -- the world table, such as raw_bar
+  table_id VARCHAR NOT NULL,             -- the world table's lineage (family world_table), such as raw_bar's
   value_digest VARCHAR NOT NULL,        -- the replaced row's digest
   admission_id VARCHAR NOT NULL,         -- the replaced row's admission: one value may return in a later admission
   superseded_asof TIMESTAMPTZ NOT NULL,  -- when its replacement became known
@@ -192,11 +196,12 @@ CREATE TABLE world.superseded (
 -- these rows are not authoritative and may be dropped at any time.
 
 -- One feature set is one wide table, a column per factor, NULL for missing. Created from its definition
--- (family 'feature_set'), which adds a column when it adds a factor:
---   CREATE TABLE derived.feature_set_<name> (
+-- (family 'feature_set'), which adds a column when it adds a factor, and named by its lineage's id, never its name,
+-- so a renamed feature set keeps every cached partition (store.feature_table: feature_set_<the id's hex>):
+--   CREATE TABLE derived.feature_set_<hex> (
 --     recipe_key VARCHAR NOT NULL, input_digest VARCHAR NOT NULL,
 --     listing_id UUID NOT NULL, session_date DATE NOT NULL, <factor> DOUBLE, ...);
---   ALTER TABLE derived.feature_set_<name> SET PARTITIONED BY (year(session_date));
+--   ALTER TABLE derived.feature_set_<hex> SET PARTITIONED BY (year(session_date));
 --   key: (recipe_key, input_digest, listing_id, session_date)
 
 -- key: (recipe_key, input_digest, row_no). x is a list: DuckLake has no fixed-size array; it reads back to NumPy zero-copy.
@@ -294,11 +299,11 @@ CREATE TABLE results.execution_outcome (
   row_hash VARCHAR NOT NULL
 );
 
--- key: (artifact_id, metric, metric_version, dims). The fine breakdown behind a measure, such as IC by date and
+-- key: (artifact_id, metric_id, metric_version, dims). The fine breakdown behind a measure, such as IC by date and
 -- factor: too many values for a profile, so it is a body. The summary stays in the log's `measure`.
 CREATE TABLE results.breakdown (
   artifact_id VARCHAR NOT NULL,
-  metric VARCHAR NOT NULL,
+  metric_id VARCHAR NOT NULL,      -- the metric's lineage
   metric_version INTEGER NOT NULL,
   dims VARCHAR NOT NULL,
   value DOUBLE

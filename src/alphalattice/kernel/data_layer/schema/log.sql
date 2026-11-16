@@ -52,6 +52,7 @@ CREATE UNIQUE INDEX event_span_end ON event(span_id) WHERE phase IN ('completed'
 CREATE UNIQUE INDEX event_span_start ON event(span_id) WHERE phase = 'started';
 CREATE TRIGGER event_no_update BEFORE UPDATE ON event BEGIN SELECT RAISE(ABORT, 'event is append-only'); END;
 CREATE TRIGGER event_no_delete BEFORE DELETE ON event BEGIN SELECT RAISE(ABORT, 'event is append-only'); END;
+-- An event keeps the type name it was written under; a name is never reused in its family, so it names one lineage.
 CREATE TRIGGER event_type_registered BEFORE INSERT ON event
 WHEN NOT EXISTS (SELECT 1 FROM definition WHERE family = 'event_type' AND name = NEW.type AND version = NEW.type_version)
 BEGIN SELECT RAISE(ABORT, 'event type and version are not registered'); END;
@@ -95,13 +96,36 @@ CREATE TRIGGER chain_checkpoint_no_update BEFORE UPDATE ON chain_checkpoint BEGI
 CREATE TRIGGER chain_checkpoint_no_delete BEFORE DELETE ON chain_checkpoint BEGIN SELECT RAISE(ABORT, 'a checkpoint is never deleted'); END;
 
 -- ===== [2] Versioned definitions: one registry, one rule =====
--- Every definition that evolves lives here: event types, artifact types, metrics, methods, feature sets, source
--- schemas, tag vocabularies, knowledge-lag rules, nodes. A new family needs no migration. Identity is
--- (family, name, version). A version's content is never edited; only its status moves. A version moves only when
--- values move. `spec` is the family's contract content; the typed views below read it.
-CREATE TABLE definition (
+-- Every definition that evolves lives here: event types, artifact types, metrics, methods, feature sets, sources,
+-- tag vocabularies, knowledge-lag rules, nodes, providers, sector schemes, universes and world tables. A new family
+-- needs no migration. A definition is a lineage with an id assigned once; its name is a column and may be renamed.
+-- A version's content is never edited; only its status moves. A version moves only when values move. `spec` is the
+-- family's contract content; the typed views below read it. No key holds a name (engineering.md, Keys never change).
+CREATE TABLE definition_lineage (
+  definition_id TEXT PRIMARY KEY,  -- blake3 of (family, the name it was first registered under); assigned once
+  family TEXT NOT NULL,
+  name TEXT NOT NULL,              -- its current name: agents and the person read this
+  registered_seq INTEGER NOT NULL,
+  named_seq INTEGER NOT NULL,      -- the event that gave it its current name
+  UNIQUE (family, name)
+) STRICT, WITHOUT ROWID;
+CREATE TRIGGER definition_lineage_frozen BEFORE UPDATE OF definition_id, family, registered_seq ON definition_lineage
+BEGIN SELECT RAISE(ABORT, 'a lineage keeps its id and family'); END;
+CREATE TRIGGER definition_lineage_no_delete BEFORE DELETE ON definition_lineage
+BEGIN SELECT RAISE(ABORT, 'a lineage is kept forever'); END;
+-- Every name a lineage has held, its renames. A name is never reused in its family, so an event written under an old
+-- name, and the lineage's first-name digest, still name it.
+CREATE TABLE definition_name (
   family TEXT NOT NULL,
   name TEXT NOT NULL,
+  definition_id TEXT NOT NULL REFERENCES definition_lineage(definition_id),
+  named_seq INTEGER NOT NULL,
+  PRIMARY KEY (family, name)
+) STRICT, WITHOUT ROWID;
+CREATE TRIGGER definition_name_no_update BEFORE UPDATE ON definition_name BEGIN SELECT RAISE(ABORT, 'a held name is never moved'); END;
+CREATE TRIGGER definition_name_no_delete BEFORE DELETE ON definition_name BEGIN SELECT RAISE(ABORT, 'a held name is kept forever'); END;
+CREATE TABLE definition_version (
+  definition_id TEXT NOT NULL REFERENCES definition_lineage(definition_id),
   version INTEGER NOT NULL CHECK (version >= 1),
   status TEXT NOT NULL CHECK (status IN ('experimental', 'standard', 'deprecated', 'superseded')),
   relation TEXT CHECK (relation IN ('equal', 'convertible', 'not_comparable')),  -- to the version before it
@@ -114,43 +138,64 @@ CREATE TABLE definition (
   registered_seq INTEGER NOT NULL,
   status_seq INTEGER NOT NULL,    -- the event that set the current status
   status_reason TEXT,             -- superseded: the defect fixed
-  PRIMARY KEY (family, name, version),
+  PRIMARY KEY (definition_id, version),
   CHECK ((version = 1) = (relation IS NULL)),
   CHECK ((relation IS 'convertible') = (conversion IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
-CREATE TRIGGER definition_frozen BEFORE UPDATE OF family, name, version, relation, conversion, spec, text, code_ref, golden, owner, registered_seq ON definition
+CREATE TRIGGER definition_frozen BEFORE UPDATE OF definition_id, version, relation, conversion, spec, text, code_ref, golden, owner, registered_seq ON definition_version
 BEGIN SELECT RAISE(ABORT, 'a definition version is never edited'); END;
-CREATE TRIGGER definition_no_delete BEFORE DELETE ON definition BEGIN SELECT RAISE(ABORT, 'a definition is deprecated, never deleted'); END;
-CREATE TRIGGER definition_versions_in_order BEFORE INSERT ON definition
-WHEN NEW.version > 1 AND NOT EXISTS (SELECT 1 FROM definition WHERE family = NEW.family AND name = NEW.name AND version = NEW.version - 1)
+CREATE TRIGGER definition_no_delete BEFORE DELETE ON definition_version BEGIN SELECT RAISE(ABORT, 'a definition is deprecated, never deleted'); END;
+CREATE TRIGGER definition_versions_in_order BEFORE INSERT ON definition_version
+WHEN NEW.version > 1 AND NOT EXISTS (SELECT 1 FROM definition_version WHERE definition_id = NEW.definition_id AND version = NEW.version - 1)
 BEGIN SELECT RAISE(ABORT, 'a version follows the one before it'); END;
+-- What a definition's spec names of another: a feature set's method, an artifact type's measures. Rows, so a check
+-- guards them; the spec keeps the names as written. ref_version NULL: the lineage, at any version.
+CREATE TABLE definition_ref (
+  definition_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  role TEXT NOT NULL,             -- the spec field that names it
+  ref_id TEXT NOT NULL REFERENCES definition_lineage(definition_id),
+  ref_version INTEGER,
+  PRIMARY KEY (definition_id, version, role, ref_id),
+  FOREIGN KEY (definition_id, version) REFERENCES definition_version(definition_id, version)
+) STRICT, WITHOUT ROWID;
+CREATE TRIGGER definition_ref_registered BEFORE INSERT ON definition_ref
+WHEN NEW.ref_version IS NOT NULL AND NOT EXISTS (SELECT 1 FROM definition_version WHERE definition_id = NEW.ref_id AND version = NEW.ref_version)
+BEGIN SELECT RAISE(ABORT, 'a definition names a version that is not registered'); END;
+-- Every version under every name its lineage has held: an event's written name, an old name in code, and the
+-- current name all find it. `current_name` is the one to show.
+CREATE VIEW definition AS
+SELECT n.family, n.name, v.version, v.status, v.relation, v.conversion, v.spec, v.text, v.code_ref, v.golden, v.owner,
+       v.registered_seq, v.status_seq, v.status_reason, v.definition_id, l.name AS current_name
+FROM definition_name n JOIN definition_lineage l ON l.definition_id = n.definition_id
+JOIN definition_version v ON v.definition_id = n.definition_id;
 
 -- The version new work uses: the newest that is experimental or standard.
 CREATE VIEW definition_current AS
 SELECT d.* FROM definition d
-WHERE d.status IN ('experimental', 'standard')
-  AND d.version = (SELECT max(x.version) FROM definition x
-                   WHERE x.family = d.family AND x.name = d.name AND x.status IN ('experimental', 'standard'));
+WHERE d.name = d.current_name AND d.status IN ('experimental', 'standard')
+  AND d.version = (SELECT max(x.version) FROM definition_version x
+                   WHERE x.definition_id = d.definition_id AND x.status IN ('experimental', 'standard'));
 -- The agent's manual of event types.
 CREATE VIEW event_type AS
-SELECT name AS type, version, status, json_extract(spec, '$.work') AS work, json_extract(spec, '$.subject') AS subject_kind,
+SELECT definition_id AS type_id, name AS type, version, status, json_extract(spec, '$.work') AS work, json_extract(spec, '$.subject') AS subject_kind,
        json_extract(spec, '$.required') AS required, json_extract(spec, '$.text') AS text_use,
        json_extract(spec, '$.durable') AS durable, text AS description, owner
 FROM definition_current WHERE family = 'event_type';
 -- Every version of every metric, since a recorded value names its version.
 CREATE VIEW metric AS
-SELECT name AS metric, version, status, relation, conversion, json_extract(spec, '$.unit') AS unit,
+SELECT definition_id AS metric_id, name AS metric, version, status, relation, conversion, json_extract(spec, '$.unit') AS unit,
        json_extract(spec, '$.direction') AS direction, json_extract(spec, '$.params') AS params,
        text AS description, code_ref, golden
-FROM definition WHERE family = 'metric';
+FROM definition WHERE family = 'metric' AND name = current_name;
 CREATE VIEW artifact_type AS
-SELECT name AS type, version, status, json_extract(spec, '$.storage') AS storage, json_extract(spec, '$.table') AS table_name,
+SELECT definition_id AS type_id, name AS type, version, status, json_extract(spec, '$.storage') AS storage, json_extract(spec, '$.table') AS table_name,
        json_extract(spec, '$.measures') AS standard_measures, json_extract(spec, '$.keep') AS keep, text AS description
 FROM definition_current WHERE family = 'artifact_type';
 CREATE VIEW method AS
-SELECT name AS method, version, status, relation, json_extract(spec, '$.materialize') AS materialize,
+SELECT definition_id AS method_id, name AS method, version, status, relation, json_extract(spec, '$.materialize') AS materialize,
        json_extract(spec, '$.threshold_ms') AS threshold_ms, json_extract(spec, '$.output') AS output, text AS description, code_ref
-FROM definition WHERE family = 'method';
+FROM definition WHERE family = 'method' AND name = current_name;
 
 -- ===== [1] Work =====
 -- A workspace is a tag; its folder holds only workspace.json.
@@ -179,7 +224,7 @@ CREATE TABLE task (
   task_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
   goal_id TEXT REFERENCES goal(goal_id),
-  type TEXT NOT NULL,          -- its work event type
+  type_id TEXT NOT NULL REFERENCES definition_lineage(definition_id),  -- its work event type's lineage
   state TEXT NOT NULL CHECK (state IN ('requested', 'running', 'waiting', 'completed', 'failed', 'cancelled')),
   trace_id TEXT NOT NULL,
   product_version TEXT NOT NULL,  -- the code it started under; an upgrade decides by it
@@ -207,33 +252,39 @@ CREATE TABLE wait (
   wait_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES task(task_id),
   kind TEXT NOT NULL CHECK (kind IN ('event', 'time')),
-  event_type TEXT,
+  event_type_id TEXT REFERENCES definition_lineage(definition_id),  -- the awaited event type's lineage
   match_attrs TEXT CHECK (match_attrs IS NULL OR json_valid(match_attrs)),
   fires_us INTEGER,
   purpose TEXT NOT NULL,
   started_seq INTEGER NOT NULL,
   resolved_seq INTEGER,
   resolved_by_seq INTEGER,
-  CHECK ((kind = 'event' AND event_type IS NOT NULL) OR (kind = 'time' AND fires_us IS NOT NULL))
+  CHECK ((kind = 'event' AND event_type_id IS NOT NULL) OR (kind = 'time' AND fires_us IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX wait_open ON wait(kind, fires_us) WHERE resolved_seq IS NULL;
 
 -- ===== [1] Research: state, action, effect, new state =====
--- The action's definition. Its identity holds the method, its version, the parameters and the upstream recipes,
--- and nothing else: no code build and no seed, so one approach keeps one key across releases and across trials.
+-- The action's definition. Its identity holds the method's lineage, its version, the parameters and the upstream
+-- recipes, and nothing else: no name, no code build and no seed, so one approach keeps one key across releases, trials
+-- and renames.
 CREATE TABLE recipe (
-  recipe_key TEXT PRIMARY KEY,  -- blake3 of the canonical (method, method_version, params, upstream)
-  method TEXT NOT NULL,
+  recipe_key TEXT PRIMARY KEY,  -- blake3 of the canonical (method_id, method_version, params, sorted upstream keys)
+  method_id TEXT NOT NULL,
   method_version INTEGER NOT NULL,
   params TEXT NOT NULL CHECK (json_valid(params)),
-  upstream TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(upstream)),  -- recipe keys it reads
-  defined_seq INTEGER NOT NULL
+  defined_seq INTEGER NOT NULL,
+  FOREIGN KEY (method_id, method_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX recipe_method ON recipe(method, method_version);
-CREATE TRIGGER recipe_method_registered BEFORE INSERT ON recipe
-WHEN NOT EXISTS (SELECT 1 FROM definition WHERE family = 'method' AND name = NEW.method AND version = NEW.method_version)
-BEGIN SELECT RAISE(ABORT, 'method and version are not registered'); END;
+CREATE INDEX recipe_method ON recipe(method_id, method_version);
 CREATE TRIGGER recipe_no_update BEFORE UPDATE ON recipe BEGIN SELECT RAISE(ABORT, 'a recipe is never edited'); END;
+-- The recipes one reads, in the order its key hashes them; each is registered before the recipe that reads it.
+CREATE TABLE recipe_upstream (
+  recipe_key TEXT NOT NULL REFERENCES recipe(recipe_key),
+  position INTEGER NOT NULL CHECK (position >= 0),
+  upstream_key TEXT NOT NULL REFERENCES recipe(recipe_key),
+  PRIMARY KEY (recipe_key, position),
+  UNIQUE (recipe_key, upstream_key)
+) STRICT, WITHOUT ROWID;
 
 -- What a piece of research was allowed to see. The knowledge cutoff is what makes it point-in-time; no snapshot is pinned.
 CREATE TABLE selection (
@@ -298,10 +349,10 @@ CREATE TABLE prediction (
   registered_seq INTEGER NOT NULL,  -- its statement is that event's text
   outcome_seq INTEGER,
   score REAL,
-  score_metric TEXT,
+  score_metric_id TEXT REFERENCES definition_lineage(definition_id),
   score_metric_version INTEGER,
   CHECK (outcome_seq IS NULL OR outcome_seq > registered_seq),
-  CHECK ((score IS NULL) = (score_metric IS NULL))
+  CHECK ((score IS NULL) = (score_metric_id IS NULL))
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX prediction_due ON prediction(horizon_us) WHERE outcome_seq IS NULL;
 
@@ -324,7 +375,7 @@ FROM event e LEFT JOIN event_text t ON t.seq = e.seq WHERE e.type = 'feedback.gi
 -- One admission of outside data. World rows carry its admission_id, minted before the write. `parts` lists each
 -- partition it touched as {part, min_known_asof_us, max_known_asof_us}, the knowledge times of its rows there.
 CREATE VIEW admission AS
-SELECT subject_id AS admission_id, seq AS admission_seq, json_extract(attrs, '$.provider') AS provider,
+SELECT subject_id AS admission_id, seq AS admission_seq, json_extract(attrs, '$.provider_id') AS provider_id,
        json_extract(attrs, '$.dataset') AS dataset, json_extract(attrs, '$.row_count') AS row_count,
        json_extract(attrs, '$.catalog_snapshot') AS catalog_snapshot, json_extract(attrs, '$.known_us') AS known_us,
        json_extract(attrs, '$.parts') AS parts  -- a cache's input digest reads these, never the data
@@ -336,7 +387,7 @@ FROM event WHERE type = 'admission.committed';
 CREATE TABLE artifact (
   artifact_id TEXT PRIMARY KEY,     -- blake3: of the content (small final artifacts), or of the recipe and the producing span
   identity_kind TEXT NOT NULL CHECK (identity_kind IN ('content', 'recipe')),
-  type TEXT NOT NULL,               -- definition('artifact_type')
+  type_id TEXT NOT NULL,            -- the artifact type's lineage
   type_version INTEGER NOT NULL,
   meaning TEXT NOT NULL CHECK (length(meaning) BETWEEN 1 AND 1000),  -- the question it answers, in a sentence or two
   recipe_key TEXT REFERENCES recipe(recipe_key),
@@ -354,13 +405,11 @@ CREATE TABLE artifact (
   collected_seq INTEGER,
   CHECK (identity_kind = 'content' OR recipe_key IS NOT NULL),
   CHECK ((storage = 'none') = (body_state = 'never_stored')),
-  CHECK ((body_state = 'collected') = (collected_seq IS NOT NULL))
+  CHECK ((body_state = 'collected') = (collected_seq IS NOT NULL)),
+  FOREIGN KEY (type_id, type_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX artifact_recipe ON artifact(recipe_key);
 CREATE INDEX artifact_trial ON artifact(trial_id);
-CREATE TRIGGER artifact_type_registered BEFORE INSERT ON artifact
-WHEN NOT EXISTS (SELECT 1 FROM definition WHERE family = 'artifact_type' AND name = NEW.type AND version = NEW.type_version)
-BEGIN SELECT RAISE(ABORT, 'artifact type and version are not registered'); END;
 CREATE TRIGGER artifact_no_delete BEFORE DELETE ON artifact BEGIN SELECT RAISE(ABORT, 'an artifact profile is kept forever'); END;
 
 -- [4] A small body (at most 64 KiB). Larger ones are files under blobs/ or rows in results.*. It is opaque storage, not a
@@ -373,21 +422,19 @@ CREATE TABLE artifact_body (
 
 -- Every measure of every artifact, one value per row. Recorded values never move: a changed definition is a new
 -- metric version, and a new artifact records every version not superseded, deprecated ones included. Two artifacts
--- compare on the same (metric, metric_version, dims), or across versions joined by equal or convertible steps
--- (project.compare), with neither body present.
+-- compare on the same (metric_id, metric_version, dims), or across versions joined by equal or convertible steps
+-- (reading.compare), with neither body present. A renamed metric keeps every recorded value.
 CREATE TABLE measure (
   artifact_id TEXT NOT NULL REFERENCES artifact(artifact_id),
-  metric TEXT NOT NULL,
+  metric_id TEXT NOT NULL,
   metric_version INTEGER NOT NULL,
   dims TEXT NOT NULL DEFAULT '',   -- canonical 'k=v|k=v', such as 'horizon=5d'; '' for the whole artifact
   value REAL,                      -- NULL: computed, and undefined for this artifact
   recorded_seq INTEGER NOT NULL,
-  PRIMARY KEY (artifact_id, metric, metric_version, dims)
+  PRIMARY KEY (artifact_id, metric_id, metric_version, dims),
+  FOREIGN KEY (metric_id, metric_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX measure_by_metric ON measure(metric, metric_version, dims, value);
-CREATE TRIGGER measure_metric_registered BEFORE INSERT ON measure
-WHEN NOT EXISTS (SELECT 1 FROM definition WHERE family = 'metric' AND name = NEW.metric AND version = NEW.metric_version)
-BEGIN SELECT RAISE(ABORT, 'metric and version are not registered'); END;
+CREATE INDEX measure_by_metric ON measure(metric_id, metric_version, dims, value);
 CREATE TRIGGER measure_no_update BEFORE UPDATE ON measure BEGIN SELECT RAISE(ABORT, 'a recorded measure never moves'); END;
 CREATE TRIGGER measure_no_delete BEFORE DELETE ON measure BEGIN SELECT RAISE(ABORT, 'a recorded measure is kept forever'); END;
 
@@ -404,13 +451,14 @@ CREATE INDEX event_artifact_by_artifact ON event_artifact(artifact_id, role);
 CREATE TABLE tag (
   subject_kind TEXT NOT NULL,
   subject_id TEXT NOT NULL,
-  key TEXT NOT NULL,
+  key_id TEXT NOT NULL,                    -- the tag vocabulary's lineage
   tag_version INTEGER NOT NULL DEFAULT 1,  -- the vocabulary's version: as given, else the key's current one; an unregistered key is refused
   value TEXT NOT NULL,
   seq INTEGER NOT NULL,
-  PRIMARY KEY (subject_kind, subject_id, key, tag_version, value)
+  PRIMARY KEY (subject_kind, subject_id, key_id, tag_version, value),
+  FOREIGN KEY (key_id, tag_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX tag_lookup ON tag(key, value, subject_kind);
+CREATE INDEX tag_lookup ON tag(key_id, value, subject_kind);
 
 -- What keeps an artifact's body from collection: a running task, an active book, a publication, a kept trial, a
 -- backup. A body no row holds is collected 7 days after it was produced. A crash may over-retain, never under-retain.
@@ -428,8 +476,8 @@ CREATE TABLE daily_span (
   day TEXT NOT NULL,             -- UTC date of the step's end
   actor_kind TEXT NOT NULL,
   actor_id TEXT NOT NULL,
-  node TEXT NOT NULL,
-  type TEXT NOT NULL,
+  node_id TEXT NOT NULL,         -- the emitting node's lineage, named on first sight
+  type_id TEXT NOT NULL,         -- the event type's lineage
   outcome TEXT NOT NULL,
   n INTEGER NOT NULL,
   micros INTEGER NOT NULL,
@@ -438,7 +486,7 @@ CREATE TABLE daily_span (
   cost_microusd INTEGER NOT NULL,
   bytes_read INTEGER NOT NULL,
   bytes_written INTEGER NOT NULL,
-  PRIMARY KEY (day, actor_kind, actor_id, node, type, outcome)
+  PRIMARY KEY (day, actor_kind, actor_id, node_id, type_id, outcome)
 ) STRICT, WITHOUT ROWID;
 
 -- ===== [1] Deployed strategies: an exact ledger =====

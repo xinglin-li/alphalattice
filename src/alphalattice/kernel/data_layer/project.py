@@ -19,13 +19,17 @@ from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, diges
 
 ENDED: Final = ("completed", "failed", "cancelled")
 PROJECTED: Final = (
-    "definition",
+    "definition_lineage",
+    "definition_name",
+    "definition_version",
+    "definition_ref",
     "workspace",
     "goal",
     "task",
     "task_step",
     "wait",
     "recipe",
+    "recipe_upstream",
     "selection",
     "hypothesis",
     "trial",
@@ -45,6 +49,12 @@ PROJECTED: Final = (
 """Every table replay rebuilds from the events alone."""
 MACHINE_TEXT: Final = frozenset({"definition.registered"})
 """The types whose text a projection reads, so it is never forgotten."""
+REFS: Final = {
+    "feature_set": (("method", "method", "method_version"),),
+    "artifact_type": (("measures", "metric", None),),
+}
+"""What a family's spec names of other definitions: (spec field, family, version field). Each
+becomes a definition_ref row, so a check guards what the JSON alone would not."""
 
 Con = sqlite3.Connection
 Row = sqlite3.Row
@@ -78,16 +88,83 @@ def project(con: sqlite3.Connection, event: sqlite3.Row, text: str | None) -> No
                 (event["seq"], role, artifact),
             )
     for key, values in a.get("tags", {}).items():  # any event may tag its subject
-        version = _tag_version(con, key, None)
+        named = _tag_key(con, key, None)
         for value in values if isinstance(values, list) else [values]:
-            _tag(con, event, key, version, value)
+            _tag(con, event, named, value)
     if event["phase"] in ENDED:  # the day's totals, in the step's own transaction
         _daily(con, event, a)
 
 
-def recipe_key(method: str, version: int, params: Any, upstream: Iterable[str] = ()) -> str:
-    """An action's identity: its method and version, its parameters, the recipes it reads."""
-    return digest(canonical([method, version, params, sorted(upstream)]))
+def recipe_key(method_id: str, version: int, params: Any, upstream: Iterable[str] = ()) -> str:
+    """An action's identity: its method's lineage and version, its parameters, the recipes it
+    reads; never a name, so a renamed method keeps every recipe's key."""
+    return digest(canonical([method_id, version, params, sorted(upstream)]))
+
+
+def definition_id(family: str, name: str) -> str:
+    """The id of the lineage first registered as `name` in `family`: a digest of that first
+    registration, assigned once. A rename keeps it, and a name is never reused in its family, so
+    the same definition has the same id on every machine and in every replay."""
+    return digest(canonical(["definition", family, name]))
+
+
+def lineage(con: sqlite3.Connection, family: str, name: str) -> str | None:
+    """The lineage that holds or held `name` in `family`; None when no lineage ever did."""
+    found = con.execute(
+        "SELECT definition_id FROM definition_name WHERE family = ? AND name = ?", (family, name)
+    ).fetchone()
+    return None if found is None else str(found[0])
+
+
+def _named(con: sqlite3.Connection, family: str, name: str) -> str:
+    """The lineage `name` names in `family`, refused by name when none does."""
+    found = lineage(con, family, name)
+    if found is None:
+        raise _refuse(f"{family}_unregistered", f"no {family} definition is named {name}")
+    return found
+
+
+def _first_sight(con: sqlite3.Connection, family: str, name: str, seq: int) -> str:
+    """The lineage of a name an event carries, named on first sight: a node by the events it emits,
+    a task's or a wait's event type by the task that names it, before anything registers them."""
+    found = lineage(con, family, name)
+    if found is None:
+        found = definition_id(family, name)
+        con.execute(
+            "INSERT INTO definition_lineage VALUES (?, ?, ?, ?, ?)", (found, family, name, seq, seq)
+        )
+        con.execute("INSERT INTO definition_name VALUES (?, ?, ?, ?)", (family, name, found, seq))
+    return found
+
+
+def register(con: sqlite3.Connection, family: str, name: str, version: int, *fields: Any) -> str:
+    """One definition version, named by any name its lineage held; version 1 of a name no lineage
+    ever held starts one. `fields` are definition_version's columns after the version. Returns
+    the lineage's id."""
+    found = lineage(con, family, name)
+    if found is None:
+        if version != 1:
+            raise _refuse("definition_unregistered", f"{family} {name} has no version 1")
+        found = definition_id(family, name)
+        seq = fields[-3]  # registered_seq
+        con.execute(
+            "INSERT INTO definition_lineage VALUES (?, ?, ?, ?, ?)", (found, family, name, seq, seq)
+        )
+        con.execute("INSERT INTO definition_name VALUES (?, ?, ?, ?)", (family, name, found, seq))
+    con.execute(
+        f"INSERT INTO definition_version VALUES (?, ?, {', '.join('?' * len(fields))})",
+        (found, version, *fields),
+    )
+    spec = json.loads(fields[3])
+    for field, referred, version_field in REFS.get(family, ()):
+        names = spec.get(field)
+        for named in names if isinstance(names, list) else [] if names is None else [names]:
+            ref_version = spec.get(version_field) if version_field else None
+            con.execute(
+                "INSERT INTO definition_ref VALUES (?, ?, ?, ?, ?)",
+                (found, version, field, _named(con, referred, named), ref_version),
+            )
+    return found
 
 
 def _refuse(code: str, message: str) -> DataError:
@@ -103,27 +180,23 @@ def _one(cursor: sqlite3.Cursor, code: str, message: str) -> None:
         raise _refuse(code, message)
 
 
-def _tag_version(con: sqlite3.Connection, key: str, version: int | None) -> int:
-    """The vocabulary version a tag is given under: as named, else the key's current one."""
-    if version is None:
-        found = con.execute(
-            "SELECT version FROM definition_current WHERE family = 'tag' AND name = ?", (key,)
-        ).fetchone()
-    else:
-        found = con.execute(
-            "SELECT version FROM definition WHERE family = 'tag' AND name = ? AND version = ?",
-            (key, version),
-        ).fetchone()
-    if found is None:
+def _tag_key(con: sqlite3.Connection, key: str, version: int | None) -> tuple[str, int]:
+    """The vocabulary's lineage and the version a tag is given under: as named, else its current."""
+    found = con.execute(
+        "SELECT definition_id, max(version) FROM definition WHERE family = 'tag' AND name = ?"
+        " AND (version = ? OR (? IS NULL AND status IN ('experimental', 'standard')))",
+        (key, version, version),
+    ).fetchone()
+    if found is None or found[0] is None:
         raise _refuse("tag_unregistered", f"no tag definition registers {key}")
-    return int(found[0])
+    return str(found[0]), int(found[1])
 
 
-def _tag(con: sqlite3.Connection, e: sqlite3.Row, key: str, version: int, value: Any) -> None:
+def _tag(con: sqlite3.Connection, e: sqlite3.Row, key: tuple[str, int], value: Any) -> None:
     con.execute(
-        "INSERT OR IGNORE INTO tag (subject_kind, subject_id, key, tag_version, value, seq)"
+        "INSERT OR IGNORE INTO tag (subject_kind, subject_id, key_id, tag_version, value, seq)"
         " VALUES (?, ?, ?, ?, ?, ?)",
-        (e["subject_kind"], e["subject_id"], key, version, str(value), e["seq"]),
+        (e["subject_kind"], e["subject_id"], *key, str(value), e["seq"]),
     )
 
 
@@ -131,7 +204,7 @@ def _daily(con: sqlite3.Connection, e: sqlite3.Row, a: dict[str, Any]) -> None:
     cost = a.get("cost_usd")
     con.execute(
         "INSERT INTO daily_span VALUES (date(? / 1000000, 'unixepoch'), ?, ?, ?, ?, ?, 1, ?, ?, ?,"
-        " ?, ?, ?) ON CONFLICT (day, actor_kind, actor_id, node, type, outcome) DO UPDATE SET"
+        " ?, ?, ?) ON CONFLICT (day, actor_kind, actor_id, node_id, type_id, outcome) DO UPDATE SET"
         " n = n + 1, micros = micros + excluded.micros, tokens_in = tokens_in + excluded.tokens_in,"
         " tokens_out = tokens_out + excluded.tokens_out,"
         " cost_microusd = cost_microusd + excluded.cost_microusd,"
@@ -141,8 +214,8 @@ def _daily(con: sqlite3.Connection, e: sqlite3.Row, a: dict[str, Any]) -> None:
             e["occurred_us"],
             e["actor_kind"],
             e["actor_id"],
-            e["node"],
-            e["type"],
+            _first_sight(con, "node", e["node"], e["seq"]),
+            _named(con, "event_type", e["type"]),
             e["phase"],
             e["occurred_us"] - e["started_us"],
             int(a.get("gen_ai.usage.input_tokens", 0)),
@@ -157,28 +230,50 @@ def _daily(con: sqlite3.Connection, e: sqlite3.Row, a: dict[str, Any]) -> None:
 @on("definition.registered")
 def _definition(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     d = json.loads(text or "{}")
-    values = [d["family"], d["name"], d["version"], d.get("status", "experimental")]
-    values += [d.get("relation"), _json(d.get("conversion")), _json(d.get("spec", {})), d["text"]]
-    values += [d.get("code_ref"), _json(d.get("golden")), d.get("owner", e["node"])]
-    con.execute(
-        f"INSERT INTO definition VALUES ({', '.join('?' * 13)}, NULL)",
-        (*values, e["seq"], e["seq"]),
-    )
+    fields = [d.get("status", "experimental"), d.get("relation"), _json(d.get("conversion"))]
+    fields += [_json(d.get("spec", {})), d["text"], d.get("code_ref"), _json(d.get("golden"))]
+    fields += [d.get("owner", e["node"]), e["seq"], e["seq"], None]
+    register(con, d["family"], d["name"], d["version"], *fields)
+
+
+def _owned(con: Con, e: Row, family: str, name: str, version: int | None) -> str:
+    """The lineage a definition event names, refused unless its owner, the person or the host
+    acts: the owner of the version named, else of the newest."""
+    found = con.execute(
+        "SELECT definition_id, owner FROM definition WHERE family = ? AND name = ?"
+        " AND (version = ? OR ? IS NULL) ORDER BY version DESC LIMIT 1",
+        (family, name, version, version),
+    ).fetchone()
+    if found is None or (found[1] != e["node"] and e["actor_kind"] not in ("person", "host")):
+        raise _refuse(
+            "definition_not_owner",
+            "a definition is moved or renamed by its owner, the person or the host",
+        )
+    return str(found[0])
 
 
 @on("definition.status_changed")
 def _definition_status(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    key = (a["family"], a["name"], a["version"])
-    where = "WHERE family = ? AND name = ? AND version = ?"
-    owner = con.execute(f"SELECT owner FROM definition {where}", key).fetchone()
-    if owner is None or (owner[0] != e["node"] and e["actor_kind"] not in ("person", "host")):
-        raise _refuse(
-            "definition_not_owner",
-            "a definition's status is moved by its owner, the person or the host",
-        )
+    found = _owned(con, e, a["family"], a["name"], a["version"])
     con.execute(
-        f"UPDATE definition SET status = ?, status_seq = ?, status_reason = ? {where}",
-        (a["status"], e["seq"], a.get("reason"), *key),
+        "UPDATE definition_version SET status = ?, status_seq = ?, status_reason = ?"
+        " WHERE definition_id = ? AND version = ?",
+        (a["status"], e["seq"], a.get("reason"), found, a["version"]),
+    )
+
+
+@on("definition.renamed")
+def _definition_renamed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A lineage takes a new name and keeps its id; every name it held still names it."""
+    found = _owned(con, e, a["family"], a["name"], None)
+    if lineage(con, a["family"], a["to"]) is not None:
+        raise _refuse("definition_name_taken", f"{a['family']} {a['to']} is or was another's name")
+    con.execute(
+        "UPDATE definition_lineage SET name = ?, named_seq = ? WHERE definition_id = ?",
+        (a["to"], e["seq"], found),
+    )
+    con.execute(
+        "INSERT INTO definition_name VALUES (?, ?, ?, ?)", (a["family"], a["to"], found, e["seq"])
     )
 
 
@@ -231,13 +326,14 @@ def _goal_closed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("task.requested")
 def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "INSERT INTO task (task_id, workspace_id, goal_id, type, state, trace_id, product_version,"
+        "INSERT INTO task (task_id, workspace_id, goal_id, type_id, state, trace_id,"
+        " product_version,"
         " requested_seq) VALUES (?, ?, ?, ?, 'requested', ?, ?, ?)",
         (
             e["subject_id"],
             e["workspace_id"],
             a.get("goal_id"),
-            a["type"],
+            _first_sight(con, "event_type", a["type"], e["seq"]),
             e["trace_id"],
             a["product_version"],
             e["seq"],
@@ -276,7 +372,9 @@ def _wait(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             e["subject_id"],
             a["task_id"],
             a["kind"],
-            a.get("event_type"),
+            None
+            if a.get("event_type") is None
+            else _first_sight(con, "event_type", a["event_type"], e["seq"]),
             _json(a.get("match")),
             a.get("fires_us"),
             a["purpose"],
@@ -321,22 +419,32 @@ def _selection(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("recipe.defined")
 def _recipe(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    upstream = a.get("upstream", ())
-    if e["subject_id"] != recipe_key(a["method"], a["method_version"], a["params"], upstream):
+    upstream = sorted(a.get("upstream", ()))
+    method = _named(con, "method", a["method"])
+    if e["subject_id"] != recipe_key(method, a["method_version"], a["params"], upstream):
         raise _refuse(
             "recipe_key_mismatch",
-            "a recipe's key is the digest of its method, version, parameters and upstream",
+            "a recipe's key is the digest of its method's lineage, version, parameters and"
+            " upstream",
         )
+    unknown = [
+        k
+        for k in upstream
+        if not con.execute("SELECT 1 FROM recipe WHERE recipe_key = ?", (k,)).fetchone()
+    ]
+    if unknown:
+        raise _refuse(
+            "recipe_upstream_unknown", f"a recipe reads only registered recipes, not {unknown}"
+        )
+    if con.execute("SELECT 1 FROM recipe WHERE recipe_key = ?", (e["subject_id"],)).fetchone():
+        return  # one approach, defined again: the same key, nothing new
     con.execute(
-        "INSERT OR IGNORE INTO recipe VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            e["subject_id"],
-            a["method"],
-            a["method_version"],
-            _json(a["params"]),
-            _json(sorted(upstream)),
-            e["seq"],
-        ),
+        "INSERT INTO recipe VALUES (?, ?, ?, ?, ?)",
+        (e["subject_id"], method, a["method_version"], _json(a["params"]), e["seq"]),
+    )
+    con.executemany(
+        "INSERT INTO recipe_upstream VALUES (?, ?, ?)",
+        [(e["subject_id"], position, key) for position, key in enumerate(upstream)],
     )
 
 
@@ -367,6 +475,35 @@ def _hypothesis_standing(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("trial.registered")
 def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A trial works in its selection's workspace and for its hypothesis's goal: it names them
+    beside the selection and hypothesis, and a disagreement is refused."""
+    selection = con.execute(
+        "SELECT workspace_id FROM selection WHERE selection_id = ?", (a["selection_id"],)
+    ).fetchone()
+    if selection is None or selection[0] != e["workspace_id"]:
+        raise _refuse(
+            "trial_workspace_disagrees", "a trial names a selection made in its workspace"
+        )
+    if a.get("hypothesis_id"):
+        stated = con.execute(
+            "SELECT workspace_id, goal_id FROM hypothesis WHERE hypothesis_id = ?",
+            (a["hypothesis_id"],),
+        ).fetchone()
+        if stated is None or stated[0] != e["workspace_id"]:
+            raise _refuse(
+                "trial_workspace_disagrees", "a trial tests a hypothesis of its workspace"
+            )
+        if stated[1] != a.get("goal_id"):
+            raise _refuse("trial_goal_disagrees", "a trial works for its hypothesis's goal")
+    if (
+        a.get("goal_id")
+        and con.execute(
+            "SELECT 1 FROM goal WHERE goal_id = ? AND workspace_id = ?",
+            (a["goal_id"], e["workspace_id"]),
+        ).fetchone()
+        is None
+    ):
+        raise _refuse("trial_goal_disagrees", "a trial works for a goal of its workspace")
     con.execute(
         "INSERT INTO trial (trial_id, workspace_id, goal_id, hypothesis_id, selection_id,"
         " recipe_key, seeds, product_version, model, context, task_id, state, registered_seq)"
@@ -428,13 +565,15 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         raise _refuse(
             "artifact_trial_unregistered", "a trial's artifact follows the trial's registration"
         )
-    values = [e["subject_id"], a["identity_kind"], a["type"], a.get("type_version", 1)]
+    kind = _named(con, "artifact_type", a["type"])
+    values = [e["subject_id"], a["identity_kind"], kind, a.get("type_version", 1)]
     values += [a["meaning"], a.get("recipe_key"), a.get("selection_id"), trial]
     values += [_json(a.get("shape")), a.get("valid_from"), a.get("valid_to")]
     values += [a.get("row_count"), a.get("size_bytes"), a.get("content_digest")]
     state = "never_stored" if a["storage"] == "none" else "present"
     con.execute(
-        "INSERT INTO artifact (artifact_id, identity_kind, type, type_version, meaning, recipe_key,"
+        "INSERT INTO artifact (artifact_id, identity_kind, type_id, type_version, meaning,"
+        " recipe_key,"
         " selection_id, trial_id, shape, valid_from, valid_to, row_count, size_bytes,"
         f" content_digest, storage, body_state, produced_seq) VALUES ({', '.join('?' * 17)})",
         (*values, a["storage"], state, e["seq"]),
@@ -452,7 +591,7 @@ def _result(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     for metric, version, dims, value in a["measures"]:
         con.execute(
             "INSERT INTO measure VALUES (?, ?, ?, ?, ?, ?)",
-            (e["subject_id"], metric, version, dims, value, e["seq"]),
+            (e["subject_id"], _named(con, "metric", metric), version, dims, value, e["seq"]),
         )
     owner = con.execute(
         "SELECT trial_id FROM artifact WHERE artifact_id = ?", (e["subject_id"],)
@@ -506,9 +645,15 @@ def _outcome(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("prediction.scored")
 def _scored(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "UPDATE prediction SET score = ?, score_metric = ?, score_metric_version = ?,"
+        "UPDATE prediction SET score = ?, score_metric_id = ?, score_metric_version = ?,"
         " outcome_seq = coalesce(outcome_seq, ?) WHERE prediction_id = ?",
-        (a["score"], a["metric"], a["metric_version"], e["seq"], e["subject_id"]),
+        (
+            a["score"],
+            _named(con, "metric", a["metric"]),
+            a["metric_version"],
+            e["seq"],
+            e["subject_id"],
+        ),
     )
 
 
@@ -582,19 +727,19 @@ def _ledger(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("tag.added")
 def _tag_added(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    _tag(con, e, a["key"], _tag_version(con, a["key"], a.get("version")), a["value"])
+    _tag(con, e, _tag_key(con, a["key"], a.get("version")), a["value"])
 
 
 @on("tag.removed")
 def _tag_removed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "DELETE FROM tag WHERE subject_kind = ? AND subject_id = ? AND key = ? AND tag_version = ?"
+        "DELETE FROM tag WHERE subject_kind = ? AND subject_id = ? AND key_id = ?"
+        " AND tag_version = ?"
         " AND value = ?",
         (
             e["subject_kind"],
             e["subject_id"],
-            a["key"],
-            _tag_version(con, a["key"], a.get("version")),
+            *_tag_key(con, a["key"], a.get("version")),
             str(a["value"]),
         ),
     )
