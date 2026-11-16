@@ -249,7 +249,7 @@ historical source availability alongside the performance.
 | [Agents](docs/public-source/agents.md) | Follow goals, sessions and specialist work. |
 | [Extending](docs/public-source/extending.md) | Develop and inspect factors and models. |
 | [Data and care](docs/public-source/data-and-care.md) | Update, inspect, back up and restore a workspace. |
-| [Privacy](docs/public-source/privacy.md) | Read what usage records contain and disable their reader. |
+| [Privacy](docs/public-source/privacy.md) | Read what usage records contain, disable their reader, or configure optional trace export. |
 | [Downloads and data terms](docs/public-source/third-party-and-data.md) | Read the terms for models and data sources. |
 
 The [guide index](docs/public-source/README.md) links the other reference pages.

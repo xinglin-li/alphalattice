@@ -29,6 +29,7 @@ from devtools.testing.sizes import (
     load_policy,
     moved,
     scoped,
+    speed_budget,
     stage_files,
     tmp_entry_footprint,
     tmp_footprint,
@@ -596,7 +597,8 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     seconds = sum(phases.values())
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
-    limit = dict(item.user_properties)["test_timeout_seconds"]
+    held = dict(item.user_properties)  # a unit test's own phases keep to its size's speed budget,
+    limit = held.get("speed_budget_seconds") or held["test_timeout_seconds"]  # not its hang guard
     if seconds <= limit:
         return
     report.outcome, report.longrepr = (
@@ -652,18 +654,13 @@ def _properties(
     row: dict[str, Any],
     declared: list[str],
     classified: tuple[str, str, str, float],
-    *,
-    size_hang_guard: float | None = None,
 ) -> None:
-    """Attach each owner's existing size, real bound and requirement metadata once."""
+    """Attach each owner's existing size, hang guard and requirement metadata once. The guard
+    (sizes.hang_guard) kills a test only as hung; its speed is judged at admission, solo."""
     size, owner, declaration, seconds = classified
     if not declared:
         item.add_marker(size)
     previous = item.get_closest_marker("timeout")
-    if size_hang_guard is not None and previous is None:
-        seconds = max(
-            seconds, size_hang_guard
-        )  # admission measures completed phases; this is only a hang guard
     if previous:
         limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
         if isinstance(limit, (int, float)) and limit > 0:
@@ -943,14 +940,9 @@ def _size_attributes(
             "test_size.large_contract: register a Large rule with "
             f"size_contract=nightly_only: {item.nodeid}"
         )
-    _properties(
-        item,
-        ids,
-        row,
-        declared,
-        classified,
-        size_hang_guard=policy["limits"]["medium"] if selected and size == "small" else None,
-    )
+    _properties(item, ids, row, declared, classified)
+    if (budget := speed_budget(policy, size)) is not None:
+        item.user_properties.append(("speed_budget_seconds", budget))
     return contract
 
 

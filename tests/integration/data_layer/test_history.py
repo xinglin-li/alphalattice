@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -23,15 +24,24 @@ def test_a_host_records_its_workspace_and_a_second_host_defers_by_name(
     once is recorded once; while another Host holds the data root, or its log or views do not
     open, a Host's history is deferred by name, records nothing and holds no lock."""
     root = tmp_path / "o'brien" / "data"  # a quote in the path is text in DuckDB's ATTACH
-    assert history.open_history("w1", "one", root) is None
-    try:
-        exists = "SELECT 1 FROM goal WHERE goal_id = 'g'"
-        goal = ("goal.set", ("goal", "g"), {"title": "t"})
-        with ThreadPoolExecutor(8) as pool:  # one Host's workers record the same goal at once
-            seqs = list(pool.map(lambda _: history.record_new(exists, (), *goal), range(8)))
-        assert sum(seq is not None for seq in seqs) == 1
-    finally:
-        history.close_history()
+    monkeypatch.delenv("ALPHALATTICE_OTLP_ENDPOINT", raising=False)
+    with monkeypatch.context() as no_network:
+
+        def no_socket(*args, **kwargs):
+            raise AssertionError("an unconfigured Host opened a socket")
+
+        no_network.setattr(socket, "socket", no_socket)
+        assert history.open_history("w1", "one", root) is None
+        try:
+            exists = "SELECT 1 FROM goal WHERE goal_id = 'g'"
+            goal = ("goal.set", ("goal", "g"), {"title": "t"})
+            with ThreadPoolExecutor(8) as pool:  # one Host's workers record the same goal at once
+                seqs = list(pool.map(lambda _: history.record_new(exists, (), *goal), range(8)))
+            assert sum(seq is not None for seq in seqs) == 1
+            with history.step("host.request", {}, operation="read"):
+                pass
+        finally:
+            history.close_history()
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         assert con.execute("SELECT workspace_id, name FROM workspace").fetchall() == [("w1", "one")]
         owned = (

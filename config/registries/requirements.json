@@ -259,8 +259,8 @@
       "seconds": 5
     },
     "data_layer.a_clients_trace_reaches_its_workers": {
-      "description": "A client request carrying W3C trace context is one Host step in that trace, and its worker call is the step's child span, attributed by baggage, read back from the log.",
-      "lower_layer": "A real Host serves the request over loopback HTTP and a real worker process runs the call; the spans are read from a real log.",
+      "description": "Client trace context reaches its Host and worker spans; the log and an opted-in receiver retain their trace, and external secrets and content are protected.",
+      "lower_layer": "A real Host serves the request over loopback HTTP and a real worker process runs the call; the spans are read from a real log and an in-memory OTLP/HTTP receiver.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 20
@@ -309,6 +309,12 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
+    },
+    "data_layer.configured_export_scrubs_secrets": {
+      "description": "A configured span exporter receives admitted secret values redacted, with prompt and result content off unless the person enables it; the local span record stays independent.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.data_root_is_set_or_the_application_folder": {
       "description": "The data root is ALPHALATTICE_DATA_ROOT when set, else the platform's application data folder.",
@@ -1254,6 +1260,12 @@
     },
     "testing.a_merge_is_budgeted_against_the_tip_it_lands_on": {
       "description": "The commit hook measures a merge's test budget against the tip its committer names in ALPHALATTICE_TEST_BUDGET_BASE, so a merge onto a tip ahead of develop is not charged with the changes beneath it; unset, the base is develop.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.a_test_is_killed_only_as_hung": {
+      "description": "A test is killed only as hung, at its size's hang guard (Bazel's small 60, medium 300, large 900 s); its speed is judged at admission, solo, never by a kill under load.",
       "owner": "devtools.testing",
       "layer": "unit",
       "seconds": 1

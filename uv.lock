@@ -146,6 +146,7 @@ source = { editable = "." }
 dependencies = [
     { name = "blake3" },
     { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "psutil" },
     { name = "pydantic" },
@@ -260,6 +261,7 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'semantic'", specifier = ">=2.5,<3" },
     { name = "onnxruntime", marker = "extra == 'semantic'", specifier = "==1.27.0" },
     { name = "opentelemetry-api", specifier = ">=1.45.2,<2" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2,<2" },
     { name = "optuna", marker = "extra == 'quant'", specifier = ">=5,<6" },
     { name = "osqp", marker = "extra == 'quant'", specifier = ">=1.1,<2" },
@@ -2362,7 +2364,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
     { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-http-transport", extra = ["requests"], marker = "extra == 'group-12-alphalattice-dev'" },
+    { name = "opentelemetry-exporter-http-transport", extra = ["requests"] },
     { name = "opentelemetry-exporter-otlp-common" },
     { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },

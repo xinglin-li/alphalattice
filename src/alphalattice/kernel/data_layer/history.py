@@ -25,17 +25,22 @@ import logging
 import os
 import sqlite3
 import threading
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
+from alphalattice.kernel.shared_kernel.environment import offline
 
 DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
+OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
+OTLP_CONTENT_ENV: Final = "ALPHALATTICE_OTLP_INCLUDE_CONTENT"
 HISTORY_DEFERRED: Final = "history: deferred (another Host holds the data root)"
 HISTORY_UNAVAILABLE: Final = "history: deferred (the data root's log or views did not open)"
 EVIDENCE_TYPE: Final = "research_evidence"
@@ -64,7 +69,13 @@ def data_root() -> Path:
     return Path(data) / "alphalattice"
 
 
-def open_history(workspace_id: str, name: str, root: Path | None = None) -> str | None:
+def open_history(
+    workspace_id: str,
+    name: str,
+    root: Path | None = None,
+    *,
+    can_export: Callable[[], bool] | None = None,
+) -> str | None:
     """Open the data root's log and reading views for this Host, and record its workspace.
 
     Returns None when the history records, else why it does not (HISTORY_DEFERRED or
@@ -92,13 +103,70 @@ def open_history(workspace_id: str, name: str, root: Path | None = None) -> str 
                 logging.getLogger(__name__).warning("%s at %s: %s", reason, where, error)
                 return reason
             from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, a Host's alone
+                ExternalSpanProcessor,
                 LogSpanExporter,
                 tracer_provider,
             )
 
             exporter = LogSpanExporter(log)  # the SDK is imported by a Host alone
+            remote = None
+            endpoint = os.environ.get(OTLP_ENDPOINT_ENV, "").strip()
+            if endpoint:
+                try:
+                    address = urlsplit(endpoint)
+                    if (
+                        address.scheme not in {"http", "https"}
+                        or not address.hostname
+                        or address.username is not None
+                        or address.password is not None
+                        or address.query
+                        or address.fragment
+                        or secrets_in({"endpoint": endpoint})
+                    ):
+                        raise ValueError(
+                            "endpoint must be an HTTP URL without credentials or query"
+                        )
+                    if offline():
+                        logging.getLogger(__name__).warning(
+                            "OTLP export is off: the Host is offline"
+                        )
+                    else:
+                        from opentelemetry.exporter.otlp.proto.http import (  # lazy: opt-in export
+                            trace_exporter,
+                        )
+                        from opentelemetry.sdk.trace.export import (  # lazy: opt-in export
+                            SpanExportResult,
+                        )
+
+                        class NetworkBoundExporter(trace_exporter.OTLPSpanExporter):
+                            def export(self, spans):
+                                try:
+                                    if offline() or can_export is None or not can_export():
+                                        logging.getLogger(__name__).warning(
+                                            "OTLP export is off: workspace network is not allowed"
+                                        )
+                                        return SpanExportResult.FAILURE
+                                except Exception as error:
+                                    logging.getLogger(__name__).warning(
+                                        "OTLP export is off: network control unavailable (%s)",
+                                        type(error).__name__,
+                                    )
+                                    return SpanExportResult.FAILURE
+                                return super().export(spans)
+
+                        remote = ExternalSpanProcessor(
+                            NetworkBoundExporter(endpoint=endpoint),
+                            include_content=os.environ.get(OTLP_CONTENT_ENV) == "1",
+                        )
+                except (OSError, ValueError) as error:
+                    logging.getLogger(__name__).warning(
+                        "OTLP export is off: endpoint or exporter unavailable (%s)",
+                        type(error).__name__,
+                    )
             _open.update(log=log, reading=reading, workspace=workspace_id, exporter=exporter)
-            _open["tracer"] = tracer_provider(exporter)
+            _open["tracer"] = tracer_provider(exporter, remote=remote)
+            if remote is not None:
+                _open["remote"] = remote
             spec: dict[str, Any] = {
                 "storage": "none",  # the evidence stays in the workspace's store until row 8a
                 "table": None,
@@ -122,6 +190,7 @@ def open_history(workspace_id: str, name: str, root: Path | None = None) -> str 
 def close_history() -> None:
     """Commit the open batch, close the reading session and release the data root."""
     with _lock:
+        _open.pop("remote", None)
         reading = _open.pop("reading", None)
         log = _open.pop("log", None)
         _open.pop("workspace", None)
@@ -227,7 +296,20 @@ def traced(rows: Iterable[Mapping[str, Any]] | None) -> None:
     refuses is counted, never raised into the step. Nothing while deferred."""
     exporter = _open.get("exporter")
     if exporter is not None and rows:
-        exporter.write(rows)
+        remote = _open.get("remote")
+        for row in rows:
+            if remote is None:
+                exporter.write((row,))
+                continue
+            try:
+                admitted = remote.log_row(row)
+            except (KeyError, TypeError, ValueError) as error:
+                logging.getLogger(__name__).warning(
+                    "worker span was not recorded: %s", type(error).__name__
+                )
+                continue
+            if exporter.write((admitted,)).name == "SUCCESS":
+                remote.worker_rows((row,))
 
 
 def trace_carrier() -> dict[str, str]:

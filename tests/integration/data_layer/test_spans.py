@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import threading
 import urllib.request
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.trace import Status, StatusCode
 
+from alphalattice.control.product_host.composition.application_session import (
+    WorkspaceApplicationSession,
+)
 from alphalattice.control.task_control.child import run_in_child
+from alphalattice.control.workspace_runtime.network_access import set_network_access
 from alphalattice.interface.local_application.cli_contract import agent_provenance_headers
 from alphalattice.interface.local_application.web import (
     SESSION_HEADER,
@@ -20,7 +28,7 @@ from alphalattice.interface.local_application.web import (
     LocalWebService,
 )
 from alphalattice.kernel.data_layer import create_data_root, history
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.data_layer.log import HostLog, envelope
 from alphalattice.kernel.data_layer.spans import LogSpanExporter, tracer_provider
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
@@ -40,6 +48,36 @@ def _steps(log):
     """The step events the spans wrote, in order."""
     sql = "SELECT * FROM event WHERE phase IS NOT NULL ORDER BY seq"
     return log.read(sql)
+
+
+@pytest.fixture
+def otlp_receiver(monkeypatch):
+    """An in-memory OTLP/HTTP receiver on loopback, with no external service."""
+    received: list[bytes] = []
+
+    class Receiver(BaseHTTPRequestHandler):
+        def do_POST(self):
+            received.append(self.rfile.read(int(self.headers["Content-Length"])))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, _format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
+    monkeypatch.delenv("ALPHALATTICE_OTLP_INCLUDE_CONTENT", raising=False)
+    monkeypatch.setenv(
+        "ALPHALATTICE_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}/v1/traces"
+    )
+    try:
+        yield received
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 @pytest.mark.proves("data_layer.spans_are_step_events")
@@ -99,7 +137,9 @@ def read_bytes(path: str, cancelled) -> int:
 
 
 @pytest.mark.proves("data_layer.a_clients_trace_reaches_its_workers")
-def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(tmp_path):
+def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
+    tmp_path, otlp_receiver, monkeypatch
+):
     """A request whose environment names a trace is one Host step in that trace, and the worker
     call it makes is the step's child, attributed to the Host's workspace and the baggage's
     trial; both are read back from the log, and a read the workbench polls opens no span."""
@@ -119,7 +159,22 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(tmp_pa
         "TRACEPARENT": f"00-{TRACE}-{CLIENT_SPAN}-01",
         "BAGGAGE": "alphalattice.trial_id=t7,alphalattice.workspace_id=w2",
     }
-    assert history.open_history("w1", "one", tmp_path / "data") is None
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    set_network_access(tmp_path, enabled=True, now=now)
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "data"))
+    assert WorkspaceApplicationSession.open_history("w1", tmp_path, lambda: now) is None
+    secret = "sk-" + "A" * 24
+    with history.step("host.request", {}, operation="probe", note=secret, prompt="private prompt"):
+        pass
+    with history.step("unregistered.step", {}):
+        pass
+    worker_probe = envelope(
+        "worker.call",
+        attrs={"call": "probe", "note": secret, "prompt": "private prompt"},
+        phase="completed",
+        workspace="w1",
+    )
+    history.traced([worker_probe])
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar)
@@ -135,13 +190,30 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(tmp_pa
             answer = json.loads(opener.open(sent, timeout=120).read())
     finally:
         history.close_history()
+    sent_before_stop = len(otlp_receiver)
+    set_network_access(tmp_path, enabled=False, now=now)
+    assert WorkspaceApplicationSession.open_history("w1", tmp_path, lambda: now) is None
+    try:
+        with history.step("host.request", {}, operation="network-stopped"):
+            pass
+    finally:
+        history.close_history()
+    assert len(otlp_receiver) == sent_before_stop
     with HostLog.open(tmp_path / "data") as log:
         rows = log.read(
             "SELECT type, trace_id, span_id, parent_span_id, workspace_id, attrs FROM event"
             " WHERE phase IS NOT NULL ORDER BY started_us"
         )
     assert answer == {"bytes": 300}
-    (step, call) = [dict(row) for row in rows]
+    assert any(
+        json.loads(row["attrs"]).get("note") == "[redacted]"
+        and json.loads(row["attrs"]).get("prompt") == "private prompt"
+        for row in rows
+    )
+    recorded_worker = next(row for row in rows if row["span_id"] == worker_probe["span_id"])
+    assert json.loads(recorded_worker["attrs"])["note"] == "[redacted]"
+    assert json.loads(recorded_worker["attrs"])["prompt"] == "private prompt"
+    step, call = [dict(row) for row in rows if row["trace_id"] == TRACE]
     assert (step["type"], step["trace_id"], step["parent_span_id"]) == (
         "host.request",
         TRACE,
@@ -155,3 +227,20 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(tmp_pa
     assert step["workspace_id"] == call["workspace_id"] == "w1"
     assert json.loads(call["attrs"]) == {"call": f"{__name__}:read_bytes", "trial_id": "t7"}
     assert json.loads(step["attrs"])["route"] == "POST /api/read"
+    exported = [
+        span
+        for payload in otlp_receiver
+        for resource in ExportTraceServiceRequest.FromString(payload).resource_spans
+        for scope in resource.scope_spans
+        for span in scope.spans
+    ]
+    attrs = [{item.key: item.value.string_value for item in span.attributes} for span in exported]
+    assert any(row.get("note") == "[redacted]" and "prompt" not in row for row in attrs)
+    assert all(span.name != "unregistered.step" for span in exported)
+    remote_probe = next(span for span in exported if span.span_id.hex() == worker_probe["span_id"])
+    assert remote_probe.trace_id.hex() == recorded_worker["trace_id"]
+    worker = next(
+        span for span in exported if span.name == "worker.call" and span.trace_id.hex() == TRACE
+    )
+    assert worker.trace_id.hex() == TRACE
+    assert worker.parent_span_id.hex() == step["span_id"]

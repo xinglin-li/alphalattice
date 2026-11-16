@@ -172,7 +172,7 @@
 | [代理](docs/public-source/agents.md) | 目标、会话与专家工作。 |
 | [扩展](docs/public-source/extending.md) | 开发并检查因子和模型。 |
 | [数据与维护](docs/public-source/data-and-care.md) | 更新、检查、备份与恢复工作区。 |
-| [隐私](docs/public-source/privacy.md) | 用量记录的内容，以及如何关闭读取。 |
+| [隐私](docs/public-source/privacy.md) | 用量记录的内容、如何关闭读取，以及如何配置可选的追踪导出。 |
 | [下载与数据条款](docs/public-source/third-party-and-data.md) | 模型和数据来源的条款。 |
 
 [指南索引](docs/public-source/README.md)链接了其他参考页面。

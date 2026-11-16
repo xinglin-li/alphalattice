@@ -569,6 +569,7 @@ LAYER_IDS = (
 DECLARED_CASES = (
 [(), ("small",), ("large",), ("medium", "medium"), ("small", "large"), ("registered",)]
     + [(name,) for name in ("timeout", "bad-reason", "bad-limit", "duplicate", "owner-large")]
+    + [pytest.param(("guard-runs",), id="guard-runs")]
     + [pytest.param(("null-size-contract",), id="null-size-contract")]
     + [("strict",)]
     + [

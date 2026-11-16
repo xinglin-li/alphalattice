@@ -238,7 +238,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
-from alphalattice.kernel.data_layer.history import close_history, open_history
+from alphalattice.kernel.data_layer.history import close_history
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
@@ -640,7 +640,9 @@ class LocalPortfolioWebSession:
         healthy stop uses, before the failure is re-raised.
         """
         try:
-            open_history(self.workspace_manifest.workspace_id, self.workspace.name)
+            WorkspaceApplicationSession.open_history(
+                self.workspace_manifest.workspace_id, self.workspace, self.clock
+            )
             return self._start()
         except BaseException:
             self._teardown(timeout=None)

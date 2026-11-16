@@ -28,7 +28,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from devtools.testing.sizes import load_policy, validate_policy
+from devtools.testing.sizes import hang_guard, load_policy, speed_budget, validate_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
@@ -947,7 +947,10 @@ def admission(
 ) -> list[str]:
     """What the change's added or edited rows fail: a check, or an exception the test manager has
     not decided (a journey, a Large test, an overrun, a near-duplicate); a row is only retired."""
-    limits = load_policy(root)["limits"]  # a layer's limit is its size's: one source
+    policy = load_policy(root)  # a layer's budget is its size's speed budget, never its hang guard;
+    limits = {  # Large, which has no speed budget, keeps its hang guard
+        size: speed_budget(policy, size) or hang_guard(policy, size) for size in policy["limits"]
+    }
     found = [
         f'TEST-REGISTRY {key} was removed; retire it instead ("retired": "<date>: <why>")'
         for key in sorted(before.keys() - rows.keys())

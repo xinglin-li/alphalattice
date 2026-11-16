@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 
 from devtools.architecture.git_inputs import carried
+from devtools.testing import sizes
 from devtools.testing.sizes import budget_rises, validate_policy
 
 TEST_SOURCE = "src/devtools/testing/sizes.py"
@@ -82,3 +85,17 @@ def test_a_moved_large_row_keeps_its_budget_and_its_admissions_stay_current() ->
     for rows in ([stale], [admitted(NAME, 600)] * 2, *([row] for row in undated)):
         with pytest.raises(ValueError, match=r"test_size\.budget_admission"):
             validate_policy(timed(600, budget_admissions=rows))
+
+
+LIVE = sizes.load_policy(
+    Path(__file__).parents[3]
+)  # read at import: a unit test reads no project file
+
+
+@pytest.mark.proves("testing.a_test_is_killed_only_as_hung")
+def test_a_test_is_killed_only_as_hung_and_its_speed_is_judged_at_admission() -> None:
+    """A medium test is killed only as hung (300 s); its speed is refused at admission (30 s)."""
+    live, node = LIVE, "tests/a.py::test_a"
+    assert (sizes.hang_guard(live, "medium"), sizes.speed_budget(live, "medium")) == (300, 30)
+    with pytest.raises(ValueError, match=rf"test_size\.admission_limit: {node}: medium"):
+        sizes.admission_limit(node, "medium", 31, 0, live)

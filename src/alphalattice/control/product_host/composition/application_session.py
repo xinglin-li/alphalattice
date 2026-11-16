@@ -9,7 +9,7 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
@@ -27,6 +27,7 @@ from alphalattice.control.workspace_runtime.database import (
     retain_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
@@ -42,6 +43,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
+from alphalattice.kernel.data_layer.history import open_history
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -125,6 +127,20 @@ class WorkspaceApplicationSession:
     task_control_registry: DuckDbTaskControlRegistry
     runtime_path: Path
     processor: str
+
+    @staticmethod
+    def open_history(
+        workspace_id: str, workspace: Path, clock: Callable[[], datetime]
+    ) -> str | None:
+        """Open Host history with the workspace's network control at the export boundary."""
+        return cast(
+            str | None,
+            open_history(
+                workspace_id,
+                workspace.name,
+                can_export=lambda: network_access(workspace, now=clock()).allowed,
+            ),
+        )
 
     def execute_admitted(
         self,

@@ -445,8 +445,9 @@ def _growth(policy: dict[str, Any]) -> None:
 
 
 def budgets(policy: dict[str, Any]) -> dict[str, float]:
-    """Each numeric test budget by name: a size limit, an admission limit, the growth floor and
-    every Large row's timeout, a row without one taking the Large limit."""
+    """Each numeric test budget by name: a size's hang guard (``limits``), an admission limit (the
+    speed budget), the growth floor and every Large row's timeout, a row without one taking the
+    Large hang guard."""
     limits = policy["limits"]
     found = {f"limits.{size}": value for size, value in limits.items()}
     for size, row in (policy.get("admission_limits") or {}).items():
@@ -652,7 +653,8 @@ def _rule(nodeid: str, rules: list[dict[str, Any]]) -> dict[str, Any] | None:
 def classify(
     nodeid: str, declared: Iterable[str], policy: dict[str, Any]
 ) -> tuple[str, str, str, float]:
-    """Resolve size, owner, declaration and execution bound in one rule scan."""
+    """Resolve size, owner, declaration and hang guard in one rule scan: the bound a test is killed
+    at as hung, never a speed limit (``hang_guard``)."""
     sizes = set(declared)
     if len(sizes) > 1:
         raise ValueError("test_size.conflicting:" + nodeid)
@@ -670,10 +672,27 @@ def classify(
     if size not in policy["sizes"] or not rule.get("owner"):
         raise ValueError("test_size.declaration_invalid:" + nodeid)
     origin = "marker:" + nodeid if sizes else rule["pattern"]
-    seconds = (
-        large.get("timeout_seconds", policy["limits"][size]) if large else policy["limits"][size]
+    guard = hang_guard(policy, size)  # a Large row's own timeout is kept only above its size's
+    return (
+        str(size),
+        str(rule["owner"]),
+        str(origin),
+        float((large or {}).get("timeout_seconds", guard)),
     )
-    return str(size), str(rule["owner"]), str(origin), float(seconds)
+
+
+def hang_guard(policy: dict[str, Any], size: str) -> float:
+    """The seconds a test of this size is killed at, only as hung: Bazel's size timeouts (small
+    60, medium 300, large 900; the registry's ``limits``). A size's speed is its admission limit
+    (``speed_budget``), judged solo and reported from durations, never by this kill under load."""
+    return float(policy["limits"][size])
+
+
+def speed_budget(policy: dict[str, Any], size: str) -> float | None:
+    """A size's speed budget: its admission limit's seconds, judged solo on a quiet host; None
+    for a size with none (Large, which runs only in the nightly)."""
+    row = (policy.get("admission_limits") or {}).get(size)
+    return float(row["seconds"]) if row else None
 
 
 def changed_paths(*, floor: bool = False) -> frozenset[str] | None:

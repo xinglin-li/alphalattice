@@ -58,7 +58,7 @@ def admit(
     bad = [name for name in NUMERIC if name in attrs and not _number(attrs[name])]
     if bad or _parts_malformed(attrs.get("parts")):
         raise _refuse("event_attrs_form", f"{', '.join(bad) or 'parts'} malformed")
-    hits = _secrets(attrs) + (["text"] if text and SECRET_VALUE.search(text) else [])
+    hits = secrets_in(attrs) + (["text"] if text and SECRET_VALUE.search(text) else [])
     hits += _body_secret(body) + _setting_value(row["type"], attrs)
     if hits:
         raise _refuse(
@@ -105,16 +105,16 @@ def _parts_malformed(parts: Any) -> bool:
     )
 
 
-def _secrets(value: Any, name: str = "") -> list[str]:
+def secrets_in(value: Any, name: str = "") -> list[str]:
     """Each place in an attribute tree holding a credential.
 
     A place is a secret-named field with a value (a `*_ref` names a keychain entry, never a
     secret), or a key-shaped string.
     """
     if isinstance(value, dict):
-        return [hit for key, item in value.items() for hit in _secrets(item, str(key))]
+        return [hit for key, item in value.items() for hit in secrets_in(item, str(key))]
     if isinstance(value, list):
-        return [hit for item in value for hit in _secrets(item, name)]
+        return [hit for item in value for hit in secrets_in(item, name)]
     named = bool(SECRET_NAME.search(name)) and not name.endswith("_ref") and bool(value)
     if isinstance(value, str) and (named or SECRET_VALUE.search(value)):
         return [name or "value"]

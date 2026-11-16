@@ -15,6 +15,12 @@ An admitted network step reports `network_use`, with `under` naming whose settin
 
 Say "Turn AlphaLattice's network off" to your agent, or turn it off in **Settings**. Your stop also blocks SEC acquisition before its next request; a data update already fetching finishes its current stage unless its Task is cancelled. A delegation cannot reopen your setting after that stop. A later change needs your decision again. Earlier inputs, Evidence and activity records remain available. Source and model terms are in [Downloads and data terms](third-party-and-data.md).
 
+## Optional trace export
+
+The Host keeps its history locally. To also send traces to an OTLP/HTTP backend, set `ALPHALATTICE_OTLP_ENDPOINT` in the Host process environment to its full trace URL, including `/v1/traces`, before starting the Host. Use an HTTP or HTTPS URL without credentials or a query string. With no endpoint, the Host opens no export connection. The workspace network control and the operator's offline switch still apply, including when the network is turned off after startup.
+
+Exported span attributes are checked for credentials and redacted. Prompt, message and result content is left out by default; set `ALPHALATTICE_OTLP_INCLUDE_CONTENT=1` in the Host environment only if you choose to send it. Credential redaction still applies when content is enabled. Restart the Host to change either setting. The local history remains the record of truth.
+
 ## Files and readings
 
 | Host | Admitted session root |
