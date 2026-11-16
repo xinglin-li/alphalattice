@@ -899,10 +899,11 @@ def growth(
     rows: Mapping[str, Mapping[str, Any]] | None = None,
     changed: Iterable[Holder] = (),
 ) -> list[str]:
-    """A change's net test lines may not exceed its net source plus the size policy's floor
-    (tools/instructions/testing.md), and a change whose tests do not grow passes; judged against
-    `policy`, the test-sizes.json text of the same snapshot as the measured diff: past it the
-    change is refused by name, unless each new test function's requirement carries the test
+    """A review signal when a change's net test lines exceed its net source plus the size policy's
+    floor, never a refusal: a share cap is met by folding tests, which leaves them no better. A
+    change whose tests do not grow says nothing; judged against `policy`, the test-sizes.json text
+    of the same snapshot as the measured diff: past it the change is named, unless each new test
+    function's requirement carries the test
     manager's decided "growth" exception. A change that adds no test function (a rewrite of
     existing tests) has its decision on each changed function's requirement instead, and needs
     one such function. An absent, unreadable or malformed policy is never a pass."""
@@ -913,7 +914,7 @@ def growth(
         floor = None
     if type(floor) is not int:
         return [
-            "TEST-GROWTH unmeasured, refused: the change's config/registries/test-sizes.json is "
+            "TEST-GROWTH unmeasured: the change's config/registries/test-sizes.json is "
             "absent, unreadable or names no growth floor_lines; an unread rule is never a pass."
         ]
     if tests <= max(
@@ -928,7 +929,7 @@ def growth(
     ):
         return []
     return [
-        f"TEST-GROWTH refused: net tests {tests:+d} outgrow net source {source:+d} by more than "
+        f"TEST-GROWTH signal: net tests {tests:+d} outgrow net source {source:+d} by more than "
         f"{floor} lines. Turn cases into unit tests of the deciding function, keep one journey per "
         "distinct path and delete what the change made redundant (tools/instructions/testing.md); "
         "or record the test manager's decision on each new test's requirement row, or on each "

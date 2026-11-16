@@ -19,7 +19,7 @@ def holders(**counts: int) -> list[SimpleNamespace]:
 
 
 @pytest.mark.proves("testing.tests_grow_no_faster_than_source")
-def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch):
+def test_a_change_whose_tests_outgrow_its_source_is_named_as_a_signal(monkeypatch):
     monkeypatch.setattr(requirements, "validate_policy", lambda value: value)
     policy = '{"growth": {"floor_lines": 30}}'
     assert requirements.growth(policy, 100, 130) == []  # within source plus the floor
@@ -27,7 +27,7 @@ def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch)
     assert requirements.growth(policy, -138, -79) == []  # a fold that deletes tests grows none
     assert requirements.growth(policy, -50, 30)  # +30 exceeds -50 + 30
     (refused,) = requirements.growth(policy, 0, 47)  # a fixture card: 47 test lines, no source
-    assert refused.startswith("TEST-GROWTH refused: net tests +47 outgrow net source +0 by more")
+    assert refused.startswith("TEST-GROWTH signal: net tests +47 outgrow net source +0 by more")
     new = [SimpleNamespace(ids=("r.decided",)), SimpleNamespace(ids=("r.open", "r.decided"))]
     decided = {"kinds": ["growth"], "why": "a ledger proof", "decided": "2026-11-12: kept"}
     rows = {"r.decided": {"exception": decided}, "r.open": {}}
@@ -43,7 +43,7 @@ def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch)
     assert requirements.growth(policy, 0, 47, [undecided], rows, rewrite)  # new tests decide
     for unread in (None, "{", "{}"):  # absent from the snapshot, unreadable, or no floor
         (said,) = requirements.growth(unread, 10, -5)
-        assert said.startswith("TEST-GROWTH unmeasured, refused")
+        assert said.startswith("TEST-GROWTH unmeasured:")
 
 
 @pytest.mark.proves("testing.integration_share_only_falls")

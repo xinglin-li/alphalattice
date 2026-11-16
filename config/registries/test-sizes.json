@@ -261,7 +261,8 @@
         "src/devtools/testing/os_marks.py",
         "src/devtools/testing/requirements.py",
         "src/devtools/testing/sizes.py",
-        "scripts/antipattern_rules.yml"
+        "scripts/antipattern_rules.yml",
+        "scripts/test_antipattern_rules.yml"
       ]
     }
   },

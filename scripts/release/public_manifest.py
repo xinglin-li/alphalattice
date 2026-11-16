@@ -523,6 +523,8 @@ RULES = [
             "scripts/test-shape-tools/package-lock.json",
             "scripts/antipattern_rules.yml",
             "scripts/antipattern_examples.py.txt",
+            "scripts/test_antipattern_rules.yml",
+            "scripts/test_antipattern_examples.py.txt",
             "scripts/tests_registry.py",
             "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",

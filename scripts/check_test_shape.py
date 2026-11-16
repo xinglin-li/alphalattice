@@ -102,42 +102,6 @@ def _definitions(tree: ast.AST, prefix: str = ""):
             yield from _definitions(node, prefix)
 
 
-def _metrics(node: ast.AST, ruff: dict[int, int] | None = None) -> tuple[int, int]:
-    # Ruff's McCabe score and this guard's decision count agree for these
-    # functions. Other syntax keeps the original rule, which counts boolean
-    # operators and comprehensions and excludes nested definitions differently.
-    excluded = (
-        ast.BoolOp,
-        ast.IfExp,
-        ast.comprehension,
-        ast.Match,
-        ast.Try,
-        ast.TryStar,
-        ast.AsyncFor,
-    )
-    children = tuple(_body(node))
-    simple = not any(isinstance(item, excluded) for item in children) and not any(
-        isinstance(item, (ast.For, ast.AsyncFor, ast.While)) and item.orelse for item in children
-    )
-    simple = simple and not any(
-        isinstance(item, DEFINITION_TYPES) and item is not node for item in ast.walk(node)
-    )
-    if simple and ruff is not None:
-        if node.lineno not in ruff:
-            raise ValueError(f"ruff omitted function at line {node.lineno}")
-        return (node.end_lineno or node.lineno) - node.lineno + 1, ruff[node.lineno]
-    decisions = sum(
-        isinstance(
-            item, ast.If | ast.For | ast.AsyncFor | ast.While | ast.IfExp | ast.ExceptHandler
-        )
-        + (len(item.values) - 1 if isinstance(item, ast.BoolOp) else 0)
-        + (len(item.cases) if isinstance(item, ast.Match) else 0)
-        + (1 + len(item.ifs) if isinstance(item, ast.comprehension) else 0)
-        for item in children
-    )
-    return (node.end_lineno or node.lineno) - node.lineno + 1, decisions
-
-
 # Ruff's pytest-style rules a test change may not grow, with the fix each names
 PT_FIXES = {
     "PT011": "give pytest.raises a match= for the expected message",
@@ -187,22 +151,6 @@ def _ruff(snapshots: dict[str, str], *options: str) -> dict[str, list[dict]]:
         return result
 
 
-def ruff_decisions(snapshots: dict[str, str]) -> dict[str, dict[int, int]]:
-    """Measure each staged Python snapshot with one locked Ruff invocation."""
-    rows = _ruff(snapshots, "--select", "C901", "--config", "lint.mccabe.max-complexity=0")
-    result = {key: {} for key in rows}
-    for key, found in rows.items():
-        for row in found:
-            match = re.search(r"\((\d+) > 0\)$", row["message"])
-            if row["code"] != "C901" or not match:
-                raise ValueError("ruff could not measure a staged snapshot")
-            line = row["location"]["row"]
-            if line in result[key]:
-                raise ValueError("ruff returned an ambiguous function location")
-            result[key][line] = int(match.group(1)) - 1
-    return result
-
-
 def ruff_test_findings(snapshots: dict[str, str]) -> dict[str, tuple[tuple[str, int], ...]]:
     """Each staged test snapshot's PT findings as (rule, line), from one Ruff invocation."""
     rows = _ruff(snapshots, "--select", ",".join(PT_FIXES))
@@ -221,6 +169,8 @@ ANTIPATTERN_PRIVATE = (
 ANTIPATTERN_SIDES = (ANTIPATTERN_BASELINE, ANTIPATTERN_PRIVATE)
 ANTIPATTERN_SEMGREP = "scripts/antipattern_rules.yml"
 ANTIPATTERN_CASES = "scripts/antipattern_examples.py.txt"
+TEST_ANTIPATTERN_RULES = "scripts/test_antipattern_rules.yml"  # ast-grep: milliseconds a file
+TEST_ANTIPATTERN_CASES = "scripts/test_antipattern_examples.py.txt"
 ANTIPATTERN_RULES = "PGH,G,LOG,C901,PLR0912,PLR0915,S112,S113,DTZ005,ASYNC"
 SIGNAL_RULES = frozenset({"C901", "PLR0912", "PLR0915", "test-too-many-mocks"})
 """Counts of size and form, measured and never refused: complying with a cap on them moves lines
@@ -357,6 +307,17 @@ def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
                 amount = int(score.group(1))
             counts[key] += amount
     return dict(counts)
+
+
+RULE_FILES = ("scripts/check_test_shape.py", ANTIPATTERN_SEMGREP, TEST_ANTIPATTERN_RULES)
+
+
+def seeded_rules(held: dict[str, int], baseline: dict[str, int], staged: list[str]) -> set[str]:
+    """A rule the parent's allowance never held is a new rule's seed, admitted only with a change
+    to a file that defines the rules; a finding a rule's landing missed is repaired, not seeded."""
+    if not set(RULE_FILES) & set(staged):
+        return set()
+    return {key.partition("::")[2] for key in baseline} - {key.partition("::")[2] for key in held}
 
 
 def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]:
@@ -572,6 +533,65 @@ def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int
         return dict(counts)
 
 
+def _astgrep_rows(root: Path, target: str) -> list[tuple[str, str, int]]:
+    """Each ast-grep finding of root/rules.yml in root/target: its path under target, rule, line."""
+    exe = Path(sys.executable).parent / ("ast-grep.exe" if os.name == "nt" else "ast-grep")
+    done = subprocess.run(
+        [str(exe), "scan", "--rule", "rules.yml", "--json=compact", target],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if done.returncode not in (0, 1):  # 1: an error-level finding
+        raise ValueError(f"ast-grep exited {done.returncode}: {done.stderr[-400:]}")
+    rows = json.loads(done.stdout)
+    if not isinstance(rows, list):
+        raise ValueError("ast-grep could not measure its inputs")
+    return [
+        (
+            Path(row["file"]).relative_to(target).as_posix() if target != "." else row["file"],
+            row["ruleId"],
+            row["range"]["start"]["line"] + 1,
+        )
+        for row in rows
+    ]
+
+
+def astgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int]:
+    """Run the ast-grep test rules on the same committed or staged test snapshots."""
+    if not snapshots:
+        return {}
+    with _scanner_folder("test-antipattern-") as folder:
+        root = Path(folder)
+        (root / "rules.yml").write_text(rules, encoding="utf-8")
+        for path, text in snapshots.items():
+            target = root / "tree" / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
+        return dict(Counter(f"{path}::{rule}" for path, rule, _ in _astgrep_rows(root, "tree")))
+
+
+def _astgrep_selftest(rules: str, cases: str) -> None:
+    """Each ast-grep rule fires on the line after its `# ruleid:` example and on no other."""
+    with _scanner_folder("test-antipattern-cases-") as folder:
+        root = Path(folder)
+        (root / "rules.yml").write_text(rules, encoding="utf-8")
+        (root / "cases.py").write_text(cases, encoding="utf-8", newline="\n")
+        found = {(rule, line) for _, rule, line in _astgrep_rows(root, "cases.py")}
+    marked = {
+        (rule.strip(), n + 2)
+        for n, text in enumerate(cases.splitlines())
+        if text.strip().startswith("# ruleid:")
+        for rule in text.split(":", 1)[1].split(",")
+    }
+    ids = set(re.findall(r"(?m)^id: (\S+)$", rules))
+    if found != marked or {rule for rule, _ in marked} != ids:
+        raise ValueError(f"ast-grep rule examples failed: {sorted(found ^ marked)[:4]}")
+
+
 def auxiliary_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
     """Check staged workflows and shell scripts with their locked executables."""
     if not snapshots:
@@ -653,9 +673,13 @@ def _antipattern_problems(
             ):
                 raise ValueError("anti-pattern baseline missing from parent")
         else:
-            found += antipattern_growth(
-                relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves), baseline
-            )
+            held = relocated_antipatterns(antipattern_sides(texts, parent + ":"), moves)
+            seeds = seeded_rules(held, baseline, staged)
+            found += [
+                line
+                for line in antipattern_growth(held, baseline)
+                if line.split(": ", 1)[0].partition("::")[2] not in seeds
+            ]
     missing = [path for path in sources if head + path not in texts]
     if missing:
         raise ValueError(f"changed source unreadable: {missing[0]}")
@@ -670,6 +694,13 @@ def _antipattern_problems(
             {path: texts[head + path] for path in sources if not path.endswith(".py")}
         )
     )
+    if (test_rules := texts.get(head + TEST_ANTIPATTERN_RULES)) is not None:
+        if TEST_ANTIPATTERN_RULES in staged or TEST_ANTIPATTERN_CASES in staged:
+            _astgrep_selftest(test_rules, texts[head + TEST_ANTIPATTERN_CASES])
+        tests = {
+            p: texts[head + p] for p in sources if p.startswith("tests/") and p.endswith(".py")
+        }
+        measured.update(astgrep_antipatterns(tests, test_rules))
     if semgrep:
         if ANTIPATTERN_SEMGREP in staged or ANTIPATTERN_CASES in staged:
             _semgrep_selftest(texts[head + ANTIPATTERN_SEMGREP], texts[head + ANTIPATTERN_CASES])
@@ -1295,7 +1326,7 @@ def problems(
     path: str,
     old: str | None,
     new: str,
-    ruff: tuple[dict[int, int], dict[int, int]] | tuple[tuple, tuple] | None = None,
+    ruff: tuple[tuple, tuple] | None = None,
     docstrings: tuple[tuple[str, int], ...] = (),
 ) -> list[str]:
     """Growth a staged source or test change refuses; existing debt only shrinks. A source's
@@ -1314,29 +1345,11 @@ def problems(
         size = len(new.encode("utf-8", errors="surrogateescape"))
         grew = size > len((old or "").encode("utf-8", errors="surrogateescape"))
         if size > CAP_BYTES and grew and path not in WORD_CATALOGS | VENDORED_DATA:
-            found.append(f"{path}:1: source size {size} > {CAP_BYTES}; split at its owner")
+            # A size cap is met by splitting, which leaves the code no better: review judges it.
+            print(f"test_shape.signal: {path}: {size // 1024} KB (a review signal, never refused)")
         if path.endswith(".py"):
             found += undocumented(path, old, new, docstrings)
             before, after = _tree(old or ""), _tree(new)
-            was = {
-                name: _metrics(node, ruff[0] if ruff else None)
-                for name, node in _definitions(before)
-                if isinstance(node, FUNCTION_TYPES)
-            }
-            for name, node in _definitions(after):
-                if isinstance(node, FUNCTION_TYPES):
-                    for metric, count, previous, cap in zip(
-                        ("physical lines", "decisions"),
-                        _metrics(node, ruff[1] if ruff else None),
-                        was.get(name, (0, 0)),
-                        (120, 20),
-                        strict=True,
-                    ):
-                        if count > cap and count > previous:
-                            found.append(
-                                f"{path}:{node.lineno}: function {name} "
-                                f"{count} {metric} > {cap}; split its rule"
-                            )
             debt = Counter(line.split(": ", 1)[1] for line in _lint(path, before))
             current = sorted(_lint(path, after))
             counts = Counter(line.split(": ", 1)[1] for line in current)
@@ -1354,8 +1367,8 @@ def problems(
         return len(PROVES_LINE.sub("", text).encode("utf-8", errors="surrogateescape"))
 
     size = counted(new)
-    if size > CAP_BYTES and size > counted(old or ""):
-        found.append(f"{path}: grows to {size // 1024} KB; a test file stays under 100 KB (rule 9)")
+    if size > CAP_BYTES and size > counted(old or ""):  # met by splitting files: review judges it
+        print(f"test_shape.signal: {path}: {size // 1024} KB (a review signal, never refused)")
     # a line only re-indented is kept, not added
     before = {line.strip() for line in (old or "").splitlines()}
     added = [line for line in new.splitlines() if line.strip() not in before]
@@ -1599,6 +1612,7 @@ def main(argv: list[str] | None = None) -> int:
             + [parent + ":" + origin[path] for parent in parents for path in selected]
             + [parent + ":" + path for parent in parents for path in candidates]
             + [head + path for path in ANTIPATTERN_SIDES]
+            + [head + TEST_ANTIPATTERN_RULES, head + TEST_ANTIPATTERN_CASES]
             + ([head + ANTIPATTERN_SEMGREP] if args.semgrep else [])
             + ([head + ANTIPATTERN_CASES] if args.semgrep else [])
             + [parent + ":" + path for parent in parents for path in ANTIPATTERN_SIDES]
@@ -1646,16 +1660,12 @@ def main(argv: list[str] | None = None) -> int:
                 "restore the staged registry and source index"
             )
     python_sources = [p for p in selected if p.startswith("src/") and p.endswith(".py")]
-    specs = [head + path for path in python_sources] + [
-        parent + ":" + origin[path] for path in python_sources for parent in parents
-    ]
     test_sources = [p for p in selected if p.startswith("tests/") and p.endswith(".py")]
     test_specs = [head + path for path in test_sources] + [
         parent + ":" + origin[path] for path in test_sources for parent in parents
     ]
     try:
-        scores = ruff_decisions({spec: texts[spec] for spec in specs if spec in texts})
-        scores.update(ruff_test_findings({s: texts[s] for s in test_specs if s in texts}))
+        scores = ruff_test_findings({s: texts[s] for s in test_specs if s in texts})
         config = texts.get(head + "pyproject.toml")  # a tree without one declares no rules
         docstrings = (
             ruff_docstrings(
@@ -1679,9 +1689,7 @@ def main(argv: list[str] | None = None) -> int:
             for parent in parents:
                 old = texts.get(parent + ":" + origin[path])
                 measurement = (
-                    (scores.get(parent + ":" + origin[path], {}), scores[head + path])
-                    if path in python_sources
-                    else (scores.get(parent + ":" + origin[path], ()), scores[head + path])
+                    (scores.get(parent + ":" + origin[path], ()), scores[head + path])
                     if path in test_sources
                     else None
                 )

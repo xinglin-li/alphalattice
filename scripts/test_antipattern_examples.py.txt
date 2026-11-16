@@ -1,0 +1,52 @@
+# The ast-grep test rules' own examples (scripts/check_test_shape.py _astgrep_selftest): each rule fires on the line
+# after its `# ruleid:` mark and on no other line. The test-shape check never scans this file.
+import subprocess
+import sys
+
+import pytest
+
+
+def git(repo, *args):
+    # A test's Git helper that opens a console on Windows.
+    # ruleid: test-child-visible-window
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30, check=True)
+
+
+def test_kill_case(tmp_path):
+    # A Python child started for a kill case.
+    # ruleid: test-child-visible-window
+    child = subprocess.Popen([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL)
+    assert child.wait(timeout=30) == 0
+
+
+def git_repaired(repo, *args):
+    # ok: test-child-visible-window
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30, check=True,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def quiet_options():
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0), "timeout": 30}
+
+
+def test_through_options():
+    # ok: test-child-visible-window
+    assert subprocess.run(["git", "--version"], input="", **quiet_options())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_posix_only():
+    # ok: test-child-visible-window
+    assert subprocess.run(["kill", "-0", "1"], input="", timeout=30)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows jobs")
+def test_windows_only():
+    # A test that runs only on Windows is where its child's console shows.
+    # ruleid: test-child-visible-window
+    assert subprocess.run(["cmd", "/c", "exit"], input="", timeout=30)
+
+
+def test_zero_flags():
+    # ruleid: test-child-visible-window
+    assert subprocess.run(["git", "--version"], input="", timeout=30, creationflags=0)

@@ -1,0 +1,33 @@
+# ast-grep rules for test modules: structural checks that run in milliseconds a file, held to the anti-pattern
+# allowance like the Semgrep rules (scripts/check_test_shape.py), with their own examples in
+# scripts/test_antipattern_examples.py.txt.
+id: test-child-visible-window
+language: python
+severity: error
+message: >-
+  A test launches a child without creationflags; on Windows it opens a visible console. Use the product's
+  process owner, or pass creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0).
+rule:
+  all:
+    - pattern: subprocess.$F($$$ARGS)
+    - not:  # only flags that name the hidden console count; 0 or another class opens one
+        has:
+          kind: argument_list
+          has:
+            any:
+              - kind: keyword_argument
+                all:
+                  - has: {field: name, regex: ^creationflags$}
+                  - has: {field: value, regex: (?i)no_window|quiet}
+              - kind: dictionary_splat
+                regex: (?i)no_window|quiet
+    - not:  # a test skipped on Windows opens no console there; one skipped elsewhere runs only there
+        inside:
+          stopBy: end
+          kind: decorated_definition
+          has:
+            kind: decorator
+            regex: skipif\([^)]*(platform|os\.name|system\(\))\s*==\s*["'](win32|nt|Windows)["']
+constraints:
+  F:
+    regex: ^(run|Popen|call|check_call|check_output)$

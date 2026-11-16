@@ -94,6 +94,10 @@ def _antipattern_cases(monkeypatch) -> None:
         shape._antipattern_problems([], [], snapshots, ("MERGE_HEAD",), ":", moves={})
     snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {"src/a.py::PGH003": 2}})
     assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
+    seed = {"src/a.py::PGH003": 1, "tests/a/test_b.py::new-rule": 4}  # a new rule's first counts
+    held = {"src/a.py::PGH003": 1}
+    assert shape.seeded_rules(held, seed, [shape.TEST_ANTIPATTERN_RULES]) == {"new-rule"}
+    assert not shape.seeded_rules(held, seed, ["tests/a/test_b.py"])
 
 
 def _split_antipattern_cases(monkeypatch, tmp_path) -> None:
@@ -144,6 +148,22 @@ SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused r
         "src/a.py::PGH003",
         None,
     ),
+    "a-test-child-that-opens-a-window-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], timeout=9, input='')"
+        "\n",
+        PATH + "::test-child-visible-window",
+        None,
+    ),
+    "a-test-child-with-no-window-is-accepted": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], timeout=9, input='',"
+        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
+        None,
+        None,
+    ),
 }
 
 
@@ -159,6 +179,8 @@ def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
     empty = json.dumps({"counts": {}})
     texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty}
     texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = empty
+    rules = Path(shape.__file__).parents[1] / shape.TEST_ANTIPATTERN_RULES  # ast-grep, run for real
+    texts[":" + shape.TEST_ANTIPATTERN_RULES] = rules.read_text(encoding="utf-8")
     if old is not None:
         texts["HEAD:" + path] = old
     found = shape._antipattern_problems([path], [path], texts, ("HEAD",), ":", moves={})
@@ -184,6 +206,13 @@ def test_nightly_antipattern_rules_hold_the_product_tree() -> None:
     rules = blobs[":" + shape.ANTIPATTERN_SEMGREP]
     shape._semgrep_selftest(rules, blobs[":" + shape.ANTIPATTERN_CASES])
     found = shape.semgrep_antipatterns({path: blobs[":" + path] for path in paths}, rules)
+    assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
+    tests = [path for path in listing.stdout.split("\0") if path.startswith("tests/")]
+    named = (*tests, shape.TEST_ANTIPATTERN_RULES, shape.TEST_ANTIPATTERN_CASES)
+    blobs |= shape._blobs([":" + path for path in named])
+    test_rules = blobs[":" + shape.TEST_ANTIPATTERN_RULES]
+    shape._astgrep_selftest(test_rules, blobs[":" + shape.TEST_ANTIPATTERN_CASES])
+    found = shape.astgrep_antipatterns({path: blobs[":" + path] for path in tests}, test_rules)
     assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
 
 
@@ -340,7 +369,6 @@ def _git_backend(texts, paths, state=None):
 
 
 def _mock_ruff(monkeypatch):
-    monkeypatch.setattr(shape, "ruff_decisions", lambda snapshots: {key: {} for key in snapshots})
     monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
     monkeypatch.setattr(shape, "ruff_antipatterns", lambda snapshots: {})
     monkeypatch.setattr(shape, "test_data_antipatterns", lambda paths: {})
@@ -367,7 +395,8 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
         "src/example.py", None, "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
     )
     big = "x = 1\n" * 20_000
-    assert problems(PATH, big, big + "\u754c") and not problems(PATH, big + "\u754c", big)
+    assert not problems(PATH, big, big + "\u754c")  # a grown test file is a size signal only
+    assert not problems(PATH, big + "\u754c", big)
     source = "import inspect\ninspect.getsource(owner)\n"
     assert problems(PATH, "", source) and not problems(PATH, source, source)
     assert not problems("tests/structural/test_example.py", "", source)
@@ -435,13 +464,15 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
 
 
 @pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")
-def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else() -> None:
-    """A whole proves line is free; a comment on it, or any other line, still counts as growth."""
+def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else(capsys) -> None:
+    """A whole proves line is free; a comment on it, or any other line, still counts as growth,
+    named as a review signal and never refused (a size cap is met by splitting files)."""
     path = "tests/example/test_big.py"
     big = "# " + "x" * shape.CAP_BYTES + "\ndef test_a():\n    pass\n"
 
     def refused(new: str) -> bool:
-        return any("a test file stays under 100 KB" in line for line in problems(path, big, new))
+        assert not problems(path, big, new)
+        return "KB (a review signal, never refused)" in capsys.readouterr().out
 
     assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\ndef test_a'))
     assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\r\ndef test_a'))
@@ -463,52 +494,26 @@ def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else() -> None:
     )
 
 
-def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:
-    """Each size and function metric refuses its own growth, including nested definitions."""
+@pytest.mark.proves("testing.size_counts_are_review_signals")
+def test_a_grown_source_is_a_size_signal_and_a_long_function_is_left_to_ruff(capsys) -> None:
+    """A size cap is met by splitting, which leaves the code no better: a grown source names a
+    review signal and is never refused, and a long or branching function is Ruff's C901 and
+    PLR0915 signal, never this check's refusal."""
     path = "src/example.py"
     big = "x" * shape.CAP_BYTES
-    assert not problems("src/example.txt", None, big)
-    assert problems("src/example.txt", big, big + "\u754c")
-    assert not problems("src/example.txt", big + "\u754c", big)
-
-    def method(name, lines):
-        return f"class {name}:\n    def run(self):\n" + "        pass\n" * (lines - 1)
-
-    old = method("A", 120) + method("B", 125)
-    new = method("A", 121) + method("B", 124)
-    found = problems(path, old, new)
-    assert len(found) == 1 and "A.run" in found[0]
-
-    def branch(count):
-        return "def branch():\n" + "    if ready:\n        pass\n" * count
-
-    assert problems(path, branch(20), branch(21))
-    assert not problems(path, branch(21), branch(20))
-    nested = "    def inner():\n" + "        if ready:\n            pass\n" * 21
-    assert not problems(path, branch(19) + nested, branch(20) + nested)
-    snapshots = {
-        "before": branch(20),
-        "after": branch(21),
-        "nested": branch(20) + nested,
-        "mixed": "def shape(a, b):\n    if a and b:\n        return 1 if a else 2\n",
-        "loop_else": "def shape(a):\n    for x in a:\n        pass\n    else:\n        pass\n",
-        "async_loop": "async def shape(a):\n    async for x in a:\n        pass\n",
-    }
-    measured = shape.ruff_decisions(snapshots)
-    for before, after in (
-        ("before", "after"),
-        ("after", "before"),
-        ("before", "nested"),
-        ("before", "mixed"),
-        ("before", "loop_else"),
-        ("before", "async_loop"),
-    ):
-        assert problems(
-            path, snapshots[before], snapshots[after], (measured[before], measured[after])
-        ) == problems(path, snapshots[before], snapshots[after])
+    wide = big + "\u754c"
+    assert not problems("src/example.txt", big, wide)
+    assert "test_shape.signal: src/example.txt" in capsys.readouterr().out
+    assert not problems("src/example.txt", wide, big)
+    assert "test_shape.signal" not in capsys.readouterr().out
+    long = "def run():\n" + "    pass\n" * 130
+    branches = "def branch():\n" + "    if ready:\n        pass\n" * 25
+    assert not problems(path, None, long) and not problems(path, "def branch(): pass\n", branches)
     for generated in shape.GENERATED | shape.WORD_CATALOGS:
-        assert not problems(generated, big, big + "\u754c")
-    assert problems(shape.ASSETS + "workbench-source/js/app/new.js", big, big + "\u754c")
+        assert not problems(generated, big, wide)
+    assert "test_shape.signal" not in capsys.readouterr().out
+    assert not problems(shape.ASSETS + "workbench-source/js/app/new.js", big, wide)
+    assert "test_shape.signal" in capsys.readouterr().out
 
 
 def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrations() -> None:
@@ -677,7 +682,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [asset]))
     assert shape.main([]) == 0
     texts[":" + asset] += "\0"
-    assert shape.main([]) == 1
+    assert shape.main([]) == 0  # a grown asset is a size signal, never refused
     old, new, legacy = (
         "tests/area/test_kept.py",
         "tests/unit/test_kept.py",
