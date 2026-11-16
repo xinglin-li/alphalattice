@@ -200,6 +200,26 @@
         "tests/structural/refusal_support.py"
       ]
     },
+    "tests/structural/test_registries.py::test_a_new_host_module_is_refused_unless_registered_as_composition": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "CreateJobObjectW"
+      ],
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/architecture/nouns.py",
+        "src/devtools/architecture/registries.py",
+        "src/devtools/architecture/structural.py",
+        "src/devtools/architecture/where.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "config/registries/host-modules.json"
+      ]
+    },
     "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items": {
       "inputs": [
         "src/devtools/architecture/git_inputs.py",

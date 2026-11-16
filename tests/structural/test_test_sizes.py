@@ -2148,6 +2148,11 @@ def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_node
     path = "config/registries/test-sizes.json"
     policy = json.loads((Path(__file__).resolve().parents[2] / path).read_text(encoding="utf-8"))
     policy["whole_tree_guards"]["slow"] = ["tests/kept.py::test_a*", "tests/held.py::test_b*"]
+    # 11-16: a public guard keeps its reader when the reader also reads a private tree (the public
+    # Verify went red when the export dropped the whole row and kept the guard).
+    within = ["src/*.py", "tests/held*.py"]  # the second reads only the private file
+    reads = {"facet": "mentions", "within": within, "words": ["f"]}
+    policy["selection_readers"] = {"tests/kept.py::test_a": reads, "tests/held.py::test_b": reads}
     published, _ = project_public(
         path,
         json.dumps(policy).encode(),
@@ -2156,6 +2161,9 @@ def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_node
     )
     sizes.validate_policy(json.loads(published))
     assert json.loads(published)["whole_tree_guards"]["slow"] == ["tests/kept.py::test_a*"]
+    assert json.loads(published)["selection_readers"] == {
+        "tests/kept.py::test_a": {**reads, "within": ["src/*.py"]}
+    }
     assert b"tests/held.py" not in published
     from check_test_shape import antipattern_baseline
 

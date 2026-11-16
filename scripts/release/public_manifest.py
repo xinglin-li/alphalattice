@@ -1630,7 +1630,8 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
     """A PUBLIC registry as it is published: each row holding a private reference dropped.
 
     A row is an element of a top-level list or an entry of a top-level object; it is dropped when
-    any string in it, key or value, earns a private reference by the scan's own rule. Any other
+    any string in it, key or value, earns a private reference by the scan's own rule; a test-size
+    row loses only the private items of the path lists it reads (`size_row`). Any other
     file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
     registry is never changed. Returns the bytes and each dropped row's place, such as
     `reach[3]` or `entries/<key>`."""
@@ -1680,6 +1681,32 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
 
     projected: object
     dropped: list[str] = []
+
+    def size_row(place: str, row: dict, node: object) -> dict | None:
+        """One test-size row as published, None when it goes. Its path lists (`inputs`, a reader's
+        `within`) are what it reads, not who it is: only their private items go, so a public
+        node keeps its row (a slow guard keeps its reader); an emptied `within` reads nothing."""
+        rest = {name: item for name, item in row.items() if name not in ("inputs", "within")}
+        if flagged(rest) or any(private_selector(n) for n in (node, row.get("pattern"))):
+            dropped.append(place)
+            return None
+        for field in ("inputs", "within"):
+            items = row.get(field)
+            if not isinstance(items, list):
+                if flagged(items) or private_selector(items):
+                    dropped.append(place)
+                    return None
+                continue
+            gone = [j for j, item in enumerate(items) if flagged(item) or private_selector(item)]
+            dropped.extend(f"{place}.{field}[{j}]" for j in gone)
+            public = [item for j, item in enumerate(items) if j not in gone]
+            if field == "within" and items and not public:
+                dropped.append(place)
+                return None
+            if len(public) != len(items):
+                row = {**row, field: public}
+        return row
+
     if isinstance(data, list):
         dropped = [f"[{i}]" for i, row in enumerate(data) if flagged(row)]
         projected = [row for row in data if not flagged(row)]
@@ -1691,29 +1718,9 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                 for i, row in enumerate(value):
                     place = f"{key}[{i}]"
                     if sizes and isinstance(row, dict):
-                        rest = {name: item for name, item in row.items() if name != "inputs"}
-                        if (
-                            flagged(rest)
-                            or private_selector(row.get("pattern"))
-                            or private_selector(row.get("node"))
-                        ):
-                            dropped.append(place)
+                        row = size_row(place, row, row.get("node"))
+                        if row is None:
                             continue
-                        inputs = row.get("inputs")
-                        if not isinstance(inputs, list) and (
-                            flagged(inputs) or private_selector(inputs)
-                        ):
-                            dropped.append(place)
-                            continue
-                        if isinstance(inputs, list):
-                            kept_inputs = []
-                            for j, item in enumerate(inputs):
-                                if flagged(item) or private_selector(item):
-                                    dropped.append(f"{place}.inputs[{j}]")
-                                else:
-                                    kept_inputs.append(item)
-                            if len(kept_inputs) != len(inputs):
-                                row = {**row, "inputs": kept_inputs}
                     elif flagged(row) or (sizes and private_selector(row)):
                         dropped.append(place)
                         continue
@@ -1726,6 +1733,9 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                         # The policy's shape is public and its loader needs it: only nodes go.
                         members[name] = [n for n in row if not (flagged(n) or private_selector(n))]
                         dropped += [f"{key}/{name}/{n}" for n in row if n not in members[name]]
+                    elif sizes and isinstance(row, dict):
+                        if (published := size_row(f"{key}/{name}", row, name)) is not None:
+                            members[name] = published
                     elif flagged(name, row):
                         dropped.append(f"{key}/{name}")
                     else:
