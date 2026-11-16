@@ -1,6 +1,7 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -150,6 +151,24 @@ STEPS = "def main():\n" + "    if a:\n        b()\n" * 12 + "    c()\n" * 59
 MOCKED = (
     "def test_mocks(monkeypatch):\n" + "    monkeypatch.setattr(a, b, c)\n" * 5 + "    assert a\n"
 )
+UNBOUNDED = (  # a child with no timeout: one unbounded-child finding in test_a
+    "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], input='',"
+    " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+)
+UNBOUNDED_KEY = PATH + "::test-child-unbounded::test_a"
+GIT_CASES = (  # a parametrized test that starts Git for each of its two cases
+    "import pytest, subprocess\n"
+    "@pytest.mark.parametrize('ref', ['a', 'b'])\ndef test_a(ref):\n"
+    "    assert subprocess.run(['git', ref], timeout=9, input='',"
+    " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+)
+GIT_KEY = PATH + "::test-parametrized-process::test_a"
+HELPER = "tests/owner/case_tables.py"  # a tests/ helper holding a table the test imports
+HELPER_CASES = "REFS = ['a', 'b', 'c']\n"
+IMPORTED_CASES = GIT_CASES.replace(
+    "import pytest, subprocess\n",
+    "import pytest, subprocess\nfrom tests.owner.case_tables import REFS\n",
+).replace("['a', 'b']", "REFS")
 SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused rule, the signal
     "a-51-statement-test-is-accepted": (PATH, None, LONG, None, "PLR0915 51 in test_long"),
     "an-83-statement-script-is-accepted": ("scripts/step.py", None, STEPS, None, "C901 13 in main"),
@@ -178,6 +197,76 @@ SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused r
         None,
         None,
     ),
+    "a-test-child-with-no-timeout-is-refused": (PATH, None, UNBOUNDED, UNBOUNDED_KEY, None),
+    "an-allowed-unbounded-child-is-accepted": (PATH, None, UNBOUNDED, None, None),
+    "an-allowed-unbounded-child-grown-is-refused": (
+        PATH,
+        None,
+        UNBOUNDED + "    assert subprocess.run(['git'], input='',"
+        " creationflags=subprocess.CREATE_NO_WINDOW)\n",
+        UNBOUNDED_KEY,
+        None,
+    ),
+    "a-parametrized-git-case-is-refused": (PATH, None, GIT_CASES, GIT_KEY, None),
+    "a-parametrized-in-memory-case-is-accepted": (
+        PATH,
+        None,
+        "import pytest\n"
+        "@pytest.mark.parametrize('ref', ['a', 'b'])\ndef test_a(ref):\n"
+        "    assert ref in 'ab'\n",
+        None,
+        None,
+    ),
+    "an-allowed-parametrized-git-case-is-accepted": (PATH, None, GIT_CASES, None, None),
+    "an-allowed-parametrized-git-table-grown-is-refused": (
+        PATH,
+        None,
+        GIT_CASES.replace("['a', 'b']", "['a', 'b', 'c']"),
+        GIT_KEY,
+        None,
+    ),
+    "an-imported-parametrized-table-counts-its-cases": (PATH, None, IMPORTED_CASES, GIT_KEY, None),
+    "a-waited-popen-is-accepted": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'],"
+        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+        "    assert child.wait(timeout=9) == 0\n",
+        None,
+        None,
+    ),
+    "an-unclassed-model-turn-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    assert subprocess.run(['claude', '-p', 'hi'],"
+        " timeout=9, input='', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
+        PATH + "::test-paid-agent::test_a",
+        None,
+    ),
+    "a-classed-model-turn-is-accepted": (
+        PATH,
+        None,
+        "import subprocess, pytest\n"
+        "@pytest.mark.paid_agent\ndef test_a():\n"
+        "    assert subprocess.run(['claude', '-p', 'hi'], timeout=9, input='',"
+        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
+        None,
+        None,
+    ),
+    "an-asserted-model-argv-is-no-turn": (
+        PATH,
+        None,
+        "def test_a():\n    assert ['claude', '-p'] == ['claude', '-p']\n",
+        None,
+        None,
+    ),
+}
+ALLOWED = {  # the cases held in the allowance: file::rule::function and its count
+    "an-allowed-unbounded-child-is-accepted": (UNBOUNDED_KEY, 1),
+    "an-allowed-unbounded-child-grown-is-refused": (UNBOUNDED_KEY, 1),
+    "an-allowed-parametrized-git-case-is-accepted": (GIT_KEY, 2),
+    "an-allowed-parametrized-git-table-grown-is-refused": (GIT_KEY, 2),
+    "an-imported-parametrized-table-counts-its-cases": (GIT_KEY, 2),
 }
 
 
@@ -186,12 +275,14 @@ SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused r
     ("path", "old", "new", "refused", "signal"), SIZE_CASES.values(), ids=list(SIZE_CASES)
 )
 def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
-    capsys, path, old, new, refused, signal
+    capsys, request, path, old, new, refused, signal
 ) -> None:
     """A size or form count over its bound never refuses a commit, and is named as a signal only
-    in a function the change wrote; a blanket type ignore is still refused (the 11-14 verdict)."""
-    empty = json.dumps({"counts": {}})
-    texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty}
+    in a function the change wrote; a blanket type ignore is still refused (the 11-14 verdict).
+    A test's unbounded child or unclassed model turn is refused past its allowance, by function."""
+    held = ALLOWED.get(request.node.callspec.id)
+    empty = json.dumps({"counts": dict([held]) if held else {}})
+    texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty, ":" + HELPER: HELPER_CASES}
     texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = empty
     rules = Path(shape.__file__).parents[1] / shape.TEST_ANTIPATTERN_RULES  # ast-grep, run for real
     texts[":" + shape.TEST_ANTIPATTERN_RULES] = rules.read_text(encoding="utf-8")
@@ -201,6 +292,32 @@ def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
     assert [line.split(": ")[0] for line in found] == ([refused] if refused else [])
     said = capsys.readouterr().out
     assert (signal in said) if signal else "test_shape.signal" not in said
+
+
+@pytest.mark.proves("testing.size_counts_are_review_signals")
+def test_a_changed_case_table_is_judged_in_each_test_that_imports_it() -> None:
+    """A test the change left alone is measured again when a tests/ helper it takes a parametrize
+    table from changes, so its allowance by case falls with the table and refuses its growth."""
+    listed = []
+
+    def grep(*args):  # git grep -l names the helper's importers (and a conftest, never a reader)
+        listed.append(args)
+        return subprocess.CompletedProcess(args, 0, f"HEAD:{PATH}\nHEAD:tests/owner/conftest.py\n")
+
+    def read(specs):
+        return {s: IMPORTED_CASES for s in specs if PATH in s}
+
+    texts = {"HEAD:" + HELPER: HELPER_CASES}
+    assert shape._table_readers([HELPER], texts, "HEAD:", grep=grep, read=read) == [PATH]
+    assert texts["HEAD:" + PATH] == IMPORTED_CASES and "-ecase_tables" in listed[0]
+    allowance = json.dumps({"counts": {GIT_KEY: 2}})
+    for table, refused in ((HELPER_CASES, [GIT_KEY]), ("REFS = ['a']\n", [])):
+        texts = {"HEAD:" + HELPER: table, "HEAD:" + PATH: IMPORTED_CASES}
+        texts |= {f"{side}:{shape.ANTIPATTERN_BASELINE}": allowance for side in ("HEAD", "base")}
+        found = shape._antipattern_problems(
+            [HELPER], [HELPER], texts, ("base",), "HEAD:", moves={}, readers=[PATH]
+        )
+        assert [line.split(": ")[0] for line in found] == refused
 
 
 @pytest.mark.large

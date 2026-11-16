@@ -1045,9 +1045,24 @@ def pytest_collection(session: Any) -> Any:
         raise
 
 
+PAID_AGENT, PAID_RUN = "paid_agent", "ALPHALATTICE_PAID_AGENT_RUN"
+
+
+def deselect_paid(config: Any, items: list[Any]) -> None:
+    """No stage, queue, nightly or full run selects a paid agent run: it spends money on a model
+    turn, so only an explicit command that sets ALPHALATTICE_PAID_AGENT_RUN=1 runs it."""
+    if os.environ.get(PAID_RUN) == "1":
+        return
+    paid = [item for item in items if item.get_closest_marker(PAID_AGENT) is not None]
+    if paid:
+        config.hook.pytest_deselected(items=paid)
+        items[:] = [item for item in items if item.get_closest_marker(PAID_AGENT) is None]
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
+    deselect_paid(config, items)
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
     floor = sizes.floor_mode(lane)
     changed = changed_paths(floor=floor) if lane in {"merge", "fast"} else None

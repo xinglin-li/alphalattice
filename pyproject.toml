@@ -262,5 +262,6 @@ markers = [
     "proves: the registered requirement ids (config/registries/requirements.json) this test proves; find before writing one: python scripts/tests_registry.py find",
     "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
     "per_file: a structural scan scoped to the changed files; it reads source only through scanned()",
+    "paid_agent: a test that starts a model turn and spends money; only a run with ALPHALATTICE_PAID_AGENT_RUN=1 selects it",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
 ]

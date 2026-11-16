@@ -21,9 +21,10 @@ import tarfile
 import tempfile
 import tokenize
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from difflib import SequenceMatcher
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
@@ -309,7 +310,11 @@ def ruff_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
     return dict(counts)
 
 
-RULE_FILES = ("scripts/check_test_shape.py", ANTIPATTERN_SEMGREP, TEST_ANTIPATTERN_RULES)
+RULE_FILES = (
+    "scripts/check_test_shape.py",
+    ANTIPATTERN_SEMGREP,
+    TEST_ANTIPATTERN_RULES,
+)
 
 
 def seeded_rules(held: dict[str, int], baseline: dict[str, int], staged: list[str]) -> set[str]:
@@ -325,9 +330,474 @@ def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]
     count (SIGNAL_RULES) is never refused."""
     return [
         f"{key}: anti-pattern findings grow {held.get(key, 0)} -> {count}"
+        + (f"; {CHILD_REPAIRS[rule]}" if rule in CHILD_REPAIRS else "")
         for key, count in sorted(found.items())
-        if count > held.get(key, 0) and key.split("::")[1] not in SIGNAL_RULES
+        for rule in [key.split("::")[1]]
+        if count > held.get(key, 0) and rule not in SIGNAL_RULES
     ]
+
+
+# The test-child rules (the harness's twins, tools/lint.py):
+# Static test rules on the children a test starts and the model turns it spends.
+#
+# ``unbounded_children``: a test's direct subprocess call with no finite timeout, or whose stdin
+# is not proved closed to the runner's, can hang the run or read the runner's own stdin. Proved
+# closed is ``stdin=DEVNULL`` or ``PIPE``, or ``input=`` given data (a string, bytes, an f-string, a
+# sum or a call), never a name, attribute or item that may be None. A ``Popen`` is bounded only
+# where its own function waits on the name it is bound to with a finite timeout (``wait``'s first
+# argument, ``communicate``'s second, or ``timeout=``). A name counts as the value it is bound to (a
+# parameter's default, or one assignment in the function or the module); any other name is
+# unknown, never finite and never data.
+#
+# ``paid_turns``: a model turn outside the ``paid_agent`` class: a command starting a model CLI for
+# a turn (``claude -p``, ``codex exec``) as a list, tuple or one string; any call reached through a
+# provider SDK's import, under whatever alias, or an import of one by name; or a provider API host.
+#
+# ``parametrized_children``: a parametrized test whose own body starts a child process (a
+# ``subprocess`` call, ``os.system`` or ``os.popen``, or an asyncio subprocess) runs that child once
+# per case; the decision belongs in memory with one real journey per distinct path. It counts the
+# cases (a literal list, or a module-level literal table, else one), so a grown table is growth.
+# Children started through product code are not chased.
+#
+# Each finding is ``(rule, owner, line)``: the owner is the test function that holds it (its
+# dotted name inside a class), or ``<module>``, so an allowance is keyed by file and function.
+
+UNBOUNDED = "test-child-unbounded"
+PAID = "test-paid-agent"
+PARAMETRIZED = "test-parametrized-process"
+CHILD_CALLS = frozenset({"run", "check_output", "check_call", "call", "Popen"})
+WAIT_TIMEOUT_AT = {"wait": 0, "communicate": 1}  # Popen.wait(timeout), communicate(input, timeout)
+MODEL_TURNS = (("claude", "-p"), ("claude", "--print"), ("codex", "exec"))
+MODEL_PACKAGES = frozenset({"anthropic", "openai", "claude_agent_sdk", "claude_code_sdk"})
+MODEL_HOSTS = ("api.anthropic.com", "api.openai.com")
+CHILD_REPAIRS = {
+    UNBOUNDED: "pass timeout= and stdin=subprocess.DEVNULL, or input=",
+    PAID: "mark it @pytest.mark.paid_agent, which no gate, queue, nightly or full run selects",
+    PARAMETRIZED: "test the decision in memory and keep one real journey per distinct path",
+}
+OS_CHILDREN = frozenset({"system", "popen"})
+ASYNC_CHILDREN = frozenset({"create_subprocess_exec", "create_subprocess_shell"})
+UNKNOWN = ast.Name(id="<unknown>")
+FUNCTIONS = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _owned(scope: ast.AST) -> Iterator[ast.AST]:
+    """The nodes a function or module holds itself; a nested function's nodes are its own."""
+    stack = list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        if not isinstance(node, FUNCTIONS):
+            yield node
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def _bound_names(nodes: Iterable[ast.AST]) -> dict[str, ast.AST]:
+    """Names assigned once among these nodes, to their value; one assigned twice is unknown."""
+    names: dict[str, ast.AST] = {}
+    for node in nodes:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        else:
+            continue
+        for target in (t for t in targets if isinstance(t, ast.Name)):
+            single = target.id not in names and len(targets) == 1
+            names[target.id] = (value or UNKNOWN) if single else UNKNOWN
+    return names
+
+
+def _parameters(args: ast.arguments) -> dict[str, ast.AST]:
+    """Each parameter bound to its default; one with none is unknown."""
+    positional = [*args.posonlyargs, *args.args]
+    defaults = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
+    pairs = [*zip(positional, defaults, strict=True)]
+    pairs += [*zip(args.kwonlyargs, args.kw_defaults, strict=True)]
+    return {arg.arg: default or UNKNOWN for arg, default in pairs}
+
+
+def _resolved(value: ast.AST | None, names: dict[str, ast.AST]) -> ast.AST | None:
+    for _ in range(5):  # a chain of names, bounded
+        if not (isinstance(value, ast.Name) and value.id in names):
+            break
+        value = names[value.id]
+    return value
+
+
+def _finite(value: ast.AST | None, names: dict[str, ast.AST]) -> bool:
+    """A positive finite number, or a sum or product of them; None, a name or a call never is."""
+    value = _resolved(value, names)
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add | ast.Mult):
+        return _finite(value.left, names) and _finite(value.right, names)
+    number = value.value if isinstance(value, ast.Constant) else None
+    return (
+        isinstance(number, int | float)
+        and not isinstance(number, bool)
+        and 0 < number < float("inf")
+    )
+
+
+def _timeout(call: ast.Call, method: str) -> ast.AST | None:
+    at = WAIT_TIMEOUT_AT[method]
+    given = next((k.value for k in call.keywords if k.arg == "timeout"), None)
+    return given if given is not None else (call.args[at] if len(call.args) > at else None)
+
+
+def _stdin_closed(given: dict[str | None, ast.AST], names: dict[str, ast.AST]) -> bool:
+    stdin, data = _resolved(given.get("stdin"), names), _resolved(given.get("input"), names)
+    if (
+        isinstance(stdin, ast.Attribute)
+        and isinstance(stdin.value, ast.Name)
+        and stdin.value.id == "subprocess"
+    ):
+        stdin = ast.Name(id=stdin.attr)
+    return (
+        (isinstance(stdin, ast.Name) and stdin.id in {"DEVNULL", "PIPE"})
+        or isinstance(data, ast.JoinedStr | ast.BinOp | ast.Call)
+        or (isinstance(data, ast.Constant) and isinstance(data.value, str | bytes))
+    )
+
+
+def _test_owners(tree: ast.Module) -> dict[int, str]:
+    """Each node's owning test function by id: its dotted name, or ``<module>``."""
+    owner: dict[int, str] = {}
+
+    def walk(node: ast.AST, name: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = name
+            if isinstance(child, FUNCTIONS | ast.ClassDef):
+                inner = child.name if name == "<module>" else f"{name}.{child.name}"
+            owner[id(child)] = inner
+            walk(child, inner)
+
+    walk(tree, "<module>")
+    return owner
+
+
+def unbounded_children(tree: ast.Module, owner: Mapping[int, str]) -> list[tuple[str, str, int]]:
+    found: list[tuple[str, str, int]] = []
+    module = _bound_names(tree.body)
+    scopes: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = [tree]
+    scopes += [n for n in ast.walk(tree) if isinstance(n, FUNCTIONS)]
+    for scope in scopes:
+        owned = list(_owned(scope))
+        names = (
+            module
+            if isinstance(scope, ast.Module)
+            else {**module, **_bound_names(owned), **_parameters(scope.args)}
+        )
+        waited = {
+            n.func.value.id
+            for n in owned
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr in WAIT_TIMEOUT_AT
+            and isinstance(n.func.value, ast.Name)
+            and _finite(_timeout(n, n.func.attr), names)
+        }
+        held = {
+            id(n.value): n.targets[0].id
+            for n in owned
+            if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+        }
+        held |= {
+            id(n.context_expr): n.optional_vars.id
+            for n in owned
+            if isinstance(n, ast.withitem) and isinstance(n.optional_vars, ast.Name)
+        }
+        for node in owned:
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in CHILD_CALLS
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "subprocess"
+            ):
+                continue
+            given: dict[str | None, ast.AST] = {k.arg: k.value for k in node.keywords if k.arg}
+            bounded = (
+                held.get(id(node)) in waited
+                if node.func.attr == "Popen"
+                else _finite(given.get("timeout"), names)
+            )
+            if not bounded or not _stdin_closed(given, names):
+                found.append((UNBOUNDED, owner.get(id(node), "<module>"), node.lineno))
+    return found
+
+
+def _paid_marked(node: ast.AST) -> bool:
+    """A definition or module marked paid_agent: the decorator, or pytestmark naming it."""
+    marks = [d.func if isinstance(d, ast.Call) else d for d in getattr(node, "decorator_list", ())]
+    if isinstance(node, ast.Module):
+        values = [
+            v
+            for s in node.body
+            if isinstance(s, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in s.targets)
+            for v in ([*s.value.elts] if isinstance(s.value, ast.List | ast.Tuple) else [s.value])
+        ]
+        marks = [m.func if isinstance(m, ast.Call) else m for m in values]
+    return any(isinstance(m, ast.Attribute) and m.attr == "paid_agent" for m in marks)
+
+
+def _root(node: ast.AST) -> str:
+    """The name a call's callee chain starts from: openai in openai.responses.create."""
+    while isinstance(node, ast.Attribute | ast.Call | ast.Subscript):
+        node = node.value if isinstance(node, ast.Attribute | ast.Subscript) else node.func
+    return node.id if isinstance(node, ast.Name) else ""
+
+
+def _provider(name: str | None) -> bool:
+    return (name or "").split(".")[0] in MODEL_PACKAGES
+
+
+def paid_turns(tree: ast.Module, owner: Mapping[int, str]) -> list[tuple[str, str, int]]:
+    if _paid_marked(tree):
+        return []
+    nodes = list(ast.walk(tree))
+    held: set[int] = set()
+    found: list[tuple[str, str, int]] = []
+    for node in nodes:
+        if isinstance(node, FUNCTIONS | ast.ClassDef) and _paid_marked(node):
+            held |= {id(n) for n in ast.walk(node)}
+    bound = {
+        (a.asname or a.name).split(".")[0]
+        for n in nodes
+        if isinstance(n, ast.Import)
+        for a in n.names
+        if _provider(a.name)
+    }
+    bound |= {
+        a.asname or a.name
+        for n in nodes
+        if isinstance(n, ast.ImportFrom) and not n.level and _provider(n.module)
+        for a in n.names
+    }
+    hosts = tuple(f"{scheme}{h}" for h in MODEL_HOSTS for scheme in ("", "http://", "https://"))
+    # A model CLI's words count only as the command a subprocess call launches: an asserted argv
+    # or a fake runner's command starts no turn (6 of 6 such words on the tree at 11-16 did not).
+    launched = {
+        id(command)
+        for call in nodes
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr in CHILD_CALLS
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "subprocess"
+        for command in [*call.args[:1], *(k.value for k in call.keywords if k.arg == "args")]
+    }
+    for node in nodes:
+        if id(node) in held:
+            continue
+        if id(node) not in launched:
+            words: list[str] = []
+        elif isinstance(node, ast.List | ast.Tuple):
+            words = [
+                e.value
+                for e in node.elts[:2]
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            ]
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            words = node.value.split()[:2]
+        else:
+            words = []
+        client = isinstance(node, ast.Call) and (
+            _root(node.func) in bound
+            or (
+                _root(node.func) in {"importlib", "import_module", "__import__"}
+                and any(
+                    isinstance(a, ast.Constant) and isinstance(a.value, str) and _provider(a.value)
+                    for a in node.args
+                )
+            )
+        )
+        host = (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.startswith(hosts)
+        )
+        if (tuple(words) in MODEL_TURNS or client or host) and isinstance(node, ast.expr):
+            found.append((PAID, owner.get(id(node), "<module>"), node.lineno))
+    return found
+
+
+def _starts_child(call: ast.Call) -> bool:
+    func = call.func
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+        return False
+    module, name = func.value.id, func.attr
+    return (
+        (module == "subprocess" and name in CHILD_CALLS)
+        or (module == "os" and name in OS_CHILDREN)
+        or (module == "asyncio" and name in ASYNC_CHILDREN)
+    )
+
+
+def _cases(argvalues: ast.AST, tables: Mapping[str, ast.AST]) -> int:
+    """How many cases a parametrize argument holds: a literal list, tuple, set or dict, or a
+    module-level literal table named directly, by ``.values()``, ``.keys()`` or ``list(...)``."""
+    node = argvalues
+    if isinstance(node, ast.Call) and not node.args and isinstance(node.func, ast.Attribute):
+        node = node.func.value if node.func.attr in {"values", "keys", "items"} else node
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and len(node.args) == 1:
+        node = node.args[0] if node.func.id in {"list", "tuple"} else node
+    if isinstance(node, ast.Name):
+        node = tables.get(node.id, node)
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return len(node.elts)
+    if isinstance(node, ast.Dict):
+        return len(node.keys)
+    return 1
+
+
+def _parametrized(function: ast.AST, tables: Mapping[str, ast.AST]) -> int:
+    """The cases a function's parametrize decorators give it, multiplied; 0 when it has none."""
+    cases = 0
+    for mark in getattr(function, "decorator_list", ()):
+        if (
+            isinstance(mark, ast.Call)
+            and isinstance(mark.func, ast.Attribute)
+            and mark.func.attr == "parametrize"
+            and len(mark.args) > 1
+        ):
+            cases = max(cases, 1) * _cases(mark.args[1], tables)
+    return cases
+
+
+def _assigned(tree: ast.Module) -> dict[str, ast.AST]:
+    """A module's top-level names to the values assigned to them."""
+    return {
+        target.id: node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def _imported_tables(path: str, tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """Each name a test module imports from a module under tests/: its path and its name there."""
+    found: dict[str, tuple[str, str]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        package = PurePosixPath(path).parent.parts
+        base = package[: len(package) - node.level + 1] if node.level else ()
+        module = "/".join([*base, *(node.module or "").split(".")]).strip("/") + ".py"
+        if module.startswith("tests/"):
+            found |= {a.asname or a.name: (module, a.name) for a in node.names}
+    return found
+
+
+def parametrized_children(
+    tree: ast.Module, owner: Mapping[int, str], imported: Mapping[str, ast.AST]
+) -> list[tuple[str, str, int]]:
+    found: list[tuple[str, str, int]] = []
+    tables = {**imported, **_assigned(tree)}
+    for function in ast.walk(tree):
+        if not isinstance(function, FUNCTIONS) or not function.name.startswith("test"):
+            continue
+        cases = _parametrized(function, tables)
+        child = cases and next(
+            (n for n in _owned(function) if isinstance(n, ast.Call) and _starts_child(n)), None
+        )
+        if isinstance(child, ast.Call):
+            name = owner.get(id(function), function.name)
+            found += [(PARAMETRIZED, name, child.lineno)] * cases
+    return found
+
+
+# A file whose text holds none of these words can hold no finding of the three rules below: each
+# needs a subprocess, os or asyncio child call, a provider import or host, or a model CLI's word.
+CHILD_WORDS = (
+    "subprocess",
+    "os.system",
+    "os.popen",
+    "claude",
+    "codex",
+    *MODEL_PACKAGES,
+    *MODEL_HOSTS,
+)
+
+
+def child_antipatterns(
+    snapshots: dict[str, str], modules: Mapping[str, str] | None = None
+) -> dict[str, int]:
+    """Each test's unbounded children, unclassed model turns and parametrized cases that start a
+    child, keyed file::rule::function. ``modules`` holds other tests/ modules' texts by path, so a
+    table a test imports is counted by its cases there."""
+    texts, assigned = {**(modules or {}), **snapshots}, {}
+
+    def table(module: str, name: str) -> ast.AST | None:
+        if module not in assigned:
+            text = texts.get(module)
+            assigned[module] = _assigned(ast.parse(text)) if text is not None else {}
+        return assigned[module].get(name)
+
+    counts: Counter[str] = Counter()
+    for path, text in snapshots.items():
+        if not path.startswith("tests/") or not any(word in text for word in CHILD_WORDS):
+            continue
+        tree = ast.parse(text)
+        owner = _test_owners(tree)
+        imported = {
+            name: value
+            for name, (module, origin) in _imported_tables(path, tree).items()
+            if (value := table(module, origin)) is not None
+        }
+        for rule, name, _ in (
+            *unbounded_children(tree, owner),
+            *paid_turns(tree, owner),
+            *parametrized_children(tree, owner, imported),
+        ):
+            counts[f"{path}::{rule}::{name}"] += 1
+    return dict(counts)
+
+
+def _test_file(path: str) -> bool:
+    name = PurePosixPath(path).name
+    return path.startswith("tests/") and (name.startswith("test_") or name.endswith("_test.py"))
+
+
+def _table_readers(
+    sources: list[str],
+    texts: dict[str, str],
+    head: str,
+    *,
+    grep: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    read: Callable[[list[str]], dict[str, str]] | None = None,
+) -> list[str]:
+    """The test files a change did not touch that import a changed tests/ helper, whose tables
+    their cases count; each is read into ``texts``, with every tests/ module a measured test
+    imports from. ``grep`` runs Git and ``read`` reads blobs (default: this checkout's)."""
+    grep, read = grep or _git, read or _blobs
+    helpers = {
+        PurePosixPath(p).stem
+        for p in sources
+        if p.startswith("tests/") and p.endswith(".py") and not _test_file(p)
+    } - {"conftest", "__init__"}
+    readers: list[str] = []
+    if helpers:
+        where = ["--cached"] if head == ":" else [head.rstrip(":")]
+        words = [f"-e{stem}" for stem in sorted(helpers)]
+        listing = grep("grep", "-l", "-F", *words, *where, "--", "tests")
+        if listing.returncode > 1:
+            raise ValueError("readers of the changed test helpers unreadable")
+        named = {line.removeprefix(head) for line in listing.stdout.splitlines()}
+        readers = sorted(
+            p for p in named if _test_file(p) and p.endswith(".py") and p not in sources
+        )
+        texts.update(read([head + p for p in readers]))
+    modules = {
+        module
+        for path in [*sources, *readers]
+        if _test_file(path) and path.endswith(".py") and head + path in texts
+        for module, _ in _imported_tables(path, ast.parse(texts[head + path])).values()
+    }
+    texts.update(read([head + m for m in sorted(modules) if head + m not in texts]))
+    return readers
 
 
 def _written_lines(old: str | None, new: str) -> set[int]:
@@ -659,7 +1129,9 @@ def _antipattern_problems(
     *,
     moves: dict[str, str],
     semgrep: bool = False,
+    readers: Iterable[str] = (),
 ) -> list[str]:
+    """``readers`` are test files the change left alone that import a changed tests/ helper."""
     baseline = antipattern_sides(texts, head)
     found = []
     carried = len(parents) > 1 and any(
@@ -691,6 +1163,9 @@ def _antipattern_problems(
         raise ValueError(f"changed source unreadable: {missing[0]}")
     python = {path: texts[head + path] for path in sources if path.endswith(".py")}
     measured = ruff_antipatterns(python)
+    helpers = {k.removeprefix(head): v for k, v in texts.items() if k.startswith(head + "tests/")}
+    held_readers = {path: helpers[path] for path in readers if path in helpers}
+    measured.update(child_antipatterns(python | held_readers, modules=helpers))
     olds = {path: texts.get(f"{parents[0]}:{moves.get(path, path)}") for path in python}
     for signal in antipattern_signals(measured, python, olds):
         print(signal, flush=True)
@@ -1625,10 +2100,18 @@ def main(argv: list[str] | None = None) -> int:
             + ([head + "config/registries/requirements.json"] if candidates else [])
             + [head + "pyproject.toml"]
         )
+        readers = _table_readers(anti_sources, texts, head)
         found, corpus = (
             _data_file_problems(staged, moved, parents, head)
             + _antipattern_problems(
-                staged, anti_sources, texts, parents, head, moves=identical, semgrep=args.semgrep
+                staged,
+                anti_sources,
+                texts,
+                parents,
+                head,
+                moves=identical,
+                semgrep=args.semgrep,
+                readers=readers,
             ),
             None,
         )

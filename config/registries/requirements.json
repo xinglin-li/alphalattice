@@ -1373,6 +1373,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.paid_agent_runs_only_on_request": {
+      "description": "A test marked paid_agent, which spends money on a model turn, is deselected by every run unless that run sets ALPHALATTICE_PAID_AGENT_RUN=1.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.reuse_pin_fast_check": {
       "description": "The fast lane runs the reviewed reuse frontier check on changed pinned source files and names how to refresh a moved pin.",
       "owner": "devtools.testing",

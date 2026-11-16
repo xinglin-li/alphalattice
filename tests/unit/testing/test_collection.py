@@ -94,3 +94,25 @@ def test_worker_crash_report_carries_the_exit_and_fault_stack(tmp_path, monkeypa
     crash(scheduler.collection[0], report, scheduler)
     assert "gw2" in str(report.longrepr) and "3221225477" in str(report.longrepr)
     assert fault.strip() in str(report.longrepr)
+
+
+@pytest.mark.proves("testing.paid_agent_runs_only_on_request")
+def test_a_paid_agent_test_runs_only_when_the_run_asks_for_it(monkeypatch):
+    """No stage, queue, nightly or full run selects a model turn that spends money."""
+    marked = {"paid": True, "free": False}
+    items = [
+        SimpleNamespace(name=name, get_closest_marker=lambda mark, paid=paid: paid or None)
+        for name, paid in marked.items()
+    ]
+    dropped = []
+    config = SimpleNamespace(
+        hook=SimpleNamespace(pytest_deselected=lambda items: dropped.extend(items))
+    )
+    monkeypatch.delenv(collection.PAID_RUN, raising=False)
+    kept = list(items)
+    collection.deselect_paid(config, kept)
+    assert [i.name for i in kept] == ["free"] and [i.name for i in dropped] == ["paid"]
+    monkeypatch.setenv(collection.PAID_RUN, "1")
+    kept = list(items)
+    collection.deselect_paid(config, kept)
+    assert [i.name for i in kept] == ["paid", "free"]
