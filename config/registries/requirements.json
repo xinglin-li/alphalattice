@@ -804,6 +804,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "local_application.network_question_only_where_a_yes_opens_it": {
+      "description": "The coded network question is put where a closed workspace control or the closed default holds the network, and never while it is open or the operator's switch holds it offline.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.node_invocation_preserves_runtime_environment": {
       "description": "Node test invocation preserves availability and caller environment while resolving absolute browser directory aliases to their physical targets.",
       "owner": "alphalattice.interface.local_application",

@@ -36,6 +36,7 @@ import difflib
 import functools
 import json
 import os
+import re
 import sys
 import textwrap
 import time
@@ -158,10 +159,11 @@ model's files are the checkout's, and a session can detach its project's binding
 
 def _commands() -> dict[tuple[str, str], tuple[str, ...]]:
     table: dict[str, list[str]] = command_table()["commands"]
-    return {
+    commands = {
         (name.split(" ")[0], name.split(" ")[1]): tuple(operations)
         for name, operations in table.items()
     }
+    return commands | {alias: commands[named] for alias, named in VERB_ALIASES.items()}
 
 
 def _fields(operation: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -518,7 +520,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="committee_seen",
             type=int,
             default=0,
-            help="The last floor message seen, by number: the answer's `seen` (M7 is 7).",
+            help="The last floor message seen, as the floor names it or its number (M7 or 7).",
         )
     elif (noun, verb) == ("first-use", "prepare"):
         _first_use_options(child)
@@ -746,7 +748,7 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
                 ),
             )
         for name in others:
-            child.add_argument(flag(name), dest=name, help=_field_help(name, required))
+            child.add_argument(*_flags(noun, name), dest=name, help=_field_help(name, required))
         if "person_confirmation" in others:
             _person_confirmation_options(child)
         child.add_argument(
@@ -1414,9 +1416,10 @@ def main(
     surface_token = SURFACE_USE.set(())
     try:
         parser = command_parser(_named(arguments))
-        args = parser.parse_args(arguments)
+        args = parser.parse_args(floor_numbers(arguments))
         args.command_line = tuple(arguments)
-        READ_VIEW.set((args.view or "compact", _summary_source(parser, args), summary_display))
+        source = _summary_source(parser, args)  # may settle the view a summary reads as
+        READ_VIEW.set((args.view or "compact", source, summary_display))
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
@@ -1909,6 +1912,35 @@ def _line_context(arguments: Sequence[str]) -> Literal["en", "zh"]:
     return "zh" if known.lang == "zh" else "en"
 
 
+VERB_ALIASES: Final[dict[tuple[str, str], tuple[str, str]]] = {
+    ("committee", "verdict"): ("committee", "submit")
+}
+"""Commands agents name for another's operations: the PM's verdict is a committee submit."""
+_FLOOR_NAME: Final = re.compile(r"[Mm]\d+")
+"""A committee floor message's name: M and its number."""
+FLAG_ALIASES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
+    ("research-update", "task_id"): ("--update",)
+}
+"""Flags agents name for a field: a research update's Task is the update, as the committee's
+verbs call it."""
+
+
+def _flags(noun: str, name: str) -> tuple[str, ...]:
+    """A field's flag and the names agents give it on this object's commands."""
+    return (flag(name), *FLAG_ALIASES.get((noun, name), ()))
+
+
+def floor_numbers(arguments: Sequence[str]) -> list[str]:
+    """`--seen M7`, a floor message as the floor names it, read as its number (`--seen 7`)."""
+    out = list(arguments)
+    for at, word in enumerate(out):
+        if word == "--seen" and at + 1 < len(out) and _FLOOR_NAME.fullmatch(out[at + 1]):
+            out[at + 1] = out[at + 1][1:]
+        elif word.startswith("--seen=") and _FLOOR_NAME.fullmatch(word[7:]):
+            out[at] = "--seen=" + word[8:]
+    return out
+
+
 def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...]:
     if args.view != "summary" or args.noun == "serve":
         return ()
@@ -1917,10 +1949,20 @@ def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...
     forms = agent_surface_manifest()["read_views"]["summary"]["local_reads"]
     pure = local in forms or (bool(operations) and set(operations) <= set(command_table()["reads"]))
     stdin = any(
-        getattr(args, field, None) == Path("-")
-        for field in ("file", "saved_answer", "from_answer", "from_response", "choices")
+        str(getattr(args, field, None)) == "-"
+        for field in (
+            "file",
+            "primary_file",
+            "saved_answer",
+            "from_answer",
+            "from_response",
+            "choices",
+        )
     )
-    if getattr(args, "output", None) is None and (stdin or not pure):
+    if getattr(args, "output", None) is None and not pure and not stdin:
+        args.view = None  # a change's summary is its answer: nothing larger is saved to point to
+        return ()
+    if getattr(args, "output", None) is None and stdin:
         READ_VIEW.set(("summary", (), summary_display))
         parser.error(str(worded("read.summary")).format(pointer="--output PATH"))
     return (*command_prefix(), *args.command_line) if pure and not stdin else ()

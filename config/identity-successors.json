@@ -15219,6 +15219,13 @@
    "successor": "897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457",
    "change": "Improve storage path handling and explain refusal recovery",
    "reason": "The retrieval binding's code changed only in what its sealed-canary refusal says: on a machine where the full-precision recipe does not match, the refusal now names the way on (rebuild the index under the current int8 recipe), in English and Chinese. No sealed value changed, the refusal still closes, and no other role moved."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b0d9dea78a415895b87531bc8140d0bedf5cd88da928126f6f79066b56e3b6ee",
+   "successor": "679d1d1f782be209d1a9ff8b3d0f3469b8819be6aacda3677a90d9613f7266a4",
+   "change": "Accept more of the command forms agents try, and code network questions",
+   "reason": "A daily's network stop and the full-history audit block now name their coded question or confirm request; who may confirm or approve a decision is unchanged."
   }
  ]
 }

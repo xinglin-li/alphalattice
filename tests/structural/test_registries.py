@@ -46,11 +46,11 @@ def refusal_registry(code, owner):
 
 
 def test_person_questions_require_bilingual_words_reason_scope_and_way_on(tmp_path: Path) -> None:
-    """The catalog refuses a person question with an incomplete language form."""
+    """The catalog refuses a person question, or a choice, with an incomplete language form."""
     path = tmp_path / "config/registries/messages.json"
     path.parent.mkdir(parents=True)
     shutil.copy(ROOT / "config/package-architecture.json", tmp_path / "config")
-    for missing in ("words", "reason", "scope", "way_on"):
+    for missing in ("words", "reason", "scope", "way_on", "choices.NO"):
         entry = {
             name: {"en": "English", "zh-CN": "中文"}
             for name in ("words", "reason", "scope", "way_on")
@@ -59,8 +59,15 @@ def test_person_questions_require_bilingual_words_reason_scope_and_way_on(tmp_pa
             owner="alphalattice.interface.local_application",
             operations=["NETWORK_ACCESS_SET"],
             kind="PERSON_QUESTION",
+            choices={
+                "YES": {"en": "English", "zh-CN": "中文"},
+                "NO": {"en": "English", "zh-CN": "中文"},
+            },
         )
-        entry[missing] = {"en": "English"}
+        if missing.startswith("choices."):
+            entry["choices"]["NO"] = {"en": "English"}  # a choice in one language only
+        else:
+            entry[missing] = {"en": "English"}
         path.write_text(
             json.dumps({"entries": {"network.workspace_access": entry}}), encoding="utf-8"
         )

@@ -283,6 +283,10 @@
         "zh-CN": "请为必需的耗时检查提供完整的相对测试节点选择器。"
       }
     },
+    "data.full_history_audit.confirm": {
+      "owner": "alphalattice.control.data_platform", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The newest fetch disagrees with history this workspace holds for some listings (a restated price or a back-adjusted action), which only a full-history audit of those listings settles; nothing older was fetched. You confirm that audit as the agent, without asking the person: plan this update again, whose plan proposes the audit for those listings alone, confirm it with `data-update confirm <plan-hash>`, then resume the update.", "zh-CN": "最新获取的数据与本工作区对部分标的已持有的历史不一致（价格被重述或公司行动被追溯调整），只有对这些标的进行全历史审计才能解决；未获取更早的数据。该审计由你作为智能体确认，无需询问本人：再次规划此更新，其计划只为这些标的提议该审计；用 `data-update confirm <plan-hash>` 确认后，继续该更新。"}
+    },
     "feature.input.case_store_unavailable": {
       "owner": "alphalattice.foundation.feature_engine",
       "kind": "MESSAGE",
@@ -461,18 +465,34 @@
         "zh-CN": "本工作区的网络控制；不授予来源同意，也不解除离线限制。"
       },
       "way_on": {
-        "en": "Read network show and relay the person's words with network set.",
-        "zh-CN": "读取 network show，并通过 network set 逐字转达本人的答复。"
+        "en": "Ask the person this question as written. On a yes, send `network set --enabled true` with --person-said, --asked and --question-code network.workspace_access; on a no, leave the network off. `network show` reads what decides it.",
+        "zh-CN": "按原文向本人提出此问题。若回答是，发送 `network set --enabled true`，并携带 --person-said、--asked 和 --question-code network.workspace_access；若回答否，保持网络关闭。`network show` 可查看决定网络状态的依据。"
       },
       "operations": [
         "NETWORK_ACCESS_SET"
       ],
       "ask_operations": [
-        "NETWORK_ACCESS_SET"
+        "DATA_UPDATE_PLAN",
+        "DATA_UPDATE_RUN",
+        "NETWORK_ACCESS_SET",
+        "RESEARCH_UPDATE_PLAN",
+        "RESEARCH_UPDATE_RUN",
+        "WORKSPACE_PREPARE_CONFIRM",
+        "WORKSPACE_PREPARE_PLAN"
       ],
+      "choices": {
+        "YES": {
+          "en": "Yes: turn the workspace's network on until I turn it off.",
+          "zh-CN": "是：开启此工作区的网络，直到我将其关闭。"
+        },
+        "NO": {
+          "en": "No: keep the network off; the work that needs it waits.",
+          "zh-CN": "否：保持网络关闭；需要网络的工作会等待。"
+        }
+      },
       "words": {
-        "en": "Network access is the person's decision outside a first use: ask the person in one line and, on a clear yes, send this again with --person-said and --asked; `network show` reads what decides it.",
-        "zh-CN": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。"
+        "en": "May AlphaLattice turn on this workspace's network to fetch the market data and filings this work needs, until you turn it off? Yes turns it on; no keeps it off, and the work that needs it waits.",
+        "zh-CN": "AlphaLattice 可以开启此工作区的网络，以获取这项工作所需的市场数据和文件，直到你将其关闭吗？回答是则开启；回答否则保持关闭，需要网络的工作会等待。"
       }
     },
     "read.summary": {

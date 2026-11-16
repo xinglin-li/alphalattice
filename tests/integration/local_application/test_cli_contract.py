@@ -802,7 +802,15 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
         sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         parser = sub.choices[word]
     seen = next(a for a in parser._actions if a.dest == "committee_seen")
-    assert "M7 is 7" in seen.help  # the number, not the id the floor shows (#5)
+    assert "M7 or 7" in seen.help  # the floor's name or its number (#5)
+    parse = cli.command_parser().parse_args
+    for given in ("M3", "m3", "3"):
+        assert parse(cli.floor_numbers([*committee, "--seen", given])).committee_seen == 3
+    assert parse(cli.floor_numbers([*committee, "--seen=M3"])).committee_seen == 3
+    # The forms agents try read as the command they mean: the PM's verdict is a submit, and a
+    # research update's Task is the update the committee verbs name.
+    assert parse(["committee", "verdict", "--update", "u"]).operations == ("COMMITTEE_SUBMIT",)
+    assert parse(["research-update", "show", "--update", "u"]).task_id == "u"
 
 
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:

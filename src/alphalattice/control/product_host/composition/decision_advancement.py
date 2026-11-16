@@ -106,6 +106,7 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.questions import network_question
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
     FrozenFeaturePreparation,
@@ -795,7 +796,7 @@ class DecisionAdvancementApplication:
             else f"Complete local Feature/Panel through session {plan.target.isoformat()}; "
             "no provider request. "
         )
-        return {
+        body: dict[str, object] = {
             "status": "PLANNED",
             "update_plan_hash": plan.content_hash,
             "strategy_package_id": plan.package_id,
@@ -828,6 +829,17 @@ class DecisionAdvancementApplication:
                 "run": {"operation": "RESEARCH_UPDATE_RUN", "update_plan_hash": plan.content_hash}
             },
         }
+        return self._network_asked(body, needed=not (cached or held_inputs) and bool(provider_work))
+
+    def _network_asked(self, body: dict[str, object], *, needed: bool) -> dict[str, object]:
+        """A plan whose provider work needs a network the workspace does not admit: its network
+        read beside its run, and the person's coded question that opens it."""
+        asked = network_question(self.session.workspace, self.clock()) if needed else []
+        if not asked:
+            return body
+        ways = cast("dict[str, object]", body["next_requests"])
+        network = {"network": {"operation": "NETWORK_ACCESS"}}
+        return body | {"next_requests": ways | network, "person_questions": asked}
 
     def _plan_of(self, task: TaskRecord, *, current: bool = True) -> DecisionAdvancementPlan:
         if task.task_kind != ADVANCEMENT_TASK_KIND or task.input.input_schema_id != SCHEMA:

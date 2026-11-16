@@ -343,6 +343,12 @@
   "detail": "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.",
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
+ "data.full_history_audit_approval_required": {
+  "message_id": "data.full_history_audit.confirm",
+  "detail": "data.full_history_audit.confirm",
+  "next_action": "PLAN_AGAIN_THEN_CONFIRM_THE_AUDIT",
+  "next_requests": {"plan": {"operation": "DATA_UPDATE_PLAN"}}
+ },
  "data.truth_review_required": {
   "detail": "A data decision is needed before this Task can continue. The declared workspace rule decides within its bound; a case outside the rule or without its authority goes to the agent, or to the person for consent. Read Data issues, settle the named case, then resume this same Task.",
   "next_action": "DATA_ISSUES"

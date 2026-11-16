@@ -6381,7 +6381,7 @@
 "data.full_history_audit_approval_required": {
 "owner": "data",
 "category": "PERMISSION_DENIED",
-"classification_note": "The full-history audit stop stays BLOCKED unless a workspace rule supplies a recorded approval. New history scope cannot run without that person/rule authorization."
+"classification_note": "The full-history audit stop stays BLOCKED until its exactly scoped audit is confirmed: the installed agent confirms it, as the person or a workspace rule may (person-stops row 49); nothing wider is admitted."
 },
 "data.invalid_action_payload": {
 "owner": "data",

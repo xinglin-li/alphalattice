@@ -774,23 +774,32 @@ def _message_forms(code: str, row: dict[str, Any]) -> list[str]:
     ):
         return [f"messages: {code} invalid arguments"]
     fields = ("words", "reason", "scope", "way_on") if question else ("words",)
+    choices = row.get("choices", {}) if question else {}
+    if not isinstance(choices, dict):
+        return [f"messages: {code}.choices: not a mapping of choice to its words"]
+    named = [(field, row.get(field, {})) for field in fields]
     out = []
-    for field in fields:
-        forms = row.get(field, {})
+    for field, forms in [*named, *((f"choices.{c}", w) for c, w in choices.items())]:
         for locale in ("en", "zh-CN"):
             text = forms.get(locale) if isinstance(forms, dict) else None
-            try:
-                if not isinstance(text, str) or not text.strip():
-                    raise ValueError("missing form")
-                parts = list(string.Formatter().parse(text))
-                names = {name for _, name, _, _ in parts if name is not None}
-                if names != set(arguments) or any(
-                    spec or conversion for _, _, spec, conversion in parts
-                ):
-                    raise ValueError("named arguments differ")
-            except ValueError as error:
+            if (error := _form_problem(text, arguments)) is not None:
                 out.append(f"messages: {code}{'.' if question else ' '}{field}.{locale}: {error}")
     return out
+
+
+def _form_problem(text: object, arguments: list[str]) -> str | None:
+    """Why one language form of a message cannot be shown, or None: it is missing, or it names
+    other arguments than its message declares, or formats one."""
+    if not isinstance(text, str) or not text.strip():
+        return "missing form"
+    try:
+        parts = list(string.Formatter().parse(text))
+    except ValueError as error:
+        return str(error)
+    names = {name for _, name, _, _ in parts if name is not None}
+    if names != set(arguments) or any(spec or conversion for _, _, spec, conversion in parts):
+        return "named arguments differ"
+    return None
 
 
 def _unique_message_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
