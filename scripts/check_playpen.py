@@ -35,10 +35,9 @@ COMMIT_STAGE_ONLY: dict[str, str] = {
     "source-semgrep": "4.5 s",
     "strict-mypy": "1.2 s warm, 27 s cold",
 }
-"""The checks the commit stage runs and the hook leaves to it, each with its seconds measured on
-one staged change of a test and a source file (11-16, the median of three, each step alone):
-together they pass the hook's five-second budget. The hook runs every other check, and the
-commit stage's guard runs only these, so no check runs twice; the composed merge runs all."""
+"""The checks the hook leaves to the stages, each with its seconds measured on one staged change
+of a test and a source file (11-16, the median of three, each step alone): together they pass
+the hook's five-second budget. The hook runs every other check; every stage runs all."""
 GUARD_WORKERS = 6
 """The guard steps that run at once, each in its own process: a step changes the working
 directory, the environment or the import path, and most are pure Python, so only processes run
@@ -216,30 +215,20 @@ def runs_at_commit(label: str) -> bool:
     return label not in COMMIT_STAGE_ONLY
 
 
-def commit_scope(*, commit: bool, after_hook: bool = False) -> Callable[[str], bool]:
+def commit_scope(*, commit: bool) -> Callable[[str], bool]:
     """Whether a check runs, naming each one skipped: the hook (``commit``) runs those outside
-    COMMIT_STAGE_ONLY, and the commit stage after it (``after_hook``) only those inside, so each
-    check runs once; elsewhere (the composed merge, the full gate) every check runs."""
-    if not commit and not after_hook:
+    COMMIT_STAGE_ONLY. Every stage runs every check, since nothing proves the hook judged the
+    tree a stage judges (a merge commit runs no hook, and a clone may have none installed)."""
+    if not commit:
         return lambda label: True
 
     def runs(label: str) -> bool:
-        if runs_at_commit(label) is commit:
+        if runs_at_commit(label):
             return True
-        print(
-            f"PLAYPEN_GATE_SKIPPED {label}: "
-            + ("the commit stage runs it" if commit else "the commit hook ran it"),
-            flush=True,
-        )
+        print(f"PLAYPEN_GATE_SKIPPED {label}: the commit stage runs it", flush=True)
         return False
 
     return runs
-
-
-def after_the_hook(*, staged: bool) -> bool:
-    """The commit stage's guard, which judges a commit the hook already judged: its staged run
-    with the stage named (ALPHALATTICE_PIPELINE_STAGE=commit, set by the stage's runner)."""
-    return staged and os.environ.get("ALPHALATTICE_PIPELINE_STAGE") == "commit"
 
 
 @contextmanager
@@ -1426,9 +1415,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         if common.returncode == 0 and common.stdout.strip():
             cache = Path(common.stdout.strip()) / "alphalattice-hook-facts"
             os.environ.setdefault("ALPHALATTICE_SCAN_CACHE_DIR", str(cache))
-    at_commit = commit_scope(
-        commit=hook, after_hook=not args.hook and not only and after_the_hook(staged=args.staged)
-    )
+    at_commit = commit_scope(commit=hook)
     if args.fast and not only:
         _check_host_materialization(at_commit)
     if not args.fast and not only and not _require_private_structural_inputs():

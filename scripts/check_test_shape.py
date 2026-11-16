@@ -2035,8 +2035,8 @@ def _shape_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _semgrep_only(staged: list[str], sources: list[str], head: str) -> int:
     """The semgrep source rules alone, held to the anti-pattern baseline as ``--semgrep`` holds
-    them: the commit stage runs them (over the hook's budget), and the hook runs every other rule
-    here, so no rule runs twice."""
+    them: a stage runs them (over the hook's budget) as their own step, beside this check's other
+    rules, so a guard run judges each rule once."""
     python = [path for path in sources if path.endswith(".py") and not path.startswith("tests/")]
     try:
         texts = _blobs(
