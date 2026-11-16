@@ -18,6 +18,8 @@ CEILING = 3600.0
 """The longest any one wait may be: an hour. A longer need is a scheduled job's, never a wait's."""
 clock = time.monotonic
 """The clock every deadline reads."""
+READ_SPACING_SECONDS = 1.0
+"""The shortest time between the start of one read of an unchanged source and the next."""
 
 
 class WaitTimeout(TimeoutError):
@@ -58,6 +60,14 @@ def pause(seconds: float, *, stop: threading.Event | None = None) -> bool:
         return stop.wait(seconds)
     time.sleep(seconds)
     return False
+
+
+def spaced(began: float, deadline: float) -> None:
+    """Pause until `READ_SPACING_SECONDS` after ``began`` (a `clock` time), never past
+    ``deadline``: a read its source answered at once is not followed by another at once."""
+    left = min(began + READ_SPACING_SECONDS, deadline) - clock()
+    if left > 0:
+        pause(left)
 
 
 def wait_until[T](

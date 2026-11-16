@@ -10,7 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from functools import cache
@@ -56,6 +57,25 @@ class ProviderFetchError(RuntimeError):
         super().__init__(detail)
         self.code = code
         self.retryable = retryable
+
+    def backed_off(
+        self, attempt: int, attempts: int, sleep: Callable[[float], None] = time.sleep
+    ) -> ProviderFetchError:
+        """This failure of attempt `attempt` of `attempts`, after the wait its retry owes: a rate
+        limit waits `RATE_LIMIT_BACKOFF_SECONDS`, doubling up to `RATE_LIMIT_BACKOFF_CAP_SECONDS`,
+        so a retry never asks a provider that refused for load again at once. Any other failure,
+        and a last attempt, waits for nothing."""
+        if self.code == "data.rate_limited" and attempt < attempts:
+            sleep(
+                min(RATE_LIMIT_BACKOFF_CAP_SECONDS, RATE_LIMIT_BACKOFF_SECONDS * 2 ** (attempt - 1))
+            )
+        return self
+
+
+RATE_LIMIT_BACKOFF_SECONDS = 2.0
+"""The first wait after a rate-limited attempt; each later one doubles it."""
+RATE_LIMIT_BACKOFF_CAP_SECONDS = 30.0
+"""The longest wait between two attempts; a longer refusal is the caller's deferral's to wait."""
 
 
 class MarketDataProvider(Protocol):

@@ -330,6 +330,7 @@ class PreFactorDataOperations:
                 ), attempt
             except ProviderFetchError as exc:
                 if exc.retryable and attempt < self.retry_budget:
+                    exc.backed_off(attempt, self.retry_budget)
                     continue
                 return self._provider_failure(
                     request, exc, attempts=attempt, observed_at=observed_at

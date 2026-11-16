@@ -48,7 +48,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import partial
 from http import HTTPStatus
@@ -706,6 +706,11 @@ def _cookie(header: str | None, name: str) -> str | None:
     return None
 
 
+DRAIN_SECONDS = 5.0
+"""The longest a refused request's announced body is read and dropped: a client that trickles it
+slower holds a request thread no longer than this, where the socket's timeout bounds one chunk."""
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "AlphalatticeLocal/1.0"
     sys_version = ""
@@ -783,22 +788,35 @@ class _Handler(BaseHTTPRequestHandler):
         """Read and drop a refused request's announced body after its answer.
 
         A socket closed with unread bytes is reset, and a client under load could read the
-        reset before the refusal (WinError 10053). The body is drained in bounded chunks,
-        within the admitted bound and the socket's timeout, and never kept; a length the
-        preflight refused as malformed or oversized stays unread, as before.
+        reset before the refusal (WinError 10053). The body is drained within the admitted
+        bound and `DRAIN_SECONDS` in all, and never kept: each read takes what one receive
+        brings, waiting no longer than the time left, so a client trickling bytes cannot hold
+        a read open past the deadline. A length the preflight refused as malformed or oversized
+        stays unread, as before. A client still sending at the deadline, or silent past it, has
+        its connection closed.
         """
         declared = (self.headers.get("Content-Length") or "0").strip()
         if not declared.isdigit() or int(declared) > MAXIMUM_REQUEST_BODY_BYTES:
             return
         remaining = int(declared)
+        deadline = time.monotonic() + DRAIN_SECONDS
+        before = self.connection.gettimeout()
         try:
             while remaining > 0:
-                chunk = self.rfile.read(min(remaining, 65536))
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    self.close_connection = True
+                    return
+                self.connection.settimeout(left if before is None else min(left, before))
+                chunk = self.rfile.read1(min(remaining, 65536))
                 if not chunk:
                     return
                 remaining -= len(chunk)
-        except OSError:
-            return
+        except OSError:  # a read that waited out the time left, or a reset
+            self.close_connection = True
+        finally:
+            with suppress(OSError):
+                self.connection.settimeout(before)
 
     def _serve(self, method: str) -> None:
         if cast(_Server, self.server).stopping.is_set():

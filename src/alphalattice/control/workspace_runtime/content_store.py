@@ -294,20 +294,26 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
             pending.append(future)
     except BaseException as error:
         submission_error = error
-    for future in pending:
-        while True:
-            try:
-                future.result()
-                break
-            except BaseException as error:
-                if failure is None:
-                    failure = error
-                if future.done():
-                    break
+    failure = _joined(pending)
     if failure is not None:
         raise failure
     if submission_error is not None:
         raise submission_error
+
+
+def _joined(pending: Iterable[Future[None]]) -> BaseException | None:
+    """Wait for each submitted check in input order: the first check's own failure. An interrupt
+    raised while waiting (Ctrl-C) is the caller's, never a check's: it is raised at once."""
+    failure: BaseException | None = None
+    for future in pending:
+        try:
+            future.result()
+        except BaseException as error:
+            if not future.done():
+                raise
+            if failure is None:
+                failure = error
+    return failure
 
 
 @contextmanager

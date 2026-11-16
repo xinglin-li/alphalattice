@@ -42,6 +42,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel import waits
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
@@ -133,11 +134,13 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
             return next(answers)
 
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    begun = time.monotonic()
+    paced: list[float] = []
+    monkeypatch.setattr(waits, "pause", lambda seconds, **_: paced.append(seconds))
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
-    assert len(sent) == 4 and time.monotonic() - begun < 0.2
+    # Only the unchanged read that came back at once waits, out to a second, before the next.
+    assert len(sent) == 4 and len(paced) == 1 and 0.9 < paced[0] <= 1.0
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
     first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]

@@ -13,7 +13,6 @@ that unit; a previously prepared unit reuses its sealed artifacts.
 from __future__ import annotations
 
 import hashlib
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -45,7 +44,7 @@ from alphalattice.kernel.knowledge.runtime import (
     VERIFIED_PACKS,
     before_first_inference,
 )
-from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
+from alphalattice.kernel.shared_kernel.host_stop import HostStopping
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
@@ -113,7 +112,7 @@ from .coverage import (
     seal_unit_failure,
     sources_short,
 )
-from .execution import PREPARATIONS, machine_load, plan_execution
+from .execution import PREPARATIONS, first_unit_settled, machine_load, plan_execution
 from .failure_diagnostics import failure_cause
 from .failure_diagnostics import failure_code as _diagnostic_failure_code
 from .history import require_answer_format
@@ -723,16 +722,15 @@ class AlternativeEvidenceDocumentTaskAdapter:
         107 s one at a time.
         """
         first = self._run(task).units[0].unit_id
-        while True:
-            checkpoint()
+
+        def state() -> object:  # None: the Task ended or failed
             current = self.registry.task(task.task_id)
-            if current.lifecycle is not TaskLifecycle.RUNNING:
-                return
-            if self.unit_states(current)[first]["state"] != "PENDING":
-                # The later units' sessions take their share of the budget.
-                PREPARATIONS.open(task.task_id)
-                return
-            time.sleep(0.5)
+            if current.lifecycle is not TaskLifecycle.RUNNING or current.failure_code:
+                return None
+            return self.unit_states(current)[first]["state"]
+
+        if first_unit_settled(state):  # the later units take their share of the budget
+            PREPARATIONS.open(task.task_id)
 
     def _rank(self, task: TaskRecord, stage_id: str) -> int:
         """A unit's place in its run (heaviest first): who goes first at the writer."""

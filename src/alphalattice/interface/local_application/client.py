@@ -83,8 +83,9 @@ from alphalattice.interface.local_application.review_evidence import (
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
-from alphalattice.kernel.shared_kernel.waits import pause
+from alphalattice.kernel.shared_kernel.waits import pause, spaced
 from alphalattice.protocols.research_authoring.selection import (
+    allowed_value_notes,
     dump_declaration,
     load_safe_yaml_document,
 )
@@ -1329,44 +1330,6 @@ def _save_output(
     _write_new(path, payload, replace=replace)
 
 
-def allowed_value_notes(schema: Mapping[str, Any], *, limit: int = 40) -> list[str]:
-    """List each enumerated field of a declaration's schema with its allowed values.
-
-    The saved declaration heads with these values, so readers need not look them up separately.
-
-    Args:
-        schema: The declaration's JSON schema, its `$defs` included.
-        limit: The most fields listed.
-
-    Returns:
-        One ``path: a | b`` line per enumerated field; a list's items are ``path[]``.
-    """
-    definitions = schema.get("$defs") or {}
-    notes: list[str] = []
-
-    def resolve(node: Any) -> Any:
-        while isinstance(node, Mapping) and isinstance(node.get("$ref"), str):
-            node = definitions.get(node["$ref"].rsplit("/", 1)[-1], {})
-        return node
-
-    def walk(node: Any, path: str, depth: int) -> None:
-        node = resolve(node)
-        if not isinstance(node, Mapping) or depth > 6 or len(notes) >= limit:
-            return
-        if isinstance(node.get("enum"), list):
-            notes.append(f"{path}: " + " | ".join(str(value) for value in node["enum"]))
-            return
-        for option in node.get("anyOf") or node.get("oneOf") or ():
-            walk(option, path, depth + 1)
-        if isinstance(node.get("items"), Mapping):
-            walk(node["items"], f"{path}[]", depth + 1)
-        for name, child in (node.get("properties") or {}).items():
-            walk(child, f"{path}.{name}" if path else str(name), depth + 1)
-
-    walk(schema, "", 0)
-    return list(dict.fromkeys(notes))
-
-
 def _save_declaration(path: Path, body: dict[str, Any]) -> None:
     """The answer's editable declaration, for an author to edit: its ``yaml`` part, or
     its ``template`` in the declaration loader's dialect, as `feature controls` answers.
@@ -2266,6 +2229,7 @@ def _follow(
             if trial or remaining < 0.1
             else {**document, "wait_seconds": round(min(20.0, remaining), 3)}
         )
+        began = time.monotonic()
         client, read = _read_through_restarts(client, request, deadline)
         if read is None:
             return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
@@ -2283,13 +2247,7 @@ def _follow(
             )
         )
         stage = current.get("current_stage")
-        if (state, stage) != last:
-            print(
-                json.dumps({"follow": document, "state": state, "current_stage": stage}),
-                file=sys.stderr,  # noqa: TID251
-                flush=True,
-            )
-            last = (state, stage)
+        moved, last = _said(document, state, stage, last), (state, stage)
         # A review to decide, a Task to recover or a deferral waits on a request, not on this
         # waiter.
         if (exit_event := WAIT_EXITS.get(task_state(current) or "")) is not None:
@@ -2306,6 +2264,22 @@ def _follow(
         if trial:
             _sleep_before_read(delay, deadline)
             delay = min(delay * 2, 1.0)
+        elif (
+            not moved
+        ):  # a Host that answers at once, not after its wait, is not read again at once
+            spaced(began, deadline)
+
+
+def _said(document: dict[str, Any], state: object, stage: object, last: object) -> bool:
+    """Say on stderr that a followed Task moved; whether it did."""
+    if (state, stage) == last:
+        return False
+    print(
+        json.dumps({"follow": document, "state": state, "current_stage": stage}),
+        file=sys.stderr,  # noqa: TID251
+        flush=True,
+    )
+    return True
 
 
 def _wakes(message: dict[str, Any], me: str | None, mine: set[str]) -> bool:

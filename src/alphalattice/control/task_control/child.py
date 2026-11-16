@@ -29,6 +29,7 @@ import pickle
 import sys
 import tempfile
 import threading
+import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from concurrent import futures
@@ -45,6 +46,7 @@ from alphalattice.kernel.shared_kernel.spans import (
     SpanLedger,
     absorb,
     collect,
+    cpu_seconds_of,
     span,
 )
 
@@ -57,6 +59,11 @@ _TRACER: tuple[TracerProvider, RowsExporter] | None = None
 """This worker process's tracer provider and the exporter keeping its spans' rows."""
 POLL_SECONDS = 0.5
 """How often the waiting parent reads the call's answer and the Task's cancellation."""
+
+WEDGED_SECONDS = 120.0
+"""How long the worker owing a call may use no CPU at all before it is taken as wedged: a process
+blocked on a lock, a wait or I/O that never returns, suspended, or never started, is ended and
+its call interrupted, where a long numerical call keeps using CPU and is waited for."""
 
 KEPT_WORKER_IDLE_SECONDS = 180.0
 """How long a kept worker waits with no call before it retires; the next call starts it again.
@@ -327,6 +334,7 @@ def _waited(
     submitted: _Submitted, flag: Path, cancelled: Callable[[], bool] | None
 ) -> dict[str, Any]:
     """Wait for a call's answer, relaying the Task's cancellation while it runs."""
+    progress: tuple[float | None, float] = (None, time.monotonic())
     try:
         while True:
             try:
@@ -334,8 +342,39 @@ def _waited(
             except FutureTimeout:
                 if cancelled is not None and not flag.exists() and cancelled():
                     flag.touch()
+                progress = _progressed(submitted.pool, progress)
+                if time.monotonic() - progress[1] > WEDGED_SECONDS:
+                    raise _ended_wedged(submitted) from None
     except BrokenProcessPool:
         raise _ended(submitted.worker, submitted.pool) from None
+
+
+def _progressed(
+    pool: ProcessPoolExecutor, last: tuple[float | None, float]
+) -> tuple[float | None, float]:
+    """The worker's CPU seconds and when they last moved. Whatever the worker runs for this
+    call -- the call itself, or one queued before it -- uses CPU while it works; a worker with
+    no process to read (one that never started) never moves."""
+    used = _cpu_seconds(pool)
+    return last if used is None or used == last[0] else (used, time.monotonic())
+
+
+def _cpu_seconds(pool: ProcessPoolExecutor) -> float | None:
+    """The CPU seconds the pool's worker process has used, or None when it has none to read."""
+    for process in list(getattr(pool, "_processes", {}).values()):
+        if process.pid is not None:
+            return cpu_seconds_of(process.pid)
+    return None
+
+
+def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
+    """End a wedged worker's process and retire its pool; its call is interrupted by name."""
+    for process in list(getattr(submitted.pool, "_processes", {}).values()):
+        process.terminate()
+    _retire_worker(submitted.worker, submitted.pool)
+    return ChildInterrupted(
+        "task_control.child_wedged", type_name="ChildWedged", failure_class=None
+    )
 
 
 def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:

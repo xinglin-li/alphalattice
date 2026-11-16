@@ -15226,6 +15226,48 @@
    "successor": "679d1d1f782be209d1a9ff8b3d0f3469b8819be6aacda3677a90d9613f7266a4",
    "change": "Accept more of the command forms agents try, and code network questions",
    "reason": "A daily's network stop and the full-history audit block now name their coded question or confirm request; who may confirm or approve a decision is unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "9b8e8be24a9248f4d04abbac9e837a36500e5a865c3d2539192fb37a5be16b7f",
+   "successor": "241e5e6bb3b591982dc373d07b62dba54ac62963c5a1e3329e03751d0e7e2174",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "679d1d1f782be209d1a9ff8b3d0f3469b8819be6aacda3677a90d9613f7266a4",
+   "successor": "fed3467e9eaff2731095d93662dcc420906306344797de9ef3eb3076a295048d",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "4b10228fb669ff973ad5439c4cbf612c064badfdc1ef2c53a8aa6acd30832d88",
+   "successor": "1d9bf2e9b2a3b20622c1a434f6d71a6a820be37620de11b0074b37ece33d9458",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "4d3a10eb059da8cab0289ed13dc9638a7c3f8b19ab3899aaf31eca436fef2f7d",
+   "successor": "04fb95199d3f8862bf7e7c4916f3069f19fb440e4e3c8ee80a521bfc25cfe372",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "5c36308cf95cfadc9e6caefad6df46c59a220de0f6b86c995547617bdc209ce6",
+   "successor": "82f27216919f552e7a86668316e735de19e0e4a638aaaf17dceb8fd012f445b6",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4e52960f3376090348764c303a2d86dc7bcb9a37d92242c8e05bdf05d1531834",
+   "successor": "23d6178105ef9f658e67f345036e5c0661f1231e710f772a403c744249af7ad1",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
   }
  ]
 }

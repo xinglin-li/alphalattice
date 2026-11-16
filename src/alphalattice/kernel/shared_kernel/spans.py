@@ -266,15 +266,35 @@ def absorb(readout: Mapping[str, Any] | None) -> None:
         ledger.absorb(readout)
 
 
+def _psutil() -> Any:
+    """psutil, imported when a reading is first taken, or None on a platform without it."""
+    try:
+        import psutil  # type: ignore[import-untyped]  # lazy: a reading's first need pays it
+    except ImportError:  # pragma: no cover - platform without psutil
+        return None
+    return psutil
+
+
 def _resources() -> tuple[float, int, int]:
     times = os.times()
     try:
-        import psutil  # type: ignore[import-untyped]
-
-        counters = psutil.Process().io_counters()
+        counters = _psutil().Process().io_counters()
         return float(times.user + times.system), int(counters.read_bytes), int(counters.write_bytes)
-    except (ImportError, OSError, AttributeError):  # pragma: no cover - platform without counters
+    except (OSError, AttributeError):  # pragma: no cover - platform without counters
         return float(times.user + times.system), 0, 0
+
+
+def cpu_seconds_of(process_id: int) -> float | None:
+    """The CPU seconds process `process_id` has used, user plus system; None once it has ended
+    or cannot be read."""
+    psutil = _psutil()
+    if psutil is None:
+        return None
+    try:
+        times = psutil.Process(process_id).cpu_times()
+    except (psutil.Error, OSError):
+        return None
+    return float(times.user + times.system)
 
 
 @contextmanager
@@ -341,6 +361,7 @@ __all__ = [
     "absorb",
     "active_ledger",
     "collect",
+    "cpu_seconds_of",
     "readout",
     "span",
     "spanned",

@@ -129,7 +129,7 @@ class MarketReferenceMaintainer:
         payload = None
         hydration = None
         last_error: ProviderFetchError | None = None
-        for _attempt in range(self.retry_budget):
+        for attempt in range(1, self.retry_budget + 1):
             try:
                 if hasattr(self.provider, "fetch_hydration"):
                     hydration = self.provider.fetch_hydration(
@@ -145,7 +145,7 @@ class MarketReferenceMaintainer:
                     )
                 break
             except ProviderFetchError as exc:
-                last_error = exc
+                last_error = exc.backed_off(attempt, self.retry_budget)
                 if not exc.retryable:
                     break
         if payload is None:

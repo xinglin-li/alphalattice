@@ -3670,20 +3670,6 @@
         "sector_research.experiments.verification"
       ]
     },
-    "pre-factor-staging": {
-      "summary": "the pre-Factor workspace host's staged files",
-      "class": "cache-scratch",
-      "tier": 4,
-      "retire": "operation-scoped scratch; the Host verifies and moves staged files before registration and recovery collects orphans, so nothing reads it after the operation",
-      "location": "workspace-file",
-      "bytes": null,
-      "writers": [
-        "product_host.data_preparation.host:PreFactorWorkspaceHost"
-      ],
-      "readers": [
-        "product_host.data_preparation.application"
-      ]
-    },
     "data-root": {
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",

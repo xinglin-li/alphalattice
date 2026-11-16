@@ -28,6 +28,7 @@ import importlib.metadata
 import os
 import platform
 import sys
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -49,12 +50,18 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     safe_intra_op_threads,
 )
 from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
+from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+from alphalattice.kernel.shared_kernel.waits import pause
 
 EXECUTION_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, beside the Host's own state and outside the managed
 evidence roots: a setting and a log, not evidence."""
 CPU_BUDGET_FILE = "cpu-budget.json"
 PREPARATIONS_FILE = "preparations.jsonl"
+FIRST_UNIT_WAIT_SECONDS = 1800.0
+"""The longest a later unit waits for its book's first unit (162 s on the median book)."""
+FIRST_UNIT_POLL_SECONDS = 0.5
+"""How often a later unit reads whether the first unit is prepared."""
 MODEL_FITS_FILE = "model-fits.jsonl"
 TASKS_FILE = "tasks.jsonl"
 MAXIMUM_CPU_BUDGET = 1024
@@ -449,6 +456,27 @@ class RunningPreparations:
 
 PREPARATIONS = RunningPreparations()
 """This process's preparations (model sessions are the process's; `VERIFIED_PACKS`)."""
+
+
+def first_unit_settled(state: Callable[[], object]) -> bool:
+    """Wait until `state()` reads a book's first unit as no longer ``PENDING``: True then; False
+    at once when `state()` reads None (the Task ended or failed). A first unit still pending at
+    `FIRST_UNIT_WAIT_SECONDS` ends the wait by name, so a stuck first unit holds no later unit
+    without end and is seen.
+
+    Raises:
+        RuntimeError: ``alternative_evidence.first_unit_wait_expired``, the later unit's failure.
+    """
+    deadline = time.monotonic() + FIRST_UNIT_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        checkpoint()
+        now = state()
+        if now is None:
+            return False
+        if now != "PENDING":
+            return True
+        pause(FIRST_UNIT_POLL_SECONDS)
+    raise RuntimeError("alternative_evidence.first_unit_wait_expired")
 
 
 class TaskCpuLeases:

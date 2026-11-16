@@ -640,6 +640,11 @@ class ObservationReadPage(_Contract):
         ordinal = self.items[-1].ordinal if self.items else self.head_ordinal
         return ObservationReadCursor(store_epoch=self.store_epoch, ordinal=ordinal)
 
+    def advances(self, cursor: ObservationReadCursor) -> bool:
+        """Whether reading on from this page moves past `cursor`: a reader that followed a page
+        that does not would read the same rows again without end."""
+        return self.next_cursor.ordinal > cursor.ordinal
+
     @property
     def unavailable_count(self) -> int:
         """Count page items whose envelopes are not AVAILABLE.

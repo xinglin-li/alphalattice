@@ -912,6 +912,7 @@ class CurrentUniverseOnboarding:
                     return "FAILED"
                 except ProviderFetchError as exc:
                     if exc.retryable and attempt < self.retry_budget:
+                        exc.backed_off(attempt, self.retry_budget)
                         continue
                     if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                         return exc
@@ -1095,6 +1096,7 @@ class CurrentUniverseOnboarding:
                 return "FAILED"
             except ProviderFetchError as exc:
                 if exc.retryable and attempt < self.retry_budget:
+                    exc.backed_off(attempt, self.retry_budget)
                     continue
                 if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                     return exc

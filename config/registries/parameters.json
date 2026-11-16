@@ -2092,10 +2092,6 @@
 "class": "METHOD",
 "count": 2
 },
-"src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_after_the_first_unit::0.5": {
-"class": "METHOD",
-"count": 1
-},
 "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_parameter::64": {
 "class": "METHOD",
 "count": 1
@@ -11107,6 +11103,31 @@
 "src/alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.panel_floor::1e-12": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_POLL_SECONDS::0.5": {
+"class": "EXECUTION",
+"count": 1,
+"description": "How often a later unit reads whether its book's first unit is prepared."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_WAIT_SECONDS::1800.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest a later unit waits for its book's first unit before it takes its share of the cores."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_CAP_SECONDS::30.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest wait between two attempts of a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_SECONDS::2.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first wait before retrying a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::backed_off::2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The factor by which each later wait before a rate-limited retry grows."
 }
 },
 "note": "Six registries name what the product is made of. Three are already held where they live: the packages (``config/package-architecture.json``, the structural guards), the operations (``operations.py``, ``operation_registry``) and the identity roles (``config/identity-roles.json``, the source-identity guards). The other three are held here, each against a baseline in ``config/registries/`` that may only shrink:",

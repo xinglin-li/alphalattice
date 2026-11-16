@@ -186,7 +186,6 @@
     "src/alphalattice/kernel/shared_kernel/environment.py::_loaded_module_handles::import ctypes": 1,
     "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister::from ctypes import wintypes": 1,
     "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister::import ctypes": 1,
-    "src/alphalattice/kernel/shared_kernel/spans.py::_resources::import psutil": 1,
     "src/alphalattice/kernel/validation/return_model_statistics.py::diebold_mariano_hac::from statsmodels.stats.sandwich_covariance import cov_hac": 1,
     "src/alphalattice/kernel/validation/return_model_statistics.py::diebold_mariano_hac::import statsmodels.api as sm": 1,
     "src/devtools/architecture/answer_continuations.py::continuation_checks::from alphalattice.interface.local_application.client import LOCATORS, LocalResearchClientError, continued, reference_field": 1,

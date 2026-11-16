@@ -925,6 +925,9 @@ class WorkspaceActivity:
                     )
             if not page.more or page.next_cursor.ordinal >= head:
                 break
+            if not page.advances(cursor):
+                gaps.append({"code": "LEDGER_CURSOR_STALLED"})
+                break
             cursor = page.next_cursor
         owned = {
             (r["source"], r.get("operation_ref"))

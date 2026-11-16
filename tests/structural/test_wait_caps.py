@@ -116,6 +116,9 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             # Foreground waits are bounded; background Tasks wait because no person awaits them.
             ("control/workspace_runtime/mutation_gate.py", "hold"),
             ("interface/local_application/dispatcher.py", "close"),
+            # A refused body's drain reads chunks within the socket's timeout and stops, closing
+            # the connection, at its own overall deadline; it reads no shared state.
+            ("interface/local_application/web.py", "_discard_announced_body"),
             ("interface/local_application/web.py", "join_request_threads"),
             ("interface/local_application/web.py", "stop"),
             # A detached launch's readiness wait: bounded, reread each pause, refused at its end.
