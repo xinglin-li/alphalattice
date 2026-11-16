@@ -726,7 +726,7 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
 
 
 @pytest.mark.skipif(
-    os.name != "nt" and not hasattr(os, "sched_setaffinity"),
+    sys.platform == "darwin" or (os.name != "nt" and not hasattr(os, "sched_setaffinity")),
     reason="pins processor affinity, which this system does not offer",
 )
 @pytest.mark.proves(

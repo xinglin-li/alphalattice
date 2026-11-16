@@ -241,6 +241,7 @@ def test_a_cached_read_sees_a_write_another_registry_made(tmp_path: Path) -> Non
     assert record == first.task(admitted.task_id) and len(items) == len(plan.work_items)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Exercises Windows numerical DLL inventory")
 def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
     """requirement (V68, LAWS PA3): the BLAS thread count can move an Alpha metric's last bits,
     so the fit log keeps the numerical libraries' counts beside the run; a record written before

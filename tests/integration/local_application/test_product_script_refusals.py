@@ -92,25 +92,6 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
         command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
         replay = subprocess.run(command, capture_output=True, check=False)
         assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
-    if (
-        sys.platform != "win32"
-    ):  # a path past macOS's and Linux's length limits is refused before the status
-        pytest.skip("Windows-only long-path status; earlier refusal checks ran")
-    store = tmp_path.joinpath(*(["中" * 48] * 120))
-    line = ["--status", "--store", str(store)]
-    assert installer.main(line) == 0
-    whole = capsys.readouterr().out.rstrip("\n").encode()
-    saved = tmp_path / "pack-status.json"
-    read = [*line, "--view", "summary", "--output", str(saved)]
-    assert installer.main(read) == 0
-    printed = capsys.readouterr().out
-    summary = json.loads(printed)
-    assert len(printed.encode()) <= 32768 and not store.exists()
-    assert summary["full_answer"] == {"file": str(saved.resolve())}
-    assert saved.read_bytes() == whole
-    assert installer.main(read) == 2
-    assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
-    assert saved.read_bytes() == whole
     monkeypatch.setattr(
         installer.model_store, "hub_fetcher", lambda **_: pytest.fail("unexpected install")
     )
@@ -232,10 +213,11 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
 
 @pytest.mark.proves("local_application.retrieval_setup_uses_writable_scratch")
 @pytest.mark.proves("local_application.native_tool_setup_uses_writable_scratch")
-@pytest.mark.skipif(os.name != "nt", reason="Windows executable temp handling")
+@pytest.mark.skipif(os.name != "nt", reason="Checkout scratch is the Windows installer contract")
 def test_retrieval_setup_uses_checkout_scratch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Both Windows installers isolate subprocess scratch without changing the caller's TEMP."""
     from scripts import create_retrieval_environment as setup
 
     checkout = tmp_path / "checkout"
@@ -753,8 +735,47 @@ def test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_c
         assert "next_commands" in places and places <= {"causes", "next_commands"}, code
 
 
-def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, capsys, tmp_path):
-    """Control: Unwritable stores report sanitized OS causes before any download."""
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("denied-store", id="denied-store"),
+        pytest.param(
+            "long-status",
+            id="long-status",
+            marks=[
+                pytest.mark.proves(
+                    "local_application.long_windows_model_store_status_keeps_its_full_answer"
+                ),
+                pytest.mark.skipif(sys.platform != "win32", reason="Exercises Windows long paths"),
+            ],
+        ),
+    ],
+)
+def test_a_denied_store_reports_the_os_cause_before_any_download(
+    monkeypatch, capsys, tmp_path, case: str
+):
+    """Model-store answers keep OS causes and complete status files without downloading."""
+
+    if case == "long-status":
+        from scripts import install_retrieval_pack as installer
+
+        store = tmp_path.joinpath(*(["中" * 48] * 120))
+        line = ["--status", "--store", str(store)]
+        assert installer.main(line) == 0
+        whole = capsys.readouterr().out.rstrip("\n").encode()
+        saved = tmp_path / "pack-status.json"
+        read = [*line, "--view", "summary", "--output", str(saved)]
+        assert installer.main(read) == 0
+        printed = capsys.readouterr().out
+        summary = json.loads(printed)
+        assert len(printed.encode()) <= 32768 and not store.exists()
+        assert summary["full_answer"] == {"file": str(saved.resolve())}
+        assert saved.read_bytes() == whole
+        assert installer.main(read) == 2
+        assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
+        assert saved.read_bytes() == whole
+        return
+
     from scripts import install_retrieval_pack as setup
 
     def denied(**_kwargs):

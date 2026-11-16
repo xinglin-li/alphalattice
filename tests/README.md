@@ -12,7 +12,7 @@ Use the existing policy and generators; this document grants no guard waiver.
 | Declare Small, Medium, or Large with a size marker or registered requirement layer. | `devtools.testing.collection` resolves the declaration and `config/registries/test-sizes.json` owns the bounds. |
 | Small: at most 1 s and 10 MB of temporary data; no subprocess or network. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; `testing.layer_contract` checks process and network use. Growth inside a pre-existing shared directory is not attributed; use a registered dataset. |
 | Medium: at most 30 s and 500 MB of temporary data. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; growth inside a pre-existing shared directory is not attributed. |
-| Large runs only in the nightly. | `test_size.large_contract` requires a `nightly_only` size rule for a new or changed Large test. |
+| Large runs in the nightly; a declared `release_only` case runs at promotion or through explicit evidence selection with `ALPHALATTICE_TEST_LANE=release`. | `test_size.large_contract` requires the admitted lane rule for a new or changed Large test. |
 | Use registered test datasets in place; do not copy read-only data. | `TEST-DATA` in `scripts/check_test_shape.py` refuses a new data file under `tests/` until `data_files` in `config/registries/test-sizes.json` names it with its reason; request a private writable copy only when the test must write. |
 | A new test starts at unit. A requirement added or raised above unit says, in one sentence, why a lower layer cannot prove it. | `lower_layer` in its row of `config/registries/requirements.json`; `devtools.testing.requirements.admission` refuses the row without it. |
 | An area's integration share of test functions may only fall. | `TEST-PYRAMID` in the fast guard compares each area's share under `tests/<layer>/<area>/` with the base's, and names the area that rose. |
@@ -161,8 +161,9 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Use normal stage producers for steps a failed stage never reached.
 - Keep mandatory files and declared reach in selection; a size edit alone cannot defer them.
 - Name a file mandatory (`mandatory` in `config/registries/test-sizes.json`) only when it is a second-scale static scan any change can break; every other test, structural ones included, runs by reach on a commit and whole in the nightly.
-- Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run.
+- Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run. Set `ALPHALATTICE_TEST_LANE=release` when selecting declared `release_only` evidence cases; their frozen inputs remain prerequisites of that run.
 - Declare structural reach in `config/registries/test-sizes.json`; undeclared structural checks stay whole.
+- Declare an OS dependency with a platform `skipif` on the test or its parameter, so placement reads it before the run. Keep general assertions outside an OS-only journey. Frozen-workspace and optional-runtime acceptance belongs to its declared evidence/release tier, with its inputs supplied there; preserve the explicit evidence entry point and never discover a missing prerequisite by skipping inside a commit-tier test.
 - Make `per_file` scans read Python through `scanned()` or `in_scope()` in `tests/structural/source_shape_samples.py`.
 - Run a scoped scan whole when its own file or a declared input changes; refuse reads outside the changed scope.
 - Declare cross-file inputs; use `+*` for additions or deletions.

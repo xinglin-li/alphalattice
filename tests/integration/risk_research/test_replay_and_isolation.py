@@ -72,21 +72,18 @@ def test_output_workspace_cannot_escape_the_authorized_root(tmp_path: Path, decl
     "alias",
     [
         pytest.param("ws", id="same_path"),
-        pytest.param(
-            "WS",
-            id="case_alias",
-            marks=pytest.mark.skipif(
-                sys.platform != "win32",
-                reason="NTFS is case-insensitive; a case-sensitive volume holds WS and ws apart",
-            ),
-        ),
+        pytest.param("WS", id="case_alias"),
     ],
 )
 def test_output_workspace_cannot_be_the_source_workspace(tmp_path: Path, alias: str) -> None:
-    """Under either spelling: NTFS is case-insensitive, so `WS` and `ws` are one directory."""
+    """A second spelling or a filesystem alias still resolves to the source workspace."""
 
     root = tmp_path / "root"
     (root / "ws").mkdir(parents=True)
+    if alias == "WS" and sys.platform != "win32":
+        # Preserve NTFS's case spelling on Windows; use an explicit alias elsewhere.
+        alias = "source-alias"
+        (root / alias).symlink_to(root / "ws", target_is_directory=True)
     workflow = _workflow(source=root / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_is_source"):
         workflow._output_workspace(alias)

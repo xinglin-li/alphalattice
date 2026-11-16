@@ -798,6 +798,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "local_application.long_windows_model_store_status_keeps_its_full_answer": {
+      "description": "A model-store status at a long Windows path saves the complete answer without creating the store or replacing an existing output.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The real script writes and reads its output at a Windows long-path boundary, which an in-memory decision cannot prove."
+    },
     "local_application.native_tool_setup_uses_writable_scratch": {
       "description": "The offered locked tool setup runs its existing steps with checkout-owned Windows scratch and removes the scratch on success or failure.",
       "owner": "alphalattice.interface.local_application",
