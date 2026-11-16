@@ -22,6 +22,28 @@ def _facts(body: dict) -> dict:  # type: ignore[type-arg]
     return {key: value for key, value in body.items() if key != "verification_basis"}
 
 
+def refused_at_the_edges(
+    live: LocalPortfolioWebSession, task_id: str, read: dict[str, object]
+) -> str:
+    """A study with a sealed file changed in place, read as EV2 holds it: a read answers from the
+    last full check, saying so, with the facts `read` held; the export proves the bytes and
+    refuses by name; once the scrub marks the study, its reads prove in full and refuse by name.
+    Returns the scrub's Task."""
+
+    readback = f"/api/experiments/readback?task_id={task_id}"
+    held = _json(live, readback)
+    assert held["verification_basis"].startswith("SEALED ") and _facts(held) == _facts(read)
+    refused = _json(live, f"/api/experiments/export?task_id={task_id}")
+    assert refused["status"] == "REFUSED" and refused["failure_code"], refused
+    scrub = live.operations.verify_all()
+    assert scrub["status"] == "ADMITTED", scrub
+    live.dispatcher.drain_for_tests()
+    assert str(task_id) in live.operations.sweep.failed_studies()
+    refused = _json(live, readback)
+    assert refused["status"] == "REFUSED" and refused["failure_code"], refused
+    return str(scrub["task_id"])
+
+
 @contextmanager
 def _session(root: Path) -> Iterator[LocalPortfolioWebSession]:
     session = LocalPortfolioWebSession(

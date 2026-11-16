@@ -55,6 +55,7 @@ from tests.researcher_methodology_surface.factor_web_support import (
     _facts,
     _session,
     assert_trial_reads_during_saves,
+    refused_at_the_edges,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     publish_causal_outcomes,
@@ -267,9 +268,7 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         content = path.read_bytes()
         try:
             path.write_bytes(bytes([content[0] ^ 1]) + content[1:])
-            assert (
-                _json(live, f"/api/experiments/readback?task_id={task_id}")["status"] == "REFUSED"
-            )
+            refused_at_the_edges(live, task_id, body)
         finally:
             path.write_bytes(content)
         assert (root / "research-workspace.json").read_bytes() == manifest
@@ -425,8 +424,8 @@ def _exercise_authored_review(root, selected, tmp_path):
             saved = path.read_bytes()
             try:
                 path.write_bytes(bytes([saved[0] ^ 1]) + saved[1:])
-                status, _ = service.request("/api/cro-review", method="POST", payload=selector)
-                assert status == 400
+                code, _ = service.request("/api/evidence-cro/export?" + urlencode(export_selector))
+                assert code == 400
                 assert len(service.registry.tasks()) == tasks
             finally:
                 path.write_bytes(saved)
@@ -1128,10 +1127,9 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
         ("capability-1", {"family": "ridge", "alpha": 1.0}),
         ("capability-1", {"family": "lasso", "alpha_max_multiplier": 0.1}),
         ("capability-1", {"family": "elastic_net", "alpha_max_multiplier": 0.1, "l1_ratio": 0.5}),
-        # The main product's model through the same declaration, operation and
-        # readback: the second installed capability, at the installed G6 point.
-        ("capability-2", _lightgbm_parameters()),
+        ("capability-2", _lightgbm_parameters()),  # the main product's model, at its G6 point
     ],
+    ids=["ridge", "lasso", "elastic-net", "lightgbm"],
 )
 def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
     alpha_case, handle, parameters
@@ -1245,8 +1243,7 @@ def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
         original = paths[0].read_bytes()
         try:
             paths[0].write_bytes(b"{}")
-            refused = _json(live, f"/api/experiments/readback?task_id={task_id}")
-            assert refused["status"] == "REFUSED", refused
+            count += bool(refused_at_the_edges(live, task_id, body))  # the scrub's Task
         finally:
             paths[0].write_bytes(original)
         again = _json(live, f"/api/experiments/readback?task_id={task_id}")
