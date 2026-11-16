@@ -14,9 +14,9 @@ import sysconfig
 import tempfile
 import threading
 import zoneinfo
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from functools import cache, partial
+from functools import partial
 from importlib.machinery import EXTENSION_SUFFIXES
 from importlib.util import resolve_name
 from pathlib import Path
@@ -29,38 +29,11 @@ from _pytest.capture import FDCaptureBase
 from pytest_socket import disable_socket
 
 from devtools.testing.audit import subscribe
-from devtools.testing.sizes import load_policy
+from devtools.testing.layout import Backends, backend_catalog, import_violations
 
 _IMPORT = builtins.__import__
 _IMPORT_MODULE = importlib.import_module
 _FRAMEWORK_IO = {FDCaptureBase.__init__.__code__, FDCaptureBase.done.__code__}
-Backends = Sequence[Mapping[str, str]]
-
-
-@cache
-def backend_catalog() -> Backends:
-    """Freeze the static guard's catalog once; collection passes its already-read policy."""
-    rows = load_policy(Path(__file__).resolve().parents[3]).get("unit_backends", [])
-    if not rows:
-        raise ValueError("testing.layer_contract_unmeasured: restore the unit backend catalog")
-    return tuple(rows)
-
-
-def import_violations(
-    names: tuple[str, ...], layer: str, backends: Backends | None = None
-) -> tuple[str, ...]:
-    """One import contract for the existing static guard and the runtime subscriber."""
-    if layer != "unit":
-        return ()
-    catalog = backend_catalog() if backends is None else backends
-    return tuple(
-        f"testing.layer_contract: unit dependency {name}; move the test to integration"
-        for name in names
-        if any(
-            name == row["name"] or (row["kind"] == "module" and name.startswith(row["name"] + "."))
-            for row in catalog
-        )
-    )
 
 
 def _loopback_host(host: object) -> bool:

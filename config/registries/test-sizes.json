@@ -2953,6 +2953,30 @@
       "owner": "tests.structural",
       "until": "2026-11-12",
       "reason": "Confirmed post-merge regression; expires with its owned repair."
+    },
+    {
+      "node": "tests/integration/task_control/test_task_child.py::test_a_fit_log_records_the_numerical_thread_counts",
+      "owner": "tests.task_control",
+      "reason": "On macOS the child that reads the numerical thread counts exits with an error; held until its cause is fixed.",
+      "until": "2026-11-18",
+      "class": "real",
+      "since": "2026-11-16"
+    },
+    {
+      "node": "tests/unit/portfolio_strategy_lab/publication/test_advancement_ledger.py::test_a_program_receipt_index_cannot_claim_another_program",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "A unit test depends on the host's publication layer; held until it moves to the integration layer.",
+      "until": "2026-11-18",
+      "class": "real",
+      "since": "2026-11-16"
+    },
+    {
+      "node": "tests/structural/test_test_shape.py::test_exact_copy_guard_names_original_and_counts_only_added_executable_runs",
+      "owner": "tests.structural",
+      "reason": "Where the locked clone-detection tool is not installed the guard cannot run; held until every test host installs it.",
+      "until": "2026-11-18",
+      "class": "unstable",
+      "since": "2026-11-16"
     }
   ],
   "mandatory": [

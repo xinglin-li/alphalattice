@@ -19,7 +19,8 @@ from typing import Any, TextIO
 import pytest
 
 from devtools.testing import audit, requirements, sizes
-from devtools.testing.contracts import Backends, LayerContract
+from devtools.testing.contracts import LayerContract
+from devtools.testing.layout import Backends
 from devtools.testing.sizes import (
     _rule,
     admission_limit,

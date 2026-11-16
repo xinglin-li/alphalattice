@@ -39,11 +39,11 @@ repos:
         language: system
         always_run: true
         require_serial: true
-      # The commit stage and composed merge run the full fast guard; the hook
-      # keeps the pre-commit checks and staged formatter within its budget.
+      # The hook runs every guard check outside COMMIT_STAGE_ONLY (test-shape and
+      # test-budget among them) within its budget; the commit stage runs only the
+      # rest, and the composed merge runs all (scripts/check_playpen.py).
       - id: playpen-fast-guard
         name: playpen fast guard (changed files)
         entry: python scripts/check_playpen.py --staged --fast --hook
         language: system
         pass_filenames: false
-        stages: [manual]

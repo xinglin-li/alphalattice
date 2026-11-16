@@ -23,28 +23,22 @@ from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
-COMMIT_STAGE_ONLY = frozenset(
-    {
-        "boundaries",
-        "claude-host-materialization",
-        "counts",
-        "develop-conflict",
-        "evidence-bindings",
-        "identity-closures",
-        "identity-reach",
-        "import-contracts",
-        "operation-registry",
-        "registries",
-        "ruff-check",
-        "ruff-format",
-        "scoped-structural",
-        "strict-mypy",
-        "test-budget",
-        "test-shape",
-        "tool-versions",
-    }
-)
-"""Checks measured over the hook budget; the commit stage and composed merge run them."""
+COMMIT_STAGE_ONLY: dict[str, str] = {
+    "boundaries": "4.7 s",
+    "claude-host-materialization": "a materializer pass over the host's derivatives",
+    "evidence-bindings": "1.7 s",
+    "identity-closures": "7.0 s",
+    "import-contracts": "2.7 s",
+    "operation-registry": "9.7 s",
+    "registries": "2.1 s",
+    "scoped-structural": "18.6 s",
+    "source-semgrep": "4.5 s",
+    "strict-mypy": "1.2 s warm, 27 s cold",
+}
+"""The checks the commit stage runs and the hook leaves to it, each with its seconds measured on
+one staged change of a test and a source file (11-16, the median of three, each step alone):
+together they pass the hook's five-second budget. The hook runs every other check, and the
+commit stage's guard runs only these, so no check runs twice; the composed merge runs all."""
 GUARD_WORKERS = 6
 """The guard steps that run at once, each in its own process: a step changes the working
 directory, the environment or the import path, and most are pure Python, so only processes run
@@ -54,6 +48,8 @@ near the slowest step. ALPHALATTICE_GUARD_WORKERS overrides it."""
 SLOWEST_FIRST = (
     "scoped-structural",
     "test-shape",
+    "source-semgrep",
+    "test-budget",
     "operation-registry",
     "identity-closures",
     "identity-reach",
@@ -220,19 +216,30 @@ def runs_at_commit(label: str) -> bool:
     return label not in COMMIT_STAGE_ONLY
 
 
-def commit_scope(*, commit: bool) -> Callable[[str], bool]:
-    """At commit (the hook), whether a check runs on the staged paths, naming each one it skips;
-    elsewhere (the commit stage, the full gate) every check runs."""
-    if not commit:
+def commit_scope(*, commit: bool, after_hook: bool = False) -> Callable[[str], bool]:
+    """Whether a check runs, naming each one skipped: the hook (``commit``) runs those outside
+    COMMIT_STAGE_ONLY, and the commit stage after it (``after_hook``) only those inside, so each
+    check runs once; elsewhere (the composed merge, the full gate) every check runs."""
+    if not commit and not after_hook:
         return lambda label: True
 
     def runs(label: str) -> bool:
-        if runs_at_commit(label):
+        if runs_at_commit(label) is commit:
             return True
-        print(f"PLAYPEN_GATE_SKIPPED {label}: the commit stage runs it", flush=True)
+        print(
+            f"PLAYPEN_GATE_SKIPPED {label}: "
+            + ("the commit stage runs it" if commit else "the commit hook ran it"),
+            flush=True,
+        )
         return False
 
     return runs
+
+
+def after_the_hook(*, staged: bool) -> bool:
+    """The commit stage's guard, which judges a commit the hook already judged: its staged run
+    with the stage named (ALPHALATTICE_PIPELINE_STAGE=commit, set by the stage's runner)."""
+    return staged and os.environ.get("ALPHALATTICE_PIPELINE_STAGE") == "commit"
 
 
 @contextmanager
@@ -1031,20 +1038,64 @@ def _check_develop_conflict(*, staged: bool, base_ref: str = "develop") -> bool:
     return not files
 
 
-def _check_test_shape(*, staged: bool, base_ref: str = "develop", semgrep: bool = False) -> bool:
+def _check_test_shape(
+    *, staged: bool, base_ref: str = "develop", semgrep_only: bool = False
+) -> bool:
     """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
-    for the hook, the committed head against its merge base with `base_ref` for the stage."""
+    for the hook, the committed head against its merge base with `base_ref` for the stage. The
+    semgrep source rules are their own step (``semgrep_only``, source-semgrep): over the hook's
+    budget, the commit stage runs them."""
 
     started = perf_counter()
+    label = "source-semgrep" if semgrep_only else "test-shape"
     script = [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")]
-    if semgrep:
-        script.append("--semgrep")
-    result = _relay("test-shape", script if staged else [*script, "--base", base_ref])
-    print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
+    if semgrep_only:
+        script.append("--semgrep-only")
+    result = _relay(label, script if staged else [*script, "--base", base_ref])
+    print(f"PLAYPEN_GATE_TIMING {label} {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
 def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
+    """The test budget with each test file's holders kept by its path and bytes (the scan cache
+    the gate names, ALPHALATTICE_SCAN_CACHE_DIR): a change to one test re-reads every test's
+    holders, so the hook parses only the files that changed since its last commit."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.architecture import structural
+        from devtools.testing import requirements
+    finally:
+        sys.path.pop(0)
+    with structural.kept_facts("test-budget-holders", requirements):
+        return _test_budget(staged=staged, base_ref=base_ref)
+
+
+def _kept_holders(path: str, text: str) -> list[Any]:
+    """One test file's requirement holders, from the running scan's store when it holds them."""
+    from devtools.architecture import structural
+    from devtools.testing import requirements
+
+    rows = structural.kept_fact(
+        requirements,
+        "holders:" + path,
+        text.encode("utf-8", errors="surrogateescape"),
+        lambda data: [
+            list(holder)
+            for holder in requirements.file_holders(
+                path, data.decode("utf-8", errors="surrogateescape")
+            )
+        ],
+        lambda value: (
+            isinstance(value, list)
+            and all(isinstance(row, list) and len(row) == 4 for row in value)
+        ),
+    )
+    return [
+        requirements.Holder(node, tuple(ids), words, digest) for node, ids, words, digest in rows
+    ]
+
+
+def _test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     """Report growth and refuse unregistered new tests or requirement rows.
 
     Read the merge base and staged holders once; unreadable input never means zero.
@@ -1095,7 +1146,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         if staged and set(specs) - blobs.keys():
             raise RuntimeError("test holder snapshot unavailable; repair the index")
         projected = {
-            path: requirements.file_holders(
+            path: _kept_holders(
                 path, blobs[":" + path] if staged else (ROOT / path).read_text("utf-8")
             )
             for path in changed_tests & indexed
@@ -1109,13 +1160,9 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
             now = now if staged else disk.read_text("utf-8") if disk.is_file() else ""
             then = blobs.get(f"{base}:{path}", "") if path in before else ""
             later += (
-                projected[path]
-                if path in projected
-                else requirements.file_holders(path, now)
-                if now
-                else []
+                projected[path] if path in projected else _kept_holders(path, now) if now else []
             )
-            earlier += requirements.file_holders(path, then) if then else []
+            earlier += _kept_holders(path, then) if then else []
         pairs = staged_changes(ROOT, base=None if staged else base, tree=None if staged else "HEAD")
         fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
@@ -1153,7 +1200,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
                     raise RuntimeError("test holder snapshot unavailable; repair the index")
             for path in missing:
                 if staged or (ROOT / path).is_file():
-                    projected[path] = requirements.file_holders(
+                    projected[path] = _kept_holders(
                         path, more[":" + path] if staged else (ROOT / path).read_text("utf-8")
                     )
     except (
@@ -1366,7 +1413,22 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         return 0
 
     only = args.only is not None  # one step, as a child of the concurrent guard below
-    at_commit = commit_scope(commit=args.hook and args.staged and not only)
+    hook = args.hook and args.staged and not only
+    if hook:  # whole-tree facts (test-budget's holders) kept by blob across this checkout's commits
+        common = _quiet_run(
+            ("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+            cwd=ROOT,
+            capture_output=True,
+            encoding="utf-8",
+            stdin=subprocess.DEVNULL,
+            timeout=30,
+        )
+        if common.returncode == 0 and common.stdout.strip():
+            cache = Path(common.stdout.strip()) / "alphalattice-hook-facts"
+            os.environ.setdefault("ALPHALATTICE_SCAN_CACHE_DIR", str(cache))
+    at_commit = commit_scope(
+        commit=hook, after_hook=not args.hook and not only and after_the_hook(staged=args.staged)
+    )
     if args.fast and not only:
         _check_host_materialization(at_commit)
     if not args.fast and not only and not _require_private_structural_inputs():
@@ -1435,7 +1497,11 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
         (
             "test-shape",
-            lambda: _check_test_shape(staged=args.staged, base_ref=args.base, semgrep=True),
+            lambda: _check_test_shape(staged=args.staged, base_ref=args.base),
+        ),
+        (
+            "source-semgrep",
+            lambda: _check_test_shape(staged=args.staged, base_ref=args.base, semgrep_only=True),
         ),
         ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
         (

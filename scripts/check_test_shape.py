@@ -30,8 +30,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
 from devtools.testing import os_marks
-from devtools.testing.contracts import import_violations
-from devtools.testing.layout import REGISTRIES, new_data_file_problems, new_test_file_problems
+from devtools.testing.layout import (
+    REGISTRIES,
+    import_violations,
+    new_data_file_problems,
+    new_test_file_problems,
+)
 from devtools.testing.requirements import PROVES_LINE, file_holders
 from devtools.testing.requirements import parse as parse_requirements
 from devtools.testing.sizes import validate_policy
@@ -2021,7 +2025,39 @@ def _shape_args(argv: list[str] | None) -> argparse.Namespace:
         help="judge the committed head against its merge base with this ref (the commit stage)",
     )
     parser.add_argument("--semgrep", action="store_true", help="include the slower source rules")
+    parser.add_argument(
+        "--semgrep-only",
+        action="store_true",
+        help="only the slower source rules: the commit stage's share, as the hook runs the rest",
+    )
     return parser.parse_args(argv)
+
+
+def _semgrep_only(staged: list[str], sources: list[str], head: str) -> int:
+    """The semgrep source rules alone, held to the anti-pattern baseline as ``--semgrep`` holds
+    them: the commit stage runs them (over the hook's budget), and the hook runs every other rule
+    here, so no rule runs twice."""
+    python = [path for path in sources if path.endswith(".py") and not path.startswith("tests/")]
+    try:
+        texts = _blobs(
+            [head + path for path in (*python, *ANTIPATTERN_SIDES)]
+            + [head + ANTIPATTERN_SEMGREP, head + ANTIPATTERN_CASES]
+        )
+        if ANTIPATTERN_SEMGREP in staged or ANTIPATTERN_CASES in staged:
+            _semgrep_selftest(texts[head + ANTIPATTERN_SEMGREP], texts[head + ANTIPATTERN_CASES])
+        measured = semgrep_antipatterns(
+            {path: texts[head + path] for path in python}, texts[head + ANTIPATTERN_SEMGREP]
+        )
+        found = antipattern_growth(antipattern_sides(texts, head), measured)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print(
+            f"TEST-LAYOUT staged snapshot unreadable: {error}; restore the Git index and retry",
+            file=sys.stderr,
+        )
+        return 1
+    for line in found:
+        print(line, file=sys.stderr)
+    return 1 if found else 0
 
 
 def _shape_moves(base: str | None) -> tuple[dict[str, str], dict[str, str]]:
@@ -2071,6 +2107,8 @@ def main(argv: list[str] | None = None) -> int:
             or (path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml")))
         ],
     )
+    if args.semgrep_only:
+        return _semgrep_only(staged, anti_sources, head)
     try:
         moved, identical = _shape_moves(parents[0] if args.base else None)
         origin = {path: moved.get(path, path) for path in selected}
