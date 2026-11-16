@@ -962,7 +962,7 @@ def test_goal_show_reuses_identical_owner_read_but_verifies_every_reference(goal
     ids=["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"],
 )
 def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamper(
-    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, kept_here: bool
 ):
     """tamper: a Goal read answers from its sealed source kept since the attach, and a Goal export
     proves it in full and refuses a change by name."""
@@ -1056,8 +1056,9 @@ def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamp
     first = live.operations.execute(request)
     first_reads = len(source_reads)
     second = live.operations.execute(request)
-    # A read answers from the value kept since the attach; an export reads the bytes each time.
-    assert first_reads == (1 if exported else 0)
+    # A read answers from the value kept since the attach; an export, or a file system that keeps
+    # nothing, reads the bytes each time.
+    assert first_reads == (1 if exported or not kept_here else 0)
     assert len(source_reads) == 2 * first_reads
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")] * 2
     assert first == second
@@ -1087,7 +1088,8 @@ def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamp
     assert (path.stat().st_size, path.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
     tampered = live.operations.execute(request)
     assert len(calls) == 4
-    if not exported:
+    # Where nothing is kept, a read takes the changed bytes at their name and refuses them by name.
+    if not exported and kept_here:
         assert reference(tampered)["state"] == "VERIFIED_TASK_STATE"
         return
     assert reference(tampered)["state"] == "UNAVAILABLE"

@@ -504,7 +504,7 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
 
 @pytest.mark.parametrize("temporal", (False, True), ids=["fixed", "temporal"])
 def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
-    tmp_path, monkeypatch, temporal
+    tmp_path, monkeypatch, temporal, kept_here
 ):
     """Control: Monthly yaml runs and replays through existing workflow."""
     from alphalattice.control.research_program.authoring.dispatcher import (
@@ -652,19 +652,20 @@ alpha:
     assert opened[path] >= 1  # the run and its replay read the array in full
     original = path.read_bytes()
     # A complete readback keeps its value in the process (EV2): the array is not read again.
+    # Not kept: each readback reads the array once more.
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         verify_lifecycle_research,
     )
 
     seeded = opened[path]
-    for _ in range(2):
+    for readback in range(1, 3):
         assert (
             verify_lifecycle_research(
                 program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
             )
             == "CURRENT"
         )
-        assert opened[path] == seeded
+        assert opened[path] == (seeded if kept_here else seeded + readback)
 
     before = path.stat()
     path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))

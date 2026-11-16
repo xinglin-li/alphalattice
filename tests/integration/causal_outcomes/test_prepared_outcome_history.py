@@ -118,7 +118,9 @@ def _head(root, inventory):
     return LocalQAOutcomePreparationHead.model_validate_json(path.read_bytes())
 
 
-def test_artifact_preparation_keeps_the_source_owners_complete_validation(tmp_path, monkeypatch):
+def test_artifact_preparation_keeps_the_source_owners_complete_validation(
+    tmp_path, monkeypatch, kept_here
+):
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
     store.publish_model(category="market-inputs", value=source, identity_field="content_hash")
@@ -142,7 +144,8 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(tmp_pa
             source_category="market-inputs",
             content_hash=source.content_hash,
         )
-        assert len(validations) == 1
+        # Not kept: the preparation reloads and validates the source again.
+        assert len(validations) == (1 if kept_here else 2)
         expected, expected_bars, expected_axis = local_qa_snapshot_rows(
             value, sessions=_days(value), through=value.through
         )

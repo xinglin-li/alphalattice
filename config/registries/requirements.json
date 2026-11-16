@@ -1400,6 +1400,20 @@
       "layer": "unit",
       "seconds": 1
     },
+    "workspace_runtime.a_kept_value_follows_its_file": {
+      "description": "If a value kept for a sealed file answered after that file was gone or replaced at its path, a replay would prove an artifact the workspace no longer holds.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It removes and rewrites a real sealed file behind the store's process memory, which only the file system holds.",
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The memo's 20 existing tests state both file-system rules (kept, and not kept where no lifetime handle exists) instead of skipping there, as the review required",
+        "decided": "2026-11-15: Lead: the excess is the coverage of the second file-system rule; keep every check"
+      }
+    },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",
       "owner": "alphalattice.control.workspace_runtime",

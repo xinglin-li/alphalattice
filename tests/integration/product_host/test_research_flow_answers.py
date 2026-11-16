@@ -1485,7 +1485,9 @@ def _planned_task(registry: Any, kind: str, plan: dict[str, object]) -> str:
     return _admitted(registry, envelope, goal, work)
 
 
-def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(live, monkeypatch):
+def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
+    live, monkeypatch, kept_here
+):
     "Completed update metadata keeps exact target claim and sealed lookup."
     from alphalattice.control.product_host.composition.decision_advancement import (
         STAGES,
@@ -1595,9 +1597,14 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["published_at"] = "2026-10-03T00:00:00+00:00"
     stored.write_text(json.dumps(payload), encoding="utf-8")
-    # A read answers the sealed candidate at its name; full proof refuses the change (EV2).
+    # A kept read answers the sealed candidate; where nothing is kept, the read at its name refuses
+    # the changed bytes by name, as full proof does (EV2).
     held = _json(live, "/api/research-update/automation")["runs_forward"][0]["latest_update"]
-    assert held["claim"] == publication.claim
+    if kept_here:
+        assert held["claim"] == publication.claim
+    else:
+        assert held["status"] == "REFUSED"
+        assert held["failure_code"] == "content_store.artifact_tampered"
     with full_content_proof(), pytest.raises(ContentAddressedStoreError, match="tampered"):
         owner.ledger.content.load_model(
             category="decision-candidates",

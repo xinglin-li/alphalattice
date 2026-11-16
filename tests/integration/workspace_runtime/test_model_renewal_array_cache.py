@@ -37,7 +37,9 @@ def _payload() -> bytes:
 
 
 @pytest.mark.proves("alpha_research.lifecycle_arrays_kept_per_process")
-def test_arrays_are_shared_inside_nested_lifecycle_read_scope_and_kept_after(tmp_path, monkeypatch):
+def test_arrays_are_shared_inside_nested_lifecycle_read_scope_and_kept_after(
+    tmp_path, monkeypatch, kept_here
+):
     """requirement: lifecycle arrays are shared read-only inside nested admission scopes and stay
     kept in the process after them."""
     payload = _payload()
@@ -68,7 +70,8 @@ def test_arrays_are_shared_inside_nested_lifecycle_read_scope_and_kept_after(tmp
         assert third["targets"] is second["targets"]
 
     model_renewal._arrays(store, identity)
-    assert load_calls == 1  # the process keeps sealed arrays past the scope (EV2)
+    # The process keeps sealed arrays past the scope (EV2); where nothing is kept, decode again.
+    assert load_calls == (1 if kept_here else 2)
 
 
 @pytest.mark.proves("alpha_research.lifecycle_arrays_full_proof_refuses_tamper")
@@ -135,7 +138,7 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
 
 
 @pytest.mark.proves("alpha_research.lifecycle_arrays_kept_per_process")
-def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monkeypatch):
+def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monkeypatch, kept_here):
     """requirement: sealed lifecycle arrays are read and decoded once across scopes; full proof
     reads and decodes them again."""
     payload = _payload()
@@ -164,12 +167,16 @@ def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monke
     with content_store.verified_array_read_scope():
         second = model_renewal._arrays(store, identity)
 
-    assert reads == 1  # sealed bytes are read once per process, on every OS (EV2)
-    assert load_calls == 1
-    assert first["features"] is second["features"]
+    # Sealed bytes are read once per process where kept; where nothing is kept, each scope reads.
+    assert reads == (1 if kept_here else 2)  # sealed bytes are read once per process (EV2)
+    assert load_calls == (1 if kept_here else 2)
+    if kept_here:
+        assert first["features"] is second["features"]
+    else:
+        assert np.array_equal(first["features"], second["features"])
     with content_store.full_content_proof(), content_store.verified_array_read_scope():
         third = model_renewal._arrays(store, identity)
-    assert reads == load_calls == 2  # full proof reads and decodes the bytes again
+    assert reads == load_calls == (2 if kept_here else 3)  # full proof reads and decodes again
     assert third["features"] is not second["features"]
 
 

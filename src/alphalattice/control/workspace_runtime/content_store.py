@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import base64
 import copy
+import ctypes
 import functools
 import hashlib
 import json
 import marshal
 import os
 import shutil
+import sys
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -178,7 +180,18 @@ def verified_source_value[T](
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
         return builder()
-    key = ("sealed-source", *identity, *(os.fspath(path.absolute()) for path in sources))
+    facts = tuple(_file_identity(path) for path in sources)
+    if None in facts:  # a source that cannot be read keeps nothing; its builder names the failure
+        token = _VERIFIED_SOURCE_BUILD.set(True)
+        try:
+            return builder()
+        finally:
+            _VERIFIED_SOURCE_BUILD.reset(token)
+    key = (
+        "sealed-source",
+        *identity,
+        *((os.fspath(path.absolute()), fact) for path, fact in zip(sources, facts, strict=True)),
+    )
     proved = _FULL_PROOF.get()
     while True:
         with _VERIFIED_ARRAY_CACHE_LOCK:
@@ -545,6 +558,52 @@ def verified_model_read_scope() -> Iterator[None]:
             _VERIFIED_MODEL_SCOPE.reset(scope_token)
 
 
+def _file_identity(path: Path) -> tuple[object, ...] | None:
+    """The file now at ``path`` for its lifetime, or None when none can be named there.
+
+    A kept value is bound to it, so a file gone from its path, or another file put there, is read
+    again rather than answered from memory: a test's numbered tmp_path is reused once pytest
+    removes a passing test's folder, and a restored workspace sits at its old path. A sealed file
+    rewritten in place is still the same file: an ordinary read keeps the bytes proved when they
+    entered, and full proof refuses the change (EV2).
+
+    Linux gives a freed inode number to the next new file at once, so there the file is named by
+    its file handle, the inode number with its generation (name_to_handle_at). Elsewhere the file
+    id, which NTFS and APFS do not give again at once, is bound to the file's creation time. A
+    file system that names no handle (9p, an overlay without one) keeps nothing."""
+    try:
+        if sys.platform == "linux":
+            return _file_handle(path)
+        stat = os.stat(path)
+        return (stat.st_dev, stat.st_ino, stat.st_birthtime)
+    except OSError:
+        return None
+
+
+class _FileHandle(ctypes.Structure):
+    """Linux's struct file_handle, with room for the largest handle (MAX_HANDLE_SZ)."""
+
+    _fields_ = [
+        ("handle_bytes", ctypes.c_uint),
+        ("handle_type", ctypes.c_int),
+        ("f_handle", ctypes.c_ubyte * 128),
+    ]
+
+
+_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform == "linux" else None
+
+
+def _file_handle(path: Path) -> tuple[object, ...] | None:
+    """The mount and file handle of the file at ``path``, following a link as os.stat does."""
+    handle, mount = _FileHandle(handle_bytes=128), ctypes.c_int()
+    named = getattr(_LIBC, "name_to_handle_at", None)
+    at_cwd, follow = -100, 0x400  # AT_FDCWD, AT_SYMLINK_FOLLOW
+    pointers = (ctypes.byref(handle), ctypes.byref(mount))
+    if named is None or named(at_cwd, os.fsencode(path), *pointers, follow):
+        return None
+    return (mount.value, handle.handle_type, bytes(handle.f_handle[: handle.handle_bytes]))
+
+
 def _deeply_immutable_model(value: BaseModel) -> bool:
     """Whether a frozen Pydantic model contains only recursively immutable values."""
     if not value.model_config.get("frozen"):
@@ -847,9 +906,10 @@ class ContentAddressedStore:
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.json"
         scope = _VERIFIED_MODEL_SCOPE.get()
-        cacheable = scope is not None and model.model_config.get("frozen")
+        fact = _file_identity(target) if scope is not None else None
+        cacheable = fact is not None and model.model_config.get("frozen")
 
-        key = (os.fspath(target.absolute()), content_hash, model, identity_field)
+        key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
 
         def verify() -> ContractT:
             if cacheable:

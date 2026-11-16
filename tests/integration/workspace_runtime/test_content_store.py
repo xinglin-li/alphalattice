@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from queue import Queue
-from threading import Barrier, BoundedSemaphore, Event, Lock, Thread, current_thread
+from threading import Barrier, BoundedSemaphore, Event, Lock, Semaphore, Thread, current_thread
 from typing import ClassVar, Literal
 from uuid import uuid4
 
@@ -78,7 +78,9 @@ class _ReadPlan(_FrozenReadRecord):
     validation_calls: ClassVar[int] = 0
 
 
-def test_verified_plan_reuses_frozen_dataclass_request_without_bypassing_validation(tmp_path):
+def test_verified_plan_reuses_frozen_dataclass_request_without_bypassing_validation(
+    tmp_path, kept_here
+):
     store = _store(tmp_path)
     plan = _ReadPlan(
         content_hash="a" * 64,
@@ -101,8 +103,8 @@ def test_verified_plan_reuses_frozen_dataclass_request_without_bypassing_validat
             model=_ReadPlan,
             identity_field="content_hash",
         )
-    assert first is second and first == plan
-    assert _ReadPlan.validation_calls == 1
+    assert first == second == plan and (first is second) is kept_here
+    assert _ReadPlan.validation_calls == (1 if kept_here else 2)
 
 
 def _published_read_record(tmp_path: Path, *, root: str = "store"):
@@ -130,7 +132,7 @@ def _load_read_record(
 
 @pytest.mark.proves("workspace_runtime.sealed_value_built_once_per_process")
 def test_a_verified_model_is_shared_inside_a_request_and_kept_in_the_process(
-    tmp_path: Path,
+    tmp_path: Path, kept_here: bool
 ):
     """requirement: a validated sealed model is shared inside a request and kept in the process;
     only full proof validates it again."""
@@ -142,25 +144,28 @@ def test_a_verified_model_is_shared_inside_a_request_and_kept_in_the_process(
         first = _load_read_record(store, identity)
         with verified_model_read_scope():
             second = _load_read_record(second_owner_store, identity)
-        assert _load_read_record(store, identity) is first
-        assert second is first
-    assert _FrozenReadRecord.validation_calls == 1
+        third = _load_read_record(store, identity)
+        assert third == second == first
+        assert (third is first, second is first) == (kept_here, kept_here)
+    # where the file system names no file for its lifetime, nothing is kept: every read validates
+    assert _FrozenReadRecord.validation_calls == (1 if kept_here else 3)
 
     with verified_model_read_scope():
         assert _load_read_record(store, identity) == first
-    assert _FrozenReadRecord.validation_calls == 1
+    assert _FrozenReadRecord.validation_calls == (1 if kept_here else 4)
 
     # A sealed model's bytes never change under its name (EV2): the process keeps it past the
     # request, and only full proof validates it again.
-    assert _load_read_record(store, identity) is first
-    assert _FrozenReadRecord.validation_calls == 1
+    again = _load_read_record(store, identity)
+    assert again == first and (again is first) is kept_here
+    assert _FrozenReadRecord.validation_calls == (1 if kept_here else 5)
     with full_content_proof(), verified_model_read_scope():
         assert _load_read_record(store, identity) == first
-    assert _FrozenReadRecord.validation_calls == 2
+    assert _FrozenReadRecord.validation_calls == (2 if kept_here else 6)
 
 
 @pytest.mark.proves("workspace_runtime.sealed_value_built_once_per_process")
-def test_concurrent_model_read_scopes_share_one_validation(tmp_path: Path):
+def test_concurrent_model_read_scopes_share_one_validation(tmp_path: Path, kept_here: bool):
     """requirement: concurrent requests reading one sealed model share one validation and each
     answers the same value."""
 
@@ -178,8 +183,8 @@ def test_concurrent_model_read_scopes_share_one_validation(tmp_path: Path):
     with ThreadPoolExecutor(max_workers=2) as executor:
         outcomes = tuple(executor.map(lambda _index: request_read(), range(2)))
 
-    assert outcomes == (True, True)
-    assert _FrozenReadRecord.validation_calls == 1
+    assert outcomes == (kept_here, kept_here)
+    assert _FrozenReadRecord.validation_calls == (1 if kept_here else 4)
 
 
 def test_verified_model_cache_keys_include_store_namespace_model_and_identity_field(
@@ -254,6 +259,36 @@ def test_full_proof_refuses_a_missing_model_file_behind_a_kept_value(tmp_path: P
         _load_read_record(store, identity)
     assert str(missing.value) == f"content_store.artifact_missing:{identity}"
     assert _FrozenReadRecord.validation_calls == 1
+
+
+@pytest.mark.proves("workspace_runtime.a_kept_value_follows_its_file")
+def test_a_kept_model_is_never_answered_for_a_file_gone_or_replaced_at_its_path(
+    tmp_path, kept_here
+):
+    """A model kept for a file is read again once that file is gone or a new file stands at its
+    path, as a reused test folder or a restored workspace leaves it; outside full proof too."""
+    _FrozenReadRecord.validation_calls = 0
+    store, identity, path = _published_read_record(tmp_path)
+    other = path.with_name("other.json")
+    other.write_bytes(path.read_bytes())  # made while the first file stands: never its file id
+    with verified_model_read_scope():
+        _load_read_record(store, identity)
+    path.unlink()
+    with verified_model_read_scope(), pytest.raises(ContentAddressedStoreError) as missing:
+        _load_read_record(store, identity)
+    assert str(missing.value) == f"content_store.artifact_missing:{identity}"
+
+    os.replace(other, path)  # the same bytes in another file at the same path
+    with verified_model_read_scope():
+        _load_read_record(store, identity)
+        _load_read_record(store, identity)
+    assert _FrozenReadRecord.validation_calls == (2 if kept_here else 3)  # once per file, if kept
+    kept = path.read_bytes()
+    path.unlink()
+    path.write_bytes(kept)  # made again at once: Linux gives it the freed inode number
+    with verified_model_read_scope():
+        _load_read_record(store, identity)
+    assert _FrozenReadRecord.validation_calls == (3 if kept_here else 4)  # made again: read
 
 
 def test_failed_model_verification_is_never_cached(tmp_path: Path):
@@ -531,18 +566,18 @@ def _proved(read):
 
 
 @pytest.mark.proves("workspace_runtime.sealed_value_built_once_per_process")
-def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(tmp_path):
+def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(tmp_path, kept_here):
     """requirement: a value built from sealed sources answers every later read in the process;
     full proof (an export, a stage's check, the scrub) builds it from the bytes again."""
     read, calls = _reader(tmp_path / "sealed.bin")
     first = read()
-    assert first is read()
+    assert (first is read()) is kept_here  # where nothing is kept, every read builds
     assert first == b"sealed"
-    assert len(calls) == 1
+    assert len(calls) == (1 if kept_here else 2)
     assert _proved(read) == b"sealed"
-    assert len(calls) == 2
+    assert len(calls) == (2 if kept_here else 3)
     read()
-    assert len(calls) == 2
+    assert len(calls) == (2 if kept_here else 4)
 
 
 @pytest.mark.proves("workspace_runtime.full_proof_refuses_a_changed_sealed_file")
@@ -551,9 +586,11 @@ def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(tmp
     ("same-size-restored-time", "atomic-replacement", "recreate"),
     ids=["same-size-restored-time", "atomic-replacement", "recreate"],
 )
-def test_a_changed_sealed_file_reads_at_its_name_and_full_proof_refuses_it(tmp_path, change):
-    """tamper: a sealed file changed under its name, its size and time restored, is refused by
-    full proof by name; an ordinary read keeps the bytes proved when they entered."""
+def test_a_changed_sealed_file_reads_at_its_name_and_full_proof_refuses_it(
+    tmp_path, change, kept_here
+):
+    """tamper: a sealed file changed under its name is refused by name by full proof; an ordinary
+    read keeps its proved bytes only while the same file stands at the name."""
     path = tmp_path / "source" / "sealed.bin"
     read, calls = _reader(path)
     read()
@@ -568,8 +605,12 @@ def test_a_changed_sealed_file_reads_at_its_name_and_full_proof_refuses_it(tmp_p
     else:
         path.write_bytes(b"broken")
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-    assert read() == b"sealed"
-    assert len(calls) == 1
+    if change == "same-size-restored-time" and kept_here:  # the same file, kept
+        assert read() == b"sealed"
+        assert len(calls) == 1
+    else:
+        with pytest.raises(ValueError, match="sealed bytes changed"):
+            read()
     with pytest.raises(ValueError, match="sealed bytes changed"):
         _proved(read)
 
@@ -603,7 +644,9 @@ def test_a_sealed_read_holds_no_file_open_and_starts_no_thread(tmp_path):
 
 
 @contextmanager
-def _concurrent_source_reads(read, entered, release, monkeypatch):
+def _concurrent_source_reads(read, entered, release, monkeypatch, kept):
+    """Four readers of one source at once. Where the store keeps values, three wait on the first
+    one's producer; where it keeps nothing, each enters its own builder."""
     waiting = Queue()
     result = Future.result
 
@@ -624,13 +667,16 @@ def _concurrent_source_reads(read, entered, release, monkeypatch):
     workers = [Thread(target=request, name="source-producer")]
     try:
         workers[0].start()
-        assert entered.wait(timeout=5)
+        assert entered.acquire(timeout=5)
         for index in range(3):
             worker = Thread(target=request, name=f"source-waiter-{index}")
             workers.append(worker)
             worker.start()
         for _ in range(3):
-            waiting.get(timeout=5)
+            if kept:
+                waiting.get(timeout=5)
+            else:
+                assert entered.acquire(timeout=5)
         yield outcomes
     finally:
         release.set()
@@ -641,13 +687,13 @@ def _concurrent_source_reads(read, entered, release, monkeypatch):
 
 @pytest.mark.proves("workspace_runtime.sealed_reads_share_one_producer")
 def test_concurrent_reads_of_one_source_share_one_producer_without_blocking_other_keys(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, kept_here
 ):
     """requirement: concurrent readers of one sealed source share one producer and never block
     another source."""
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
-    entered, release = Event(), Event()
+    entered, release = Semaphore(0), Event()
     calls = []
     other, other_calls = _reader(tmp_path / "independent.bin")
 
@@ -655,7 +701,7 @@ def test_concurrent_reads_of_one_source_share_one_producer_without_blocking_othe
         calls.append(True)
         payload = path.read_bytes()
         assert payload == b"sealed"
-        entered.set()
+        entered.release()
         assert release.wait(timeout=5)
         return payload
 
@@ -671,36 +717,37 @@ def test_concurrent_reads_of_one_source_share_one_producer_without_blocking_othe
                 nbytes=6,
             )
 
-    with _concurrent_source_reads(read, entered, release, monkeypatch) as outcomes:
+    builders = 1 if kept_here else 4  # where nothing is kept, each reader builds its own
+    with _concurrent_source_reads(read, entered, release, monkeypatch, kept_here) as outcomes:
         independent = Thread(target=other, name="independent-source")
         independent.start()
         independent.join(timeout=5)
         assert not independent.is_alive()
         assert len(other_calls) == 1
-        assert len(calls) == 1
+        assert len(calls) == builders
     assert len(outcomes) == 4
     assert all(value == b"sealed" and error is None for value, error in outcomes)
-    assert len(calls) == 1
+    assert len(calls) == builders
     assert read() == b"sealed"
-    assert len(calls) == 1
+    assert len(calls) == (1 if kept_here else 5)
 
 
 @pytest.mark.proves("workspace_runtime.sealed_reads_share_one_producer")
 @pytest.mark.parametrize("fault", ("builder", "invalid-size"), ids=["builder", "invalid-size"])
 def test_concurrent_producer_failure_releases_waiters_and_later_reads_verify_again(
-    tmp_path, monkeypatch, fault
+    tmp_path, monkeypatch, fault, kept_here
 ):
     """requirement: a failed producer releases its waiters with its refusal, and a later read builds
     again."""
     path = tmp_path / "sealed.bin"
     path.write_bytes(b"sealed")
-    entered, release = Event(), Event()
+    entered, release = Semaphore(0), Event()
     calls = []
     failing = True
 
     def verify():
         calls.append(True)
-        entered.set()
+        entered.release()
         assert release.wait(timeout=5)
         if failing and fault == "builder":
             raise ValueError("sealed verification failed")
@@ -718,14 +765,18 @@ def test_concurrent_producer_failure_releases_waiters_and_later_reads_verify_aga
                 nbytes=lambda value: -1 if failing and fault == "invalid-size" else len(value),
             )
 
-    with _concurrent_source_reads(read, entered, release, monkeypatch) as outcomes:
-        assert len(calls) == 1
-    assert len(calls) == 1
+    builders = 1 if kept_here else 4  # where nothing is kept, each reader builds its own
+    with _concurrent_source_reads(read, entered, release, monkeypatch, kept_here) as outcomes:
+        assert len(calls) == builders
+    assert len(calls) == builders
     assert len(outcomes) == 4
-    assert all(value is None and isinstance(error, ValueError) for value, error in outcomes)
+    if kept_here or fault == "builder":
+        assert all(value is None and isinstance(error, ValueError) for value, error in outcomes)
+    else:  # a size is measured only to keep a value; where nothing is kept, each reader has it
+        assert all(value == b"sealed" and error is None for value, error in outcomes)
     failing = False
     assert read() == b"sealed"
-    assert len(calls) == 2
+    assert len(calls) == builders + 1
 
 
 @pytest.mark.proves("workspace_runtime.sealed_reads_share_one_producer")
@@ -922,7 +973,9 @@ def test_nested_parallel_checks_finish_without_waiting_for_their_own_pool():
 
 
 @pytest.mark.proves("workspace_runtime.parallel_source_checks_are_bounded_and_isolated")
-def test_parallel_checks_inherit_declared_source_ownership_without_nested_retention(tmp_path):
+def test_parallel_checks_inherit_declared_source_ownership_without_nested_retention(
+    tmp_path, kept_here
+):
     """requirement: a check inside an owner's build inherits its ownership and keeps nothing of its
     own."""
     path = tmp_path / "sealed.bin"
@@ -945,13 +998,14 @@ def test_parallel_checks_inherit_declared_source_ownership_without_nested_retent
                 proof,
                 nbytes=0,
             )
-    assert len(calls) == 2
+    owners = 1 if kept_here else 2  # where nothing is kept, the owner builds at every read
+    assert len(calls) == 2 * owners
     assert read() == b"sealed"
-    assert len(calls) == 3
+    assert len(calls) == 2 * owners + 1
 
 
 @pytest.mark.proves("workspace_runtime.source_owner_keeps_one_copy")
-def test_complete_source_owner_does_not_retain_nested_packed_bytes(tmp_path):
+def test_complete_source_owner_does_not_retain_nested_packed_bytes(tmp_path, kept_here):
     """requirement: a complete owner keeps its value and none of the packed bytes its nested reader
     built."""
     path = tmp_path / "sealed.bin"
@@ -964,15 +1018,16 @@ def test_complete_source_owner_does_not_retain_nested_packed_bytes(tmp_path):
     for _ in range(2):
         with verified_model_read_scope():
             verified_source_value((_RUN[0], "complete-proof", expected), (path,), proof, nbytes=0)
-    assert len(calls) == 1
+    owners = 1 if kept_here else 2  # where nothing is kept, the owner builds at every read
+    assert len(calls) == owners
     # The nested reader built in full but kept no duplicate byte cache.
     read()
-    assert len(calls) == 2
+    assert len(calls) == owners + 1
 
 
 @pytest.mark.proves("workspace_runtime.source_owner_keeps_one_copy")
 def test_complete_source_owner_retains_decoded_values_without_a_second_process_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, kept_here
 ):
     """requirement: a complete owner keeps its decoded arrays read-only and once, without a second
     process copy."""
@@ -1010,16 +1065,18 @@ def test_complete_source_owner_retains_decoded_values_without_a_second_process_c
     first = read("one")
     second = read("two")
     assert decodes == 2  # intermediate NPZ cache was not independently retained
-    assert first is read("one")
-    assert second is read("two")
-    assert decodes == 2
+    again = (read("one"), read("two"))
+    assert (again[0] is first, again[1] is second) == (kept_here, kept_here)
+    assert decodes == (2 if kept_here else 4)  # where nothing is kept, every read decodes
     assert np.array_equal(first[0][1], np.arange(8))
     with pytest.raises(ValueError, match="WRITEABLE"):
         first[0][1].setflags(write=True)
 
 
 @pytest.mark.proves("workspace_runtime.source_owner_keeps_one_copy")
-def test_every_source_in_a_proof_is_proved_and_mutable_results_are_not_retained(tmp_path):
+def test_every_source_in_a_proof_is_proved_and_mutable_results_are_not_retained(
+    tmp_path, kept_here
+):
     """requirement: full proof checks every source an owner declares, and a mutable result is never
     kept."""
     paths = tuple(tmp_path / f"source-{index}.bin" for index in range(2))
@@ -1044,7 +1101,7 @@ def test_every_source_in_a_proof_is_proved_and_mutable_results_are_not_retained(
                 verify,
                 nbytes=6,
             )
-    assert len(calls) == 1
+    assert len(calls) == (1 if kept_here else 2)  # where nothing is kept, every read builds
     paths[1].write_bytes(b"broken")
     with full_content_proof(), pytest.raises(ValueError, match="sealed bytes changed"):
         verified_source_value(
