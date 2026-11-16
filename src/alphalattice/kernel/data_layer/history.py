@@ -199,7 +199,9 @@ def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[N
     # attached, not only the parent: the step's baggage is what its worker calls carry on
     token = context.attach(context_of(headers, workspace_id=_open["workspace"]))
     try:
-        with provider.get_tracer("host").start_as_current_span(name, attributes=attributes):
+        with provider.get_tracer("host").start_as_current_span(
+            name, attributes=attributes, record_exception=False
+        ):
             yield
     finally:
         context.detach(token)

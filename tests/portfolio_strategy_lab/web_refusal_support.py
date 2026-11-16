@@ -36,7 +36,11 @@ from alphalattice.interface.local_application.failure_codes import untyped_failu
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
+from alphalattice.interface.local_application.web import (
+    SESSION_COOKIE,
+    SESSION_HEADER,
+    LocalWebResponse,
+)
 
 HASH = "a" * 64
 TASK = "00000000-0000-4000-8000-000000000001"
@@ -369,8 +373,10 @@ def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
 
 
 def loopback_request(
-    connection: HTTPConnection, live: Any, probe: RouteProbe
+    connection: HTTPConnection | None, live: Any, probe: RouteProbe
 ) -> tuple[int, dict[str, Any]]:
+    """The probe over the loopback socket; with no connection, through the two calls the Host's
+    HTTP server makes for it (preflight, dispatch), skipping only the socket and HTTP parsing."""
     route, fields = probe.route, dict(probe.fields)
     target, body = route.path, b""
     if route.method == "GET" and fields:
@@ -401,17 +407,20 @@ def loopback_request(
                 "Origin": f"http://127.0.0.1:{live.web.bound_port}",
             }
         )
-    connection.request(route.method, target, body=body, headers=headers)
-    response = connection.getresponse()
-    raw = response.read()
-    assert response.getheader("Content-Type", "").startswith("application/json"), (
-        probe.key,
-        response.status,
-        raw[:200],
-    )
+    if connection is None:
+        headers |= {"Host": f"127.0.0.1:{live.web.bound_port}", "Content-Length": str(len(body))}
+        outcome = application.preflight(method=route.method, target=target, headers=headers)
+        if not isinstance(outcome, LocalWebResponse):
+            outcome = application.dispatch(outcome, body)
+        status, kind, raw = int(outcome.status), outcome.content_type, outcome.body
+    else:
+        connection.request(route.method, target, body=body, headers=headers)
+        response = connection.getresponse()
+        status, kind, raw = response.status, response.getheader("Content-Type", ""), response.read()
+    assert kind.startswith("application/json"), (probe.key, status, raw[:200])
     answer = json.loads(raw)
     assert isinstance(answer, dict), (probe.key, answer)
-    return response.status, answer
+    return status, answer
 
 
 def assert_owner_refusal(answer: dict[str, Any], case: RefusalCase) -> None:
@@ -468,14 +477,18 @@ def exercise_matrix(
 ) -> None:
     cases = tuple(cases)
     assert cases and live.web is not None
-    # One real persistent loopback connection avoids thousands of TIME_WAIT ports.
+    # Each handler x case runs once through the Host's preflight and dispatch; the socket and
+    # HTTP parsing around them are the same for every case, so only a route's first case
+    # crosses them, on one persistent loopback connection.
     with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
         for probe in probes:
             original_handler = probe.route.handler
-            for case in cases:
+            for index, case in enumerate(cases):
                 with monkeypatch.context() as patch:
                     counter = inject_public_refusal(patch, live, probe, case)
-                    status, answer = loopback_request(connection, live, probe)
+                    status, answer = loopback_request(
+                        connection if index == 0 else None, live, probe
+                    )
                 label = (probe.key, case.name, probe.seam)
                 assert counter["calls"] == 1, (label, "owner not reached", status, answer)
                 assert live.web.application.routes[probe.key].handler is original_handler, label
