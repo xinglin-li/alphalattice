@@ -39,7 +39,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.project import definition_id
-from alphalattice.kernel.data_layer.root import load_extensions, schema_text, statements
+from alphalattice.kernel.data_layer.root import load_extensions, schema_text, sql_path, statements
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -114,7 +114,7 @@ class StorePort:
             config={"autoinstall_known_extensions": False, "autoload_known_extensions": False},
         )
         load_extensions(lake)
-        machine, data = (root / "machine").as_posix(), (root / "data").as_posix()
+        machine, data = sql_path(root / "machine"), sql_path(root / "data")
         for sql in (
             f"ATTACH 'ducklake:sqlite:{machine}/catalog.sqlite' AS lake"
             f" (DATA_PATH '{data}/', DATA_INLINING_ROW_LIMIT 1000)",
@@ -153,14 +153,12 @@ class StorePort:
         parquet = self.root / "staging" / staged.admission_id / f"{staged.table}.parquet"
         columns = {
             row[0]
-            for row in self.lake.execute(
-                f"DESCRIBE SELECT * FROM '{parquet.as_posix()}'"
-            ).fetchall()
+            for row in self.lake.execute(f"DESCRIBE SELECT * FROM '{sql_path(parquet)}'").fetchall()
         }
         named = {("provider", staged.provider_id)}
         for column, family in LINEAGES.items():
             if column in columns and column != "provider_id":
-                found = self.lake.execute(f"SELECT DISTINCT {column} FROM '{parquet.as_posix()}'")
+                found = self.lake.execute(f"SELECT DISTINCT {column} FROM '{sql_path(parquet)}'")
                 named |= {(family, value) for (value,) in found.fetchall()}
         for family, value in sorted(named):
             known = self.log.read(
@@ -193,7 +191,7 @@ class StorePort:
         carrying the event it owes."""
         table, admission = staged.table, staged.admission_id
         parquet = self.root / "staging" / admission / f"{table}.parquet"
-        source = f"read_parquet('{parquet.as_posix()}')"
+        source = f"read_parquet('{sql_path(parquet)}')"
         world = table in WORLD_KEYS
         key = WORLD_KEYS[table] if world else RESULTS_KEYS[table]
         same = " AND ".join(f"t.{k} = n.{k}" for k in key)

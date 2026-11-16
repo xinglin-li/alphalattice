@@ -15212,6 +15212,13 @@
    "successor": "4d3a10eb059da8cab0289ed13dc9638a7c3f8b19ab3899aaf31eca436fef2f7d",
    "change": "A kept read is never answered for a file replaced at its path",
    "reason": "lawful code-closure move, values equal: the card changes only content_store's in-process memo key (a kept value is bound to its file's lifetime, so a recreated file never inherits it); no stored value, schema or result changes; the three moved roles (conditional_decision_advancement, portfolio_updates, strategy_calibration) moved because content_store.py is in their source closure; the memo holders pass in both orders and on both file-system rules"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "b4e98a97c128c94179695add42f8acf0bd2c9faf679786fc870cb1d9fedfd67b",
+   "successor": "897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457",
+   "change": "Improve storage path handling and explain refusal recovery",
+   "reason": "The retrieval binding's code changed only in what its sealed-canary refusal says: on a machine where the full-precision recipe does not match, the refusal now names the way on (rebuild the index under the current int8 recipe), in English and Chinese. No sealed value changed, the refusal still closes, and no other role moved."
   }
  ]
 }

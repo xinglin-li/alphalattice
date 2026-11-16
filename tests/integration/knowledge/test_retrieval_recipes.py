@@ -514,11 +514,20 @@ def test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads(
     with pytest.raises(KnowledgeRetrievalError, match="at 8 intra-op threads") as refused:
         reranking.LocalCrossEncoderAdapter(tmp_path, spec, threads=8)
     assert refused.value.failure.code == "retrieval.execution_canary_mismatch"
+    assert "rebuild" in str(refused.value) and "int8" in str(refused.value)
+    from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
+
+    language = ANSWER_LANGUAGE.set("zh")
+    try:
+        assert worded(str(refused.value)) != str(refused.value)
+    finally:
+        ANSWER_LANGUAGE.reset(language)
     # A live canary (the int8 recipe) is this machine's score at one thread, asked first.
     int8 = HybridIndexSpec.for_recipe(RECIPE_MINILM_INT8_CPU)
     with embeddings.VERIFIED_PACKS.threads_for(7):  # the CPU budget's share, never min(4, cpus)
         assert reranking.reranker_session_threads(int8) == 7
         assert embeddings.embedding_session_threads(int8) == 7
     assert reranking.LocalCrossEncoderAdapter(tmp_path, int8, threads=8).threads == 8
-    with pytest.raises(KnowledgeRetrievalError, match="at 8 intra-op threads"):
+    with pytest.raises(KnowledgeRetrievalError, match="at 8 intra-op threads") as live_refused:
         reranking.LocalCrossEncoderAdapter(tmp_path, int8, threads=8)
+    assert "rebuild" not in str(live_refused.value)

@@ -309,9 +309,18 @@ def test_a_body_a_live_ref_holds_is_never_deleted(root):
 def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkeypatch):
     """One admission's rows share the known_at its event names, which rises though the wall clock
     steps back; the as-of read sees them before their correction and the correction after it."""
+    root = root.parent / "o'brien" / "data"
+    create_data_root(root)
     wall = [host.time.time_ns()]
     monkeypatch.setattr(host, "time", type("Wall", (), {"time_ns": staticmethod(lambda: wall[0])}))
     with HostLog.open(root) as log:
+        key = {"family": "provider", "name": "yf", "version": 1}
+        log.record(
+            "definition.registered",
+            ("definition", "provider/yf"),
+            key,
+            text=canonical(key | {"text": "The yf provider."}).decode(),
+        )
         port = StorePort.open(root, log)
         with stage(root, "raw_bar", YF, bars(3)) as first:
             port.commit(first)

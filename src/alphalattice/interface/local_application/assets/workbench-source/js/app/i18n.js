@@ -249,6 +249,12 @@ const I18N = (() => {
       interpolate(words[key][locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) + raw.match(/\s*$/)[0];
   }
   function registeredUnitStop(s) {
+    const legacy = typeof MESSAGE_WORDS === 'undefined' ? null : MESSAGE_WORDS['retrieval.legacy_canary_rebuild'];
+    if (legacy) {
+      const parts = legacy.en.split('{subject}'), pattern = '^' + parts.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.*?)') + '$';
+      const match = s.match(new RegExp(pattern));
+      if (match) { let i = 0; return legacy['zh-CN'].replace(/\{subject\}/g, () => match[++i]); }
+    }
     // The unit's recorded cause and way on follow this registered sentence.
     const unitStop = typeof MESSAGE_WORDS === 'undefined' ? null : MESSAGE_WORDS['evidence.unit_stopped'];
     if (!unitStop) return null;

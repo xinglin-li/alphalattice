@@ -646,7 +646,7 @@ class LocalCrossEncoderAdapter:
         if expected is not None and self._canary(self._encoder) != expected:
             # The canary pair's raw score, before rounding: a session that moves
             # a number on this machine at these threads is refused by name.
-            raise canary_mismatch("cross-encoder", self.threads)
+            raise canary_mismatch("cross-encoder", self.threads, spec)
 
     def _canary(self, encoder: Any) -> str:
         raw = list(

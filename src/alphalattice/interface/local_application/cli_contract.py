@@ -2044,8 +2044,7 @@ def _chinese(detail: str) -> str:
     table = _zh()
     if detail in table:
         return table[detail]
-    # A filled sentence reads through its template's key, `{subject}` and all, as the page
-    # reads it: the door's table words ten sentences around a code's subject.
+    # A filled sentence reads through its template, as the page does.
     for template, words in _zh_templates():
         found = template.fullmatch(detail)
         if found is not None:
@@ -2059,11 +2058,12 @@ def _chinese(detail: str) -> str:
 
 @functools.cache
 def _zh_templates() -> tuple[tuple[re.Pattern[str], str], ...]:
-    """The Chinese table's `{subject}` sentences, each as the pattern of its filled English,
-    every slot a group of its own."""
+    """Registered and legacy subject templates, one group per slot."""
     return tuple(
         (re.compile(re.escape(key).replace(re.escape("{subject}"), "(.+?)")), value)
-        for key, value in _zh().items()
+        for key, value in (
+            dict(_zh()) | {k: v["zh-CN"] for k, v in catalog_words().items()}
+        ).items()
         if "{subject}" in key
     )
 

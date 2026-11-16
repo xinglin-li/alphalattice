@@ -866,6 +866,11 @@
   "detail": "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`alphalattice research-update show --package <package>` names it), then plan the update again.",
   "next_action": "CANCEL_THE_UPDATE_AND_PLAN_AGAIN"
  },
+ "research_update.features_binding_invalid": {
+  "message_id": "research_update.features_binding_invalid",
+  "detail": "research_update.features_binding_invalid",
+  "next_action": "READ_UPDATE_AND_PLAN_AGAIN"
+ },
  "research_input.publication_unavailable": {
   "detail": "The publication record cannot be read. Inspect the workspace (`alphalattice workspace show`), storage and kept backups (`alphalattice backup list`); restore a generation that holds it into a new directory before reading this input there. No input identity or published state is inferred from unreadable bytes.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_THE_PUBLICATION"

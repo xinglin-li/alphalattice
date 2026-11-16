@@ -1345,8 +1345,12 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     """Owner-supplied words and routes stay exact when registered metadata is added."""
 
     from alphalattice.interface.local_application.cli_contract import (
+        ANSWER_LANGUAGE,
         refusal_problem,
         worded_refusal,
+    )
+    from alphalattice.interface.local_application.cli_contract import (
+        worded as translated,
     )
     from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebApplication
 
@@ -1362,6 +1366,17 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     assert panel_words["status"] == "REFUSED" and panel_words["failure_code"] == panel_code
     assert panel_words["next_action"] == "DATA_UPDATE_READBACK"
     assert refusal_problem(panel_words) is None
+    binding = worded_refusal(
+        {"status": "REFUSED", "failure_code": "research_update.features_binding_invalid"}
+    )
+    assert "feature" in binding["detail"] and "plan" in binding["detail"]
+    assert binding["next_action"] == "READ_UPDATE_AND_PLAN_AGAIN"
+    assert refusal_problem(binding) is None
+    language = ANSWER_LANGUAGE.set("zh")
+    try:
+        assert translated(binding["detail"]) != binding["detail"]
+    finally:
+        ANSWER_LANGUAGE.reset(language)
     panel_request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
     panel = worded_refusal(
         {

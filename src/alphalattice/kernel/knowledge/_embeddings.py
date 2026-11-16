@@ -854,14 +854,19 @@ def embedding_session_threads(spec: HybridIndexSpec) -> int:
     return safe_intra_op_threads()
 
 
-def canary_mismatch(kind: str, threads: int) -> KnowledgeRetrievalError:
+def canary_mismatch(kind: str, threads: int, spec: HybridIndexSpec) -> KnowledgeRetrievalError:
     """A session whose canary is not the sealed one: refused by name, with the
     threads it ran on -- a machine or runtime that moves the numbers."""
 
+    recovery = (
+        "rebuild the index with the current int8 recipe"
+        if spec.policy_id == RECIPE_MINILM_CPU
+        else "prepare again with the budget auto, and report it if it refuses again"
+    )
     return KnowledgeRetrievalError(
         f"the {kind} session's canary differs from the sealed canary at {threads} "
         "intra-op threads, the CPU budget's share: this machine's runtime moves a retrieval "
-        "number; prepare again with the budget auto, and report it if it refuses again",
+        f"number; {recovery}",
         code="retrieval.execution_canary_mismatch",
         retryable=False,
     )
@@ -991,7 +996,7 @@ class LocalOnnxEmbeddingAdapter:
 
     def _prove_canary(self, sealed: str) -> None:
         if self._canary() != sealed:
-            raise canary_mismatch("embedding", self.threads)
+            raise canary_mismatch("embedding", self.threads, self.spec)
 
     def _one_thread_canary(self, model_path: Path) -> str:
         """The canary this machine computes at one thread: what a live canary's session
