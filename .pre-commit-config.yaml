@@ -26,28 +26,24 @@ repos:
         name: check added large files
         entry: python -m pre_commit_hooks.check_added_large_files
         language: system
+        stages: [manual]
       - id: check-merge-conflict
         name: check merge conflicts
         entry: python -m pre_commit_hooks.check_merge_conflict
         language: system
         args: [--assume-in-merge]
-      - id: detect-private-key
-        name: detect private keys
-        entry: python -m pre_commit_hooks.detect_private_key
-        language: system
+        stages: [manual]
       - id: gitleaks
-        name: scan staged changes for secrets
-        entry: python scripts/run_playpen_precommit.py --gitleaks git --staged --no-banner --redact --config .github/gitleaks.toml
+        name: scan staged changes for secrets and private keys
+        entry: python scripts/run_playpen_precommit.py --secrets
         language: system
         always_run: true
-        pass_filenames: false
-      # Per-commit: every static check that judges the staged change, its steps
-      # side by side (scripts/check_playpen.py GUARD_WORKERS), the whole-tree ones
-      # included. The structural test suites and impact-selected suites stay in
-      # the full gate, `python scripts/check_playpen.py --staged`, which runs at
-      # the user's word (LAWS TE7).
+        require_serial: true
+      # The commit stage and composed merge run the full fast guard; the hook
+      # keeps the pre-commit checks and staged formatter within its budget.
       - id: playpen-fast-guard
         name: playpen fast guard (changed files)
         entry: python scripts/check_playpen.py --staged --fast --hook
         language: system
         pass_filenames: false
+        stages: [manual]

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
+import json
 import os
 import platform
 import shlex
@@ -11,10 +13,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from time import perf_counter
 from typing import cast
 
-from pre_commit.main import main as pre_commit_main  # type: ignore[import-untyped]
-
+HOOK_STARTED = perf_counter()
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 GITLEAKS_SHA256 = {
     "darwin-arm64": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
@@ -73,6 +75,19 @@ def run_gitleaks(arguments: list[str]) -> int:
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
+
+
+def run_secrets(filenames: list[str]) -> int:
+    """Run the existing private-key and gitleaks checks on the same staged files."""
+    private_keys = importlib.import_module("pre_commit_hooks.detect_private_key").main
+
+    try:
+        keys = private_keys(["--", *filenames])
+    finally:
+        leaks = run_gitleaks(
+            ["git", "--staged", "--no-banner", "--redact", "--config", ".github/gitleaks.toml"]
+        )
+    return int(bool(keys or leaks))
 
 
 def _prepare_environment() -> None:
@@ -139,9 +154,7 @@ def _format_staged() -> None:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(original[path])
         prefix = (
-            sys.executable,
-            "-m",
-            "ruff",
+            str(Path(sys.executable).with_name("ruff.exe" if os.name == "nt" else "ruff")),
             "format",
             "--no-cache",
             "--config",
@@ -252,6 +265,8 @@ def _format_staged() -> None:
 
 def run_hooks() -> int:
     """Run every configured hook, regardless of a caller's inherited skip list."""
+    from pre_commit.main import main as pre_commit_main  # type: ignore[import-untyped]
+
     skipped = os.environ.pop("SKIP", None)
     try:
         return cast(
@@ -291,8 +306,30 @@ def main() -> int:
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"playpen.format_refused: {error}; inspect the named file and retry", file=sys.stderr)
         return 1
-    return run_hooks()
+    result = run_hooks()
+    elapsed = perf_counter() - HOOK_STARTED
+    system = platform.system()
+    over_budget = int(elapsed >= 5)
+    try:
+        with (Path(os.environ["PRE_COMMIT_HOME"]) / "hook-timing.jsonl").open(
+            "a", encoding="utf-8", newline="\n"
+        ) as record:
+            record.write(
+                json.dumps({"os": system, "seconds": elapsed, "over_budget": over_budget}) + "\n"
+            )
+    except (KeyError, OSError) as error:
+        print(f"playpen.hook_timing_unrecorded: {error}", file=sys.stderr)
+    print(f"PLAYPEN_HOOK_TIMING os={system} seconds={elapsed:.3f} over_budget={over_budget}")
+    if elapsed >= 5:
+        print(
+            f"playpen.hook_budget: {elapsed:.3f}s exceeds the 5s target; "
+            "the commit is judged by the checks, not by elapsed time",
+            file=sys.stderr,
+        )
+    return result
 
 
 if __name__ == "__main__":
-    raise SystemExit(run_gitleaks(sys.argv[2:]) if sys.argv[1:2] == ["--gitleaks"] else main())
+    if sys.argv[1:2] == ["--gitleaks"]:
+        raise SystemExit(run_gitleaks(sys.argv[2:]))
+    raise SystemExit(run_secrets(sys.argv[2:]) if sys.argv[1:2] == ["--secrets"] else main())

@@ -13,8 +13,9 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from time import perf_counter
@@ -22,12 +23,28 @@ from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
-COMMIT_STAGE_ONLY: frozenset[str] = frozenset()
-"""The guard's checks the hook leaves to the commit stage: none. Each check that judges a change
-runs at commit, where its red costs seconds rather than a whole stage (11-15: 22 of 99 commit
-stages failed at the guard, 18 of them at checks this set then held: scoped-structural,
-boundaries, import-contracts, evidence-bindings). Its steps run at once (GUARD_WORKERS), so the
-hook costs about its slowest step. A check too slow for the hook's budget is named here."""
+COMMIT_STAGE_ONLY = frozenset(
+    {
+        "boundaries",
+        "claude-host-materialization",
+        "counts",
+        "develop-conflict",
+        "evidence-bindings",
+        "identity-closures",
+        "identity-reach",
+        "import-contracts",
+        "operation-registry",
+        "registries",
+        "ruff-check",
+        "ruff-format",
+        "scoped-structural",
+        "strict-mypy",
+        "test-budget",
+        "test-shape",
+        "tool-versions",
+    }
+)
+"""Checks measured over the hook budget; the commit stage and composed merge run them."""
 GUARD_WORKERS = 6
 """The guard steps that run at once, each in its own process: a step changes the working
 directory, the environment or the import path, and most are pure Python, so only processes run
@@ -74,10 +91,6 @@ def _kill(psutil: Any, process: Any) -> None:
         return  # it ended on its own: its end is what was asked
 
 
-STRICT_INPUTS = frozenset({"config/mypy-strict-modules.txt", "pyproject.toml", "uv.lock"})
-"""Strict mypy's inputs besides its modules: their list, its settings, its version and stubs.
-With follow_imports = "skip" an unlisted module types as Any, so these and the listed modules
-are all it reads; staged, the hook runs it over its whole target set."""
 STRUCTURAL_TESTS = (
     ROOT / "tests" / "structural" / "test_structural_guards.py",
     ROOT / "tests" / "structural" / "test_playpen_gate_routing.py",
@@ -202,17 +215,9 @@ def _run(label: str, *args: str) -> None:
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
 
 
-def runs_at_commit(label: str, staged: Iterable[str], strict: Iterable[str] = ()) -> bool:
-    """Whether the hook runs this check on these staged paths: never one the commit stage owns
-    (COMMIT_STAGE_ONLY), strict mypy when a path it reads is staged, every other check (it judges
-    the staged files themselves) always. ``strict`` is the strict-typing list, files and folders."""
-    if label in COMMIT_STAGE_ONLY:
-        return False
-    if label != "strict-mypy":
-        return True
-    listed = tuple(strict)
-    folders = tuple(name.rstrip("/") + "/" for name in listed)
-    return any(p in STRICT_INPUTS or p in listed or p.startswith(folders) for p in staged)
+def runs_at_commit(label: str) -> bool:
+    """The hook runs each check except the checks the commit stage owns."""
+    return label not in COMMIT_STAGE_ONLY
 
 
 def commit_scope(*, commit: bool) -> Callable[[str], bool]:
@@ -220,16 +225,57 @@ def commit_scope(*, commit: bool) -> Callable[[str], bool]:
     elsewhere (the commit stage, the full gate) every check runs."""
     if not commit:
         return lambda label: True
-    staged = _git_lines("diff", "--cached", "--name-only", "--no-renames")
-    strict = _strict_targets()
 
     def runs(label: str) -> bool:
-        if runs_at_commit(label, staged, strict):
+        if runs_at_commit(label):
             return True
         print(f"PLAYPEN_GATE_SKIPPED {label}: the commit stage runs it", flush=True)
         return False
 
     return runs
+
+
+@contextmanager
+def staged_snapshot(base_ref: str) -> Iterator[None]:
+    """Present the committed change to the existing staged checks without changing its checkout."""
+    head = _git_text("rev-parse", "HEAD")
+    base = _git_text("merge-base", base_ref, head)
+    common = Path(_git_text("rev-parse", "--git-common-dir"))
+    common = common if common.is_absolute() else ROOT / common
+    public = ledger_records(ROOT)
+    names = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")
+    saved = {name: os.environ.get(name) for name in names}
+    with tempfile.TemporaryDirectory(prefix="staged-snapshot-") as folder:
+        repo = Path(folder)
+        clean = {key: value for key, value in os.environ.items() if key not in names}
+        _quiet_run(["git", "init", "-q", str(repo)], check=True, env=clean)
+        directory = repo / ".git"
+        (directory / "objects/info/alternates").write_bytes(
+            ((common / "objects").resolve().as_posix() + "\n").encode("utf-8")
+        )
+        try:
+            os.environ.update(
+                GIT_DIR=str(directory), GIT_INDEX_FILE=str(repo / "index"), GIT_WORK_TREE=str(ROOT)
+            )
+            for ref, value in (("refs/heads/stage-base", base), ("refs/heads/develop", base)):
+                _quiet_run(["git", "update-ref", ref, value], cwd=ROOT, check=True)
+            if public is not None:
+                _quiet_run(
+                    ["git", "update-ref", "refs/heads/public-export", public[0]],
+                    cwd=ROOT,
+                    check=True,
+                )
+            _quiet_run(
+                ["git", "symbolic-ref", "HEAD", "refs/heads/stage-base"], cwd=ROOT, check=True
+            )
+            _quiet_run(["git", "read-tree", head], cwd=ROOT, check=True)
+            yield
+        finally:
+            for name, prior in saved.items():
+                if prior is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = prior
 
 
 def _check_host_materialization(at_commit: Callable[[str], bool]) -> None:
@@ -427,7 +473,7 @@ def _python_targets(*, staged: bool, all_python: bool) -> tuple[str, ...]:
     )
 
 
-def _report_identity_closures(*, staged: bool) -> None:
+def _report_identity_closures(*, staged: bool, base_ref: str = "develop") -> None:
     """Report, never refuse: which source identities the changed files rotate.
 
     The binding plan's closure map (B5, B14). A commit that edits a file a closure
@@ -435,9 +481,8 @@ def _report_identity_closures(*, staged: bool) -> None:
     record the move, or keep the edit out of the closure, before anyone meets it.
     """
 
-    changed = _git_lines(
-        "diff", "--cached" if staged else "HEAD", "--name-only", "--diff-filter=ACMRD"
-    )
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    changed = _git_lines("diff", since, "--name-only", "--diff-filter=ACMRD")
     if not changed:
         return
     started = perf_counter()
@@ -789,7 +834,7 @@ def boundary_problems(
     return found + [f"{p}:{n}: devtools.evaluation imports {what}" for p, n, what in rows]
 
 
-def _check_boundaries(*, staged: bool) -> bool:
+def _check_boundaries(*, staged: bool, base_ref: str = "develop") -> bool:
     """Refuse a changed file's import across the public release or evaluation boundary."""
     from release.public_manifest import read_tree
 
@@ -800,7 +845,8 @@ def _check_boundaries(*, staged: bool) -> bool:
         return shown.stdout if shown.returncode == 0 else None
 
     started = perf_counter()
-    diff = ("diff", "--cached" if staged else "HEAD", "--name-only", "--no-renames")
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    diff = ("diff", since, "--name-only", "--no-renames")
     texts = {path: current(path) for path in _git_lines(*diff)}
     blobs = {p: b for p, b in (read_tree(ROOT, "HEAD")[1] | texts).items() if b is not None}
     sys.path.insert(0, str(ROOT / "src"))
@@ -1266,10 +1312,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--hook",
         action="store_true",
-        help=(
-            "with --staged, the commit hook: every check that judges the staged change runs, "
-            "save COMMIT_STAGE_ONLY's; strict mypy runs when a path it reads is staged"
-        ),
+        help=("with --staged, the commit hook runs the checks outside COMMIT_STAGE_ONLY"),
     )
     return parser
 
@@ -1376,7 +1419,10 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
                 "strict-mypy", *mypy, *_strict_targets(), targets=("pyproject.toml",)
             ),
         ),
-        ("identity-closures", lambda: _report_identity_closures(staged=args.staged)),
+        (
+            "identity-closures",
+            lambda: _report_identity_closures(staged=args.staged, base_ref=args.base),
+        ),
         ("identity-reach", lambda: _check_identity_reach(staged=args.staged)),
         ("evidence-bindings", _check_evidence_bindings),
         ("operation-registry", _check_operation_registry),
@@ -1384,7 +1430,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             "registries",
             lambda: _check_registries(staged=args.staged, baseline=args.registry_baseline),
         ),
-        ("boundaries", lambda: _check_boundaries(staged=args.staged)),
+        ("boundaries", lambda: _check_boundaries(staged=args.staged, base_ref=args.base)),
         ("import-contracts", _check_import_contracts),
         ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
         (
@@ -1409,6 +1455,36 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         refused = concurrent_refusals(commands, args.workers)
     else:
         refused = static_refusals(admitted)
+    if args.fast and args.all_python and not args.staged:
+        try:
+            with staged_snapshot(args.base):
+                refused += static_refusals(
+                    (
+                        (
+                            "staged-registries",
+                            lambda: _check_registries(staged=True, baseline=args.registry_baseline),
+                        ),
+                        ("staged-identity-reach", lambda: _check_identity_reach(staged=True)),
+                        ("staged-counts", lambda: _check_counts(staged=True, base_ref=args.base)),
+                    )
+                )
+                hook_env = dict(os.environ)
+                hook_env.pop("SKIP", None)
+                hook_env["PATH"] = (
+                    str(Path(sys.executable).parent) + os.pathsep + hook_env.get("PATH", "")
+                )
+                hook_env["PRE_COMMIT_HOME"] = str(Path(tempfile.gettempdir()) / "stage-pre-commit")
+                for hook in ("check-added-large-files", "check-merge-conflict"):
+                    done = _relay(
+                        hook,
+                        [sys.executable, "-m", "pre_commit", "run", hook, "--hook-stage", "manual"],
+                        env=hook_env,
+                    )
+                    if done.returncode:
+                        refused.append(hook)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"PLAYPEN_GATE_UNMEASURED staged-snapshot: {error}", flush=True)
+            refused.append("staged-snapshot")
     if refused:
         print(
             f"PLAYPEN_GATE_REFUSED {len(refused)} static check(s): {', '.join(refused)}. "
