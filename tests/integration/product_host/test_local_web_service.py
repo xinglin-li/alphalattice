@@ -65,6 +65,10 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
     _json,
@@ -663,40 +667,77 @@ def test_cancellation_is_requested_not_enacted(
     )
 
 
-def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path) -> None:
-    "A failed start leaves no lease worker or socket."
+@pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup"])
+def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure: str) -> None:
+    "A stopped upgrade never serves; a completed one is reused after a later bind failure."
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     blocker = socket.socket()
     blocker.bind(("127.0.0.1", 0))
     blocker.listen(1)
     taken = int(blocker.getsockname()[1])
+    root = tmp_path / "data"
+    create_data_root(root)
+    checks = {"backup": failure != "upgrade-backup", "verify": failure != "upgrade-verify"}
+    steps: list[str] = []
+    modes: list[str] = []
+    log = HostLog.open(root)
+    upgrade = UpgradeRunner(
+        root,
+        log,
+        (workspace,),
+        (
+            Family(
+                "fixture", lambda _: steps.append("step"), lambda _: checks["verify"], modes.append
+            ),
+        ),
+        lambda root, workspaces, recorded: (
+            {"fixture": "verified backup"} if checks["backup"] else {}
+        ),
+    )
     before = {thread.name for thread in threading.enumerate()}
     session = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=_manifest("qa-failed-start"),
         resolver=_Resolver(_resolved()),
         port=taken,
+        upgrade=upgrade,
     )
     try:
-        with pytest.raises(OSError):
+        expected = OSError if failure == "socket" else DataError
+        with pytest.raises(
+            expected, match=r"[Aa]ddress|socket|port|Upgrade family|pre-upgrade backup"
+        ):
             session.start()
         assert session.session is None
         assert session.dispatcher is None
         assert session.web is None
         assert {thread.name for thread in threading.enumerate()} - before == set()
+        assert steps == ([] if failure == "upgrade-backup" else ["step"])
+        assert modes == (
+            []
+            if failure == "upgrade-backup"
+            else ["old", "new"]
+            if failure == "socket"
+            else ["old", "old"]
+        )
+        checks.update(backup=True, verify=True)
         second = LocalPortfolioWebSession(
             workspace=workspace,
             workspace_manifest=_manifest("qa-failed-start"),
             resolver=_Resolver(_resolved()),
+            upgrade=upgrade,
         )
         second.start()
         try:
             assert _json(second, "/api/session")["workspace_id"] == "qa-failed-start"
+            assert modes[-1] == "new"
+            assert steps == (["step", "step"] if failure == "upgrade-verify" else ["step"])
         finally:
             second.stop()
     finally:
         blocker.close()
+        log.close()
 
 
 def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSession) -> None:

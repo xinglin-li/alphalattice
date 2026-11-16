@@ -389,56 +389,10 @@ class WorkspaceBackups:
         """
         if generations_kept < 1:
             raise WorkspaceBackupError("workspace_backup.generations_kept_invalid")
-        entries: list[BackupEntry] = []
-        absent: list[str] = []
         self._writable_root()
-        with staging_directory(self.root, ".export-") as staging_name:
-            staging = Path(staging_name)
-            for store, database, tables in (
-                ("market", self.workspace / MARKET_DATABASE, MARKET_TABLES),
-                ("task-control", self.workspace / TASK_CONTROL_DATABASE, TASK_CONTROL_TABLES),
-            ):
-                present = _existing_tables(database) if database.is_file() else set()
-                for table in tables:
-                    if stop():
-                        raise _Stopped
-                    if table not in present:
-                        absent.append(f"{store}/{table}")
-                        continue
-                    exported, rows = _export_table(database, table, staging)
-                    digest, size = self.objects.put_file(exported)
-                    entries.append(
-                        BackupEntry(
-                            kind="TABLE",
-                            path=f"{store}/{table}",
-                            digest=digest,
-                            size=size,
-                            rows=rows,
-                        )
-                    )
-        for relative in COPIED:
-            if stop():
-                raise _Stopped
-            source = self.workspace / relative
-            if not source.exists():
-                absent.append(relative)
-                continue
-            for path in _files(source):
-                digest, size = self.objects.held(path) or self.objects.put_file(path)
-                entries.append(
-                    BackupEntry(
-                        kind="FILE",
-                        path=path.relative_to(self.workspace).as_posix(),
-                        digest=digest,
-                        size=size,
-                    )
-                )
-        for relative in LISTED:
-            source = self.workspace / relative
-            if not source.exists():
-                absent.append(relative)
-                continue
-            entries.extend(self._listed(source))
+        entries, absent = self._capture(
+            lambda path: self.objects.held(path) or self.objects.put_file(path), stop
+        )
         generation = BackupGeneration.seal(
             workspace_id=self.workspace_id,
             workspace_path=str(self.workspace),
@@ -456,6 +410,63 @@ class WorkspaceBackups:
         os.replace(staged, path)
         self._keep(generations_kept)
         return generation
+
+    def _capture(
+        self,
+        read_file: Callable[[Path], tuple[str, int]],
+        stop: Callable[[], bool],
+    ) -> tuple[list[BackupEntry], list[str]]:
+        """Enumerate the same held set for publication and first-upgrade verification."""
+        entries: list[BackupEntry] = []
+        absent: list[str] = []
+        with staging_directory(self.root, ".export-") as staging_name:
+            staging = Path(staging_name)
+            for store, database, tables in (
+                ("market", self.workspace / MARKET_DATABASE, MARKET_TABLES),
+                ("task-control", self.workspace / TASK_CONTROL_DATABASE, TASK_CONTROL_TABLES),
+            ):
+                present = _existing_tables(database) if database.is_file() else set()
+                for table in tables:
+                    if stop():
+                        raise _Stopped
+                    if table not in present:
+                        absent.append(f"{store}/{table}")
+                        continue
+                    exported, rows = _export_table(database, table, staging)
+                    digest, size = read_file(exported)
+                    entries.append(
+                        BackupEntry(
+                            kind="TABLE",
+                            path=f"{store}/{table}",
+                            digest=digest,
+                            size=size,
+                            rows=rows,
+                        )
+                    )
+        for relative in COPIED:
+            if stop():
+                raise _Stopped
+            source = self.workspace / relative
+            if not source.exists():
+                absent.append(relative)
+                continue
+            for path in _files(source):
+                digest, size = read_file(path)
+                entries.append(
+                    BackupEntry(
+                        kind="FILE",
+                        path=path.relative_to(self.workspace).as_posix(),
+                        digest=digest,
+                        size=size,
+                    )
+                )
+        for relative in LISTED:
+            source = self.workspace / relative
+            if not source.exists():
+                absent.append(relative)
+                continue
+            entries.extend(self._listed(source))
+        return entries, absent
 
     def _writable_root(self) -> None:
         """Make the root and show it takes a file before anything is exported into it.
@@ -636,6 +647,35 @@ class WorkspaceBackups:
             raise WorkspaceBackupError("workspace_backup.generation_not_found")
         return found[0]
 
+    def verify(
+        self, *, generation_hash: str | None = None, current: bool = False
+    ) -> BackupGeneration:
+        """Verify sealed bytes; first-upgrade admission also compares the current held set.
+
+        Current verification exports only temporary table snapshots. It publishes no generation,
+        stores no object and prunes nothing; historical restore verification stays unchanged.
+        """
+        chosen = self._generation(generation_hash)
+        if chosen.workspace_id != self.workspace_id:
+            raise WorkspaceBackupError("workspace_backup.generation_invalid")
+        for entry in chosen.entries:
+            if entry.kind != "LISTED":
+                self._verified_object(entry)
+        if current:
+            entries, absent = self._capture(
+                lambda path: (_digest_file(path), path.stat().st_size), lambda: False
+            )
+            if chosen.entries != tuple(entries) or chosen.absent != tuple(absent):
+                raise WorkspaceBackupError("workspace_backup.generation_invalid")
+        return chosen
+
+    def _verified_object(self, entry: BackupEntry) -> Path:
+        """The one object proof used by both verification and restore."""
+        source = self.objects.path(entry.digest)
+        if not source.is_file() or _digest_file(source, kind="object") != entry.digest:
+            raise WorkspaceBackupError("workspace_backup.object_invalid")
+        return source
+
     def restore(self, target: Path, *, generation_hash: str | None = None) -> dict[str, object]:
         """Write one generation onto a new directory.
 
@@ -664,9 +704,7 @@ class WorkspaceBackups:
         for entry in chosen.entries:
             if entry.kind == "LISTED":
                 continue
-            source = self.objects.path(entry.digest)
-            if not source.is_file() or _digest_file(source, kind="object") != entry.digest:
-                raise WorkspaceBackupError("workspace_backup.object_invalid")
+            source = self._verified_object(entry)
             if entry.kind == "FILE":
                 written = target / entry.path
                 written.parent.mkdir(parents=True, exist_ok=True)

@@ -9,8 +9,10 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
+from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
@@ -38,10 +40,79 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     process_priority,
 )
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.backup import verify_data_root
+from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
+
+
+def verify_upgrade_backups(
+    root: Path,
+    workspaces: tuple[Path, ...],
+    recorded: dict[str, Any] | None = None,
+    *,
+    machine_generation: Path,
+    workspace_backups: tuple[WorkspaceBackups, ...],
+) -> dict[str, Any]:
+    """The production seam verifies the exact pre-upgrade roots without publishing backups.
+
+    The Host binds generation/repositories with functools.partial. Missing, mismatched or
+    damaged backups refuse through their existing owners before any family step begins.
+    """
+    machine = recorded["machine"] if recorded is not None else None
+    if machine is not None and machine["generation"] != str(machine_generation.resolve()):
+        raise DataError(
+            "The machine generation differs from the recorded pre-upgrade backup; "
+            "supply that generation before resuming.",
+            code="upgrade.refused",
+        )
+    manifest = verify_data_root(
+        machine_generation,
+        source=root,
+        pre_upgrade_head=machine["head"] if machine is not None else None,
+    )
+    backups = {value.workspace: value for value in workspace_backups}
+    if set(backups) != {path.resolve() for path in workspaces}:
+        raise DataError(
+            "A verified backup for every upgrade workspace is required; include each workspace.",
+            code="upgrade.refused",
+        )
+    saved = (
+        {row["workspace"]: row for row in recorded["workspaces"]} if recorded is not None else {}
+    )
+    generations = []
+    for path, value in sorted(backups.items()):
+        prior = saved.get(str(path)) if recorded is not None else None
+        if recorded is not None and (
+            prior is None
+            or prior["root"] != str(value.root)
+            or prior["workspace_id"] != value.workspace_id
+        ):
+            raise DataError(
+                "The workspace backup authority differs from its recorded pre-upgrade "
+                "generation; use that backup repository before resuming.",
+                code="upgrade.refused",
+            )
+        chosen = (
+            value.verify(generation_hash=prior["generation"])
+            if prior is not None
+            else value.verify(current=True)
+        )
+        generations.append(
+            dict(
+                workspace=str(path),
+                workspace_id=value.workspace_id,
+                root=str(value.root),
+                generation=chosen.generation_hash,
+            )
+        )
+    return dict(
+        machine=dict(generation=str(machine_generation.resolve()), head=manifest["head"]),
+        workspaces=generations,
+    )
 
 
 @dataclass
@@ -144,11 +215,16 @@ class WorkspaceApplicationSession:
         return str(canonical_hash({"implementation": implementation_hash}))
 
     @classmethod
-    def acquire(cls, workspace: Path) -> WorkspaceApplicationSession:
+    def acquire(
+        cls, workspace: Path, upgrade: UpgradeRunner | None = None
+    ) -> WorkspaceApplicationSession:
         """Acquire one writer lease and reconcile/rebuild durable task state under that authority.
 
         Args:
             workspace: Caller-owned workspace root.
+            upgrade: The first 0.2.8 start's machine-log runner, before any task or serving
+                application is constructed. Its caller holds the machine writer for the Host's
+                lifetime. No real family is registered by this mechanism card.
 
         Returns:
             Session with retained writer lease, mutation gate, task registry and public runtime
@@ -167,6 +243,14 @@ class WorkspaceApplicationSession:
         runtime = root / "runtime"
         lease = WorkspaceWriterLease.acquire(root)
         try:
+            if upgrade is not None:
+                if root not in {path.resolve() for path in upgrade.workspaces}:
+                    raise DataError(
+                        "This workspace is outside the upgrade's backed-up workspace set; "
+                        "include its verified backup before starting the Host.",
+                        code="upgrade.refused",
+                    )
+                upgrade.run()
             gate = WorkspaceMutationGate()
             registry = DuckDbTaskControlRegistry(
                 resolve_task_control_database(root),

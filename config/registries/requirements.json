@@ -505,6 +505,19 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.upgrade_stops_before_unverified_readers": {
+      "description": "An upgrade does no work without verified backups and switches only an ALL EQUAL family; completed steps are not repeated.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.upgrade_verifies_before_switch_and_resumes": {
+      "description": "First 0.2.8 startup requires verified machine and workspace backups, resumes the first unfinished family after a kill, switches only verified ALL EQUAL families and serves no failed upgrade.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The runner records durable progress in a real Host log and a killed child must resume with the old reader retained until verification."
+    },
     "data_layer.vector_table_defers_without_extension_loading": {
       "description": "Without extension loading a data root still creates every index table but the vector table, and names that table deferred.",
       "lower_layer": "The index is a SQLite database on disk, built through the extension loader.",

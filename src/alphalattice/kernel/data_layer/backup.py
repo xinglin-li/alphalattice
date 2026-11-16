@@ -23,7 +23,7 @@ from typing import Any, Final
 from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS
+from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
 from alphalattice.kernel.data_layer.root import FOLDERS, load_extensions
 from alphalattice.kernel.data_layer.store import StorePort
@@ -116,6 +116,18 @@ def read_manifest(generation: Path) -> dict[str, Any]:
     return value
 
 
+def _verify_file(path: Path, entry: dict[str, Any]) -> None:
+    """The existing backup seal check, shared by copying, restore and upgrade admission."""
+    if (
+        _real(path).stat().st_size != entry["size"]
+        or _file_digest(path, entry["digest"].rpartition(":")[0]) != entry["digest"]
+    ):
+        raise _refuse(
+            "backup_file_changed",
+            f"{path} differs from its sealed bytes; use an intact generation",
+        )
+
+
 def copy_files(root: Path, pool: Path, files: list[dict[str, Any]]) -> tuple[str, ...]:
     """Copy only new immutable files and verify every reused or copied body against its seal."""
     copied = []
@@ -130,14 +142,7 @@ def copy_files(root: Path, pool: Path, files: list[dict[str, Any]]) -> tuple[str
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
             copied.append(handle)
-        if (
-            target.stat().st_size != entry["size"]
-            or _file_digest(target, entry["digest"].rpartition(":")[0]) != entry["digest"]
-        ):
-            raise _refuse(
-                "backup_file_changed",
-                f"{target} differs from its sealed bytes; use an intact generation",
-            )
+        _verify_file(target, entry)
     return tuple(copied)
 
 
@@ -392,13 +397,9 @@ def _relocate_catalog(catalog: Path, data: Path) -> None:
         con.commit()
 
 
-def restore_data_root(generation: Path, target: Path) -> Path:
-    """Verify a generation, restore into a fresh root and run the existing owed-event repair."""
-    import duckdb  # lazy: only restore opens the optional data extra's DuckDB reader
-
-    generation, target = generation.resolve(), Path(os.path.abspath(target))
-    if os.path.lexists(target):
-        raise _refuse("restore_target_exists", f"{target} exists; restore into a fresh root")
+def _verified_manifest(generation: Path) -> dict[str, Any]:
+    """The saved chain and owner-derived file set, shared by verification and restoration."""
+    generation = generation.resolve()
     manifest = read_manifest(generation)
     try:
         if _head(generation / "machine/log.sqlite") != manifest["head"]:
@@ -423,11 +424,87 @@ def restore_data_root(generation: Path, target: Path) -> Path:
                 "backup_file_changed",
                 f"{generation} differs from its owner's digest; use an intact generation",
             )
-    except sqlite3.Error as error:
+    except (OSError, sqlite3.Error) as error:
         raise _refuse(
             "backup_unreadable",
             f"{generation / 'machine'} cannot be verified; use an intact backup",
         ) from error
+    return manifest
+
+
+def verify_data_root(
+    generation: Path,
+    *,
+    source: Path | None = None,
+    pre_upgrade_head: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Verify the chain, complete file set and sealed bytes without restoring or writing.
+
+    First admission requires the source's current head. Resume may retain a prefix only when
+    it is the exact pre-upgrade head already recorded by the upgrade's progress owner.
+    """
+    generation = generation.resolve()
+    manifest = _verified_manifest(generation)
+    try:
+        pool = generation.parent.parent / "files"
+        for entry in manifest["files"]:
+            _verify_file(pool / entry["path"], entry)
+        if source is not None:
+            saved = manifest["head"]
+            if pre_upgrade_head is not None and saved != pre_upgrade_head:
+                raise _refuse(
+                    "backup_chain_broken",
+                    f"{generation} differs from the recorded pre-upgrade head; "
+                    "supply the recorded backup generation before resuming",
+                )
+            path = _real(source.resolve() / "machine/log.sqlite")
+            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as con:
+                con.row_factory = sqlite3.Row
+                events = con.execute(
+                    "SELECT * FROM event WHERE seq <= ? ORDER BY seq", (saved["seq"],)
+                )
+                bounds = con.execute(
+                    "SELECT seq, chain_version FROM chain_checkpoint WHERE seq <= ? ORDER BY seq",
+                    (saved["seq"],),
+                ).fetchall()
+                head = fold_segments(
+                    events, [(row[0], row[1]) for row in bounds], saved["chain_version"]
+                )
+                last = con.execute(
+                    "SELECT max(seq) FROM event WHERE seq <= ?", (saved["seq"],)
+                ).fetchone()[0]
+                if not saved["seq"] or last != saved["seq"] or head != saved["head"]:
+                    raise _refuse(
+                        "backup_chain_broken",
+                        f"{generation} is not a backup of {source}; "
+                        "choose that root's verified backup",
+                    )
+                if (
+                    pre_upgrade_head is None
+                    and con.execute("SELECT max(seq) FROM event").fetchone()[0] != saved["seq"]
+                ):
+                    raise _refuse(
+                        "backup_chain_broken",
+                        f"{generation} is not the current pre-upgrade head of {source}; "
+                        "create a fresh backup before starting the upgrade",
+                    )
+    except (OSError, sqlite3.Error) as error:
+        raise _refuse(
+            "backup_unreadable",
+            f"{generation / 'machine'} cannot be verified; use an intact backup",
+        ) from error
+    return manifest
+
+
+def restore_data_root(generation: Path, target: Path) -> Path:
+    """Verify a generation, restore into a fresh root and run the existing owed-event repair."""
+    import duckdb  # lazy: only restore opens the optional data extra's DuckDB reader
+
+    generation, target = generation.resolve(), Path(os.path.abspath(target))
+    if os.path.lexists(target):
+        raise _refuse("restore_target_exists", f"{target} exists; restore into a fresh root")
+    manifest = _verified_manifest(generation)
+    pool = generation.parent.parent / "files"
     partial = target.with_name(f".{target.name}.{uuid.uuid4().hex}.restore")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

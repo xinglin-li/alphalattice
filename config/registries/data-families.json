@@ -3306,6 +3306,8 @@
         "product_host.maintenance.data_update",
         "data_layer.backup:restore_data_root",
         "data_layer.backup:_consistent",
+        "data_layer.backup:verify_data_root",
+        "product_host.composition.application_session:verify_upgrade_backups",
         "data_layer.backup:_head",
         "data_layer.backup:_catalog_paths",
         "data_layer.backup:_owners",
@@ -3701,7 +3703,8 @@
       ],
       "readers": [
         "data_layer.backup:backup_data_root",
-        "data_layer.backup:_files"
+        "data_layer.backup:_files",
+        "data_layer.backup:verify_data_root"
       ]
     }
   },
@@ -3711,6 +3714,7 @@
     "workspace_runtime.reader_threads:connect_duckdb": "opens the workspace database for its repositories, whose tables the storage authorities list"
   },
   "not_persisting": {
+    "data_layer.backup:verify_data_root": "opens the source log with mode=ro to bind the verified backup to its saved history prefix; it reads seals and objects and never writes a store",
     "data_layer.backup:_consistent": "opens the copied log and attaches the copied catalog with mode=ro to verify snapshot references; SQLite refuses writes",
     "data_layer.backup:_catalog_paths": "opens the copied catalog with mode=ro to resolve its immutable file references; SQLite refuses writes",
     "data_layer.backup:_owners": "reads copied SQLite owners with mode=ro and a DuckDB in-memory connection with a READ_ONLY catalog attach; no owner is written",

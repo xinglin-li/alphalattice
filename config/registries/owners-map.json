@@ -4923,9 +4923,11 @@
         "alphalattice.kernel.data_layer.log",
         "alphalattice.kernel.data_layer.root",
         "alphalattice.kernel.data_layer.spans",
-        "alphalattice.kernel.data_layer.store"
+        "alphalattice.kernel.data_layer.store",
+        "alphalattice.kernel.data_layer.upgrade"
       ],
-      "folds_in": []
+      "folds_in": [],
+      "note": "The Host's pre-serve application session calls the ordered family upgrade through the data layer's existing log writer. Family moves supply their own steps, comparisons and reader switches; the mechanism itself registers no real family."
     }
   }
 }

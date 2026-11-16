@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "upgrade.refused": {
+      "owner": "alphalattice.kernel.data_layer",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.",
+        "zh-CN": "升级已停止，服务尚未启动。首次启动前请创建数据根目录和各工作区的当前备份；恢复升级时请使用已记录的备份代次，并修复提示的数据族。"
+      }
+    },
     "research_update.features_binding_invalid": {
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The update's feature result does not match its recorded score plan or update plan, so the update cannot continue. Read the update and its Task, resolve the binding mismatch, then cancel the Task and plan the update again.", "zh-CN": "更新的特征结果与所记录的评分计划或更新计划不匹配，因此无法继续更新。请查看更新及其任务，解决绑定不匹配的问题，然后取消任务并重新规划更新。"}

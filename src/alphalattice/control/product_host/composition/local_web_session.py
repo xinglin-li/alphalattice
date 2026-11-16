@@ -1,16 +1,8 @@
-"""Compose the local Web product: session, application, dispatcher, routes.
+"""Compose the local Web session, applications, dispatcher and routes.
 
-This is the only place that knows all of it at once, which is the point. The
-Local Application boundary declares ports and owns no wiring; Task Control owns
-lifecycle; Portfolio owns numbers; the browser owns nothing. Composition holds
-the workspace session open, builds one application over it, hands the service its
-ports, and registers the routes a projection can reach.
-
-Three things are deliberately *not* here. There is no second report owner -- the
-`/report/*.html` route serves the page the executor already sealed. There is no
-second Task registry -- the dispatcher admits through the session's. And the
-Evidence & CRO routes are not special: they are three more operations of the one
-operation owner, so the browser and the generic Agent tool share them.
+Task Control owns lifecycle; Portfolio owns numbers. This composition retains
+one workspace session and Task registry. Reports serve the executor's sealed
+pages; Evidence and CRO share the browser and generic Agent operation owner.
 """
 
 from __future__ import annotations
@@ -247,6 +239,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
     PortfolioFinalizationStore,
 )
 from alphalattice.kernel.data_layer.history import close_history, open_history
+from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
@@ -569,6 +562,8 @@ class LocalPortfolioWebSession:
     resolver: PortfolioExecutionResolver | None
     port: int = 0
     idle_timeout_seconds: int = field(default=DEFAULT_IDLE_TIMEOUT_SECONDS, kw_only=True)
+    upgrade: UpgradeRunner | None = field(default=None, kw_only=True)
+    """The first 0.2.8 composition supplies its runner; it finishes before the Host binds."""
 
     review_authority: EvidenceReviewAuthority | None = None
     data_provider: MarketDataProvider | None = None
@@ -605,6 +600,7 @@ class LocalPortfolioWebSession:
         review_authority: EvidenceReviewAuthority | None = None,
         clock: Callable[[], datetime] = _utc_now,
         official_source: OfficialSourceAdmission | None = None,
+        upgrade: UpgradeRunner | None = None,
     ) -> LocalPortfolioWebSession:
         """Ordinary composition: one path in, verified manifest and catalog out.
 
@@ -625,6 +621,7 @@ class LocalPortfolioWebSession:
             port=port,
             review_authority=review_authority,
             clock=clock,
+            upgrade=upgrade,
         )
         value._workspace_review_authority = (
             review_authority is None and admitted.manifest.evidence_review is not None
@@ -654,7 +651,7 @@ class LocalPortfolioWebSession:
             binding = self.workspace_manifest.evidence_review
             assert binding is not None
             self.review_authority = self._workspace_authority(binding)
-        session = WorkspaceApplicationSession.acquire(self.workspace).__enter__()
+        session = WorkspaceApplicationSession.acquire(self.workspace, self.upgrade).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
         # refresh it when a publication moves the manifest.

@@ -115,6 +115,34 @@ The first daily update after an upgrade may need a one-time rebuild of derived
 work. Allow it to finish; later updates can reuse that work. Keep your earlier
 sealed goals, reports and research history in the existing workspace.
 
+## The 0.2.8 data move
+
+The 0.2.8 Host startup has an ordered upgrade runner. Before moving a family of
+stored data, it requires verified backups of the machine data root and every
+workspace being upgraded. Each family compares its old and new reads before
+switching to the new store. Its old data is retained.
+
+Backup verification reads the saved machine log's chain, the catalog's complete
+file set and its sealed file bytes. It also checks each workspace generation and
+its retained objects. A manifest's presence alone does not admit an upgrade.
+Before the first family starts, the machine backup must match the current log
+head and each workspace generation must match its current held state. A valid
+older backup is refused; create fresh backups before that first start.
+
+The start record retains those exact backup generations. Resume verifies their
+seals and reuses that pre-upgrade authority even after a family has changed the
+stores. It does not substitute a newer backup or require the partially migrated
+stores to still equal their pre-upgrade copies. Keep the recorded generations
+available until the upgrade finishes.
+
+An interrupted start resumes the first unfinished family. A failed comparison
+names that family and leaves its reader on the old store; the Host does not
+serve a partial upgrade. Repair the named problem before starting again. A
+completed family does not migrate again on the next start.
+
+The runner is the startup mechanism; individual family moves are added
+separately. This mechanism alone moves no existing workspace data.
+
 ## If a command refuses
 
 Read its explanation and follow its offered next step. If the problem remains,
