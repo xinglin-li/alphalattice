@@ -54,6 +54,7 @@ from tests.researcher_methodology_surface.factor_web_support import (
     _drain_trial,
     _facts,
     _session,
+    assert_trial_reads_during_saves,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     publish_causal_outcomes,
@@ -2799,8 +2800,9 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         listed = _json(live, "/api/feature-trials")["trials"]
         assert [t["feature_trial_id"] for t in listed] == [trial_id]
 
-        # A record damaged in place is named with its way on, never skipped or read:
-        # starting the trial again keeps it aside and runs the chain anew, by reuse alone.
+        assert_trial_reads_during_saves(ops.trials, trial_id)
+
+        # Name and keep damaged records; restart reuses unchanged steps.
         record = root / "runtime" / "feature-trials" / f"{trial_id}.json"
         record.write_bytes(record.read_bytes()[:40])
         damaged = _json(live, f"/api/feature-trials/readback?feature_trial_id={trial_id}")

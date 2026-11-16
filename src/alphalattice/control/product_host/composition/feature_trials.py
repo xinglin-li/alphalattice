@@ -46,7 +46,6 @@ from alphalattice.control.product_host.data_preparation.feature_research import 
 )
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.foundation.factor_research.experiments.authoring import FACTOR_EXPERIMENT_KIND
 from alphalattice.foundation.feature_engine.catalog.research import research_feature_execution_spec
 from alphalattice.interface.local_application.cli_contract import ACTION_STATES
@@ -194,6 +193,7 @@ class FeatureTrials:
         self.dispatcher = dispatcher
         self.clock = clock
         self._lock = Lock()
+        self._io_lock = Lock()  # record I/O never waits for Task work under _lock
 
     # ------------------------------------------------------------------ records
 
@@ -202,10 +202,12 @@ class FeatureTrials:
 
     def _read(self, trial_id: str) -> FeatureTrial:
         path = self._path(trial_id)
-        if not path.is_file():
-            raise FeatureTrialError("feature_trial.not_found")
+        with self._io_lock:
+            if not path.is_file():
+                raise FeatureTrialError("feature_trial.not_found")
+            raw = path.read_bytes()
         try:
-            return cast(FeatureTrial, FeatureTrial.model_validate_json(path.read_bytes()))
+            return cast(FeatureTrial, FeatureTrial.model_validate_json(raw))
         except ValueError as error:
             # A record changed or cut short in place is named, never read as a trial.
             raise FeatureTrialError("feature_trial.record_damaged") from error
@@ -220,7 +222,8 @@ class FeatureTrials:
         except FeatureTrialError as error:
             if str(error) != "feature_trial.record_damaged":
                 raise
-        os.replace(path, path.with_name(f"{path.name}.damaged-{self.clock():%Y%m%dT%H%M%S%f}"))
+        with self._io_lock:
+            os.replace(path, path.with_name(f"{path.name}.damaged-{self.clock():%Y%m%dT%H%M%S%f}"))
         return None
 
     def _save(self, trial: FeatureTrial) -> None:
@@ -228,7 +231,8 @@ class FeatureTrials:
         path = self._path(trial.trial_id)
         staged = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.partial")
         staged.write_text(trial.model_dump_json(indent=1), encoding="utf-8")
-        replace_shared_file(staged, path)  # concurrent reads of the trial hold it
+        with self._io_lock:
+            os.replace(staged, path)
 
     def records(self) -> tuple[FeatureTrial, ...]:
         """Every trial on the ledger that reads, oldest name first."""
@@ -241,7 +245,7 @@ class FeatureTrials:
         found, damaged = [], []
         for path in sorted(self.root.glob("*.json")):
             try:
-                found.append(FeatureTrial.model_validate_json(path.read_bytes()))
+                found.append(self._read(path.stem))
             except (OSError, ValueError):
                 damaged.append(path.stem)
         return tuple(found), tuple(damaged)

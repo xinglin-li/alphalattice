@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from alphalattice.control.product_host.composition.feature_trials import FeatureTrials
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
@@ -62,6 +63,37 @@ def _drain_trial(live: LocalPortfolioWebSession) -> threading.Event:
     event.clear()
     live.dispatcher.drain_for_tests(timeout=600)
     return event
+
+
+def assert_trial_reads_during_saves(trials: FeatureTrials, trial_id: str) -> None:
+    """Every one of 20,000 reads sees the whole record while another thread saves it."""
+    trial, together = trials._read(trial_id), threading.Barrier(2, timeout=30)
+    completed, failures = {"reads": 0, "writes": 0}, []
+
+    def save_repeatedly():
+        together.wait()
+        for _ in range(20_000):
+            try:
+                trials._save(trial)
+            except OSError as error:
+                failures.append(("write", type(error).__name__))
+            completed["writes"] += 1
+
+    writer = threading.Thread(target=save_repeatedly, daemon=True)
+    writer.start()
+    try:
+        together.wait()
+        for _ in range(20_000):
+            try:
+                assert trials._read(trial_id) == trial
+            except OSError as error:
+                failures.append(("read", type(error).__name__))
+            completed["reads"] += 1
+    finally:
+        writer.join(timeout=120)
+    assert not writer.is_alive()
+    assert completed == {"reads": 20_000, "writes": 20_000}
+    assert failures == [], (len(failures), failures[:8])
 
 
 def _alpha_payload(case, parameters=None, handle="capability-1"):
