@@ -192,12 +192,16 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         "criteria": [{"criterion_id": "read", "text": "Read the retained work"}],
     }
 
+    opened_titles = iter(range(1, 100))
+
     def open_goal(kind="DATA"):
+        """A goal of the same question; its title tells it from the others, the declaration
+        being what finds a goal again."""
+        title = f"{declaration['title']} {next(opened_titles)}"
         opened = goals.operate(
             Request(
                 operation="GOAL_OPEN",
-                goal_id=uuid4(),
-                goal_declaration={**declaration, "kind": kind},
+                goal_declaration={**declaration, "kind": kind, "title": title},
             ),
             "HUMAN",
         )

@@ -98,9 +98,9 @@ WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorde
 -- One row per trial, as state, action, effect and new state: what an agent studies before it tries something.
 -- It reads profiles and measures only, so it is whole whether or not any artifact body still exists.
 CREATE VIEW experience AS
-SELECT t.trial_id, t.task_id, reg.trace_id, t.workspace_id,
+SELECT t.trial_id, t.task_id, reg.trace_id, ts.workspace_id,
        -- state
-       t.goal_id, t.hypothesis_id, json_extract_string(he.attrs, '$.statement_id') AS hypothesis_name,
+       ts.goal_id, t.hypothesis_id, json_extract_string(he.attrs, '$.statement_id') AS hypothesis_name,
        ht.text AS hypothesis_text, s.cutoff_us, make_timestamptz(s.cutoff_us) AS knowledge_cutoff,
        s.universe, s.valid_from, s.valid_to,
        t.product_version, t.model, t.context, t.reads_legacy,
@@ -114,6 +114,7 @@ SELECT t.trial_id, t.task_id, reg.trace_id, t.workspace_id,
        gn.conclusions AS goal_conclusions, gn.lessons AS goal_lessons,
        make_timestamptz(reg.occurred_us) AS registered_at
 FROM log.trial t
+JOIN log.trial_scope ts ON ts.trial_id = t.trial_id
 JOIN log.selection s ON s.selection_id = t.selection_id
 JOIN log.recipe r ON r.recipe_key = t.recipe_key
 JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
@@ -146,7 +147,7 @@ LEFT JOIN (SELECT e.subject_id AS goal_id,
                   list(x.text) FILTER (WHERE e.type = 'lesson.recorded') AS lessons
            FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
            WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorded')
-           GROUP BY e.subject_id) gn ON gn.goal_id = t.goal_id
+           GROUP BY e.subject_id) gn ON gn.goal_id = ts.goal_id
 LEFT JOIN (SELECT DISTINCT a.trial_id FROM log.event e
            JOIN log.artifact a ON a.artifact_id = json_extract_string(e.attrs, '$.holding_artifact')
            WHERE e.type IN ('book.activated', 'book.rebalanced') AND a.trial_id IS NOT NULL) d ON d.trial_id = t.trial_id;
@@ -168,16 +169,16 @@ GROUP BY t.recipe_key, m.artifact_type, m.metric_id, m.metric, m.metric_version,
 -- that evaluated many configurations counts each. The deflated Sharpe ratio and the probability of backtest
 -- overfitting read `candidates`. By goal, and by selection for trials with no goal.
 CREATE VIEW search_size AS
-SELECT t.workspace_id, t.goal_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
+SELECT ts.workspace_id, ts.goal_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
        count(DISTINCT t.recipe_key) AS recipes, count(*) FILTER (WHERE t.state = 'completed') AS completed
-FROM log.trial t JOIN log.recipe r ON r.recipe_key = t.recipe_key
-GROUP BY t.workspace_id, t.goal_id;
+FROM log.trial t JOIN log.trial_scope ts ON ts.trial_id = t.trial_id JOIN log.recipe r ON r.recipe_key = t.recipe_key
+GROUP BY ts.workspace_id, ts.goal_id;
 
 CREATE VIEW search_size_by_selection AS
-SELECT t.workspace_id, t.selection_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
+SELECT ts.workspace_id, t.selection_id, count(*) AS trials, sum(t.candidates) AS candidates, count(DISTINCT r.method_id) AS methods,
        count(DISTINCT t.recipe_key) AS recipes, count(*) FILTER (WHERE t.state = 'completed') AS completed
-FROM log.trial t JOIN log.recipe r ON r.recipe_key = t.recipe_key
-GROUP BY t.workspace_id, t.selection_id;
+FROM log.trial t JOIN log.trial_scope ts ON ts.trial_id = t.trial_id JOIN log.recipe r ON r.recipe_key = t.recipe_key
+GROUP BY ts.workspace_id, t.selection_id;
 
 -- Comparing two artifacts is the Host's `compare` (project.py), which reads `measure` through SQLite by its primary
 -- key, artifact first: through DuckDB's SQLite scan the filter is not pushed down and every measure is read.

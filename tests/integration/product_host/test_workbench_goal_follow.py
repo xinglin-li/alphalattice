@@ -142,11 +142,10 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
         live.operations.goals,
         live.activity,
     )
-    goal_id, publication = uuid4(), digest("qa-follow-publication")
+    publication = digest("qa-follow-publication")
     opened = goals.operate(
         PortfolioResearchOperationRequest(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             goal_declaration={
                 "kind": "OPERATIONS",
                 "title": "QA fixture: follow exact owner checkpoints",
@@ -162,6 +161,7 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
         "HUMAN",
     )
     goal = goals.store.load(opened["goal_hash"])
+    goal_id = goal.goal_id
     artifacts: dict[UUID, ArtifactReference] = {}
     observer.attach(
         dispatcher=live.dispatcher,

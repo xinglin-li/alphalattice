@@ -90,14 +90,16 @@ def envelope(
     cause: int | None = None,
     started_us: int | None = None,
     occurred_us: int | None = None,
+    version: int = 1,
 ) -> dict[str, Any]:
-    """A new event's envelope, with a UUIDv7 id and, when it carries text, the text's digest."""
+    """A new event's envelope, of its type's `version`, with a UUIDv7 id and, when it carries text,
+    the text's digest."""
     now = time.time_ns() // 1000
     at = now if occurred_us is None else occurred_us
     return {
         "event_id": uuid7(),
         "type": type_,
-        "type_version": 1,
+        "type_version": version,
         "phase": phase,
         "occurred_us": at,
         "started_us": (at if started_us is None else started_us) if phase in ENDED else None,

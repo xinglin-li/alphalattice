@@ -618,7 +618,8 @@ GRAMMAR: Final[dict[str, Command]] = {
     "GOAL_OPEN": Command(
         "goal",
         "open",
-        "Opens a goal from its declaration and binds this agent session to it.",
+        "Opens a goal from its declaration and binds this agent session to it; the Host mints "
+        "a new goal's id, and a goal_id opens only an existing goal.",
         "goal_id",
     ),
     "GOAL_REVISE": Command(

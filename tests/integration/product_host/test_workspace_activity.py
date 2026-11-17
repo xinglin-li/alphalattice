@@ -1342,7 +1342,7 @@ def test_a_sessions_task_listing_reads_each_artifact_from_its_owner_a_page_at_a_
     remove_projection(peer)
     with task_log() as connection:
         connection.execute(
-            "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?", [target]
+            "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?", [target]
         )
 
     partial = _json(live, "/api/tasks?agent_session=c-54")
@@ -1435,7 +1435,7 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
 
     with task_log() as connection:
         connection.execute(
-            "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?",
+            "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?",
             [str(head.task_id)],
         )
         connection.execute("DELETE FROM workspace_task_projection WHERE task_id = ?", [peer_id])
@@ -1473,7 +1473,7 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
     finally:
         with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+                "UPDATE task SET record_json = ? WHERE task_id = ?",
                 [head.model_dump_json(), str(head.task_id)],
             )
 

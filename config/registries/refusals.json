@@ -8771,6 +8771,18 @@
 "owner": "goal",
 "category": "INVALID_ARGUMENT"
 },
+"goal.declaration_index_invalid": {
+"owner": "goal",
+"category": "FAILED_PRECONDITION"
+},
+"goal.declaration_untyped": {
+"owner": "goal",
+"category": "INVALID_ARGUMENT"
+},
+"goal.id_is_the_hosts": {
+"owner": "goal",
+"category": "INVALID_ARGUMENT"
+},
 "goal.parent_absent": {
 "owner": "goal",
 "category": "NOT_FOUND"

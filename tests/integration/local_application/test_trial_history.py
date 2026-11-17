@@ -119,8 +119,8 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     assert (first.disposition, again.numerical_call_count) == ("COMPUTED", 0)
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         trials = con.execute(
-            "SELECT state, result_artifact, seeds, goal_id, hypothesis_id, recipe_key, task_id "
-            "FROM trial ORDER BY registered_seq"
+            "SELECT state, result_artifact, seeds, s.goal_id, hypothesis_id, recipe_key, task_id "
+            "FROM trial JOIN trial_scope s USING (trial_id) ORDER BY registered_seq"
         ).fetchall()
         assert [row[:5] for row in trials] == [
             ("completed", first.evidence_hash, "[0]", "g1", "h1"),

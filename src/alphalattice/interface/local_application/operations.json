@@ -3043,7 +3043,7 @@
   "GOAL_LIST": "Lists goals newest first, a page at a time, or those of one agent session.",
   "GOAL_NARRATIVE": "Shows a goal's saved revision as recorded, without re-verifying its evidence.",
   "GOAL_NOTE": "Records a decision, conclusion or open hypothesis in the goal's record.",
-  "GOAL_OPEN": "Opens a goal from its declaration and binds this agent session to it.",
+  "GOAL_OPEN": "Opens a goal from its declaration and binds this agent session to it; the Host mints a new goal's id, and a goal_id opens only an existing goal.",
   "GOAL_PROFILE": "Reads recorded stage times and coverage for a goal.",
   "GOAL_REFERENCE": "Verifies one named reference of an exact saved goal revision at its owner.",
   "GOAL_REVISE": "Revises an open goal's declaration with a reason; a changed objective marks earlier evidence post hoc.",

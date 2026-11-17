@@ -125,7 +125,6 @@ def open_goal(live, title):
     return live.operations.goals.operate(
         PortfolioResearchRequestDocument(
             operation="GOAL_OPEN",
-            goal_id=str(uuid4()),
             change_reason="Synthetic declaration",
             goal_declaration={
                 "title": title,

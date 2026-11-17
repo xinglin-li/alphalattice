@@ -523,7 +523,8 @@ def hypothesis_goal(hypothesis: str, *, expected_goal: str | None = None) -> str
         if log is None:
             raise ValueError("experience.history_unavailable")
         rows = log.read(
-            "SELECT workspace_id, goal_id FROM hypothesis WHERE hypothesis_id = ?", (hypothesis,)
+            "SELECT workspace_id, goal_id FROM hypothesis_scope WHERE hypothesis_id = ?",
+            (hypothesis,),
         )
         if not rows:
             raise ValueError("experience.hypothesis_unknown")

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from pathlib import Path
 from secrets import token_hex
 from threading import RLock
@@ -24,10 +26,12 @@ from alphalattice.control.workspace_runtime.content_store import (
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.interface.local_application.goals import (
+    DECLARATION_ENCODING,
     Goal,
     GoalAcceptedAnswerContext,
     GoalDeclaration,
     GoalSession,
+    declaration_hash,
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
 
@@ -263,6 +267,81 @@ class GoalStore:
             raise ValueError("goal.session_binding_invalid") from error
         head = self.head(goal_id)
         return head if head is not None and head.state == "OPEN" else None
+
+    def _declarations(self) -> Path:
+        return self.content.root / "declarations" / f"v{DECLARATION_ENCODING}"
+
+    def declared(self, key: str) -> UUID | None:
+        """The goal opened under this `declaration_hash`, if any: one file per (encoding
+        version, hash), and the hash covers the opener, so each is unique on all three."""
+        path = self._declarations() / f"{key}.json"
+        if not path.is_file():
+            return None
+        try:
+            return UUID(json.loads(path.read_bytes())["goal_id"])
+        except (KeyError, TypeError, ValueError, OSError) as error:
+            raise ValueError("goal.declaration_index_invalid") from error
+
+    def declare(self, key: str, opener: object, goal_id: UUID) -> UUID:
+        """Index a new goal by its `declaration_hash` before its first revision is published, so
+        a retry after a crash between them opens the same id; the first goal indexed keeps it."""
+        with self.lock:
+            held = self.declared(key)
+            if held is not None:
+                return held
+            entry = {"goal_id": str(goal_id), "opener": opener, "encoding": DECLARATION_ENCODING}
+            path = self._declarations() / f"{key}.json"
+            self.content.atomic_write(path, json.dumps(entry, sort_keys=True).encode())
+            return goal_id
+
+    def declare_opened(self, opened_id: Callable[[GoalDeclaration, object], UUID]) -> int:
+        """The upgrade step, once per store: index each goal opened before the index by its
+        first declaration and its opener. The opener is the one candidate (its submitter, or a
+        session its record or a binding names) whose `opened_id` is the goal's id; a goal whose
+        id no candidate makes (a supplied id) stays unindexed. Returns how many it indexed."""
+        done = self._declarations() / "upgraded.json"
+        with self.lock:
+            if done.is_file():
+                return 0
+            indexed = 0
+            for goal_id in self.goal_ids():
+                first = self.head(goal_id)
+                while first is not None and first.parent_hash is not None:
+                    first = self.load(first.parent_hash)
+                if first is None:
+                    continue
+                for opener in self._openers(first):
+                    if opened_id(first.declaration, opener) == first.goal_id:
+                        key = declaration_hash(first.declaration, opener)
+                        indexed += self.declare(key, opener, first.goal_id) == first.goal_id
+                        break
+            self.content.atomic_write(done, json.dumps({"indexed": indexed}).encode())
+            return indexed
+
+    def _openers(self, first: Goal) -> list[object]:
+        """Who may have opened a goal: its submitter, then each agent session named by its
+        record or bound to it, as `GoalSession` dumps them."""
+        named = [
+            (entry.get("agent_vendor"), entry.get("agent_session"))
+            for entry in self.attributed(first.goal_id)
+        ]
+        sessions = self.content.root / "sessions"
+        try:  # an unreadable binding is refused, never read as no binding
+            with os.scandir(sessions) if sessions.is_dir() else nullcontext(()) as vendors:
+                for folder in vendors:
+                    with os.scandir(folder.path) as bindings:
+                        for binding in bindings:
+                            bound = json.loads(Path(binding.path).read_bytes()).get("goal_id")
+                            if bound == str(first.goal_id):
+                                named.append((folder.name, Path(binding.name).stem))
+        except (OSError, ValueError) as error:
+            raise ValueError("goal.declaration_index_invalid") from error
+        found: list[object] = [first.submitted_by]
+        for vendor, session_id in named:
+            if vendor in {"codex", "claude-code"} and isinstance(session_id, str):
+                session = {"vendor": vendor, "session_id": session_id}
+                found.append(GoalSession.model_validate(session).model_dump(mode="json"))
+        return found
 
     def event_goal(self, key: str, decide: Callable[[], UUID | None]) -> UUID | None:
         """The goal an external event was filed under at its first receipt, or none.

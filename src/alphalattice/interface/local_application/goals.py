@@ -8,6 +8,7 @@ against that record, sealing it or naming each missing item.
 from __future__ import annotations
 
 import re
+import struct
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from importlib import import_module
@@ -15,6 +16,7 @@ from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from blake3 import blake3
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -267,6 +269,56 @@ class GoalDeclaration(GoalContract):
     def intent(self) -> dict[str, Any]:
         """The declared intent without its display title."""
         return cast(dict[str, Any], self.model_dump(mode="json", exclude={"title"}))
+
+
+DECLARATION_ENCODING: Final = 1
+"""The version of `declaration_hash`'s byte form; a change to that form takes the next number."""
+
+
+def declaration_hash(declaration: GoalDeclaration, opener: object) -> str:
+    """Whether this opener already opened this declaration: the goal store's declaration index
+    reads it for REUSED_EXACT. Its inputs are the declaration's typed fields, as the model
+    serializes them (an absent date stays absent), and the opener's id: its agent session's
+    fields, else the caller. Its form is `_typed`'s tagged binary encoding, version
+    DECLARATION_ENCODING, never JSON text; the digest is BLAKE3's."""
+    head = b"alphalattice.goal-declaration" + bytes(1) + DECLARATION_ENCODING.to_bytes(2, "big")
+    body = _typed(declaration.model_dump(mode="python")) + _typed(opener)
+    return blake3(head + body).hexdigest()
+
+
+def _typed(value: object) -> bytes:
+    """One value as a type tag and its body, fixed-width or length-prefixed; a mapping's keys in
+    order. Equal declarations make equal bytes: -0.0 is 0.0, as the model compares them."""
+    if value is None:
+        return b"N"
+    if isinstance(value, bool):
+        return b"T" if value else b"F"
+    if isinstance(value, int):
+        return b"I" + _sized(value.to_bytes((value.bit_length() + 8) // 8, "big", signed=True))
+    if isinstance(value, float):
+        return b"D" + struct.pack(">d", value + 0.0)
+    if isinstance(value, str):
+        return b"S" + _sized(value.encode())
+    if isinstance(value, datetime):
+        raise TypeError("goal.declaration_untyped: datetime")  # a declaration names dates only
+    if isinstance(value, date):
+        return b"A" + value.toordinal().to_bytes(4, "big")
+    if isinstance(value, UUID):
+        return b"U" + value.bytes
+    if isinstance(value, Mapping):
+        items = sorted(value.items())
+        return b"O" + _count(items) + b"".join(_typed(k) + _typed(v) for k, v in items)
+    if isinstance(value, list | tuple):
+        return b"L" + _count(value) + b"".join(_typed(item) for item in value)
+    raise TypeError(f"goal.declaration_untyped: {type(value).__name__}")
+
+
+def _sized(body: bytes) -> bytes:
+    return _count(body) + body
+
+
+def _count(items: Sequence[object] | bytes) -> bytes:
+    return len(items).to_bytes(4, "big")
 
 
 def update_offers(update: object, named: date | None, task: object) -> dict[str, object]:

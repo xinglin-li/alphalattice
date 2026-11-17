@@ -824,7 +824,8 @@ class WorkspaceMaintenanceCycle:
         phase: Recorded current phase.
         status: Recorded lifecycle state.
         market_data_change_set: Observed input changes when available.
-        child_task_refs: Recorded child task references.
+        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         effect_receipts: Committed effect receipt references.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
@@ -854,7 +855,8 @@ class WorkspaceMaintenanceOutcome:
         status: Maintenance disposition.
         phase: Last recorded phase.
         change_set_hash: Optional observed change identity.
-        child_task_refs: Recorded child task references.
+        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
         failure_cause: The failed step's recorded cause: its
@@ -1176,7 +1178,9 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
         completed_at: Completion clock.
         before: Prior input status.
         after: Verified resulting input status.
-        child_task_refs: Completed child task references.
+        child_task_refs: Written empty and read by nothing; it stays only so every sealed
+            receipt keeps its content hash. A sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         transition_receipt_hash: Optional universe-transition receipt.
         valuation_receipt_hashes: Committed held-listing valuation receipts.
         removed_member_tails: Recorded missing formation sessions of removed members.

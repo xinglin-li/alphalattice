@@ -537,12 +537,10 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         PortfolioResearchOperationRequest,
     )
 
-    goal = UUID(int=7)
     assert service.session.operations is not None
-    service.session.operations.goals.operate(
+    opened = service.session.operations.goals.operate(
         PortfolioResearchOperationRequest(
             operation="GOAL_OPEN",
-            goal_id=goal,
             goal_declaration={
                 "title": "Review",
                 "objective": "Review the book.",
@@ -553,6 +551,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         ),
         "EXTERNAL_AUTOMATION",
     )
+    goal = UUID(str(opened["goal_id"]))
 
     def run(*arguments: str) -> tuple[int, dict[str, Any]]:
         code = main(["--view", "full", *arguments], serve=lambda _: 99)

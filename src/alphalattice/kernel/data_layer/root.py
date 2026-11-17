@@ -32,7 +32,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
@@ -66,20 +66,24 @@ def schema_text(name: str) -> str:
 
 
 def seed_rows(owner: str = "kernel", seq: int = 1) -> list[tuple]:
-    """Every seed definition as a version-1 row, (family, name, version, then definition_version's
-    columns after its version), registered by the event at `seq`."""
+    """Every seed definition as a row, (family, name, version, then definition_version's columns
+    after its version), registered by the event at `seq`. A seed row is version 1 unless it names
+    its version and its relation to the version before it."""
     text = resources.files(__package__).joinpath("seed_registry.json").read_text(encoding="utf-8")
     seed = json.loads(text)
-    out = [("family", name, {}, words) for name, words in seed["families"].items()]
+    out = [("family", name, {}, {}, words) for name, words in seed["families"].items()]
     for key, (family, fields) in SPEC_FIELDS.items():
         out += [
-            (family, row["name"], {field: row[field] for field in fields}, row["description"])
+            (family, row["name"], row, {field: row[field] for field in fields}, row["description"])
             for row in seed[key]
         ]
     tail = (None, None, owner, seq, seq, None)  # code_ref, golden, owner, two seqs, reason
     return [
-        (family, name, 1, "standard", None, None, json.dumps(spec, sort_keys=True), words, *tail)
-        for family, name, spec, words in out
+        (
+            *(family, name, row.get("version", 1), "standard", row.get("relation"), None),
+            *(json.dumps(spec, sort_keys=True), words, *tail),
+        )
+        for family, name, row, spec, words in out
     ]
 
 

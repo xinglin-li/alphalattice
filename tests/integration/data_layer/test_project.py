@@ -368,9 +368,9 @@ def test_a_projection_that_reads_the_clock_fails_replay_by_name(tmp_path, monkey
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
 def test_a_projection_refusal_leaves_no_event(tmp_path):
-    """An unbalanced posting, a recipe under another key or reading an unknown recipe, an
-    untagged key, a trial outside its selection's workspace or its hypothesis's goal and a rename
-    onto a name another lineage holds leave no trace."""
+    """An unbalanced posting, a recipe under another key or reading an unknown one, an untagged
+    key, a trial or task whose parent, selection or goal is another workspace's or hypothesis's,
+    and a rename onto a name another lineage holds leave no trace."""
     copy = tmp_path / "data"
     create_data_root(copy)
     with HostLog.open(copy, now_us=T0) as log:
@@ -394,6 +394,11 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             text="Value pays.",
             **there,
         )
+        requested = {"type": "factor.run", "product_version": "0.2.8", "input_hash": "i"}
+        requested |= {"plan_hash": "p", "workflow_definition_hash": "d", "admitted_at": "t"}
+        log.record("task.requested", ("task", "k1"), requested, workspace="w1", version=2)
+        under_k1, under_g2 = requested | {"parent_task_id": "k1"}, requested | {"goal_id": "g2"}
+        v2 = {"version": 2}
         before = log.read("SELECT count(*) FROM event")[0][0]
         reads = recipe_key(MOMENTUM, 1, {}, ["no-such-recipe"])
         mine = {"selection_id": "s2", "recipe_key": "r", "seeds": [], "product_version": "0.2.8"}
@@ -434,12 +439,14 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             ),
             ("trial_workspace_disagrees", "trial.registered", ("trial", "t9"), mine, AGENT),
             (
-                "trial_goal_disagrees",
+                "trial_workspace_disagrees",
                 "trial.registered",
                 ("trial", "t9"),
-                mine | {"hypothesis_id": "h2"},
+                mine | {"task_id": "k1"},
                 there,
             ),
+            ("task_workspace_disagrees", "task.requested", ("task", "k9"), under_k1, there | v2),
+            ("task_workspace_disagrees", "task.requested", ("task", "k9"), under_g2, AGENT | v2),
             (
                 "trial_goal_disagrees",
                 "trial.registered",
@@ -459,3 +466,90 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
                 log.record(type_, subject, attrs, **who)
             assert refused.value.failure.code == f"data_layer.{code}"
         assert log.read("SELECT count(*) FROM event")[0][0] == before
+
+
+# Each unit of research work stores one parent; its workspace and goal are derived up it.
+REQUESTED = {"type": "factor.run", "product_version": "0.2.8", "input_hash": "i", "plan_hash": "p"}
+REQUESTED |= {"workflow_definition_hash": "d", "admitted_at": "2026-11-14T00:00:00Z"}
+RECIPE = recipe_key(MOMENTUM, 1, {})
+
+# kind, id, the columns it stores its parent in, those columns, its derived workspace and goal
+UNITS = (
+    ("task", "k-goal", "parent_task_id, goal_id, workspace_id", (None, "g1", None), "w1", "g1"),
+    ("task", "k-free", "parent_task_id, goal_id, workspace_id", (None, None, "w1"), "w1", None),
+    ("task", "k-sub", "parent_task_id, goal_id, workspace_id", ("k-goal", None, None), "w1", "g1"),
+    ("hypothesis", "h1", "goal_id, workspace_id", ("g1", None), "w1", "g1"),
+    ("trial", "t-task", "task_id, hypothesis_id", ("k-sub", "h1"), "w1", "g1"),
+    ("trial", "t-sub", "task_id, hypothesis_id", ("k-sub", None), "w1", "g1"),
+    ("trial", "t-free", "task_id, hypothesis_id", (None, None), "w1", None),
+)
+SCOPES = {
+    "task": "SELECT workspace_id, goal_id FROM task_workspace JOIN task_scope USING (task_id)"
+    " WHERE task_id = ?",
+    "hypothesis": "SELECT workspace_id, goal_id FROM hypothesis_scope WHERE hypothesis_id = ?",
+    "trial": "SELECT workspace_id, goal_id FROM trial_scope WHERE trial_id = ?",
+}
+
+
+@pytest.fixture(scope="module")
+def units(tmp_path_factory):
+    """A log holding every kind of unit under each parent it may have: tasks under a goal, under
+    no goal and under a task, a hypothesis, trials under a task with and without a hypothesis and
+    one under none, and two reviews of the first trial."""
+    root = tmp_path_factory.mktemp("units")
+    create_data_root(root)
+    agent = ("agent", "claude")
+    with HostLog.open(root, now_us=T0) as log:
+        for workspace in ("w1", "w2"):
+            log.record("workspace.created", ("workspace", workspace), {"name": workspace})
+        for goal, workspace in (("g1", "w1"), ("g2", "w2")):
+            log.record(
+                "goal.set", ("goal", goal), {"title": goal}, **PERSON | {"workspace": workspace}
+            )
+        w1 = {"workspace": "w1", "actor": agent}
+        for task, parent in (("k-goal", {"goal_id": "g1"}), ("k-free", {})):
+            log.record("task.requested", ("task", task), REQUESTED | parent, version=2, **w1)
+        sub = REQUESTED | {"parent_task_id": "k-goal"}
+        log.record("task.requested", ("task", "k-sub"), sub, version=2, **w1)
+        log.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="H", **w1)
+        window = {"cutoff_us": 1, "universe": "sp500"}
+        log.record("selection.made", ("selection", "s1"), window, **w1)
+        _define(log, "method", "momentum", text="Past return over a lookback.")
+        defined = {"method": "momentum", "method_version": 1, "params": {}}
+        log.record("recipe.defined", ("recipe", RECIPE), defined, **w1)
+        trial = {"selection_id": "s1", "recipe_key": RECIPE, "seeds": [], "product_version": "x"}
+        tested = trial | {"task_id": "k-sub", "hypothesis_id": "h1"}
+        log.record("trial.registered", ("trial", "t-task"), tested, **w1)
+        log.record("trial.registered", ("trial", "t-sub"), trial | {"task_id": "k-sub"}, **w1)
+        log.record("trial.registered", ("trial", "t-free"), trial, **w1)
+        for _ in range(2):  # the first review's note is the experience, kept by the second
+            log.record("review.completed", ("trial", "t-task"), {"verdict": "ok"}, text="R", **w1)
+        log.flush()
+    return root / "machine" / "log.sqlite"
+
+
+@pytest.mark.proves("data_layer.each_work_unit_stores_one_parent")
+@pytest.mark.parametrize(
+    ("kind", "unit", "columns", "stored", "workspace", "goal"), UNITS, ids=[u[1] for u in UNITS]
+)
+def test_a_unit_stores_one_parent_and_reaches_its_chain(
+    units, kind, unit, columns, stored, workspace, goal
+):
+    """Each unit stores exactly one parent; its workspace and goal are joined up from it."""
+    with closing(sqlite3.connect(units)) as con:
+        sql = f"SELECT {columns} FROM {kind} WHERE {kind}_id = ?"
+        assert con.execute(sql, (unit,)).fetchone() == stored
+        assert con.execute(SCOPES[kind], (unit,)).fetchone() == (workspace, goal)
+
+
+@pytest.mark.proves("data_layer.each_work_unit_stores_one_parent")
+def test_a_review_sets_the_experience_and_the_history_replays_equal(units, tmp_path):
+    """The first review's note is its subject's experience; the log replays ALL EQUAL."""
+    with closing(sqlite3.connect(units)) as con:
+        notes = con.execute(
+            "SELECT note_id FROM research_note WHERE subject_id = 't-task' ORDER BY seq"
+        ).fetchall()
+        experience = con.execute("SELECT experience_id FROM trial WHERE trial_id = 't-task'")
+        assert experience.fetchone() == notes[0]
+        with closing(replay(con, tmp_path / "replayed.sqlite")) as again:
+            assert differences(con, again) == []

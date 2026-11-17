@@ -616,7 +616,6 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     monkeypatch.setattr(app, "task_facts", {}.get)
     opening = Request(
         operation="GOAL_OPEN",
-        goal_id=UUID(int=7),
         goal_declaration={**FIRST_USE, "target_date": "2026-10-02"},
         change_reason="The person's sentence",
     )
@@ -628,8 +627,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         refused = app.operate(replace(opening, goal_declaration=declaration), caller)
         assert refused["failure_code"] == code and refused["target_date"] == named
         assert refused["nearest_date"] == nearest and app.first_use() is None
-    app.operate(opening, caller)
-    goal = app.store.head(UUID(int=7))
+    goal = app.store.head(UUID(str(app.operate(opening, caller)["goal_id"])))
     assert goal is not None and app.first_use() == goal
     delegated = app.delegation(goal, "NETWORK_ACCESS_SET", caller)
     assert delegated == f"first-use-goal:{goal.goal_id}"
@@ -642,6 +640,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         revised = replace(
             opening,
             operation="GOAL_REVISE",
+            goal_id=goal.goal_id,
             goal_declaration={**FIRST_USE, "objective": "A longer window."},
             change_reason="Widened",
         )
@@ -1259,8 +1258,8 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         DataDecisionRule,
     )
 
-    now, task, goal_id = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8), UUID(int=7)
-    update, first_use = UUID(int=10), UUID(int=11)
+    now, task = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8)
+    update = UUID(int=10)
     app = GoalApplication(
         GoalStore(tmp_path, "workspace"),
         lambda: now,
@@ -1272,15 +1271,15 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         }.get,
         workspace=tmp_path,
     )
-    app.operate(
+    opened = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             goal_declaration={**FIRST_USE, "kind": "RESEARCH"},
             change_reason="Daily use",
         ),
         "EXTERNAL_AUTOMATION",
     )
+    goal_id = UUID(str(opened["goal_id"]))
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("daily"))
     assert app.data_rule(task) is None
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "STATUS"})
@@ -1326,10 +1325,10 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
     ]
     # Inside an open first use its delegation comes first, even for a data update's run, and its
     # step names the audit's listings; a record that fails admits nothing.
-    app.operate(
-        Request(operation="GOAL_OPEN", goal_id=first_use, goal_declaration=FIRST_USE),
-        "EXTERNAL_AUTOMATION",
+    opened = app.operate(
+        Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE), "EXTERNAL_AUTOMATION"
     )
+    first_use = UUID(str(opened["goal_id"]))
     app.store.attribute(first_use, {"task_id": str(update), "operation": "DATA_UPDATE_RUN"})
     first = app.data_rule(update)
     attribute = app.store.attribute

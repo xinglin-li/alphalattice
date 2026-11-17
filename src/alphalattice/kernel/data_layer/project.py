@@ -28,7 +28,6 @@ PROJECTED: Final = (
     "task",
     "task_step",
     "wait",
-    "workspace_task",
     "workspace_task_work_item",
     "workspace_task_execution",
     "workspace_task_event",
@@ -351,7 +350,7 @@ def _setting(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("goal.set")
 def _goal(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "INSERT INTO goal VALUES (?, ?, ?, 'open', ?, ?, NULL)",
+        "INSERT INTO goal VALUES (?, ?, ?, 'open', ?, ?, NULL, NULL)",
         (e["subject_id"], e["workspace_id"], a["title"], a.get("deadline_us"), e["seq"]),
     )
 
@@ -367,25 +366,25 @@ def _goal_closed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("task.requested")
 def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     task = e["subject_id"]
-    con.execute(
-        "INSERT INTO task (task_id, workspace_id, goal_id, type_id, state, trace_id,"
-        " product_version,"
-        " requested_seq) VALUES (?, ?, ?, ?, 'requested', ?, ?, ?)",
+    parent, goal, _ = home = task_parent(e, a, lambda g: _goal_held(con, g, e["workspace_id"]))
+    held = "SELECT workspace_id FROM task_workspace WHERE task_id = ?"
+    found = None if parent is None else con.execute(held, (parent,)).fetchone()
+    if parent is not None and (found is None or found[0] != e["workspace_id"]):
+        raise _refuse("task_workspace_disagrees", "a sub-task's parent is of its workspace")
+    if goal is not None and not _goal_held(con, goal, e["workspace_id"]):
+        raise _refuse("task_workspace_disagrees", "a task's goal is of its workspace")
+    con.execute(  # its record follows in the same unit (`task.saved`)
+        "INSERT INTO task (task_id, parent_task_id, goal_id, workspace_id, type_id, state,"
+        " trace_id, product_version, requested_seq, task_kind, input_hash, plan_hash, lifecycle,"
+        " admitted_at, updated_at, admission_sequence, submitted_by_json)"
+        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)",
         (
             task,
-            e["workspace_id"],
-            a.get("goal_id"),
+            *home,
             _first_sight(con, "event_type", a["type"], e["seq"]),
             e["trace_id"],
             a["product_version"],
             e["seq"],
-        ),
-    )
-    con.execute(  # its record follows in the same unit (`task.saved`)
-        "INSERT INTO workspace_task VALUES (?, ?, ?, ?, ?, 'QUEUED', NULL, ?, ?, ?, ?)",
-        (
-            task,
-            e["workspace_id"],
             a["type"],
             a["input_hash"],
             a["plan_hash"],
@@ -397,12 +396,33 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     )
 
 
+def task_parent(
+    e: Row, a: Attrs, held: Callable[[str], bool]
+) -> tuple[str | None, str | None, str | None]:
+    """A Task's one parent, (parent task, goal, workspace): version 2 names its parent task or
+    goal. Version 1 named neither; its goal is the one its submitting agent declared, when `held`
+    finds that goal in the Task's own workspace, and its workspace otherwise."""
+    if e["type_version"] >= 2:
+        parent, goal = a.get("parent_task_id"), a.get("goal_id")
+    else:
+        parent, goal = None, (a.get("submitted_by") or {}).get("goal_id")
+        goal = goal if goal is not None and held(goal) else None
+    if parent is not None:
+        return parent, None, None
+    return None, goal, None if goal is not None else e["workspace_id"]
+
+
+def _goal_held(con: Con, goal: str, workspace: str) -> bool:
+    """Whether the log holds `goal` in `workspace`."""
+    held = "SELECT 1 FROM goal WHERE goal_id = ? AND workspace_id = ?"
+    return con.execute(held, (goal, workspace)).fetchone() is not None
+
+
 @on("task.saved")
 def _task_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     _one(
         con.execute(
-            "UPDATE workspace_task SET lifecycle = ?, record_json = ?, updated_at = ?"
-            " WHERE task_id = ?",
+            "UPDATE task SET lifecycle = ?, record_json = ?, updated_at = ? WHERE task_id = ?",
             (a["lifecycle"], text, a["updated_at"], e["subject_id"]),
         ),
         "task_unknown",
@@ -617,9 +637,14 @@ def _recipe(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("hypothesis.stated")
 def _hypothesis(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A hypothesis's one parent: its goal when the log holds it in the hypothesis's workspace,
+    else that workspace."""
+    goal = a.get("goal_id")
+    if goal is not None and not _goal_held(con, goal, e["workspace_id"]):
+        goal = None
     con.execute(
         "INSERT INTO hypothesis VALUES (?, ?, ?, 'open', ?, ?)",
-        (e["subject_id"], e["workspace_id"], a.get("goal_id"), e["seq"], e["seq"]),
+        (e["subject_id"], goal, None if goal else e["workspace_id"], e["seq"], e["seq"]),
     )
 
 
@@ -640,10 +665,23 @@ def _hypothesis_standing(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         )
 
 
+@on("review.completed")
+def _reviewed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A goal's, task's or trial's first review writes its experience: the review's note
+    (research_note) is it, and a later review keeps that id."""
+    if e["subject_kind"] in ("goal", "task", "trial"):
+        kind = e["subject_kind"]
+        con.execute(
+            f"UPDATE {kind} SET experience_id = coalesce(experience_id, ?) WHERE {kind}_id = ?",
+            (e["event_id"], e["subject_id"]),
+        )
+
+
 @on("trial.registered")
 def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    """A trial works in its selection's workspace and for its hypothesis's goal: it names them
-    beside the selection and hypothesis, and a disagreement is refused."""
+    """A trial stores neither workspace nor goal: its selection's workspace is its own, and its
+    task and hypothesis lie in it; a goal it names (as one version did) is its hypothesis's. A
+    disagreement is refused."""
     selection = con.execute(
         "SELECT workspace_id FROM selection WHERE selection_id = ?", (a["selection_id"],)
     ).fetchone()
@@ -651,34 +689,30 @@ def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         raise _refuse(
             "trial_workspace_disagrees", "a trial names a selection made in its workspace"
         )
+    task = a.get("task_id")
+    if task is not None:
+        home = con.execute("SELECT workspace_id FROM task_workspace WHERE task_id = ?", (task,))
+        if (found := home.fetchone()) is None or found[0] != e["workspace_id"]:
+            raise _refuse("trial_workspace_disagrees", "a trial's task is of its workspace")
+    stated = (None, None)
     if a.get("hypothesis_id"):
         stated = con.execute(
-            "SELECT workspace_id, goal_id FROM hypothesis WHERE hypothesis_id = ?",
+            "SELECT workspace_id, goal_id FROM hypothesis_scope WHERE hypothesis_id = ?",
             (a["hypothesis_id"],),
         ).fetchone()
         if stated is None or stated[0] != e["workspace_id"]:
             raise _refuse(
                 "trial_workspace_disagrees", "a trial tests a hypothesis of its workspace"
             )
-        if stated[1] != a.get("goal_id"):
-            raise _refuse("trial_goal_disagrees", "a trial works for its hypothesis's goal")
-    if (
-        a.get("goal_id")
-        and con.execute(
-            "SELECT 1 FROM goal WHERE goal_id = ? AND workspace_id = ?",
-            (a["goal_id"], e["workspace_id"]),
-        ).fetchone()
-        is None
-    ):
-        raise _refuse("trial_goal_disagrees", "a trial works for a goal of its workspace")
+    if "goal_id" in a and a["goal_id"] != stated[1]:
+        raise _refuse("trial_goal_disagrees", "a trial works for its hypothesis's goal")
     con.execute(
-        "INSERT INTO trial (trial_id, workspace_id, goal_id, hypothesis_id, selection_id,"
-        " recipe_key, seeds, product_version, model, context, task_id, state, registered_seq)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?)",
+        "INSERT INTO trial (trial_id, task_id, hypothesis_id, selection_id,"
+        " recipe_key, seeds, product_version, model, context, state, registered_seq)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?)",
         (
             e["subject_id"],
-            e["workspace_id"],
-            a.get("goal_id"),
+            task,
             a.get("hypothesis_id"),
             a["selection_id"],
             a["recipe_key"],
@@ -686,7 +720,6 @@ def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a["product_version"],
             a.get("model"),
             _json(a.get("context", {})),
-            a.get("task_id"),
             e["seq"],
         ),
     )

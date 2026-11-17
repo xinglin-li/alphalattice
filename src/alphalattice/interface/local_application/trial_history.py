@@ -82,9 +82,9 @@ def started(sealed: SealedSubmission) -> Trial | None:
         "task_id": sealed.task_id,
         "context": {"program": program.program_hash, "sessions": len(program.resolved_sessions)},
     }
-    if sealed.hypothesis_id is not None:
+    if sealed.hypothesis_id is not None:  # one of this workspace's; its goal is the trial's
+        history.hypothesis_goal(sealed.hypothesis_id)
         registered["hypothesis_id"] = sealed.hypothesis_id
-        registered["goal_id"] = history.hypothesis_goal(sealed.hypothesis_id)
     trace = secrets.token_hex(16)
     cause = history.record(
         "trial.registered", ("trial", trial), registered, actor=actor, trace=trace

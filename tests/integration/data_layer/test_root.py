@@ -92,7 +92,7 @@ def log(tmp_path_factory):
     recipe = _event(con, "recipe.defined", ("recipe", "r1"))
     con.execute("INSERT INTO recipe VALUES ('r1', ?, 1, '{}', ?)", (METHOD, recipe))
     registered = _event(con, "trial.registered", ("trial", "t1"))
-    trial = {"trial_id": "t1", "workspace_id": "w1", "selection_id": "s1", "recipe_key": "r1"}
+    trial = {"trial_id": "t1", "selection_id": "s1", "recipe_key": "r1"}
     trial |= {"seeds": "[7]", "product_version": "0.2.8", "state": "registered"}
     con.execute(*_insert("trial", **trial, registered_seq=registered))
     produced = _event(con, "artifact.produced", ("artifact", "a1"), attrs={"type": "backtest"})
@@ -118,8 +118,8 @@ SHARPE |= {"relation": "convertible", "conversion": '{"offset": 0.0, "scale": 1.
 SHARPE |= {"spec": '{"unit": "ratio", "params": {"periods": 365}}', "text": "Annualized."}
 SHARPE |= {"owner": "kernel", "registered_seq": 1, "status_seq": 1}
 LATE_TRIAL = (
-    "INSERT INTO trial (trial_id, workspace_id, selection_id, recipe_key, product_version, state,"
-    " registered_seq, ended_seq) VALUES ('bad', 'w1', 's1', 'r1', '0.2.8', 'completed',"
+    "INSERT INTO trial (trial_id, selection_id, recipe_key, product_version, state,"
+    " registered_seq, ended_seq) VALUES ('bad', 's1', 'r1', '0.2.8', 'completed',"
     " :registered, :registered - 1)"
 )
 REFUSALS = {
@@ -214,8 +214,9 @@ def test_the_log_refuses_what_its_rules_forbid(log, statement, why):
 
 @pytest.mark.proves("data_layer.seed_registry_is_whole")
 def test_a_new_log_holds_the_seed_registry_whole(log):
-    """Each seed row is a registered family's version 1, registered at sequence 1; registry.seeded,
-    the four research tags and each artifact type's measures exist."""
+    """Each seed row is a registered family's version, registered at sequence 1: version 1, but for
+    task.requested's version 2; registry.seeded, the four research tags and each artifact type's
+    measures exist."""
     con, _ = log
     rows = con.execute(
         "SELECT family, name, version, registered_seq, status_seq, spec FROM definition"
@@ -225,7 +226,9 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
     measures = {
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
-    assert (len(rows), {row[2:5] for row in rows}) == (101, {(1, 1, 1)})
+    later = {(f, n) for f, n, version, *_ in rows if version > 1}
+    assert (len(rows), {row[3:5] for row in rows}) == (102, {(1, 1)})
+    assert later == {("event_type", "task.requested")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
     assert "registry.seeded" in named["event_type"]

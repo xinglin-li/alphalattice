@@ -150,6 +150,24 @@
       "description": "A Task was admitted; its text is the frozen request it was admitted to do, and its record follows (`task.saved`)."
     },
     {
+      "name": "task.requested",
+      "version": 2,
+      "relation": "not_comparable",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "type",
+        "product_version",
+        "input_hash",
+        "plan_hash",
+        "workflow_definition_hash",
+        "admitted_at"
+      ],
+      "text": "optional",
+      "durable": true,
+      "description": "A Task was admitted under its one parent: `parent_task_id`, else `goal_id`, else neither (its workspace); its text is the frozen request, and its record follows (`task.saved`)."
+    },
+    {
       "name": "task",
       "work": true,
       "subject": "task",

@@ -817,7 +817,7 @@
     "goal_id"
    ],
    "id": {
-    "goal_id": "caller: the caller's goal_id, or a uuid5 over its declaration and opener"
+    "goal_id": "uuid7: the Host mints a new goal's id at its open; a goal opened before keeps its uuid5, as keys never change"
    },
    "up": "workspace_id",
    "times": {
@@ -900,6 +900,9 @@
       ]
      }
     }
+   },
+   "edges": {
+    "workspace_id": "the parent of a hypothesis under no goal its workspace holds; a CHECK keeps exactly one parent"
    }
   },
   "log.ledger_entry": {
@@ -1093,13 +1096,16 @@
    },
    "up": "goal_id",
    "links": [
+    "parent_task_id",
     "workspace_id",
     "type_id"
    ],
    "times": {
     "requested_seq": "log_seq",
     "started_seq": "log_seq",
-    "ended_seq": "log_seq"
+    "ended_seq": "log_seq",
+    "admitted_at": "iso_text",
+    "updated_at": "iso_text"
    },
    "status": {
     "state": {
@@ -1134,10 +1140,18 @@
        "cancelled"
       ]
      }
+    },
+    "lifecycle": {
+     "states": [],
+     "terminal": [],
+     "moves": {}
     }
    },
    "versions": {
     "product_version": "own: the product release it started under"
+   },
+   "edges": {
+    "workspace_id": "the parent of a task under no parent task and no goal; a CHECK keeps exactly one parent"
    }
   },
   "log.task_step": {
@@ -1165,8 +1179,6 @@
    },
    "up": "task_id",
    "links": [
-    "workspace_id",
-    "goal_id",
     "hypothesis_id",
     "selection_id",
     "recipe_key"
@@ -1266,28 +1278,6 @@
        "deleted"
       ]
      }
-    }
-   }
-  },
-  "log.workspace_task": {
-   "home": "projection",
-   "key": [
-    "task_id"
-   ],
-   "id": {
-    "task_id": "uuid7"
-   },
-   "up": "workspace_id",
-   "copy_of": "log.task",
-   "times": {
-    "admitted_at": "iso_text",
-    "updated_at": "iso_text"
-   },
-   "status": {
-    "lifecycle": {
-     "states": [],
-     "terminal": [],
-     "moves": {}
     }
    }
   },
@@ -1401,9 +1391,8 @@
  },
  "known": {
   "task-two-homes": {
-   "says": "A task's facts have a second home in the workspace_task tables, which keep their times as text, key a receipt by its hash and check no lifecycle states.",
+   "says": "A task's record keeps its lifecycle and times as Task Control's text, and its work items, executions, notes, commands and receipts have a second home in the workspace_task tables, which key a receipt by its hash and check no lifecycle states.",
    "problems": [
-    "home: log.workspace_task: a second home of log.task's facts, kept as a table",
     "home: log.workspace_task_command: a second home of log.event's facts, kept as a table",
     "home: log.workspace_task_event: a second home of log.event's facts, kept as a table",
     "home: log.workspace_task_execution: a second home of log.task's facts, kept as a table",
@@ -1411,12 +1400,12 @@
     "home: log.workspace_task_stage_receipt: a second home of log.task_step's facts, kept as a table",
     "home: log.workspace_task_work_item: a second home of log.task_step's facts, kept as a table",
     "id: log.workspace_task_stage_receipt.receipt_hash: a digest id",
-    "status: log.workspace_task.lifecycle: its moves are declared, not enforced",
-    "status: log.workspace_task.lifecycle: the DDL checks no states",
+    "status: log.task.lifecycle: its moves are declared, not enforced",
+    "status: log.task.lifecycle: the DDL checks no states",
     "status: log.workspace_task_work_item.lifecycle: its moves are declared, not enforced",
     "status: log.workspace_task_work_item.lifecycle: the DDL checks no states",
-    "time: log.workspace_task.admitted_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task.updated_at: a time kept as text on its writer's clock",
+    "time: log.task.admitted_at: a time kept as text on its writer's clock",
+    "time: log.task.updated_at: a time kept as text on its writer's clock",
     "time: log.workspace_task_command.accepted_at: a time kept as text on its writer's clock",
     "time: log.workspace_task_command.resolved_at: a time kept as text on its writer's clock",
     "time: log.workspace_task_event.recorded_at: a time kept as text on its writer's clock",
@@ -1425,21 +1414,6 @@
     "time: log.workspace_task_projection.updated_at: a time kept as text on its writer's clock",
     "time: log.workspace_task_stage_receipt.observed_at: a time kept as text on its writer's clock",
     "time: log.workspace_task_work_item.updated_at: a time kept as text on its writer's clock"
-   ]
-  },
-  "goal-id-from-caller": {
-   "says": "A goal's id is the caller's value or a digest of its declaration, not an id the Host mints.",
-   "problems": [
-    "id: log.goal.goal_id: a caller id"
-   ]
-  },
-  "unit-second-upward-link": {
-   "says": "A task, a hypothesis and a trial store a workspace or goal their upward chain already reaches.",
-   "problems": [
-    "up: log.hypothesis.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
-    "up: log.task.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
-    "up: log.trial.goal_id: a second upward link, to goal, which its upward chain already reaches",
-    "up: log.trial.workspace_id: a second upward link, to workspace, which its upward chain already reaches"
    ]
   },
   "research-digest-ids": {

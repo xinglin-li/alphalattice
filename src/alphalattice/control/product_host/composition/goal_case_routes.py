@@ -87,9 +87,7 @@ def case_request(operation: str, fields: Mapping[str, Any]) -> PortfolioResearch
                 goal_declaration=declaration,
                 change_reason=reason,
             )
-        if goal_id is None:
-            raise ValueError("research_case.case_id_invalid")
-        return PortfolioResearchOperationRequest(
+        return PortfolioResearchOperationRequest(  # a new case's id is the Host's
             operation="GOAL_OPEN",
             goal_id=goal_id,
             goal_declaration=declaration,

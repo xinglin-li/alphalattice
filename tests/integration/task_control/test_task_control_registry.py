@@ -189,7 +189,7 @@ def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_re
     ).record
     with history.held().unit() as connection:  # a damaged row, written past its events
         connection.execute(
-            "UPDATE workspace_task SET record_json = '{}' WHERE task_id = ?",
+            "UPDATE task SET record_json = '{}' WHERE task_id = ?",
             [str(head.task_id)],
         )
         connection.execute(
@@ -235,7 +235,7 @@ def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
     replacement = "{}" if damage == "not-a-record" else alien.model_dump_json()
     with history.held().unit() as connection:  # a damaged row, written past its events
         connection.execute(
-            "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+            "UPDATE task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],
         )
         before = connection.execute(
@@ -332,7 +332,7 @@ def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation
                 ).fetchone()
             ) == (damaged.record_hash,)
         connection.execute(
-            "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+            "UPDATE task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],
         )
         before = {table: _rows(connection, table) for table in tables}

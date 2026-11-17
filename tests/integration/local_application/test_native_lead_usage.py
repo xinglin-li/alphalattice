@@ -87,7 +87,6 @@ def lead_scene(request, tmp_path, monkeypatch, recording_history):
     opened = goals.operate(
         PortfolioResearchRequestDocument(
             operation="GOAL_OPEN",
-            goal_id=str(uuid4()),
             change_reason="Synthetic declaration",
             goal_declaration={
                 "title": "Synthetic lead usage",
@@ -231,12 +230,12 @@ def open_another_goal(scene):
     """Open another real Goal through the existing public owner, with its own identity."""
     original = scene.goals.store.head(UUID(scene.goal_id))
     assert original is not None
+    declared = original.declaration.model_dump(mode="json")
     return scene.goals.operate(
         PortfolioResearchRequestDocument(
             operation="GOAL_OPEN",
-            goal_id=str(uuid4()),
             change_reason="Synthetic second Goal",
-            goal_declaration=original.declaration.model_dump(mode="json"),
+            goal_declaration={**declared, "title": f"{declared['title']} (another)"},
         ).to_operation_request(),
         "HUMAN",
         None,

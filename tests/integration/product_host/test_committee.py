@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -16,6 +17,7 @@ import pytest
 
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
 from alphalattice.control.product_host.composition import committee, committee_materials
+from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
@@ -410,15 +412,15 @@ def _floor(tmp_path: Path, readback: dict[str, Any]) -> tuple[GoalStore, list[da
         "kind": "RESEARCH",
         "criteria": [{"criterion_id": "positions", "text": "The positions stand, argued."}],
     }
-    app.operate(
-        Request(
-            operation="GOAL_OPEN",
-            goal_id=UUID(int=7),
-            goal_declaration=declaration,
-            change_reason="The person's sentence",
-        ),
-        "EXTERNAL_AUTOMATION",
-    )
+    with patch.object(composition, "uuid7", lambda: str(UUID(int=7))):  # the Host's id, read as 7
+        app.operate(
+            Request(
+                operation="GOAL_OPEN",
+                goal_declaration=declaration,
+                change_reason="The person's sentence",
+            ),
+            "EXTERNAL_AUTOMATION",
+        )
     opened = [
         committee.open_floor(
             app.store, UUID(int=7), readback, EVIDENCE, session=("claude-code", "s-1"), now=NOW
@@ -1262,16 +1264,14 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     app = GoalApplication(
         store, lambda: now[0], lambda *_: {}, lambda _: now[0], {}.get, workspace=tmp_path
     )
-    opened = Request(
-        operation="GOAL_OPEN", goal_id=UUID(int=8), goal_declaration=declared, change_reason="Said"
-    )
-    app.operate(opened, "EXTERNAL_AUTOMATION")
+    opened = Request(operation="GOAL_OPEN", goal_declaration=declared, change_reason="Said")
+    goal_id = app.operate(opened, "EXTERNAL_AUTOMATION")["goal_id"]
     answered = setting("HUMAN")
     assert answered["committee_daily"] == "ON"
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"
     assert answered["next_requests"]["goal"] == {
         "operation": "GOAL_SHOW",
-        "goal_id": str(UUID(int=8)),
+        "goal_id": str(goal_id),
     }
     record = json.loads((tmp_path / committee.DAILY_PATH).read_text("utf-8"))
     assert record["relayed_by"] == "claude-code:s-1"

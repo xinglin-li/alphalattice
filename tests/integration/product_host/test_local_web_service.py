@@ -2107,7 +2107,7 @@ def unreadable_task_records(live: LocalPortfolioWebSession, request):
     replacement = '"damaged"' if damage == "bad-json" else alien.model_dump_json()
     with task_log() as connection:
         connection.execute(
-            "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+            "UPDATE task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],
         )
         stored_before = connection.execute(

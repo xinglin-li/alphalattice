@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from alphalattice.kernel.data_layer.project import definition_id, recipe_key
+from alphalattice.kernel.data_layer.project import definition_id, recipe_key, task_parent
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
 MOMENTUM = definition_id("method", "momentum")
@@ -34,3 +34,23 @@ def test_a_lineage_id_is_its_family_and_first_name_and_never_a_name():
     named = {MOMENTUM, definition_id("metric", "momentum"), definition_id("method", "reversal")}
     assert len(named) == 3
     assert MOMENTUM.startswith("blake3:") and "momentum" not in MOMENTUM
+
+
+@pytest.mark.proves("data_layer.a_task_parent_is_its_nearest")
+@pytest.mark.parametrize(
+    ("version", "attrs", "parent"),
+    [
+        (2, {"parent_task_id": "k0", "goal_id": "g1"}, ("k0", None, None)),
+        (2, {"goal_id": "g1"}, (None, "g1", None)),
+        (2, {}, (None, None, "w1")),
+        (1, {"submitted_by": {"goal_id": "g1"}}, (None, "g1", None)),
+        (1, {"submitted_by": {"goal_id": "g2"}}, (None, None, "w1")),  # another workspace's
+        (1, {"submitted_by": None}, (None, None, "w1")),
+    ],
+    ids=["sub-task", "goal", "workspace", "v1-goal", "v1-other-goal", "v1-no-agent"],
+)
+def test_a_task_stores_its_nearest_parent(version, attrs, parent):
+    """Version 2 names a parent task, else a goal, else neither; version 1's goal is its
+    agent's, when the log holds it in the task's own workspace."""
+    event = {"type_version": version, "workspace_id": "w1"}
+    assert task_parent(event, attrs, {"g1"}.__contains__) == parent

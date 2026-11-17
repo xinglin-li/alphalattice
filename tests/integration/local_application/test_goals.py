@@ -7,22 +7,31 @@ import os
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.failure_codes import located_failure
+from alphalattice.interface.local_application.goals import (
+    Goal,
+    GoalDeclaration,
+    GoalSession,
+    declaration_hash,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
@@ -87,14 +96,13 @@ def test_goal_attribution_retains_exact_decision_selectors(
         ),
     }[selector]
     app.attribute(first, request, body, SESSION)
-    second = app.operate(
-        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=DECLARATION),
-        "HUMAN",
-    )
-    app.store.attribute(UUID(int=2), {"operation": request.operation, "task_id": None})
+    another = {**DECLARATION, "title": "Another study"}
+    second = app.operate(Request(operation="GOAL_OPEN", goal_declaration=another), "HUMAN")
+    second_id = UUID(str(second["goal_id"]))
+    app.store.attribute(second_id, {"operation": request.operation, "task_id": None})
     assert app.decision_attribution()[exact] == {str(first.goal_id)}
     app.attribute(app.store.load(second["goal_hash"]), request, body, SESSION)
-    legacy = app.store.attributed(UUID(int=2))[0]
+    legacy = app.store.attributed(second_id)[0]
     assert all(key not in legacy for key in ("plan_hash", "review_publication_hash", "case_token"))
     before = {
         path: path.read_bytes() for path in (app.store.content.root / "attribution").rglob("*.json")
@@ -146,11 +154,9 @@ def test_an_achieved_first_use_without_a_declared_slot_still_delivers(goal_app):
         "kind": "FIRST_USE",
         "criteria": [{"criterion_id": "folds", "text": "The result stands for the person"}],
     }
-    opened = app.operate(
-        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=declaration), "HUMAN"
-    )
+    opened = app.operate(Request(operation="GOAL_OPEN", goal_declaration=declaration), "HUMAN")
     _attach(app, opened)
-    goal = app.store.head(UUID(int=2))
+    goal = app.store.head(UUID(str(opened["goal_id"])))
     assert 'deliverable_id: "result"' in completion_template(goal)
     bare = GoalSubmission.model_validate(
         _submission(
@@ -546,11 +552,12 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
 
     monkeypatch.setattr(goal_history.history, "record_new", old_record)
     monkeypatch.setattr(goal_history.history, "record_hypothesis", record_once, raising=False)
-    for number, when in ((3, "before"), (4, "after")):
+    for when in ("before", "after"):
+        declared = {**DECLARATION, "title": f"{DECLARATION['title']} ({when})"}
         opened_retry = app.operate(
-            Request(operation="GOAL_OPEN", goal_id=UUID(int=number), goal_declaration=DECLARATION),
-            "HUMAN",
+            Request(operation="GOAL_OPEN", goal_declaration=declared), "HUMAN"
         )
+        number = UUID(str(opened_retry["goal_id"]))
         interrupt["when"] = when
         document = {
             "kind": "HYPOTHESIS",
@@ -561,9 +568,7 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
         if when == "after":
             document["statement_id"] = "named-claim"
         selector = (
-            {"goal_hash": opened_retry["goal_hash"]}
-            if when == "before"
-            else {"goal_id": UUID(int=number)}
+            {"goal_hash": opened_retry["goal_hash"]} if when == "before" else {"goal_id": number}
         )
         request = Request(
             operation="GOAL_NOTE",
@@ -576,8 +581,8 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
         answer = app.operate(request, "HUMAN")
         repeated = app.operate(request, "HUMAN")
         assert answer["hypothesis_id"] == repeated["hypothesis_id"]
-        assert len(app.store.head(UUID(int=number)).statements) == 1
-        assert sum(goal == str(UUID(int=number)) for goal, _name in issued) == 1
+        assert len(app.store.head(number).statements) == 1
+        assert sum(goal == str(number) for goal, _name in issued) == 1
 
 
 def _team_event(sequence: int, text: str = "A message.", **subject: str) -> Any:
@@ -1078,7 +1083,6 @@ def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamp
     opened = live.operations.execute(
         Request(
             operation="GOAL_OPEN",
-            goal_id=uuid4(),
             goal_declaration=DECLARATION,
             change_reason="Register before execution",
         )
@@ -1597,16 +1601,15 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
     ).record
     canonical = registry.task(task.task_id)
     app = live.operations.goals
-    goal_id = uuid4()
     opened = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             goal_declaration=DECLARATION,
             change_reason="Register before execution",
         ),
         "HUMAN",
     )
+    goal_id = UUID(str(opened["goal_id"]))
     goal = app.store.load(opened["goal_hash"])
     app.attribute(
         goal,
@@ -1898,13 +1901,13 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
         "required_stages": ["ALPHA", "RISK"],
         "budget": {"maximum_tasks": 2, "maximum_numerical_calls": 10, "maximum_model_calls": 2},
     }
-    body = {"case_id": str(UUID(int=7)), "case_document": document, "change_reason": "Question"}
+    body = {"case_document": document, "change_reason": "Question"}  # a new case's id is the Host's
     denied, _, _ = _request(
         live, "/api/research/case/save", method="POST", payload=body, token=None
     )
     assert denied == 403
     saved = _json(live, "/api/research/case/save", method="POST", payload=body)
-    assert saved["status"] == "CASE_SAVED" and saved["case_id"] == str(UUID(int=7))
+    assert saved["status"] == "CASE_SAVED" and UUID(saved["case_id"]).version == 7
     read = _json(live, "/api/research/case?case_hash=" + saved["case_hash"])
     assert read["status"] == "CASE_READBACK"
     assert read["case"]["document"] == {**document, "constraints": []}
@@ -1989,10 +1992,9 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     with pytest.raises(ValueError, match="revision_conflict"):
         app.operate(written(template), "EXTERNAL_AUTOMATION")
     # A session holding another goal, with criteria of the same ids, completes this one.
-    app.operate(
+    another = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=5),
             goal_declaration=DECLARATION,
             change_reason="Another goal, held by the session",
         ),
@@ -2002,7 +2004,7 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     current = yaml.safe_load(app.operate(show, "HUMAN")["yaml"])
     sealed = app.operate(written(current), "EXTERNAL_AUTOMATION", SESSION)
     assert sealed["goal_id"] == str(UUID(int=1)), sealed
-    assert app.store.head(UUID(int=5)).state == "OPEN"
+    assert app.store.head(UUID(str(another["goal_id"]))).state == "OPEN"
     # regression (a fresh-folder first use): the saved completion, sent by the offered
     # `goal submit`, reads as the request it is; a line naming another revision is refused.
     (saved := tmp_path / "completion.yaml").write_text(yaml.safe_dump(current), "utf-8")
@@ -2079,7 +2081,6 @@ def test_home_question_uses_the_dated_binding_and_excludes_session_work(goal_app
     authored = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=10),
             goal_declaration={**DECLARATION, "objective": "Another question?"},
         ),
         "HUMAN",
@@ -2088,7 +2089,6 @@ def test_home_question_uses_the_dated_binding_and_excludes_session_work(goal_app
     automatic = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=11),
             goal_declaration=session_work_declaration("COMMITTEE_SUBMIT", "codex"),
         ),
         "EXTERNAL_AUTOMATION",
@@ -2156,11 +2156,12 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
     )
 
     def open_goal(goal_id: UUID, provenance: RequestProvenance) -> dict[str, Any]:
+        """Open a goal the Host mints as `goal_id` (the fixture mints in order)."""
+        declared = {**DECLARATION, "title": f"A study {goal_id.int}", "target_date": "2026-08-12"}
         result = app.operate(
             Request(
                 operation="GOAL_OPEN",
-                goal_id=goal_id,
-                goal_declaration={**DECLARATION, "target_date": "2026-08-12"},
+                goal_declaration=declared,
                 change_reason="Register before execution",
             ),
             "HUMAN",
@@ -2172,6 +2173,7 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
             {"status": "AVAILABLE"},
             provenance,
         )
+        assert result["goal_id"] == str(goal_id)
         return result
 
     damaged_id, unreadable_attribution_id, other_id = UUID(int=2), UUID(int=3), UUID(int=4)
@@ -2352,3 +2354,112 @@ def test_one_bound_offer_selects_the_inline_refs_and_reuses_recovery_reads(goal_
     answer = send(request)
     assert answer["status"] == "COMPLETE" and answer["outcome"] == "NOT_ACHIEVED"
     assert len(calls) == 2 and app.store.head(UUID(int=1)).state == "COMPLETE"
+
+
+# A new goal's id is a Host UUIDv7; a goal opened before the declaration index is found again.
+
+
+class _Contended:
+    """The store's lock, telling the first open when the second waits for it."""
+
+    def __init__(self, lock: Any, waiting: Event) -> None:
+        self.lock, self.waiting = lock, waiting
+
+    def __enter__(self) -> None:
+        if not self.lock.acquire(blocking=False):
+            self.waiting.set()
+            self.lock.acquire()
+
+    def __exit__(self, *_: object) -> None:
+        self.lock.release()
+
+
+def _goals(root: Path) -> GoalApplication:
+    store = GoalStore(root, "workspace")
+    return GoalApplication(
+        store, lambda: NOW, lambda *_: {}, lambda _: NOW, lambda _: None, workspace=root
+    )
+
+
+def _opened_before(store: GoalStore, goal_id: UUID, declaration: GoalDeclaration) -> Goal:
+    """A goal as one opened before the declaration index left it: its head, no index entry."""
+    values = {"workspace_id": "workspace", "revision": 1, "recorded_at": NOW}
+    values |= {"intent_registered_at": NOW, "submitted_by": "HUMAN", "change_reason": "Opened."}
+    return store.publish(Goal.seal(goal_id=goal_id, declaration=declaration, **values), None)
+
+
+@pytest.mark.proves("product_host.a_reopened_goal_is_found_by_its_declaration")
+@pytest.mark.parametrize(
+    "case", ["new", "opened-before-the-index", "supplied-unknown-id", "two-at-once"]
+)
+def test_a_goal_id_is_the_hosts_and_a_reopened_goal_is_found_by_it(tmp_path, monkeypatch, case):
+    """A new goal takes a Host UUIDv7 and its reopening answers it, even when two threads open it
+    at once; one opened under its uuid5 before the index is answered the same way; an open naming
+    an id no goal holds is refused by name."""
+    declaration = GoalDeclaration.model_validate(DECLARATION)
+    opened_id = composition._opened_id(declaration, "HUMAN")
+    request = Request(operation="GOAL_OPEN", goal_declaration=DECLARATION)
+    if case == "supplied-unknown-id":
+        named = Request(operation="GOAL_OPEN", goal_id=opened_id, goal_declaration=DECLARATION)
+        with pytest.raises(ValueError, match=r"^goal\.id_is_the_hosts$"):
+            _goals(tmp_path).operate(named, "HUMAN")
+        return
+    if case == "two-at-once":  # the first waits at the index until the second reaches it too
+        goals, inside, second = _goals(tmp_path), Event(), Event()
+        declared = goals.store.declared
+
+        def meeting(key: str) -> UUID | None:
+            found = declared(key)
+            if inside.is_set():
+                second.set()  # the second open read the index too: no lock parted them
+            else:
+                inside.set()
+                second.wait()
+            return found
+
+        monkeypatch.setattr(goals.store, "declared", meeting)
+        monkeypatch.setattr(goals.store, "lock", _Contended(goals.store.lock, second))
+        with ThreadPoolExecutor(2) as pool:
+            first = pool.submit(goals.operate, request, "HUMAN")
+            inside.wait()
+            again = pool.submit(goals.operate, request, "HUMAN")
+            opened = [first.result(), again.result()]
+        assert sorted(o["status"] for o in opened) == ["GOAL_SAVED", "REUSED_EXACT"]
+        assert len({o["goal_id"] for o in opened}) == len(goals.store.goal_ids()) == 1
+        return
+    if case == "new":
+        first = UUID(str(_goals(tmp_path).operate(request, "HUMAN")["goal_id"]))
+    else:
+        first = _opened_before(GoalStore(tmp_path, "workspace"), opened_id, declaration).goal_id
+    again = _goals(tmp_path).operate(request, "HUMAN")
+    assert (first == opened_id, first.version) == ((False, 7) if case == "new" else (True, 5))
+    assert (again["status"], again["goal_id"]) == ("REUSED_EXACT", str(first))
+
+
+@pytest.mark.proves("product_host.a_reopened_goal_is_found_by_its_declaration")
+@pytest.mark.parametrize(
+    ("opener", "bound", "indexed"),
+    [
+        pytest.param({"session_id": "s1", "vendor": "codex"}, True, True, id="bound-session"),
+        pytest.param({"session_id": "s1", "vendor": "codex"}, False, False, id="unknown-opener"),
+    ],
+)
+def test_the_upgrade_step_indexes_a_goal_under_the_opener_that_made_its_id(
+    tmp_path: Path, opener, bound, indexed
+) -> None:
+    """The upgrade step indexes an older goal under the candidate opener whose old id is its id,
+    once per store, and leaves one no candidate made; the first goal declared keeps its hash."""
+    store = GoalStore(tmp_path, "workspace")
+    declaration = GoalDeclaration.model_validate(DECLARATION)
+
+    def opened_id(declared: GoalDeclaration, who: object) -> UUID:
+        return uuid5(UUID(int=1), json.dumps([declared.title, who], sort_keys=True))
+
+    goal = _opened_before(store, opened_id(declaration, opener), declaration)
+    if bound:
+        store.bind(GoalSession.model_validate(opener), goal.goal_id)
+    assert store.declare_opened(opened_id) == int(indexed)
+    key = declaration_hash(declaration, opener)
+    assert store.declared(key) == (goal.goal_id if indexed else None)
+    assert store.declare_opened(opened_id) == 0  # its mark: the step runs once
+    assert store.declare(key, opener, uuid4()) == store.declared(key)

@@ -1020,7 +1020,7 @@ def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, 
         )
         with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?",
+                "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
         answer = _json(live, "/api/decisions")
@@ -1084,7 +1084,7 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
         )
         with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?",
+                "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
             stored_before = connection.execute(

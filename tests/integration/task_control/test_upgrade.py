@@ -30,6 +30,7 @@ from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.log import uuid7
 from tests.workspace_task_runner.task_control_support import (
     compatibility,
     complete_stage,
@@ -466,7 +467,7 @@ def test_task_admission_order_survives_equal_clocks_and_reopen(tmp_path, monkeyp
     import alphalattice.control.task_control.registry as owner
 
     counter = iter(range(1000, 0, -1))
-    monkeypatch.setattr(owner, "uuid4", lambda: UUID(int=next(counter)))
+    monkeypatch.setattr(owner, "uuid7", lambda: str(UUID(int=next(counter))))  # ids descend
     now = datetime(2026, 8, 5, 23, tzinfo=UTC)
     path = resolve_task_control_database(tmp_path)
     registry = DuckDbTaskControlRegistry(path, gate=WorkspaceMutationGate())
@@ -491,9 +492,11 @@ def test_task_admission_order_survives_equal_clocks_and_reopen(tmp_path, monkeyp
         registry, WorkspaceMutationGate(), monkeypatch, tmp_path / "data"
     )
     assert list(migrated.tasks()) == originals
+    monkeypatch.setattr(owner, "uuid7", uuid7)  # the Host's own ids again
     envelope, goal, plan = task_contract(salt="after-legacy-bootstrap")
     added = migrated.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
     assert migrated.tasks()[-1] == added
+    assert added.task_id.version == 7  # Host-minted, time-ordered
 
 
 @pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")

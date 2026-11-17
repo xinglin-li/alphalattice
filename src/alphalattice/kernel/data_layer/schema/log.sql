@@ -217,14 +217,20 @@ CREATE TABLE goal (
   deadline_us INTEGER,
   set_seq INTEGER NOT NULL,
   closed_seq INTEGER,
+  experience_id TEXT,  -- the experience its review wrote; NULL until one is
   CHECK ((state = 'open') = (closed_seq IS NULL))
 ) STRICT, WITHOUT ROWID;
 
--- One execution of a task is one trace.
+-- One execution of a task is one trace. A task stores one parent, the nearest: its parent task, else its goal, else
+-- (a task under neither) its workspace. Each lies in the task's workspace, which task_workspace reads. Task Control's
+-- record of it (task_kind to submitted_by_json) is kept on the same row, in the registry's own model and clock (UTC
+-- ISO text); workspace_task reads it with its workspace.
 CREATE TABLE task (
   task_id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
+  parent_task_id TEXT REFERENCES task(task_id),
   goal_id TEXT REFERENCES goal(goal_id),
+  workspace_id TEXT REFERENCES workspace(workspace_id),
+  experience_id TEXT,  -- the experience its review wrote; NULL until one is
   type_id TEXT NOT NULL REFERENCES definition_lineage(definition_id),  -- its work event type's lineage
   state TEXT NOT NULL CHECK (state IN ('requested', 'running', 'waiting', 'completed', 'failed', 'cancelled')),
   trace_id TEXT NOT NULL,
@@ -233,11 +239,51 @@ CREATE TABLE task (
   requested_seq INTEGER NOT NULL,
   started_seq INTEGER,
   ended_seq INTEGER,
+  task_kind TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  plan_hash TEXT NOT NULL,
+  lifecycle TEXT NOT NULL,
+  record_json TEXT CHECK (record_json IS NULL OR json_valid(record_json)),  -- set by its first save
+  admitted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  admission_sequence INTEGER,  -- in its workspace; NULL for a record admitted before admissions were ordered
+  submitted_by_json TEXT CHECK (submitted_by_json IS NULL OR json_valid(submitted_by_json)),
+  CHECK ((parent_task_id IS NOT NULL) + (goal_id IS NOT NULL) + (workspace_id IS NOT NULL) = 1),
   CHECK (started_seq IS NULL OR started_seq > requested_seq),
   CHECK (ended_seq IS NULL OR ended_seq > requested_seq),
   CHECK ((state IN ('completed', 'failed', 'cancelled')) = (ended_seq IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX task_open ON task(state) WHERE state IN ('requested', 'running', 'waiting');
+CREATE INDEX task_parent ON task(parent_task_id) WHERE parent_task_id IS NOT NULL;
+CREATE INDEX task_goal ON task(goal_id) WHERE goal_id IS NOT NULL;
+CREATE INDEX task_lifecycle ON task(lifecycle, admission_sequence);
+
+CREATE INDEX task_admission ON task(admission_sequence) WHERE admission_sequence IS NOT NULL;
+
+-- Every task's workspace: the one its request was made in. The projection refuses a parent task or goal of another
+-- workspace, so this join and the task's upward chain agree; the join reads one event by its key.
+CREATE VIEW task_workspace AS
+SELECT t.task_id, e.workspace_id FROM task t JOIN event e ON e.seq = t.requested_seq;
+
+-- Every task's goal: its own, else its parent task's, up the chain; NULL for a task under none. A reader's walk, never
+-- an append's: the projection checks a parent through task_workspace's one-event join.
+CREATE VIEW task_scope AS
+WITH RECURSIVE up(task_id, parent_task_id, goal_id) AS (
+  SELECT task_id, parent_task_id, goal_id FROM task
+  UNION ALL
+  SELECT up.task_id, p.parent_task_id, p.goal_id FROM up JOIN task p ON p.task_id = up.parent_task_id
+)
+SELECT task_id, goal_id FROM up WHERE parent_task_id IS NULL;
+
+-- An admission's place is unique in its workspace.
+CREATE TRIGGER task_admission_order BEFORE INSERT ON task WHEN NEW.admission_sequence IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'UNIQUE constraint failed: task admission_sequence in its workspace')
+  WHERE EXISTS (
+    SELECT 1 FROM task t JOIN event e ON e.seq = t.requested_seq JOIN event n ON n.seq = NEW.requested_seq
+    WHERE t.admission_sequence = NEW.admission_sequence AND e.workspace_id = n.workspace_id
+  );
+END;
 
 -- A recovery point: a row exists once a slow step, or one with an outside effect, has completed. A restart skips it.
 CREATE TABLE task_step (
@@ -268,27 +314,17 @@ CREATE INDEX wait_heartbeat ON wait(
 ) WHERE purpose = 'task.heartbeat';
 
 -- Task Control's records (task_control.registry), each row the projection of the event that carries its sealed
--- record. They keep the registry's own model: a Task's version, its work items, executions, notes, commands bound
--- to the version they confirmed, and stage receipts; the same events project task and task_step above. Their times
--- are the registry's own clock, UTC ISO text, as each record holds them.
-CREATE TABLE workspace_task (
-  task_id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
-  task_kind TEXT NOT NULL,
-  input_hash TEXT NOT NULL,
-  plan_hash TEXT NOT NULL,
-  lifecycle TEXT NOT NULL,
-  record_json TEXT CHECK (record_json IS NULL OR json_valid(record_json)),  -- set by its first save
-  admitted_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  admission_sequence INTEGER,  -- NULL for a record admitted before admissions were ordered
-  submitted_by_json TEXT CHECK (submitted_by_json IS NULL OR json_valid(submitted_by_json))
-) STRICT, WITHOUT ROWID;
-CREATE UNIQUE INDEX workspace_task_admission_order ON workspace_task(workspace_id, admission_sequence);
-CREATE INDEX workspace_task_lifecycle ON workspace_task(workspace_id, lifecycle);
+-- record. They keep the registry's own model: a Task's version (on task), its work items, executions, notes, commands
+-- bound to the version they confirmed, and stage receipts; the same events project task and task_step above. Their
+-- times are the registry's own clock, UTC ISO text, as each record holds them. workspace_task is a Task's record as the
+-- registry reads it, with its derived workspace.
+CREATE VIEW workspace_task AS
+SELECT t.task_id, w.workspace_id, t.task_kind, t.input_hash, t.plan_hash, t.lifecycle, t.record_json, t.admitted_at,
+       t.updated_at, t.admission_sequence, t.submitted_by_json
+FROM task t JOIN task_workspace w USING (task_id);
 
 CREATE TABLE workspace_task_work_item (
-  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  task_id TEXT NOT NULL REFERENCES task(task_id),
   stage_id TEXT NOT NULL,
   ordinal INTEGER NOT NULL,
   lifecycle TEXT NOT NULL,
@@ -299,7 +335,7 @@ CREATE TABLE workspace_task_work_item (
 
 CREATE TABLE workspace_task_execution (
   execution_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  task_id TEXT NOT NULL REFERENCES task(task_id),
   graph_thread_id TEXT NOT NULL UNIQUE,
   worker_instance_id TEXT NOT NULL,
   compatibility_hash TEXT NOT NULL,
@@ -309,7 +345,7 @@ CREATE TABLE workspace_task_execution (
 
 CREATE TABLE workspace_task_event (
   event_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  task_id TEXT NOT NULL REFERENCES task(task_id),
   execution_id TEXT,
   sequence INTEGER NOT NULL,
   kind TEXT NOT NULL,
@@ -321,7 +357,7 @@ CREATE INDEX workspace_task_event_kind ON workspace_task_event(kind, recorded_at
 
 CREATE TABLE workspace_task_command (
   command_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  task_id TEXT NOT NULL REFERENCES task(task_id),
   command_hash TEXT NOT NULL UNIQUE,
   command_json TEXT NOT NULL CHECK (json_valid(command_json)),
   accepted_at TEXT NOT NULL,
@@ -331,7 +367,7 @@ CREATE TABLE workspace_task_command (
 
 CREATE TABLE workspace_task_stage_receipt (
   receipt_hash TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  task_id TEXT NOT NULL REFERENCES task(task_id),
   execution_id TEXT NOT NULL,
   stage_id TEXT NOT NULL,
   receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
@@ -375,22 +411,27 @@ CREATE TABLE selection (
 ) STRICT, WITHOUT ROWID;
 CREATE TRIGGER selection_no_update BEFORE UPDATE ON selection BEGIN SELECT RAISE(ABORT, 'a selection is never edited'); END;
 
-CREATE TABLE hypothesis (
+CREATE TABLE hypothesis (  -- one parent: its goal, else (a goal the log holds in no workspace of its) its workspace
   hypothesis_id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
   goal_id TEXT REFERENCES goal(goal_id),
+  workspace_id TEXT REFERENCES workspace(workspace_id),
   standing TEXT NOT NULL CHECK (standing IN ('open', 'supported', 'refuted', 'inconclusive', 'dropped')),
   stated_seq INTEGER NOT NULL,   -- its statement is that event's text
-  standing_seq INTEGER NOT NULL
+  standing_seq INTEGER NOT NULL,
+  CHECK ((goal_id IS NOT NULL) + (workspace_id IS NOT NULL) = 1)
 ) STRICT, WITHOUT ROWID;
+CREATE VIEW hypothesis_scope AS  -- its workspace: the one it was stated in, its goal's
+SELECT h.hypothesis_id, e.workspace_id, h.goal_id FROM hypothesis h JOIN event e ON e.seq = h.stated_seq;
 
 -- One trial is one state transition. State: the goal, the hypothesis, the selection, the context. Action: the
 -- recipe and seeds. Effect: its result artifact's measures. New state: the hypothesis's standing, the notes on it.
--- Registered before it runs, and counted whether it completes, fails or is cancelled.
+-- Registered before it runs, and counted whether it completes, fails or is cancelled. It stores neither workspace nor
+-- goal: its selection holds its workspace, and its task and hypothesis, refused unless they lie in that workspace,
+-- reach its goal. trial_scope joins them.
 CREATE TABLE trial (
   trial_id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
-  goal_id TEXT REFERENCES goal(goal_id),
+  task_id TEXT REFERENCES task(task_id),
+  experience_id TEXT,           -- the experience its review wrote; NULL until one is
   hypothesis_id TEXT REFERENCES hypothesis(hypothesis_id),
   selection_id TEXT NOT NULL REFERENCES selection(selection_id),
   recipe_key TEXT NOT NULL REFERENCES recipe(recipe_key),
@@ -398,7 +439,6 @@ CREATE TABLE trial (
   product_version TEXT NOT NULL,
   model TEXT,                   -- the agent's model, when an agent ran it
   context TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(context) AND length(context) <= 2048),  -- [3] conclusions in hand, a few market-condition measures
-  task_id TEXT REFERENCES task(task_id),
   state TEXT NOT NULL CHECK (state IN ('registered', 'running', 'completed', 'failed', 'cancelled')),
   result_artifact TEXT,         -- its headline artifact, its own, named by its completion; the spread reads this one alone
   standing_after TEXT CHECK (standing_after IS NULL OR standing_after IN ('open', 'supported', 'refuted', 'inconclusive', 'dropped')),
@@ -411,8 +451,12 @@ CREATE TABLE trial (
   CHECK (ended_seq IS NULL OR ended_seq > registered_seq)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX trial_recipe ON trial(recipe_key);
+CREATE INDEX trial_task ON trial(task_id) WHERE task_id IS NOT NULL;
 CREATE INDEX trial_hypothesis ON trial(hypothesis_id);
-CREATE INDEX trial_goal ON trial(goal_id);
+CREATE VIEW trial_scope AS  -- its workspace: its selection's; its goal: its hypothesis's, else its task's
+SELECT t.trial_id, s.workspace_id, coalesce(h.goal_id, g.goal_id) AS goal_id
+FROM trial t JOIN selection s ON s.selection_id = t.selection_id LEFT JOIN hypothesis h ON h.hypothesis_id = t.hypothesis_id
+LEFT JOIN task_scope g ON g.task_id = t.task_id;
 
 -- Registered first, scored at its horizon.
 CREATE TABLE prediction (
@@ -636,7 +680,7 @@ CREATE TABLE workspace_task_heartbeat_at (
 
 -- Each Task's latest safe projection, derived from its records for a fast listing.
 CREATE TABLE workspace_task_projection (
-  task_id TEXT PRIMARY KEY REFERENCES workspace_task(task_id),
+  task_id TEXT PRIMARY KEY REFERENCES task(task_id),
   task_record_hash TEXT NOT NULL,
   projection_json TEXT NOT NULL CHECK (json_valid(projection_json)),
   updated_at TEXT NOT NULL

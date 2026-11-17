@@ -20,6 +20,7 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.kernel.data_layer.history import held, workspace_on_log
+from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
 from .contracts import (
@@ -558,9 +559,15 @@ class DuckDbTaskControlRegistry:
         frozen: str | None,
     ) -> None:
         """Record a Task's admission: its sealed record and work items, and as its text the
-        frozen request it was admitted to do."""
+        frozen request it was admitted to do. Its parent is the goal its submitting agent
+        declared when the log holds that goal in this workspace, else this workspace."""
         ((_, version),) = package_versions(("alphalattice",))
+        goal = None if submitted_by is None else submitted_by.goal_id
+        held_goal = "SELECT 1 FROM goal WHERE goal_id = ? AND workspace_id = ?"
+        if goal is not None and not held().read(held_goal, (goal, self.workspace_id)):
+            goal = None
         attrs = {
+            "goal_id": goal,
             "type": record.task_kind,
             "product_version": str(version),
             "input_hash": record.input.input_hash,
@@ -570,7 +577,7 @@ class DuckDbTaskControlRegistry:
             "admission_sequence": admission_sequence,
             "submitted_by": None if submitted_by is None else submitted_by.model_dump(mode="json"),
         }
-        self._record("task.requested", record.task_id, attrs, text=frozen)
+        self._record("task.requested", record.task_id, attrs, text=frozen, version=2)
         self._save_task(None, record)
         for ordinal, item in enumerate(items):
             self._save_work_item(None, item, ordinal)
@@ -661,7 +668,7 @@ class DuckDbTaskControlRegistry:
             places, reason = waiting_places(read_queue_setting(self.database_path.parent))
             if queued_count >= places:
                 raise _queue_full(queued_count, places, reason)
-            task_id = uuid4()
+            task_id = UUID(uuid7())  # Host-minted, time-ordered
             identity = {
                 "task_id": task_id,
                 "task_kind": input_envelope.task_kind,

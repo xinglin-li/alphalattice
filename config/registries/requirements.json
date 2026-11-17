@@ -364,6 +364,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_task_parent_is_its_nearest": {
+      "description": "A task stores its parent task, else its goal held in its own workspace, else its workspace, by its event's version.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_timed_row_needs_its_source_time": {
       "description": "Staging refuses by name a raw_bar or corporate_action row without its source's own write time, which orders it against a held value.",
       "owner": "alphalattice.kernel.data_layer",
@@ -395,6 +401,12 @@
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "The contract crosses real DuckLake metadata, Arrow registration and restart persistence."
+    },
+    "data_layer.an_event_names_its_type_version": {
+      "description": "A new event is written under version 1 of its type unless its writer names a later registered version.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.analytics_views_preserve_values": {
       "description": "Each analytics view returns every pinned column and row of the fixed Host-written research log.",
@@ -449,6 +461,13 @@
     "data_layer.durable_events_commit_at_once": {
       "description": "A durable event commits when appended; an ordinary one with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
       "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.each_work_unit_stores_one_parent": {
+      "description": "A task, hypothesis and trial each store exactly one parent, and their workspace, goal and experience are reached by joining up it.",
+      "lower_layer": "The parent is chosen in the log's own SQLite projection and checked by its tables; only a real log shows the rows.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
@@ -952,6 +971,12 @@
       "layer": "integration",
       "seconds": 1,
       "lower_layer": "The real local client imports process and Host facilities that the unit layer cannot load."
+    },
+    "local_application.a_goal_is_found_by_its_declaration_hash": {
+      "description": "A reopened goal is found by its declaration's typed binary hash with its opener and encoding version, never by JSON text.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
     },
     "local_application.a_refused_body_drain_ends_at_its_deadline": {
       "description": "If a refused request's body were drained with no overall deadline, a client trickling bytes could hold a request thread without end.",
@@ -1541,6 +1566,13 @@
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
       "seconds": 5
+    },
+    "product_host.a_reopened_goal_is_found_by_its_declaration": {
+      "description": "Reopening a goal answers it, a new one under a UUIDv7 and one opened under its old uuid5 once the upgrade step indexes it.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
     "product_host.held_data_update_names_provider_work": {
       "description": "A plan using held market data says that no provider work is needed.",

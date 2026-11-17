@@ -83,6 +83,7 @@ from alphalattice.interface.local_application.goals import (
     GoalStatement,
     GoalSubmission,
     GoalTaskFact,
+    declaration_hash,
     opened_goal,
     relayed_decision,
     target_sessions,
@@ -93,6 +94,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution import ActorKind
@@ -103,8 +105,16 @@ from alphalattice.protocols.actor_execution.bundles import (
 )
 
 GOAL_NAMESPACE = UUID("8f1d6c63-3c3e-4f5f-9f0e-5c4b2a7e8d10")
-"""A goal opened without an id is named from its declaration and who opened it, so a retried
-open answers the goal it made rather than a second one."""
+"""The namespace of a goal id opened before the declaration index: uuid5 over the declaration
+and its opener. Only the index's upgrade step (`_opened_id`) makes one now."""
+
+
+def _opened_id(declaration: GoalDeclaration, opener: object) -> UUID:
+    """The id a goal opened before the declaration index took: its declaration's and opener's."""
+    opened = {"declaration": declaration.model_dump(mode="json"), "opened_by": opener}
+    return uuid5(GOAL_NAMESPACE, canonical_hash(opened))
+
+
 _SOURCE_DATE_REFUSALS = (
     "workspace_preparation.local_inputs_after_requested_date",
     "data.current_universe_no_feature_ready_listings",
@@ -1452,39 +1462,40 @@ class GoalApplication:
         if (road := daily_road(self.workspace, declaration)) is not None:
             return dict(road)  # a completed first use: its daily road, never a second one
         session = self._session(provenance)
-        goal_id = request.goal_id or uuid5(
-            GOAL_NAMESPACE,
-            canonical_hash(
-                {
-                    "declaration": declaration.model_dump(mode="json"),
-                    "opened_by": session.model_dump(mode="json") if session else caller,
-                }
-            ),
-        )
-        prior = self.store.head(goal_id)
-        if prior is None and declaration.kind == "FIRST_USE":
-            prior = self.first_use()
-            if prior and prior.declaration != declaration:
-                raise ValueError("goal.first_use_already_opened")
-        if prior is not None:
-            if prior.revision == 1 and prior.declaration == declaration:
-                answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
-                bound = {**answer, **self._bind(prior, session)}
-                answered = declaration.kind == "FIRST_USE" and first_use_answered(
-                    self.workspace, self.clock
-                )
-                return opened_goal(bound, request.goal_declaration, daily_answered=answered)
-            raise ValueError("goal.already_open_revise_it")
-        if (dated := undated(self.workspace, declaration, self.clock())) is not None:
-            return dict(dated)
-        if declaration.kind == "FIRST_USE" and self.preparation_completed():
-            raise ValueError("goal.first_use_after_preparation")
-        if (
-            declaration.parent_goal_id is not None
-            and self.store.head(declaration.parent_goal_id) is None
-        ):
-            raise ValueError("goal.parent_absent")
-        answer = self._save(request, caller, None, declaration=declaration, goal_id=goal_id)
+        opener = session.model_dump(mode="json") if session else caller
+        if request.goal_id is not None and self.store.head(request.goal_id) is None:
+            raise ValueError("goal.id_is_the_hosts")  # a new goal's id is the Host's to mint
+        # One open at a time per store, from its id through its first revision: two threads
+        # opening one declaration both find no index otherwise, and publish two goals.
+        with self.store.lock:
+            self.store.declare_opened(_opened_id)
+            key = declaration_hash(declaration, opener)
+            goal_id = request.goal_id or self.store.declared(key) or UUID(uuid7())
+            prior = self.store.head(goal_id)
+            if prior is None and declaration.kind == "FIRST_USE":
+                prior = self.first_use()
+                if prior and prior.declaration != declaration:
+                    raise ValueError("goal.first_use_already_opened")
+            if prior is not None:
+                if prior.revision == 1 and prior.declaration == declaration:
+                    answer = {"status": "REUSED_EXACT", **self._identity_of(prior)}
+                    bound = {**answer, **self._bind(prior, session)}
+                    answered = declaration.kind == "FIRST_USE" and first_use_answered(
+                        self.workspace, self.clock
+                    )
+                    return opened_goal(bound, request.goal_declaration, daily_answered=answered)
+                raise ValueError("goal.already_open_revise_it")
+            if (dated := undated(self.workspace, declaration, self.clock())) is not None:
+                return dict(dated)
+            if declaration.kind == "FIRST_USE" and self.preparation_completed():
+                raise ValueError("goal.first_use_after_preparation")
+            if (
+                declaration.parent_goal_id is not None
+                and self.store.head(declaration.parent_goal_id) is None
+            ):
+                raise ValueError("goal.parent_absent")
+            goal_id = self.store.declare(key, opener, goal_id)  # first: a crash's retry opens it
+            answer = self._save(request, caller, None, declaration=declaration, goal_id=goal_id)
         saved = self.store.load(str(answer["goal_hash"]))
         bound = self._bind(saved, session)
         result = {
