@@ -721,7 +721,7 @@ class MarketDataRepository(WorkspaceRepository):
         finally:
             connection.close()
 
-    def writing(self) -> AbstractContextManager[None]:
+    def writing(self) -> AbstractContextManager[Callable[[], None]]:
         """One market data update of this workspace: its reads take the workspace's tables, and
         the Host admits them into world once when the outermost update ends
         (``world_reads.writing``)."""

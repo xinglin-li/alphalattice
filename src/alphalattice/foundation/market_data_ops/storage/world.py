@@ -685,10 +685,13 @@ def admit_universe(database: Path, workspace_id: str) -> None:
     admit(database, workspace_id)
 
 
-def _admit_universe_contents(database: Path, workspace_id: str) -> None:
-    """Copy a workspace's manifests, bootstrap and journal before its admission is recorded."""
-    market = UniverseWorkspaceReader(database.parent)
-    connection = market._connect(read_only=True)
+def _admit_universe_contents(database: Path, workspace_id: str, attached: Any) -> None:
+    """Copy a workspace's manifests, bootstrap and journal before its admission is recorded,
+    read through `attached`, a cursor of the admission's attachment of the file, so the
+    admission opens the file no second time."""
+    connection = attached.cursor()
+    connection.execute(f"USE {WORKSPACE}")
+    market = UniverseWorkspaceReader(database.parent, through=connection)
     try:
         tables = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
         if "universe_manifest" not in tables:
@@ -710,21 +713,21 @@ def _admit_universe_contents(database: Path, workspace_id: str) -> None:
             if "universe_bootstrap" in tables
             else []
         )
+        providers: dict[str, str] = {}
+        for name in manifest_ids:
+            manifest = market._workspace_load_universe_manifest(name)
+            admit_universe_manifest(manifest, workspace_id)
+            providers[manifest.profile.market_profile_id] = manifest.profile.provider
+        for profile in profiles:
+            bootstrap = market._workspace_universe_bootstrap(profile)
+            if bootstrap is None:
+                continue
+            events = market._workspace_membership_events(profile)
+            _universe_journal(events, workspace_id)
+            admit_universe_bootstrap(bootstrap, providers[profile], workspace_id)
+            _admit_universe_intervals(bootstrap, events, providers[profile], workspace_id)
     finally:
         connection.close()
-    providers: dict[str, str] = {}
-    for name in manifest_ids:
-        manifest = market._workspace_load_universe_manifest(name)
-        admit_universe_manifest(manifest, workspace_id)
-        providers[manifest.profile.market_profile_id] = manifest.profile.provider
-    for profile in profiles:
-        bootstrap = market._workspace_universe_bootstrap(profile)
-        if bootstrap is None:
-            continue
-        events = market._workspace_membership_events(profile)
-        _universe_journal(events, workspace_id)
-        admit_universe_bootstrap(bootstrap, providers[profile], workspace_id)
-        _admit_universe_intervals(bootstrap, events, providers[profile], workspace_id)
 
 
 def market_of(calendar: str) -> str:
@@ -761,7 +764,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         started = port.log.clock()
         providers = _register(run)
         admitted = _admit(port, providers)
-        _admit_universe_contents(database, workspace_id)
+        _admit_universe_contents(database, workspace_id, port.lake)
         _revisions(port, workspace_id)
         history.record(
             "admission",

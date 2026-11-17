@@ -15807,6 +15807,34 @@
    "successor": "52b7d4af184fc14ef7d6e9d5a6c27a1c7f4d5d56da26c95506abe8801515ab1a",
    "change": "Keep execution outcomes in the machine catalog",
    "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "67e0f269f1a2f9ba2435a3cc5ee450b11a393d5c1dc7922944015b4bdd8cffc9",
+   "successor": "19fcc93ffb5fd0a8425d326ed3cc89ff508674659745dbf5ee75a90478628c9a",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6647a5b837f332f020374e9a6f07a51db6856fb16011d30a32593e36af6f9cbd",
+   "successor": "1a75a80925511401006e9cafb667f05f0db65dacbb17e976a46b51b31d471bca",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "ae90feb8713b784898bf26f2423598ee81c5e182622d4e3d4fee5b4ac19da360",
+   "successor": "87d1f4ad2ee6f6943c2964b47a366b85be95b1e09aa6a314031be9cd95fa19ce",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "a2f1aadde76e2f234d1e1e59cc55e731b383147d6e57215df2a133e444b6a808",
+   "successor": "1ec39f1f9c02893c782465b5fcfbba676f681aac1956c2f62ef691a44d74fcbf",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
   }
  ]
 }

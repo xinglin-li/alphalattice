@@ -185,16 +185,21 @@ def writing(
     *,
     dataset: str = DATASET,
     admit: Callable[[Path, str], Any] = world.admit,
-) -> Iterator[None]:
+) -> Iterator[Callable[[], None]]:
     """One market data update of the workspace in `database`, in this process. Its reads, every
     thread's, take the workspace's own tables, reading no marks and admitting nothing, so a loop
     that writes and reads listing by listing pays no admission per listing. When the outermost
-    update ends, the Host admits the tables once, as `reading` would at its next read."""
+    update ends, the Host admits the tables once, as `reading` would at its next read.
+
+    It yields `mark`: a writer that holds the file open in an instance calls it once its writes
+    are done, so the admission's marks are read through that instance and the admission, made
+    after the instance is released, opens the file no second time."""
     path = str(database.resolve())
+    taken: list[dict[str, Any]] = []
     with _lock:
         _writing[path] = _writing.get(path, 0) + 1
     try:
-        yield
+        yield lambda: taken.append(marks())
     finally:
         with _lock:
             _writing[path] -= 1
@@ -202,7 +207,8 @@ def writing(
             if outermost:
                 del _writing[path]
         if outermost and history.opened_log() is not None:
-            with reading(database, marks, dataset=dataset, admit=admit):
+            read = (lambda: taken[-1]) if taken else marks
+            with reading(database, read, dataset=dataset, admit=admit):
                 pass
 
 

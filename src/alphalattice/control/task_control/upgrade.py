@@ -252,8 +252,10 @@ def carry_tasks(workspace: Path, copy: Path, *, root: Path | None = None) -> int
             TaskAdmissionRequest.model_validate_json(text).model_dump(mode="json")
         )
         (requests / f"{name}.json").write_bytes(text.encode("utf-8"))
-    # Filled under another name and moved into place whole: a kill leaves no store, never a
-    # partial one that the next carry would keep.
+    # Everything the store's Tasks bring goes first; the store is published last, filled under
+    # another name and moved into place whole: a kill leaves no store, never a partial one or one
+    # without its telemetry, and the next carry completes what is missing.
+    _carry_telemetry(workspace, copy, root)
     filling = target.with_name(f"{target.name}.carrying")
     filling.unlink(missing_ok=True)
     create_0_2_7_store(filling)
@@ -270,6 +272,36 @@ def carry_tasks(workspace: Path, copy: Path, *, root: Path | None = None) -> int
         store.close()
     os.replace(filling, target)
     return len(rows["workspace_task"])
+
+
+def _carry_telemetry(workspace: Path, copy: Path, root: Path | None) -> None:
+    """Write the Task telemetry the log holds for `workspace` into `copy` as the files a 0.2.7
+    workspace kept them in, each at its source's place: a phase JSONL whole, a snapshot as its
+    latest document. The copy's readers read them there, and its first record moves them onto
+    the log its process holds (`import_telemetry`). A file the copy already has is kept: each is
+    written whole under another name, so one that exists is complete."""
+    with log_of(_store(workspace), root) as (connection, workspace_id):
+        if workspace_id is None:
+            return
+        rows = connection.execute(
+            "SELECT json_extract(e.attrs, '$.source'), t.text FROM event e JOIN event_text t"
+            " ON t.seq = e.seq WHERE e.type = 'task.telemetry' AND e.workspace_id = ?"
+            " ORDER BY e.seq",
+            [workspace_id],
+        ).fetchall()
+    held, base = {}, workspace.resolve()
+    for source, text in rows:
+        if Path(source).is_relative_to(base):
+            held.setdefault(Path(source).relative_to(base), []).append(text)
+    for relative, texts in held.items():
+        target = copy / relative
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        body = "".join(text + "\n" for text in texts) if target.suffix == ".jsonl" else texts[-1]
+        partial = target.with_name(target.name + ".carrying")
+        partial.write_text(body, encoding="utf-8")
+        os.replace(partial, target)
 
 
 _Rows = dict[str, list[dict[str, Any]]]
@@ -697,9 +729,12 @@ def _runtime_switch(paths: tuple[Path, ...], reader: str) -> None:
     """Select one reader by setting verified old files aside; rollback restores their names.
 
     No file is deleted. A kill between renames leaves each file at its old or retired name;
-    the next step checks whichever old files remain and never replaces a retired generation.
+    the next step checks whichever old files remain and never replaces a retired generation:
+    a later one (a carried copy's, which the log already holds) is kept in a dated directory
+    beside it, as `set_aside` keeps a store's.
     """
     held().flush()  # the conversion is durable before the old reader is set aside
+    generation = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     files = tuple(
         file
         for path in paths
@@ -716,8 +751,10 @@ def _runtime_switch(paths: tuple[Path, ...], reader: str) -> None:
         source, target = (path, retired) if reader == "new" else (retired, path)
         if not source.exists():
             continue
-        if target.exists():
+        if target.exists() and reader != "new":
             raise ValueError(f"task_control.runtime_retirement_conflict:{path.name}")
+        if target.exists():
+            target = retired.parent / generation / path.name
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(source, target)
 
@@ -871,6 +908,12 @@ def _register_telemetry(log: Any) -> None:
         )
 
 
+def _logged(path: Path, task_id: object) -> tuple[dict[str, Any], ...]:
+    """What the log holds of `path`'s source in the form its file keeps: a phase JSONL's every
+    readout, a snapshot's latest document (a carried copy's file holds only that one)."""
+    return read_task_telemetry(path, task_id, latest=path.suffix != ".jsonl")
+
+
 def _telemetry_step(paths: tuple[Path, ...], _runner: object = None) -> None:
     """Copy every old phase/snapshot once, retaining its exact readout and source clock."""
     # Parse all sources first: a bad source cannot retire another file or leave half a source.
@@ -879,7 +922,7 @@ def _telemetry_step(paths: tuple[Path, ...], _runner: object = None) -> None:
         for path, rows in sources:
             if not rows:
                 continue
-            logged = read_task_telemetry(path, rows[0]["task_id"])
+            logged = _logged(path, rows[0]["task_id"])
             if logged != rows[: len(logged)]:
                 raise ValueError(f"task_control.telemetry_import_conflict:{path.name}")
             for row in rows[len(logged) :]:
@@ -890,7 +933,7 @@ def _telemetry_verify(paths: tuple[Path, ...], _runner: object = None) -> bool:
     """ALL EQUAL for every stored phase and snapshot, without a missing-field default."""
     for path in paths:
         rows = _stored_telemetry(path)
-        if rows and read_task_telemetry(path, rows[0]["task_id"]) != rows:
+        if rows and _logged(path, rows[0]["task_id"]) != rows:
             return False
     return True
 

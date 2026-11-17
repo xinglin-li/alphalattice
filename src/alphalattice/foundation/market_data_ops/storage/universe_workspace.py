@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import duckdb
 
-from alphalattice.control.workspace_runtime.database import WorkspaceRepository
+from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, WorkspaceRepository
 from alphalattice.foundation.market_data_ops.publication.projection import _canonical_hash
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
@@ -41,9 +42,20 @@ def _table_exists(connection: duckdb.DuckDBPyConnection, name: str) -> bool:
 class UniverseWorkspaceReader(WorkspaceRepository):
     """The shared owner of workspace universe reads."""
 
+    def __init__(
+        self,
+        workspace: Path | WorkspaceDatabase,
+        *,
+        through: duckdb.DuckDBPyConnection | None = None,
+    ) -> None:
+        """Read the workspace's universe tables; `through` is a connection already reading its
+        file (world's admission has it attached), which every read takes instead of opening it."""
+        super().__init__(workspace)
+        self._through = through
+
     def _workspace_load_universe_manifest(self, manifest_id: str) -> UniverseManifest:
         """Restore a frozen manifest from workspace-owned durable membership rows."""
-        connection = self._connect(read_only=True)
+        connection = self._through or self._connect(read_only=True)
         try:
             # Obligations arrived after workspaces existed: a manifest stored
             # before the column carries none, and a reader must not need the
@@ -92,7 +104,8 @@ class UniverseWorkspaceReader(WorkspaceRepository):
                 [str(manifest_row[10]), manifest_id],
             ).fetchall()
         finally:
-            connection.close()
+            if connection is not self._through:
+                connection.close()
         if not listing_rows or any(row[4] is None for row in listing_rows):
             raise ValueError("workspace manifest membership or provider mapping is incomplete")
         # Its revision names its members, but the table keeps neither the candidate manifest an
@@ -149,7 +162,7 @@ class UniverseWorkspaceReader(WorkspaceRepository):
         """Return the rollback workspace's frozen bootstrap boundary."""
         if not self.path.exists():
             return None
-        connection = self._connect(read_only=True)
+        connection = self._through or self._connect(read_only=True)
         try:
             if not _table_exists(connection, "universe_bootstrap"):
                 return None
@@ -164,7 +177,8 @@ class UniverseWorkspaceReader(WorkspaceRepository):
                 [market_profile_id],
             ).fetchone()
         finally:
-            connection.close()
+            if connection is not self._through:
+                connection.close()
         if row is None:
             return None
         return UniverseBootstrapRecord(
@@ -189,7 +203,7 @@ class UniverseWorkspaceReader(WorkspaceRepository):
         """Return the rollback workspace's membership journal in sequence order."""
         if not self.path.exists():
             return ()
-        connection = self._connect(read_only=True)
+        connection = self._through or self._connect(read_only=True)
         try:
             if not _table_exists(connection, "universe_membership_event"):
                 return ()
@@ -204,7 +218,8 @@ class UniverseWorkspaceReader(WorkspaceRepository):
                 [market_profile_id],
             ).fetchall()
         finally:
-            connection.close()
+            if connection is not self._through:
+                connection.close()
         return tuple(
             MembershipEvent(
                 market_profile_id=market_profile_id,

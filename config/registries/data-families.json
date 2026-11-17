@@ -3233,6 +3233,7 @@
       "bytes": null,
       "writers": [
         "data_platform.task_telemetry:TaskTelemetry",
+        "task_control.upgrade:_carry_telemetry",
         "task_control.upgrade:_runtime_switch"
       ],
       "readers": [

@@ -177,6 +177,32 @@ def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
         assert read_task_telemetry(path, task.task_id) == expected
         assert TaskTelemetry.read_json(progress, task.task_id) == snapshot
         assert not progress.exists()
+        later = {key: value for key, value in snapshot.items() if key != "content_hash"}
+        later["stage"] = "load"
+        later["content_hash"] = canonical_hash(later)
+        TaskTelemetry.record_json(progress, later)
+        # A copy opens with its Tasks' telemetry where they kept it, the snapshot as its latest.
+        copy, publish = tmp_path / "copy", owner.os.replace
+        with monkeypatch.context() as patch:  # killed carrying its telemetry: no store yet
+
+            def killed_at_the_telemetry(source: Path, target: Path) -> None:
+                if Path(target) == copy / path.relative_to(tmp_path):  # its phase JSONL
+                    raise _Killed
+                publish(source, target)
+
+            patch.setattr(owner.os, "replace", killed_at_the_telemetry)
+            with pytest.raises(_Killed):
+                owner.carry_tasks(tmp_path, copy)
+        assert not owner._store(copy).exists()
+        assert owner.carry_tasks(tmp_path, copy) == 1  # the next carry completes it
+        kept = copy / path.relative_to(tmp_path)
+        assert [json.loads(line) for line in kept.read_text("utf-8").splitlines()] == list(expected)
+        carried = copy / progress.relative_to(tmp_path)
+        assert TaskTelemetry.read_json(carried, task.task_id) == later
+        # Carried back onto the log that holds its every snapshot, it imports as already held.
+        progress.write_bytes(carried.read_bytes())
+        owner.import_telemetry((progress,))
+        assert not progress.exists() and TaskTelemetry.read_json(progress, task.task_id) == later
     log = history.held()
     log.flush()
     with log.reading() as source:
