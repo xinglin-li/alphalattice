@@ -758,8 +758,11 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
         }
     )
     early.goals.store.attribute = lambda _goal, entry: kept_entries.append(entry)
-    plan = first_update(early, activated, None)["update"]["plan"]  # type: ignore[arg-type]
+    held = first_update(early, activated, None)["update"]  # type: ignore[arg-type]
+    plan = held["plan"]
     ((due, callback),) = holds
+    assert "run" not in held  # nothing runs before the hold's time
+    assert plan["failure_code"] == "research_update.target_not_completed"
     assert due == datetime(2026, 10, 9, 22, tzinfo=UTC) and "18:00 ET" in plan["reading"]
     assert plan["held_until"] == due.isoformat() and kept_entries[0]["held_update"]
     # A reader outside New York also gets their own time, with its date where the day differs.

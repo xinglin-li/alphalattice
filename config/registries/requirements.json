@@ -43,6 +43,19 @@
       "layer": "integration",
       "seconds": 5
     },
+    "alternative_evidence.a_later_unit_wait_ends_at_its_bound": {
+      "description": "If later units waited on a first unit that never ends, a book's preparation would hang.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
+    },
     "alternative_evidence.absent_consent_uses_the_default": {
       "description": "An absent Evidence source consent reads as the default while an unreadable record does not.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -756,6 +769,19 @@
       "seconds": 1,
       "lower_layer": "The real local client imports process and Host facilities that the unit layer cannot load."
     },
+    "local_application.a_refused_body_drain_ends_at_its_deadline": {
+      "description": "If a refused request's body were drained with no overall deadline, a client trickling bytes could hold a request thread without end.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
+    },
     "local_application.codex_first_use_names_project_trust": {
       "description": "Codex's trust of a project is read as Codex documents it: an untrusted project gets the person's one step, an explicitly untrusted one names their setting, and a trusted one is ready.",
       "owner": "alphalattice.interface.local_application",
@@ -849,6 +875,19 @@
       "layer": "integration",
       "seconds": 10
     },
+    "market_data_ops.a_rate_limited_retry_backs_off": {
+      "description": "If a rate-limited provider call were retried at once, the retry would hit the same limit and hammer the provider.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
+    },
     "market_data_ops.daily_provider_conformance": {
       "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -873,6 +912,19 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "A real DuckDB store and Arrow result are needed to compare the persisted set query with its per-listing readers."
+    },
+    "observation_runtime.a_page_that_does_not_advance_is_named": {
+      "description": "If a reader followed a ledger page that does not move its cursor, it would read the same page forever.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
     },
     "observation_runtime.accepted_answers_enter_the_ledger_once": {
       "description": "If one accepted role answer published twice or lost its submitting lead, the ledger would count work that was never one exchange.",
@@ -1222,6 +1274,19 @@
       "layer": "integration",
       "seconds": 20
     },
+    "research_authoring.schema_notes_end_on_a_ref_cycle": {
+      "description": "If a schema's $ref chain were followed with no memory, a self-referencing definition would hang the client.",
+      "owner": "alphalattice.protocols.research_authoring",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
+    },
     "shared_kernel.a_wait_ends_at_its_bound": {
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -1246,6 +1311,19 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.a_wedged_worker_is_ended_by_name": {
+      "description": "If the Host waited on a worker that stopped running with no bound, a wedged call would hold its Task forever.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
+      }
     },
     "task_control.a_worker_ends_with_its_parent": {
       "description": "If a kept worker watched its parent by polling, or not at all, a Host that died would leave workers running or end them late.",
@@ -1505,6 +1583,19 @@
         ],
         "why": "The memo's 20 existing tests state both file-system rules (kept, and not kept where no lifetime handle exists) instead of skipping there, as the review required",
         "decided": "2026-11-15: Lead: the excess is the coverage of the second file-system rule; keep every check"
+      }
+    },
+    "workspace_runtime.an_interrupt_ends_a_source_check_wait": {
+      "description": "If waiting on parallel source checks swallowed an interrupt, Ctrl-C could not stop a verification.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
+        "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
     },
     "workspace_runtime.background_task_gate_wait_and_cancel": {

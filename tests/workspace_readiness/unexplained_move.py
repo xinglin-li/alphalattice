@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
@@ -12,7 +11,6 @@ from tests.researcher_methodology_surface.real_workspace import (
     OBSERVED_AT,
     SeededWalkProvider,
 )
-from tests.workspace_maintenance.local_data_provider import RecordingProvider
 
 
 def unexplained_move(
@@ -20,8 +18,6 @@ def unexplained_move(
     listings: int = 1,
     sessions: int = 1,
     sector_size: int = 5,
-    *,
-    through: datetime | None = None,
 ) -> tuple[SeededWalkProvider, tuple[str, ...]]:
     """A `count`-listing provider whose first `listings` listings each double their close on
     `sessions` sessions a week apart, with no event that explains them; a larger `sector_size`
@@ -30,18 +26,13 @@ def unexplained_move(
     schedule = materialize_calendar_schedule(
         ("XNAS",),
         start=HISTORY_START,
-        end=AS_OF if through is None else through.date(),
-        as_of_timestamp=OBSERVED_AT if through is None else through,
+        end=AS_OF,
+        as_of_timestamp=OBSERVED_AT,
     )
     calendar = tuple(value["session_date"] for value in schedule.to_pylist())
-    moved = {
-        calendar[len(calendar) // 2 + 5 * n if through is None else -1 - 5 * n]
-        for n in range(sessions)
-    }
+    moved = {calendar[len(calendar) // 2 + 5 * n] for n in range(sessions)}
 
-    base = SeededWalkProvider if through is None else RecordingProvider
-
-    class UnexplainedMove(base):
+    class UnexplainedMove(SeededWalkProvider):
         """The moved listings' closes double for their sessions, with no event for them."""
 
         def _closes(self, symbol: str, end: Any) -> dict[Any, float]:
