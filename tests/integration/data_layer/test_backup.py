@@ -9,6 +9,7 @@ import uuid
 from contextlib import closing
 from functools import partial
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import sqlite_vec
@@ -18,7 +19,7 @@ from alphalattice.kernel.data_layer import backup, create_data_root
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
 from alphalattice.kernel.data_layer.project import definition_id
-from alphalattice.kernel.data_layer.store import StorePort, stage
+from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
 
@@ -40,7 +41,7 @@ def _admit(root, port, close=1.0, count=1500):
             "definition.registered", ("definition", "provider/synthetic"), key, text=text
         )
     provider = definition_id("provider", "synthetic")
-    with stage(root, "raw_bar", provider, rows, floor_bytes=0) as staged:
+    with stage(root, "raw_bar", provider, pa.table(as_columns(rows)), floor_bytes=0) as staged:
         return port.commit(staged)
 
 

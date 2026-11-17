@@ -37,7 +37,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import sql_path
-from alphalattice.kernel.data_layer.store import newest, stage
+from alphalattice.kernel.data_layer.store import as_columns, newest, stage
 
 DATASET: Final = "market"
 MARKET_CLOSE: Final = ("market-close", 1)
@@ -194,8 +194,8 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
     dropped: dict[str, int] = {}
     rewritten: dict[str, int] = {}
 
-    def commit(table: str, provider: str, batch: list[dict[str, Any]], lag: Any) -> None:
-        if not batch:
+    def commit(table: str, provider: str, batch: Any, lag: Any) -> None:
+        if not batch.num_rows:
             return
         lineage = definition_id("provider", provider)
         with stage(port.root, table, lineage, batch, lag=lag) as staged:
@@ -208,7 +208,7 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
             rewritten[table] = rewritten.get(table, 0) + done.rewritten
 
     for batch in _sessions(run, dated).values():
-        commit("session", CALENDARS, batch, None)
+        commit("session", CALENDARS, _arrow(batch), None)
     for provider, batch in _grouped(
         (
             row[4],
@@ -222,15 +222,22 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         )
         for row in dated
     ).items():
-        commit("listing", provider, batch, MARKET_CLOSE)
+        commit("listing", provider, _arrow(batch), MARKET_CLOSE)
     for provider, batch in _symbols(run, dated, ids).items():
-        commit("provider_symbol", provider, batch, MARKET_CLOSE)
+        commit("provider_symbol", provider, _arrow(batch), MARKET_CLOSE)
     for provider, batch in _bars(port.lake):
         commit("raw_bar", provider, batch, MARKET_CLOSE)
     for provider, batch in _grouped(_actions(run, dated)).items():
-        commit("corporate_action", provider, batch, MARKET_CLOSE)
+        commit("corporate_action", provider, _arrow(batch), MARKET_CLOSE)
     noted = {"dropped": dropped, "rewritten": rewritten}
     return {"rows": rows} | {name: counts for name, counts in noted.items() if counts}
+
+
+def _arrow(rows: list[dict[str, Any]]) -> Any:
+    """A batch built row by row as the Arrow table StorePort stages."""
+    import pyarrow as pa  # lazy: the optional data extra, as DuckDB
+
+    return pa.table(as_columns(rows))
 
 
 def _grouped(pairs: Iterable[tuple[str, dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
@@ -319,10 +326,10 @@ def _symbols(
     return out
 
 
-def _bars(lake: Any) -> Iterator[tuple[str, list[dict[str, Any]]]]:
+def _bars(lake: Any) -> Iterator[tuple[str, Any]]:
     """Each provider's bars whose values differ from world's newest version of their key, or
     whose source wrote them after that version's value was last written, with the provider's
-    adjusted close and their source's last write, a year at a time."""
+    adjusted close and their source's last write, a year at a time, as DuckDB's Arrow result."""
     w = WORKSPACE
     lake.execute(
         "CREATE OR REPLACE TEMP TABLE market_bars AS SELECT r.provider,"
@@ -350,7 +357,7 @@ def _bars(lake: Any) -> Iterator[tuple[str, list[dict[str, Any]]]]:
             " WHERE provider = ? AND year(session_date) = ? ORDER BY ALL",
             params=[provider, year],
         ).to_arrow_table()
-        yield provider, rows.to_pylist()
+        yield provider, rows
 
 
 def _actions(run: Any, dated: list[tuple[Any, ...]]) -> Iterator[tuple[str, dict[str, Any]]]:

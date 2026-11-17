@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 from time import perf_counter
 
+import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
@@ -27,6 +28,7 @@ from alphalattice.kernel.data_layer.store import (
     RESULTS_KEYS,
     WORLD_KEYS,
     StorePort,
+    as_columns,
     delete,
     repair,
     stage,
@@ -55,10 +57,15 @@ def root(tmp_path):
     return tmp_path / "data"
 
 
-def bars(count: int, close: float = 1.0) -> list[dict]:
+def arrow(rows: list[dict]) -> pa.Table:
+    """An admission's rows as the Arrow table StorePort stages."""
+    return pa.table(as_columns(rows))
+
+
+def bars(count: int, close: float = 1.0) -> pa.Table:
     """`count` daily bars of one listing from 2024-01-01."""
     days = (f"2024-{day // 28 + 1:02d}-{day % 28 + 1:02d}" for day in range(count))
-    return [{"listing_id": LISTING, "session_date": day, "close": close} for day in days]
+    return arrow([{"listing_id": LISTING, "session_date": day, "close": close} for day in days])
 
 
 def outcome(day: str, simple_return: float | None = 0.1) -> dict:
@@ -90,7 +97,7 @@ def seed(root: Path, log: HostLog, sessions: list[tuple[str, str, bool]]) -> Sto
         ("listing", [{"listing_id": LISTING, "market": "XNYS"}]),
         ("session", days),
     ):
-        with stage(root, table, CALENDAR, rows) as staged:
+        with stage(root, table, CALENDAR, arrow(rows)) as staged:
             port.commit(staged)
     return port
 
@@ -143,6 +150,7 @@ def test_the_next_start_repairs_an_owed_event_once_even_below_the_floor(root):
 KILL = """
 import json, os, sys
 from pathlib import Path
+import pyarrow as pa
 from alphalattice.kernel.data_layer import store
 from alphalattice.kernel.data_layer.log import HostLog
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
@@ -150,7 +158,8 @@ lag = batch["lag"] and tuple(batch["lag"])
 with HostLog.open(root) as log:
     port = store.StorePort.open(root, log)
     yf = store.definition_id("provider", "yf")
-    with store.stage(root, batch["table"], yf, batch["rows"], lag=lag) as staged:
+    rows = pa.table(store.as_columns(batch["rows"]))
+    with store.stage(root, batch["table"], yf, rows, lag=lag) as staged:
         setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
         port.commit(staged)
 """
@@ -379,7 +388,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
         )
         for table, rows, lag in batches:
-            with stage(root, table, YF, rows, lag=lag) as staged:
+            with stage(root, table, YF, arrow(rows), lag=lag) as staged:
                 try:
                     port.commit(staged)
                 except DataError as error:
@@ -465,10 +474,10 @@ def test_a_batch_again_adds_nothing_and_a_correction_is_known_from_its_admission
         port = seed(root, log, sessions)
         admitted = []
         for rows in batches:
-            with stage(root, "raw_bar", YF, rows, lag=("yf-close", 1)) as staged:
+            with stage(root, "raw_bar", YF, arrow(rows), lag=("yf-close", 1)) as staged:
                 admitted.append((staged.admission_id, port.commit(staged)))
         with (
-            stage(root, "raw_bar", YF, [later | {"close": 3.0}]) as observed,
+            stage(root, "raw_bar", YF, arrow([later | {"close": 3.0}])) as observed,
             pytest.raises(DataError, match="known_asof order") as late,
         ):
             port.commit(observed)
@@ -511,16 +520,16 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
             root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
         )
         with stage(
-            root, "provider_symbol", YF, [symbol | {"valid_to": "2024-01-05"}], lag=rule
+            root, "provider_symbol", YF, arrow([symbol | {"valid_to": "2024-01-05"}]), lag=rule
         ) as s:
             first = port.commit(s)
         with stage(
-            root, "provider_symbol", YF, [symbol | {"valid_to": "2024-01-08"}], lag=rule
+            root, "provider_symbol", YF, arrow([symbol | {"valid_to": "2024-01-08"}]), lag=rule
         ) as s:
             moved = (s.admission_id, port.commit(s))
         done = []
         for row in bars:
-            with stage(root, "raw_bar", YF, [row], lag=rule) as staged:
+            with stage(root, "raw_bar", YF, arrow([row]), lag=rule) as staged:
                 done.append(port.commit(staged))
         known = dict(log.read("SELECT admission_id, known_us FROM admission"))[moved[0]]
         read = "SELECT list(valid_to ORDER BY valid_to) FROM lake.world.provider_symbol x"
@@ -559,10 +568,12 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
 STAGE = """
 import sys, uuid
 from pathlib import Path
-from alphalattice.kernel.data_layer.store import definition_id, stage
+import pyarrow as pa
+from alphalattice.kernel.data_layer.store import as_columns, definition_id, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
          "close": float(i)} for i in range(100_000)]
 print("hashing", flush=True)
+rows = pa.table(as_columns(rows))
 with stage(Path(sys.argv[1]), "raw_bar", definition_id("provider", "yf"), rows) as staged:
     print(staged.row_count, flush=True)
 """

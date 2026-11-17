@@ -6520,6 +6520,11 @@
 "category": "INVALID_ARGUMENT",
 "classification_note": "An event's type and version are not registered event types."
 },
+"data_layer.admission_column_unsupported": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An admission's column has a type canonical() has no form for (a date, a time, a nested value); StorePort digests text, numbers, booleans and nulls."
+},
 "data_layer.admission_key_repeated": {
 "owner": "data_layer",
 "category": "INVALID_ARGUMENT",

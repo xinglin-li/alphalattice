@@ -132,6 +132,9 @@ CREATE TABLE world.raw_bar (
   admission_id VARCHAR NOT NULL
 );
 ALTER TABLE world.raw_bar SET PARTITIONED BY (year(session_date));
+-- Written in key order, listing then date, in row groups of 10,240 rows: a read of one listing's bars
+-- touches only the groups that hold them.
+CALL lake.set_option('parquet_row_group_size', 10240, schema => 'world', table_name => 'raw_bar');
 
 -- key: (provider_id, listing_id, effective_date, kind, action_id, value_digest). An announced action is known from
 -- its announcement; an adjustment as of a date applies only actions effective by then. kind is a closed vocabulary;

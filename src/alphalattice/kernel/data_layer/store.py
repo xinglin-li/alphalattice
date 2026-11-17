@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 import shutil
 import threading
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final, NamedTuple
@@ -36,7 +36,7 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
     free_floor_shortfall,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, digest
+from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, row_digests
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import (
@@ -99,6 +99,9 @@ or at the same time with another value, which keeps the held version."""
 PARTITION: Final = {"raw_bar": "session_date"}
 """The date column whose year partitions a table, as catalog.sql sets it; any other table is one
 part, `all`. An admission's event names the knowledge times it brought to each part."""
+DIGEST_BATCH: Final = 1 << 20
+"""The rows whose canonical bytes are built at once: a year of a market's bars, under Arrow's
+2 GiB string limit with room for wide rows."""
 METADATA: Final = "__ducklake_metadata_lake"
 """The DuckLake catalog's own tables, as the Host's session names them."""
 
@@ -270,7 +273,7 @@ class StorePort:
     ) -> None:
         """The one catalog transaction: the event it owes, the supersession of each world version
         the rows replace, and of an interval's open version by its closing one, the later writes of
-        held values, then the rows."""
+        held values, then the rows in their key order."""
         table, admission = staged.table, staged.admission_id
         run = self.lake.execute
         run("BEGIN").complete()
@@ -306,7 +309,8 @@ class StorePort:
                     f"SELECT * EXCLUDE (_opening){withdrawn}, '{admission}' AS admission_id"
                     f" FROM ({rows})"
                 )
-            run(f"INSERT INTO {target} BY NAME {rows}").complete()
+            order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
+            run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
             run("COMMIT").complete()
         except BaseException:
             run("ROLLBACK").complete()
@@ -461,13 +465,14 @@ def stage(
     root: Path,
     table: str,
     provider_id: str,
-    rows: Iterable[Mapping[str, Any]],
+    rows: Any,
     *,
     lag: tuple[str, int] | None = None,
     floor_bytes: int = FREE_FLOOR_BYTES,
 ) -> Iterator[Staged]:
-    """Digest one admission's rows and write them under staging; the commit request it yields is
-    all the writer needs. `provider_id` is the provider's lineage in the log. Its producer holds
+    """Digest one admission's rows, an Arrow table or record batch reader, and write them under
+    staging as they came, in Arrow from the caller to the Parquet; the commit request it yields
+    is all the writer needs. `provider_id` is the provider's lineage in the log. Its producer holds
     the admission's lock until the block ends, so a Host that starts meanwhile leaves it: commit
     it inside the block. A legacy batch, rows 0.2.7 kept with no knowledge time, names its
     source's lag rule as `lag=(name, version)`. Refused by name below the free-space floor, and
@@ -482,8 +487,7 @@ def stage(
         )
     admission = uuid7()  # first: the rows and the staging folder carry it
     staged = digested(table, provider_id, rows, legacy=lag is not None)
-    import pyarrow as pa  # lazy: the optional data extra, as DuckDB
-    import pyarrow.parquet as pq  # lazy: as pyarrow
+    import pyarrow.parquet as pq  # lazy: the optional data extra, as DuckDB
 
     lock = root / "staging" / f"{admission}.lock"
     held = hold(lock)  # before the folder, so no start sees the folder unheld
@@ -495,10 +499,8 @@ def stage(
         )
     try:
         (root / "staging" / admission).mkdir()
-        pq.write_table(
-            pa.table(as_columns(staged)), root / "staging" / admission / f"{table}.parquet"
-        )
-        yield Staged(admission, table, provider_id, len(staged), lag)
+        pq.write_table(staged, root / "staging" / admission / f"{table}.parquet")
+        yield Staged(admission, table, provider_id, staged.num_rows, lag)
     finally:
         drop(held, lock)
 
@@ -530,16 +532,16 @@ def feature_table(feature_set_id: str) -> str:
     return "feature_set_" + feature_set_id.removeprefix("blake3:")
 
 
-def digested(
-    table: str, provider_id: str, rows: Iterable[Mapping[str, Any]], *, legacy: bool = False
-) -> list[dict[str, Any]]:
-    """Each world row with its value_digest, the digest of the row with its provider's lineage
-    where its table keys one, so a renamed provider moves no digest, and without its source's write
-    time (OBSERVED), which is not content; a results row as it is. A legacy interval row with an
-    end also carries its open version's digest (OPENING).
+def digested(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -> Any:
+    """The rows as one Arrow table, each world row with its value_digest, the digest of the row
+    with its provider's lineage where its table keys one, so a renamed provider moves no digest,
+    and without its source's write time (OBSERVED), which is not content; a results row as it is.
+    A legacy interval row with an end also carries its open version's digest (OPENING). Each
+    digest is canonical()'s, built over the columns.
 
     Refused by name: a table StorePort does not admit, a legacy batch for a table with no valid
-    date to count a lag from, and two rows of one key, since DuckLake keeps no keys.
+    date to count a lag from, two rows of one key, since DuckLake keeps no keys, and a column
+    whose type canonical() has no form for.
     """
     key = WORLD_KEYS.get(table) or RESULTS_KEYS.get(table)
     if key is None:
@@ -553,29 +555,63 @@ def digested(
             f"{table} rows have no valid date a lag rule counts from; admit them as observed",
             code="data_layer.legacy_table_unanchored",
         )
+    import pyarrow as pa  # lazy: the optional data extra, as DuckDB
+
+    data = rows.read_all() if isinstance(rows, pa.RecordBatchReader) else rows
+    if "provider_id" in key:
+        lineage = pa.repeat(pa.scalar(provider_id, pa.string()), data.num_rows)
+        at = data.schema.get_field_index("provider_id")
+        data = (
+            data.set_column(at, "provider_id", lineage)
+            if at >= 0
+            else data.append_column("provider_id", lineage)
+        )
+    repeated = _repeated(data, key)
+    if repeated is not None:
+        raise DataError(
+            f"{table} {dict(zip(key, repeated, strict=True))} appears twice in one admission;"
+            " send one version of a key",
+            code="data_layer.admission_key_repeated",
+        )
+    if table not in WORLD_KEYS:
+        return data
+    import pyarrow.compute as pc  # lazy: as pyarrow
+
+    content = data.drop_columns([OBSERVED]) if OBSERVED in data.column_names else data
+    staged = data.append_column("value_digest", _digests(content))
     interval = LEGACY_VALID.get(table, ()) if legacy else ()
-    end = interval[0] if len(interval) == 2 else None
-    staged: list[dict[str, Any]] = []
+    end = interval[0] if len(interval) == 2 and interval[0] in data.column_names else None
+    if end is None or data.column(end).null_count == data.num_rows:
+        return staged
+    at = content.schema.get_field_index(end)
+    opening = content.set_column(
+        at, end, pa.nulls(content.num_rows, content.schema.field(end).type)
+    )
+    unopened = pa.nulls(data.num_rows, pa.string())
+    return staged.append_column(
+        OPENING, pc.if_else(pc.is_valid(data.column(end)), _digests(opening), unopened)
+    )
+
+
+def _digests(data: Any) -> Any:
+    """Each row's digest(canonical(row)), built over the columns a batch at a time."""
+    import pyarrow as pa  # lazy: the optional data extra
+
+    batches = data.to_batches(max_chunksize=DIGEST_BATCH)
+    return pa.array([value for batch in batches for value in row_digests(batch)], pa.string())
+
+
+def _repeated(data: Any, key: tuple[str, ...]) -> tuple[Any, ...] | None:
+    """The first key a later row repeats, in row order; None when every key is once."""
+    keys = data.select(list(key))
+    if keys.group_by(list(key)).aggregate([]).num_rows == keys.num_rows:
+        return None
     seen: set[tuple[Any, ...]] = set()
-    for given in rows:
-        row = {**given, "provider_id": provider_id} if "provider_id" in key else dict(given)
-        values = tuple(row[k] for k in key)
+    for values in zip(*(keys.column(name).to_pylist() for name in key), strict=True):
         if values in seen:
-            raise DataError(
-                f"{table} {dict(zip(key, values, strict=True))} appears twice in one admission;"
-                " send one version of a key",
-                code="data_layer.admission_key_repeated",
-            )
+            return values
         seen.add(values)
-        if table not in WORLD_KEYS:
-            staged.append(row)
-            continue
-        content = {name: value for name, value in row.items() if name != OBSERVED}
-        row |= {"value_digest": digest(canonical(content))}
-        if end is not None and content.get(end) is not None:
-            row[OPENING] = digest(canonical(content | {end: None}))
-        staged.append(row)
-    return staged
+    return None
 
 
 def as_columns(rows: list[dict[str, Any]]) -> dict[str, list[Any]]:

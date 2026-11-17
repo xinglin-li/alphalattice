@@ -552,6 +552,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.stage_digest_is_canonicals": {
+      "description": "Each world row's value_digest, built over its admission's Arrow columns, is blake3 over canonical() of the row with its provider's lineage, byte for byte, for every column type a row can carry.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.stage_refuses_what_it_cannot_admit": {
       "description": "Staging refuses by name two versions of one key in one admission, a table StorePort does not admit and a legacy batch with no valid date, before anything is staged.",
       "owner": "alphalattice.kernel.data_layer",
