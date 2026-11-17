@@ -93,6 +93,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     UniverseManifest,
 )
 from alphalattice.foundation.market_data_ops.sources.sector_forward import sector_effective_session
+from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     FeaturePersistenceSqlProfiler,
@@ -3020,6 +3021,24 @@ class FeatureStateRepository(WorkspaceRepository):
         observations: Sequence[Mapping[str, object]],
         observed_at: datetime,
     ) -> tuple[str, bool, str, date | None]:
+        """Activate a revision while its writer reads the workspace, then admit it to world."""
+        with world_reads.writing(
+            self.path,
+            lambda: world.sector_marks(self.path),
+            dataset="sector",
+            admit=world.admit_sectors,
+        ):
+            return self._activate_sector_revision(
+                manifest=manifest, observations=observations, observed_at=observed_at
+            )
+
+    def _activate_sector_revision(
+        self,
+        *,
+        manifest: UniverseManifest,
+        observations: Sequence[Mapping[str, object]],
+        observed_at: datetime,
+    ) -> tuple[str, bool, str, date | None]:
         """Atomically publish a complete Yahoo-current-sector revision only.
 
         A listing whose Sector changed is recorded as a reclassification in force from the
@@ -3398,6 +3417,7 @@ class FeatureStateRepository(WorkspaceRepository):
         manifest: UniverseManifest,
         *,
         _connection: duckdb.DuckDBPyConnection | None = None,
+        cutoff_us: int | None = None,
     ) -> SectorReferenceState | None:
         """Return sector state only when every manifest listing shares one revision."""
         owns_connection = _connection is None
@@ -3424,6 +3444,21 @@ class FeatureStateRepository(WorkspaceRepository):
         if len(revisions) != 1:
             return None
         sector_by_listing = {str(row[0]): str(row[1]) for row in rows}
+        with world_reads.reading(
+            self.path,
+            lambda: world.sector_marks(self.path),
+            dataset="sector",
+            admit=world.admit_sectors,
+        ) as cursor:
+            if cursor is not None:
+                named = world.sector_map(
+                    tuple(sector_by_listing),
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
+                if named == sector_by_listing:
+                    sector_by_listing = named
         distribution: dict[str, int] = {}
         for sector in sector_by_listing.values():
             distribution[sector] = distribution.get(sector, 0) + 1
@@ -3435,7 +3470,11 @@ class FeatureStateRepository(WorkspaceRepository):
         )
 
     def sector_history(
-        self, manifest: UniverseManifest, *, listing_ids: Sequence[str] = ()
+        self,
+        manifest: UniverseManifest,
+        *,
+        listing_ids: Sequence[str] = (),
+        cutoff_us: int | None = None,
     ) -> SectorHistory | None:
         """The Sector each session reads, for a manifest's members and these listings.
 
@@ -3446,13 +3485,35 @@ class FeatureStateRepository(WorkspaceRepository):
         Returns:
             The history, or None when the manifest has no complete current classification.
         """
-        state = self.current_sector_state(manifest)
+        state = self.current_sector_state(manifest, cutoff_us=cutoff_us)
         if state is None:
             return None
         current = dict(state.sector_by_listing_id)
         missing = [listing_id for listing_id in listing_ids if listing_id not in current]
         if missing:
-            current.update(self.sector_classifications(missing))
+            current.update(self.sector_classifications(missing, cutoff_us=cutoff_us))
+        with world_reads.reading(
+            self.path,
+            lambda: world.sector_marks(self.path),
+            dataset="sector",
+            admit=world.admit_sectors,
+        ) as cursor:
+            if cursor is not None:
+                cutoff = world_reads.LATEST if cutoff_us is None else cutoff_us
+                if (
+                    world.sector_map(
+                        tuple(current), session=date.max, cutoff_us=cutoff, cursor=cursor
+                    )
+                    == current
+                ):
+                    transitions = world.sector_transitions(
+                        tuple(current), cutoff_us=cutoff, cursor=cursor
+                    )
+                    return SectorHistory(
+                        current_revision=state.sector_revision,
+                        current=current,
+                        reclassifications=transitions,
+                    )
         connection = self._connect(read_only=True)
         try:
             # A store sealed before the forward rule (a research input's read-only copy) lacks
@@ -3494,7 +3555,9 @@ class FeatureStateRepository(WorkspaceRepository):
             ),
         )
 
-    def sector_classifications(self, listing_ids: Sequence[str]) -> dict[str, str]:
+    def sector_classifications(
+        self, listing_ids: Sequence[str], *, cutoff_us: int | None = None
+    ) -> dict[str, str]:
         """Return the current sector of listings outside the manifest's own state.
 
         A Panel's calculation axis holds every listing that is a member of
@@ -3506,6 +3569,19 @@ class FeatureStateRepository(WorkspaceRepository):
         """
         if not listing_ids:
             return {}
+        with world_reads.reading(
+            self.path,
+            lambda: world.sector_marks(self.path),
+            dataset="sector",
+            admit=world.admit_sectors,
+        ) as cursor:
+            if cursor is not None:
+                return world.sector_map(
+                    listing_ids,
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
         marks = ", ".join("?" for _ in listing_ids)
         connection = self._connect(read_only=True)
         try:

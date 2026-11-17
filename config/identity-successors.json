@@ -15534,6 +15534,41 @@
    "successor": "9a7af9b35592db9c906da8f5617c964822e96b4b05b3d48f55b370b313a01f5f",
    "change": "World reads of many listings now run about as fast as the workspace's",
    "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7470a619f274042ae2e1fb921e6763128544ed2e93e5f0f2a93d6a06d89d426a",
+   "successor": "c5bb15af3f479000939ad6d92030c89338f4f93687cb8d5c39f028f501611eaf",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3f03d4096ee837e4c2ca9312a33928c2071fe09d3871f367d20a397ab6cb9e62",
+   "successor": "1a75bc25db16b0fb42f7647b229085440718b7cdcc99af42315a1538e9fdb43b",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "badc30e5778d0b10609c091a9a67a2ba5aeefb243098d4faeb91299ff9489375",
+   "successor": "35fa9ce6106b29a861e6b49d4c971c186a82fb0aaea79ef2d6e3672c41e11461",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "successor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "successor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
   }
  ]
 }

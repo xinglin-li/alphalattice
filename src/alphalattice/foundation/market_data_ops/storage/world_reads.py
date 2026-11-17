@@ -55,7 +55,7 @@ WORKSPACE: Final = {
 }
 """The workspace's own market tables, by the name a value read gives each relation."""
 _held: dict[Path, Any] = {}
-_served: dict[tuple[str, str, str], tuple[bool, int]] = {}
+_served: dict[tuple[str, str, str, str], tuple[bool, int]] = {}
 """Each verdict, by catalog, database and its file's fingerprint: whether world serves it, and
 the catalog snapshot it was reached at."""
 _writing: dict[str, int] = {}
@@ -96,7 +96,13 @@ def session() -> Iterator[Any | None]:
 
 
 @contextmanager
-def reading(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[Any | None]:
+def reading(
+    database: Path,
+    marks: Callable[[], dict[str, Any]],
+    *,
+    dataset: str = DATASET,
+    admit: Callable[[Path, str], Any] = world.admit,
+) -> Iterator[Any | None]:
     """A cursor on world while it serves the market reads of the workspace in `database`, else
     None and its own tables answer. World serves when the setting is world and the tables'
     `marks` equal those of a market admission that took every row (`_admitted`). A verdict is
@@ -117,20 +123,24 @@ def reading(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[Any
         catalog = cursor.execute(
             "SELECT path FROM duckdb_databases() WHERE database_name = 'lake'"
         ).fetchone()[0]
-        key = (catalog, path, json.dumps(store_fingerprint(database)))
+        key = (catalog, path, dataset, json.dumps(store_fingerprint(database)))
         verdict = _served.get(key)
-        if verdict is not None and not verdict[0] and verdict[1] != _snapshot(cursor):
+        if (
+            verdict is not None
+            and (not verdict[0] or dataset == "sector")
+            and verdict[1] != _snapshot(cursor)
+        ):
             verdict = None  # world has committed since it did not serve these tables
         if verdict is None:
             current = marks()
             host = history.opened_log()
-            served = _admitted(cursor, current, host)
+            served = _admitted(cursor, current, host, dataset)
             ours = host is not None and _folder(cursor, host[1]) == database.parent
             # an admission attaches the file, which an instance this process holds open refuses
             held = ours and live_workspace_connections(database) is not None
             if not served and ours and not held:
-                world.admit(database, host[1])
-                served = _admitted(cursor, current, host)
+                admit(database, host[1])
+                served = _admitted(cursor, current, host, dataset)
             verdict = (served, _snapshot(cursor))
             if served or not held:  # a held file's admission is owed to the next read
                 _served[key] = verdict
@@ -143,13 +153,22 @@ def reading(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[Any
             return
         cursor.begin()
         try:
-            yield cursor
+            if dataset == "sector" and not world.sector_holds(database, cursor, cutoff_us=LATEST):
+                yield None
+            else:
+                yield cursor
         finally:
             cursor.rollback()
 
 
 @contextmanager
-def writing(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[None]:
+def writing(
+    database: Path,
+    marks: Callable[[], dict[str, Any]],
+    *,
+    dataset: str = DATASET,
+    admit: Callable[[Path, str], Any] = world.admit,
+) -> Iterator[None]:
     """One market data update of the workspace in `database`, in this process. Its reads, every
     thread's, take the workspace's own tables, reading no marks and admitting nothing, so a loop
     that writes and reads listing by listing pays no admission per listing. When the outermost
@@ -166,7 +185,7 @@ def writing(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[Non
             if outermost:
                 del _writing[path]
         if outermost and history.opened_log() is not None:
-            with reading(database, marks):
+            with reading(database, marks, dataset=dataset, admit=admit):
                 pass
 
 
@@ -265,7 +284,9 @@ def _snapshot(cursor: Any) -> int:
     return int(cursor.execute("SELECT * FROM lake.current_snapshot()").fetchone()[0])
 
 
-def _admitted(cursor: Any, marks: dict[str, Any], host: tuple[Any, str] | None) -> bool:
+def _admitted(
+    cursor: Any, marks: dict[str, Any], host: tuple[Any, str] | None, dataset: str = DATASET
+) -> bool:
     """Whether one of world's market admissions that took every row it marks (`taken`) recorded
     these marks: read from the Host's own log, its open batch included, or else from the log the
     session attached."""
@@ -274,9 +295,9 @@ def _admitted(cursor: Any, marks: dict[str, Any], host: tuple[Any, str] | None) 
         " WHERE type = 'admission' AND {0}(attrs, '$.dataset') = ?"
     )
     if host is not None:
-        admitted = host[0].read(sql.format("json_extract", ""), (DATASET,))
+        admitted = host[0].read(sql.format("json_extract", ""), (dataset,))
     else:
-        admitted = cursor.execute(sql.format("json_extract_string", "log."), [DATASET]).fetchall()
+        admitted = cursor.execute(sql.format("json_extract_string", "log."), [dataset]).fetchall()
     return bool(marks) and marks in taken(admitted)
 
 

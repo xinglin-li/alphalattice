@@ -12,6 +12,11 @@
 -- slower. store.TABLE_IDS holds the same ids. The anti-join is an ANTI JOIN, not a correlated NOT EXISTS: a reader's
 -- filter on the macro (a listing) then reaches the table scan, which skips the row groups it excludes.
 -- A decision at session t reads knowledge no later than the lesser of its selection's cutoff and t's decision time.
+CREATE MACRO sector_asof(cutoff_us) AS TABLE
+SELECT r.* FROM lake.world.sector r
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
+  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:2a6feeec4af118b1de1d635efccdd659dc65391b7de2379d92ce032873eccc7f' AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+
 CREATE MACRO raw_bar_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.raw_bar r
 ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473'

@@ -123,8 +123,11 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
 
 
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
+@pytest.mark.parametrize("focus", ("identity", "workspace"))
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    focus: str,
 ) -> None:
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
@@ -163,6 +166,222 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     }
     assert corrected == {"rows": {"raw_bar": 4}}
     assert seen == [[101.0] * 4 + [103.0], [101.0] * 3 + [103.0] * 2]
+
+    # Legacy sector classifications use the same listing ids and lag rule. A changed
+    # classification is visible only after its own admission, and a repeat adds nothing.
+    connection = store._connect()
+    try:
+        connection.execute(
+            "INSERT INTO sector_classification_current VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "listing-aapl",
+                "fixture",
+                "AAPL",
+                "Technology",
+                None,
+                "a" * 64,
+                "b" * 64,
+                "c" * 64,
+                NOW,
+            ],
+        )
+        connection.execute(
+            "INSERT INTO sector_classification_current VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "listing-msft",
+                "fixture",
+                "MSFT",
+                "Technology",
+                None,
+                "a" * 64,
+                "b" * 64,
+                "c" * 64,
+                NOW,
+            ],
+        )
+    finally:
+        connection.close()
+    assert callable(getattr(world, "admit_sectors", None))
+    world.admit_sectors(database, "w1")
+    assert world.admit_sectors(database, "w1") is None
+    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
+        PanelClosureArtifactStore,
+    )
+    from alphalattice.foundation.feature_engine.panels.closure_contracts import durable_payload
+    from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
+        sector_history_as_of,
+    )
+    from tests.integration.feature_engine.test_sector_forward_rule import _map
+
+    artifacts = PanelClosureArtifactStore(ArtifactResolver(database.parent / "artifacts"))
+    old_map = _map("1" * 64, {"listing-aapl": "Technology"})
+    artifacts.publish_json(
+        category="sector-maps", content_hash=old_map.map_hash, payload=durable_payload(old_map)
+    )
+    connection = store._connect()
+    try:
+        connection.execute(
+            "UPDATE sector_classification_current SET sector_revision = ?", ["d" * 64]
+        )
+        connection.execute(
+            "UPDATE sector_classification_current SET sector_name = ? WHERE listing_id = ?",
+            ["Energy", "listing-aapl"],
+        )
+    finally:
+        connection.close()
+    world.admit_sectors(database, "w1")
+    known = history.store().log.read(
+        "SELECT known_us FROM admission WHERE dataset = 'sector' ORDER BY admission_seq DESC"
+    )[0][0]
+    read = "SELECT sector_code FROM sector_asof(?) WHERE listing_id = ?"
+    assert [lake.execute(read, (cutoff, aapl)).fetchone()[0] for cutoff in (known - 1, known)] == [
+        "Technology",
+        "Energy",
+    ]
+    assert world.sector_map(("listing-aapl",), session=DAYS[1], cutoff_us=known - 1) == {
+        "listing-aapl": "Technology"
+    }
+    assert world.sector_map(("listing-aapl",), session=DAYS[1], cutoff_us=known) == {
+        "listing-aapl": "Energy"
+    }
+    from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
+
+    feature = FeatureStateRepository(store.database, market_data=store)
+    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
+    assert [
+        feature.sector_classifications(("listing-aapl",), cutoff_us=cutoff)
+        for cutoff in (known - 1, known)
+    ] == [{"listing-aapl": "Technology"}, {"listing-aapl": "Energy"}]
+    state = feature.current_sector_state(manifest, cutoff_us=known - 1)
+    assert state is not None and state.sector_revision == "d" * 64
+    if focus == "identity":
+        assert state.sector_by_listing_id["listing-aapl"] == "Energy"
+    from alphalattice.foundation.feature_engine.panels.closure_source import (
+        PanelClosureSourceRepository,
+    )
+
+    source = PanelClosureSourceRepository(
+        database_path=database, resolver=ArtifactResolver(database.parent / "artifacts")
+    )
+    rows = source.read_sector_rows(listing_ids=("listing-aapl",), cutoff_us=known - 1)
+    if focus == "identity":
+        assert rows[0]["sector_name"] == "Energy" and rows[0]["sector_revision"] == "d" * 64
+    assert dict(sector_history_as_of(artifacts, old_map.sector_revision)) == {
+        "listing-aapl": "Technology"
+    }
+    connection = store._connect()
+    try:
+        connection.execute(
+            "INSERT INTO sector_classification_revision (revision_id, listing_id, provider,"
+            " prior_payload_hash, next_payload_hash, sector_revision, revision_kind, retrieved_at,"
+            " prior_sector_name, sector_name, effective_session)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "d" * 64,
+                "listing-aapl",
+                "fixture",
+                "a" * 64,
+                "e" * 64,
+                "f" * 64,
+                "CORRECTED",
+                NOW + timedelta(days=1),
+                "Energy",
+                "Health Care",
+                DAYS[3],
+            ],
+        )
+        connection.execute(
+            "UPDATE sector_classification_current SET sector_name = ?", ["Health Care"]
+        )
+    finally:
+        connection.close()
+    world.admit_sectors(database, "w1")
+    cutoff = history.store().log.clock()
+    assert [world.sector_map(("listing-aapl",), session=day, cutoff_us=cutoff) for day in DAYS] == [
+        {"listing-aapl": "Energy"},
+        {"listing-aapl": "Energy"},
+        {"listing-aapl": "Energy"},
+        {"listing-aapl": "Health Care"},
+    ]
+    seen_world = []
+    real_map = world.sector_map
+
+    def tracked(*args, **kwargs):
+        seen_world.append(True)
+        return real_map(*args, **kwargs)
+
+    monkeypatch.setattr(world, "sector_map", tracked)
+    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
+    assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
+    assert seen_world
+    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "workspace")
+    seen_world.clear()
+    assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
+    assert not seen_world
+    connection = store._connect()
+    try:
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    other = database.parent.parent / "other"
+    other.mkdir()
+    shutil.copy2(database, other / database.name)
+    other_store = MarketDataRepository(other)
+    connection = other_store._connect()
+    try:
+        connection.execute(
+            "UPDATE sector_classification_current SET sector_name = ? WHERE listing_id = ?",
+            ["Energy", "listing-aapl"],
+        )
+        connection.execute(
+            "UPDATE sector_classification_revision SET sector_name = ? WHERE listing_id = ?",
+            ["Energy", "listing-aapl"],
+        )
+    finally:
+        connection.close()
+    history.workspace_on_log(other, "other", "w2", root=history.store().root)
+    world.admit_sectors(other_store.path, "w2")
+    assert real_map(("listing-aapl",), session=date.max, cutoff_us=world_reads.LATEST) == {
+        "listing-aapl": "Energy"
+    }
+    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
+    seen_world.clear()
+    if focus == "workspace":
+        assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
+        assert (
+            feature.current_sector_state(manifest).sector_by_listing_id["listing-aapl"]
+            == "Health Care"
+        )
+        assert (
+            source.read_sector_rows(listing_ids=("listing-aapl",))[0]["sector_name"]
+            == "Health Care"
+        )
+        with world_reads.reading(
+            database,
+            lambda: world.sector_marks(database),
+            dataset="sector",
+            admit=world.admit_sectors,
+        ) as served:
+            assert served is None  # A's older marks cannot authorize B's later classification.
+    connection = store._connect()
+    try:
+        connection.execute(
+            "UPDATE sector_classification_current SET sector_name = ?", ["Utilities"]
+        )
+    finally:
+        connection.close()
+    port = history.store()
+    commit = port.commit
+    with monkeypatch.context() as dropped:
+        dropped.setattr(
+            port, "commit", lambda batch: commit(batch)._replace(dropped={"equal_time": 1})
+        )
+        world.admit_sectors(database, "w1")
+    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
+    seen_world.clear()
+    assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Utilities"}
+    assert not seen_world  # the marks of an equal-time drop cannot make world serve the workspace
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")

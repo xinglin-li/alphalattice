@@ -33,11 +33,13 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
+from alphalattice.kernel.quant.sector_history import SectorReclassification
 
 DATASET: Final = "market"
 MARKET_CLOSE: Final = ("market-close", 1)
@@ -152,6 +154,258 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         for drop in DROPS:
             run(drop).complete()
         run(f"DETACH {WORKSPACE}").complete()
+
+
+def sector_marks(database: Path) -> dict[str, Any]:
+    """The sector tables' content fingerprints, as recorded by their admission."""
+    connection = open_workspace_database(database, read_only=True)
+    try:
+        names = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
+        if "sector_classification_current" not in names:
+            return {}
+        marks = {}
+        for name, table in (
+            ("current", "sector_classification_current"),
+            ("revision", "sector_classification_revision"),
+        ):
+            marks[name] = (
+                connection.execute(
+                    f"SELECT [count(*), bit_xor(hash(t))] FROM {table} t"
+                ).fetchone()[0]
+                if table in names
+                else None
+            )
+        return marks
+    finally:
+        connection.close()
+
+
+def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
+    """Admit a workspace's legacy sector classifications after its market listings."""
+    port = history.store()
+    if port is None or not database.is_file():
+        return None
+    run = port.lake.execute
+    run(f"ATTACH '{sql_path(database)}' AS {WORKSPACE} (READ_ONLY)").complete()
+    try:
+        tables = {
+            row[0]
+            for row in run(
+                "SELECT table_name FROM duckdb_tables() WHERE database_name = ?", [WORKSPACE]
+            ).fetchall()
+        }
+        if "sector_classification_current" not in tables:
+            return None
+        current_mark = run(
+            f"SELECT [count(*), bit_xor(hash(t))] FROM {WORKSPACE}.sector_classification_current t"
+        ).fetchone()[0]
+        revision_mark = (
+            run(
+                "SELECT [count(*), bit_xor(hash(t))] FROM "
+                f"{WORKSPACE}.sector_classification_revision t"
+            ).fetchone()[0]
+            if "sector_classification_revision" in tables
+            else None
+        )
+        marks = {"current": current_mark, "revision": revision_mark}
+        revision_columns = {
+            row[0]
+            for row in run(
+                "SELECT column_name FROM information_schema.columns WHERE table_catalog = ?"
+                " AND table_name = 'sector_classification_revision'",
+                [WORKSPACE],
+            ).fetchall()
+        }
+        forward = {"effective_session", "prior_sector_name", "sector_name"} <= revision_columns
+        last = port.log.read(
+            "SELECT json_extract(attrs, '$.marks') FROM event WHERE type = 'admission'"
+            " AND subject_id = ? AND json_extract(attrs, '$.dataset') = ?"
+            " ORDER BY seq DESC LIMIT 1",
+            (workspace_id, "sector"),
+        )
+        if last and json.loads(last[0][0]) == marks:
+            return None
+        started = port.log.clock()
+        providers = [
+            row[0]
+            for row in run(
+                f"SELECT DISTINCT provider FROM {WORKSPACE}.sector_classification_current"
+                " ORDER BY 1"
+            ).fetchall()
+        ]
+        rows = 0
+        dropped: dict[str, int] = {}
+        for provider in providers:
+            history.define(
+                "provider", provider, f"The {provider} market data provider, as 0.2.7 named it."
+            )
+            history.define(
+                "sector_scheme", provider, f"The sector classification supplied by {provider}."
+            )
+            scheme = definition_id("sector_scheme", provider)
+            alias = definition_id("provider", LISTING_ALIAS)
+            prior = (
+                "(SELECT arg_min(r.prior_sector_name, r.effective_session)"
+                f" FROM {WORKSPACE}.sector_classification_revision r"
+                " WHERE r.listing_id = c.listing_id AND r.provider = c.provider"
+                " AND r.effective_session IS NOT NULL)"
+                if forward
+                else "NULL"
+            )
+            changed = (
+                " UNION ALL SELECT a.listing_id, r.effective_session AS valid_from,"
+                " r.sector_name AS sector_code"
+                f" FROM {WORKSPACE}.sector_classification_revision r"
+                " JOIN lake.world.provider_symbol a ON a.symbol = r.listing_id"
+                " AND a.provider_id = ?"
+                " WHERE r.provider = ? AND r.effective_session IS NOT NULL"
+                " AND r.sector_name IS NOT NULL"
+                " QUALIFY row_number() OVER (PARTITION BY a.listing_id, r.effective_session"
+                " ORDER BY r.retrieved_at DESC) = 1"
+                if forward
+                else ""
+            )
+            params = [alias, provider, *([alias, provider] if forward else []), scheme]
+            batch = run(
+                "WITH facts AS (SELECT a.listing_id, min(l.first_session) AS valid_from,"
+                f" coalesce({prior}, c.sector_name) AS sector_code"
+                f" FROM {WORKSPACE}.sector_classification_current c"
+                " JOIN lake.world.provider_symbol a ON a.symbol = c.listing_id"
+                " AND a.provider_id = ?"
+                " JOIN lake.world.listing l ON l.listing_id = a.listing_id"
+                f" WHERE c.provider = ? GROUP BY ALL{changed})"
+                " SELECT ? AS scheme_id, listing_id,"
+                " strftime(valid_from, '%Y-%m-%d') AS valid_from,"
+                " strftime(lead(valid_from) OVER (PARTITION BY listing_id ORDER BY valid_from)"
+                " - INTERVAL 1 DAY, '%Y-%m-%d') AS valid_to,"
+                " sector_code FROM facts ORDER BY listing_id, valid_from",
+                params,
+            ).to_arrow_table()
+            expected = run(
+                f"SELECT count(*) FROM {WORKSPACE}.sector_classification_current"
+                " WHERE provider = ?",
+                [provider],
+            ).fetchone()[0]
+            pc = import_module("pyarrow.compute")  # lazy: the optional data extra
+
+            if len(pc.unique(batch["listing_id"])) != expected:
+                raise DataError(
+                    "a sector classification has no admitted market listing;"
+                    " admit its market data first",
+                    code="market_data.sector_listing_missing",
+                )
+            if batch.num_rows:
+                with stage(
+                    port.root,
+                    "sector",
+                    definition_id("provider", provider),
+                    batch,
+                    lag=MARKET_CLOSE,
+                ) as staged:
+                    done = port.commit(staged)
+                    rows += done.rows
+                    for reason, count in done.dropped.items():
+                        dropped[reason] = dropped.get(reason, 0) + count
+        history.record(
+            "admission",
+            ("workspace", workspace_id),
+            {"provider": providers, "dataset": "sector", "marks": marks, "rows": {"sector": rows}}
+            | ({"dropped": dropped} if dropped else {}),
+            phase="completed",
+            started_us=started,
+            node="market_data_ops",
+        )
+        return {"rows": {"sector": rows}}
+    finally:
+        run(f"DETACH {WORKSPACE}").complete()
+
+
+def sector_map(
+    listings: Sequence[str], *, session: date, cutoff_us: int, cursor: Any | None = None
+) -> dict[str, str]:
+    """The unambiguous listing classifications valid at a session and known by a cutoff."""
+    port = history.store() if cursor is None else None
+    if cursor is None and port is None:
+        raise DataError(
+            "the Host's sector catalog is not open", code="market_data.sector_catalog_unavailable"
+        )
+    if not listings:
+        return {}
+    reader = cursor if cursor is not None else port.lake
+    rows = reader.execute(
+        "WITH choices AS (SELECT DISTINCT a.symbol, s.scheme_id, s.sector_code, s.valid_from"
+        " FROM sector_asof(?) s JOIN provider_symbol_asof(?) a ON a.listing_id = s.listing_id"
+        " WHERE a.provider_id = ? AND a.symbol IN (SELECT unnest(?))"
+        " AND s.valid_from <= ? AND (s.valid_to IS NULL OR s.valid_to >= ?)),"
+        " current AS (SELECT * FROM choices QUALIFY row_number() OVER"
+        " (PARTITION BY symbol, scheme_id ORDER BY valid_from DESC) = 1)"
+        " SELECT symbol, min(sector_code) FROM current GROUP BY symbol"
+        " HAVING count(*) = 1 ORDER BY symbol",
+        [
+            cutoff_us,
+            cutoff_us,
+            definition_id("provider", LISTING_ALIAS),
+            list(listings),
+            session,
+            session,
+        ],
+    ).fetchall()
+    return dict(rows)
+
+
+def sector_holds(database: Path, cursor: Any, *, cutoff_us: int) -> bool:
+    """Whether world still holds this workspace's current values and forward revisions."""
+    connection = open_workspace_database(database, read_only=True)
+    try:
+        rows = connection.execute(
+            "SELECT listing_id, sector_name FROM sector_classification_current ORDER BY listing_id"
+        ).fetchall()
+        columns = {
+            row[0]
+            for row in connection.execute(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_name = 'sector_classification_revision'"
+            ).fetchall()
+        }
+        revisions = (
+            connection.execute(
+                "SELECT listing_id, effective_session, prior_sector_name, sector_name"
+                " FROM sector_classification_revision WHERE effective_session IS NOT NULL"
+                " ORDER BY effective_session, listing_id, retrieved_at"
+            ).fetchall()
+            if {"effective_session", "prior_sector_name", "sector_name"} <= columns
+            else []
+        )
+    finally:
+        connection.close()
+    current = {str(listing): str(name) for listing, name in rows}
+    if len(current) != len(rows):
+        return False
+    if sector_map(tuple(current), session=date.max, cutoff_us=cutoff_us, cursor=cursor) != current:
+        return False
+    expected = tuple(
+        SectorReclassification(str(listing), day, str(prior), str(name))
+        for listing, day, prior, name in revisions
+        if str(listing) in current
+    )
+    return sector_transitions(tuple(current), cutoff_us=cutoff_us, cursor=cursor) == expected
+
+
+def sector_transitions(listings: Sequence[str], *, cutoff_us: int, cursor: Any) -> tuple[Any, ...]:
+    """The changes in force for the selected listings among versions known at the cutoff."""
+    if not listings:
+        return ()
+    rows = cursor.execute(
+        "WITH facts AS (SELECT DISTINCT a.symbol, s.scheme_id, s.valid_from, s.sector_code"
+        " FROM sector_asof(?) s JOIN provider_symbol_asof(?) a ON a.listing_id = s.listing_id"
+        " WHERE a.provider_id = ? AND a.symbol IN (SELECT unnest(?))),"
+        " changes AS (SELECT symbol, valid_from, sector_code,"
+        " lag(sector_code) OVER (PARTITION BY symbol, scheme_id ORDER BY valid_from) AS prior"
+        " FROM facts) SELECT symbol, valid_from, prior, sector_code FROM changes"
+        " WHERE prior IS NOT NULL AND prior <> sector_code ORDER BY valid_from, symbol",
+        [cutoff_us, cutoff_us, definition_id("provider", LISTING_ALIAS), list(listings)],
+    ).fetchall()
+    return tuple(SectorReclassification(*row) for row in rows)
 
 
 def _register(run: Any) -> set[str]:
