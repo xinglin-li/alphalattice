@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -155,3 +156,11 @@ def test_a_new_row_above_unit_says_why_a_lower_layer_cannot_prove_it(tmp_path, m
     existing["lower_layer"] = why
     admitted = json.dumps(document)
     assert r.guard(tmp_path, fresh, admitted, admitted, tests=old + fresh, before_tests=old) == []
+    config = tmp_path / "config"
+    for folder in ("regular", "junction"):
+        (config / folder).mkdir(parents=True)
+        (config / folder / "schema.json").write_text(
+            '{"schema": "example.schema"}', encoding="utf-8"
+        )
+    monkeypatch.setattr(Path, "is_junction", lambda path: path == config / "junction")
+    assert r.schema_path(tmp_path, "example.schema") == config / "regular" / "schema.json"

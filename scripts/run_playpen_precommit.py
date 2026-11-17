@@ -70,8 +70,13 @@ def run_gitleaks(arguments: list[str]) -> int:
         return subprocess.run(
             [str(binary), *arguments],
             check=False,
+            stdin=subprocess.DEVNULL,
+            timeout=120,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).returncode
+    except subprocess.TimeoutExpired:
+        print("playpen.gitleaks_timeout: secret scan exceeded 120 seconds", file=sys.stderr)
+        return 1
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -166,6 +171,8 @@ def _format_staged() -> None:
                 (*prefix, *batch),
                 cwd=after,
                 check=True,
+                stdin=subprocess.DEVNULL,
+                timeout=60,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         changes, partial = [], []
@@ -220,6 +227,7 @@ def _format_staged() -> None:
                     cwd=PLAYPEN_ROOT,
                     capture_output=True,
                     check=True,
+                    timeout=60,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.split(b"\0")
                 if attrs[-1:] != [b""] or len(attrs) != 6 * len(changes) + 1:
@@ -247,6 +255,8 @@ def _format_staged() -> None:
             patch = subprocess.run(
                 ("git", "diff", "--no-index", "--no-prefix", "--binary", "--", "before", "after"),
                 cwd=mirror,
+                stdin=subprocess.DEVNULL,
+                timeout=60,
                 capture_output=True,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -259,6 +269,7 @@ def _format_staged() -> None:
                 input=patch.stdout,
                 cwd=PLAYPEN_ROOT,
                 check=True,
+                timeout=60,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
 
@@ -303,6 +314,11 @@ def main() -> int:
         _keep_bytecode()
         _prepare_environment()
         _format_staged()
+    except subprocess.TimeoutExpired as error:
+        print(
+            f"playpen.format_timeout: {error}; inspect the named command and retry", file=sys.stderr
+        )
+        return 1
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"playpen.format_refused: {error}; inspect the named file and retry", file=sys.stderr)
         return 1

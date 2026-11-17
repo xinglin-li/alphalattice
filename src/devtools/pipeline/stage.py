@@ -629,6 +629,7 @@ def _helper_sources(root: Path, head: str) -> dict[str, str]:
     script_tree = subprocess.run(
         ["git", "ls-tree", "-r", "-z", "--full-tree", head, "--", "scripts/"],
         cwd=root,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         check=True,
         timeout=60,
@@ -933,9 +934,14 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
             status = "PASS" if code == 0 else "FAIL"
         except subprocess.TimeoutExpired:  # past the stage's bound: the row's whole tree goes
             _kill(process.pid)
-            process.wait()
+            try:
+                process.wait(timeout=15)
+                stopped = "bound"
+            except subprocess.TimeoutExpired:
+                stream.write("pipeline.child_reap_timeout: killed child did not exit within 15 s\n")
+                stopped = "reap"
             stream.write(f"stopped at the stage's bound, {context.deadline - began:.0f} s on\n")
-            status, code, stopped = "ERROR", None, "bound"
+            status, code = "ERROR", None
         except OSError as error:
             stream.write(f"{argv[0]}: {error}\n")
             status, code, stopped = "ERROR", None, "launch"
@@ -960,10 +966,20 @@ def _workspace(root: Path, base: str, required_tests: Sequence[str] = ()) -> dic
 
     def git(*words: str) -> str:
         try:
-            done = subprocess.run(["git", *words], cwd=root, capture_output=True, text=True)
+            done = subprocess.run(
+                ["git", *words],
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             why = done.stderr.strip() if done.returncode else ""
-        except OSError as error:
-            why = str(error)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise DefinitionError(
+                "pipeline.workspace_unreadable", f"git {words[0]}: {error}; restore Git and retry"
+            ) from None
         if why or done.returncode:
             raise DefinitionError(
                 "pipeline.workspace_unreadable",

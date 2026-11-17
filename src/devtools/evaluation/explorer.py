@@ -530,6 +530,7 @@ class Explorer:
     observe: Callable[[dict[str, Any]], None] = lambda _: None
     terminal: Callable[[dict[str, Any]], bool] = lambda _: False
     terminal_reached: bool = False
+    _deadline: float = field(default=float("inf"), init=False, repr=False)
 
     def inject(
         self,
@@ -871,6 +872,7 @@ class Explorer:
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
+        self._deadline = time.perf_counter() + 3600
         for argv in starts:
             if self.terminal_reached:
                 break
@@ -889,6 +891,8 @@ class Explorer:
         return {"passed": not reasons, "reasons": reasons, "finding": None}, trace
 
     def _send(self, argv: list[str], path: str, run: Call | None = None) -> dict[str, Any]:
+        if time.perf_counter() >= self._deadline:
+            raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
         started = datetime.now(UTC).isoformat()
         answer = (run or self.call)(argv)
         self.events.append(
@@ -1028,8 +1032,18 @@ class Explorer:
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
-        waited = ["activity", "wait", "--task", str(task), "--max-wait", str(self.time_box)]
         while True:
+            remaining = self._deadline - time.perf_counter()
+            if remaining <= 0:
+                raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
+            waited = [
+                "activity",
+                "wait",
+                "--task",
+                str(task),
+                "--max-wait",
+                str(min(self.time_box, remaining)),
+            ]
             ended = self._send(waited, where + " > wait")
             if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
                 return ended

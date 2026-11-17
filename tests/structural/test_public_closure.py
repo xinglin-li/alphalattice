@@ -109,6 +109,9 @@ def test_checkout_reads_include_a_read_helpers_supplied_path(read):
 
 @pytest.mark.proves("pipeline.public_closure_needs_every_file_a_public_file_uses")
 def test_policy_strings_and_external_parameter_paths_are_not_checkout_reads():
+    chain = "\n".join([*(f"p{n} = p{n - 1}" for n in range(10, 0, -1)), "p0 = __file__"])
+    with pytest.raises(ValueError, match=r"public_closure\.fixpoint_unconverged"):
+        references("scripts/chain.py", chain.encode(), set())
     reader = "scripts/check.py"
     blobs = {
         reader: (

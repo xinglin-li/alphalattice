@@ -14,6 +14,7 @@ from devtools.testing import os_marks
 from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
+_REAL_RUN = subprocess.run
 
 
 def _antipattern_cases(monkeypatch) -> None:
@@ -77,6 +78,25 @@ def _antipattern_cases(monkeypatch) -> None:
     assert shape.antipattern_growth({}, data)
     assert shape.antipattern_growth(found, found) == []
     assert shape.antipattern_growth({}, found)
+    loops = {
+        "src/endless.py": "while True:\n    tick()\n",
+        "src/break.py": "while True:\n    if done():\n        break\n",
+        "src/nested.py": "while True:\n    def nested():\n        return 1\n    nested()\n",
+        "src/inner-for.py": "while True:\n    for item in items:\n        break\n",
+        "src/inner-while.py": "while True:\n    while condition:\n        break\n",
+        "src/loop-else.py": (
+            "while True:\n    for item in items:\n        pass\n    else:\n        break\n"
+        ),
+        "scripts/deadline.py": (
+            "while True:\n    if time.monotonic() >= deadline:\n        raise TimeoutError()\n"
+        ),
+    }
+    assert set(shape.unbounded_loops(loops)) == {
+        "src/endless.py",
+        "src/nested.py",
+        "src/inner-for.py",
+        "src/inner-while.py",
+    }
     old = {"src/old.py::PGH003": 1}
     new = {"src/new.py::PGH003": 1}
     assert not shape.antipattern_growth(
@@ -93,6 +113,18 @@ def _antipattern_cases(monkeypatch) -> None:
     assert not shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
     with pytest.raises(ValueError, match="anti-pattern baseline missing from parent"):
         shape._antipattern_problems([], [], snapshots, ("MERGE_HEAD",), ":", moves={})
+    snapshots[":src/endless.py"] = loops["src/endless.py"]
+    snapshots["HEAD:src/endless.py"] = "pass\n"
+    assert any(
+        "unbounded-loop" in issue
+        for issue in shape._antipattern_problems(
+            [], ["src/endless.py"], snapshots, ("HEAD",), ":", moves={}
+        )
+    )
+    snapshots["HEAD:src/endless.py"] = loops["src/endless.py"]
+    assert not shape._antipattern_problems(
+        [], ["src/endless.py"], snapshots, ("HEAD",), ":", moves={}
+    )
     snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {"src/a.py::PGH003": 2}})
     assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
     seeded = {
@@ -475,6 +507,8 @@ def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
 
 def _git_backend(texts, paths, state=None):
     def run(command, **kwargs):
+        if Path(command[0]).stem.lower() == "ast-grep":
+            return _REAL_RUN(command, **kwargs)
         action = command[1]
         output = "base" if action == "rev-list" else "1\t0\tsrc/example.py\n"
         if "-z" in command:

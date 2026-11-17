@@ -1013,6 +1013,7 @@ def _astgrep_rows(root: Path, target: str) -> list[tuple[str, str, int]]:
     done = subprocess.run(
         [str(exe), "scan", "--rule", "rules.yml", "--json=compact", target],
         cwd=root,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -1124,6 +1125,61 @@ def auxiliary_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
     return {key: count for key, count in counts.items() if count}
 
 
+def unbounded_loops(snapshots: dict[str, str]) -> dict[str, list[str]]:
+    """Use the existing ast-grep owner to find literal loops lacking an exit or named bound."""
+    if not snapshots:
+        return {}
+    with _scanner_folder("loop-check-") as folder:
+        root = Path(folder)
+        (root / "rules.yml").write_text(
+            "id: unbounded-loop\nlanguage: python\nseverity: error\nmessage: unbounded loop\n"
+            "rule:\n  pattern: 'while True: $$$BODY'\n",
+            encoding="utf-8",
+        )
+        for path, source in snapshots.items():
+            target = root / "tree" / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source, encoding="utf-8", errors="surrogateescape", newline="\n")
+        found: dict[str, list[str]] = {}
+        trees = {path: ast.parse(source) for path, source in snapshots.items()}
+        for path, _, line in _astgrep_rows(root, "tree"):
+            loop = next(
+                node
+                for node in ast.walk(trees[path])
+                if isinstance(node, ast.While) and node.lineno == line
+            )
+
+            def scoped(node, nested=False, outer=loop):
+                yield node, nested
+                for child in ast.iter_child_nodes(node):
+                    if not isinstance(
+                        child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+                    ):
+                        inner = (
+                            node is not outer
+                            and isinstance(node, (ast.For, ast.AsyncFor, ast.While))
+                            and child in node.body
+                        )
+                        yield from scoped(child, nested or inner)
+
+            nodes = list(scoped(loop))
+            exits = any(
+                isinstance(node, (ast.Return, ast.Raise))
+                or (isinstance(node, ast.Break) and not nested)
+                for node, nested in nodes
+            )
+            bounded = any(
+                isinstance(node, ast.Name)
+                and re.search(
+                    r"deadline|timeout|limit|bound|maximum|end_at|stop_at|cap", node.id, re.I
+                )
+                for node, _ in nodes
+            )
+            if not exits and not bounded:
+                found.setdefault(path, []).append(ast.dump(loop))
+        return found
+
+
 def _antipattern_problems(
     staged: list[str],
     sources: list[str],
@@ -1166,6 +1222,17 @@ def _antipattern_problems(
     if missing:
         raise ValueError(f"changed source unreadable: {missing[0]}")
     python = {path: texts[head + path] for path in sources if path.endswith(".py")}
+    loops = unbounded_loops(python)
+    held: dict[str, Counter] = {}
+    for parent in parents:
+        previous = unbounded_loops(
+            {path: texts.get(f"{parent}:{moves.get(path, path)}", "") for path in python}
+        )
+        for path, values in previous.items():
+            held[path] = held.get(path, Counter()) | Counter(values)
+    for path, values in loops.items():
+        if Counter(values) - held.get(path, Counter()):
+            found.append(f"{path}: unbounded-loop: add a deadline, bound or break condition")
     measured = ruff_antipatterns(python)
     helpers = {k.removeprefix(head): v for k, v in texts.items() if k.startswith(head + "tests/")}
     held_readers = {path: helpers[path] for path in readers if path in helpers}

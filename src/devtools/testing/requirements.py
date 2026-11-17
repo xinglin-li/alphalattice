@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import stat
 import tempfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -374,9 +375,17 @@ def schema_path(root: Path, schema: str) -> Path | None:
             with os.scandir(pending.pop()) as entries:
                 for entry in entries:
                     path = Path(entry.path)
+                    is_directory = entry.is_dir(follow_symlinks=False)
+                    attributes = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+                    if (
+                        entry.is_symlink()
+                        or path.is_junction()
+                        or attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                    ):
+                        continue
                     if entry.name.endswith(".json"):
                         names.append(path.relative_to(root).as_posix())
-                    if entry.is_dir(follow_symlinks=False):
+                    if is_directory:
                         pending.append(path)
         names.sort()
         contents = {name: (root / name).read_bytes() for name in names}

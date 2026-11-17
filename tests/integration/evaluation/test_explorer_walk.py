@@ -185,7 +185,9 @@ def test_a_positive_walk_keeps_endings_and_cancelled_replans_optional(tmp_path, 
         assert trace.events[-1].attributes["alphalattice.path"].endswith(" > " + key)
 
 
-def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
+def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(
+    tmp_path: Path, monkeypatch
+) -> None:
     """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
     wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}
     answers = [{"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}]
@@ -193,6 +195,21 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
     route = Scenario("w", "w", "2026-10-15T16:00:00+00:00", (), (("SUCCEEDED",),), "agent", ())
     grade, trace = Explorer(lambda _: answers.pop(), lambda _: {}, route, tmp_path, 1).explore([[]])
     assert grade["passed"] and len(trace.events) == 3, grade
+    from types import SimpleNamespace
+
+    import devtools.evaluation.explorer as owner
+
+    ticks = iter((0.0, 0.0, 3601.0, 3601.0))
+    monkeypatch.setattr(owner, "time", SimpleNamespace(perf_counter=lambda: next(ticks)))
+    calls = []
+
+    def stalled(argv):
+        calls.append(argv)
+        assert len(calls) < 3, "walk exceeded its wall deadline"
+        return {"outcome": "PENDING", "data": wait}
+
+    with pytest.raises(ValueError, match=r"explorer\.wall_deadline"):
+        Explorer(stalled, lambda _: {}, route, tmp_path, 1).explore([[]])
 
 
 @pytest.mark.parametrize(

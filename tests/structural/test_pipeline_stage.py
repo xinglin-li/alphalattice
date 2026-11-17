@@ -57,6 +57,37 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
     tmp_path, case, monkeypatch
 ):
     host, bodies, wanted = CASES[case]
+    if case == "public":
+        with monkeypatch.context() as patch:
+
+            def stalled_git(*args, **kwargs):
+                assert kwargs["stdin"] == subprocess.DEVNULL and kwargs["timeout"] > 0
+                raise subprocess.TimeoutExpired("git", kwargs["timeout"])
+
+            patch.setattr(stage.subprocess, "run", stalled_git)
+            with pytest.raises(DefinitionError, match=r"pipeline\.workspace_unreadable"):
+                stage._workspace(tmp_path, "develop")
+        with monkeypatch.context() as patch:
+
+            def still_running(*, timeout):
+                raise subprocess.TimeoutExpired("child", timeout)
+
+            patch.setattr(
+                stage.subprocess,
+                "Popen",
+                lambda *a, **k: SimpleNamespace(pid=123, wait=still_running),
+            )
+            patch.setattr(
+                stage.psutil,
+                "Process",
+                lambda pid: (_ for _ in ()).throw(stage.psutil.NoSuchProcess(pid)),
+            )
+            context = SimpleNamespace(
+                root=tmp_path, stage="commit", deadline=stage.time.monotonic() + 1
+            )
+            result = stage._call(["fake"], tmp_path / "timed.log", context, {})
+            assert result["status"] == "ERROR" and result["stopped"] == "reap"
+            assert "pipeline.child_reap_timeout" in (tmp_path / "timed.log").read_text()
     if case == "size-required":
         assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
         census_path = "scripts/fake_census.py"

@@ -13,6 +13,7 @@ import sys
 import tomllib
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -466,6 +467,12 @@ def test_the_bash_smoke_starts_the_git_bash_that_path_names(
 ) -> None:
     """regression: process creation finds System32's WSL bash.exe before PATH (the hosted Windows
     runner has one); the smoke starts the bash PATH names and refuses the WSL launcher by name."""
+    ticks = iter((0.0, 1.0, 2.0, 3.0))
+    monkeypatch.setattr(
+        wheel_smoke, "time", SimpleNamespace(monotonic=lambda: next(ticks)), raising=False
+    )
+    with pytest.raises(ValueError, match=r"wheel_smoke\.launch_timeout"):
+        wheel_smoke.read_launch(SimpleNamespace(get=lambda **_: "still starting"), timeout=2)
     git_bash = str(tmp_path / "Git/usr/bin/bash.exe")
     monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: git_bash)
     assert wheel_smoke.shell_command(["alphalattice", "--help"], "bash")[0] == git_bash

@@ -1,5 +1,6 @@
 {
 "entries": {
+"explorer.wall_deadline": {"owner": "devtools.evaluation", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded explorer walk exceeded its wall deadline; inspect the trace before another walk."},
 "upgrade.refused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Upgrade cannot serve before its backups, declared family order, immutable ID mapping and ALL EQUAL family verification are satisfied."},
 "workspace_database.runtime_extension_refused": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "Workspace connections use the installed data dependencies and refuse runtime extension installation or loading."},
 "data_layer.extension_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An installed extension cannot load; restore the engine-matched locked data dependencies before creating the catalog."},
