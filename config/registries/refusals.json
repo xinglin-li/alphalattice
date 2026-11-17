@@ -13965,6 +13965,10 @@
 "owner": "process_capacity",
 "category": "INVALID_ARGUMENT"
 },
+"process_metrics.cpu_unavailable": {
+"owner": "process_metrics",
+"category": "UNAVAILABLE"
+},
 "process_metrics.monitor_already_started": {
 "owner": "process_metrics",
 "category": "ALREADY_EXISTS"

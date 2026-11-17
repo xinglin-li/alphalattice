@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import date, timedelta
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -23,8 +24,10 @@ from typing import Any
 import duckdb
 import numpy as np
 import pandas as pd
+import psutil
 import pyarrow as pa
 import pytest
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from alphalattice.control.observation_runtime.telemetry import (
     process_metrics,
@@ -981,7 +984,9 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
             sys.executable,
             "-c",
             "import time; payload = bytearray(4 * 1024 * 1024); time.sleep(0.35)",
-        ]
+        ],
+        stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
         child.wait(timeout=10)
@@ -991,6 +996,18 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
             child.wait(timeout=10)
         usage = monitor.finish()
 
+    observed = psutil.Process().memory_info().rss
+    measured = process_metrics.current_rss_bytes()
+    if sys.platform == "darwin":
+        assert measured == 0  # the existing /proc-based reader is unavailable here
+    else:
+        assert abs(measured - observed) < 4 * 1024 * 1024
+    cpu = psutil.Process().cpu_times()
+    assert abs(process_metrics.process_cpu_seconds() - cpu.user - cpu.system) < 0.25
+    with monkeypatch.context() as patched:
+        patched.setattr(InMemoryMetricReader, "get_metrics_data", lambda self: None)
+        with pytest.raises(RuntimeError, match=r"process_metrics\.cpu_unavailable"):
+            process_metrics.process_cpu_seconds()
     assert usage.measurement_scope == "PARENT_AND_LIVE_DESCENDANTS"
     assert usage.process_tree_peak_rss_bytes >= usage.peak_rss_bytes
     assert usage.sample_interval_seconds == 0.02
@@ -1036,6 +1053,26 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
             (101,),
             "PROCESS_TREE_ENUMERATION_UNAVAILABLE",
         )
+
+    # A recovered final read must not hide an earlier failed background sample.
+    lost = ProcessResourceMonitor(include_live_descendants=True)
+    lost._sample(initial=True)
+    lost._thread = Mock()
+    read_metrics = InMemoryMetricReader.get_metrics_data
+    reads: list[bool] = []
+
+    def transient(reader: InMemoryMetricReader) -> Any:
+        reads.append(True)
+        return None if len(reads) == 1 else read_metrics(reader)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(lost._stop, "wait", Mock(side_effect=[False, True]))
+        patched.setattr(InMemoryMetricReader, "get_metrics_data", transient)
+        with suppress(RuntimeError):  # the reviewed head loses the thread exception
+            lost._sample_until_stopped()
+        with pytest.raises(RuntimeError, match=r"process_metrics\.cpu_unavailable"):
+            lost.finish()
+        assert len(reads) == 2  # the final collection recovered
 
 
 def _assert_capacity_ceiling_holds(
