@@ -525,7 +525,7 @@ def test_a_lost_index_is_rebuilt_from_committed_assets_without_a_download(
     runtime = _runtime(tmp_path)
     try:
         _r, _snapshot, source_set = _acquire(runtime, transport, _request())
-        document_set = runtime.canonicalize(source_set=source_set, published_at=NOW)
+        document_set = runtime.canonicalize(source_set=source_set, published_at=NOW, as_of=NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=NOW)
         database = (
             runtime.documents.workspace.root
@@ -646,8 +646,8 @@ def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
         }
         kept = next(d for d in source_set.documents if d.revision == TEN_K.accession)
         assert kept.content_sha256 == original.content_sha256
-        assert runtime.documents.resolve_source_object(original).content == (
-            runtime.documents.resolve_source_object(kept).content
+        assert runtime.documents.resolve_source_object(original, as_of=None).content == (
+            runtime.documents.resolve_source_object(kept, as_of=None).content
         )
         assert len(_source_objects(runtime)) == 4 and _commits(runtime) == 4
     finally:

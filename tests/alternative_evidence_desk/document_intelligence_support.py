@@ -163,7 +163,7 @@ def _open_recorded(
         documents=documents if documents is not None else (_recorded_document(),),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return runtime, request, registry, snapshot, document_set, generation
 
@@ -261,7 +261,7 @@ def _built(
         documents=documents if documents is not None else (_recorded_document(),),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return request, document_set, generation
 

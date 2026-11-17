@@ -178,10 +178,22 @@ def holding() -> HostLog | None:
 
 def store() -> StorePort | None:
     """The Host's StorePort over its data root, opened at the first call and kept until the history
-    closes; None outside a Host whose history is open, and without the data extra."""
-    with _lock:
-        port: StorePort | None = _open.get("store")
-        if port is None and recording() and _open.get("reading") is not None:
+    closes; None outside a Host whose history is open, and without the data extra. Its opening
+    reads the log, so it takes the log's guard before this module's lock, in the order a writer
+    holding a log unit takes them when it records: the other order deadlocks the first open from
+    a worker thread against a writer's unit."""
+    port: StorePort | None = _open.get("store")
+    log: HostLog | None = _open.get("log")
+    if port is not None or log is None:
+        return port
+    with log.reading(), _lock:
+        port = _open.get("store")
+        if (
+            port is None
+            and _open.get("log") is log
+            and recording()
+            and _open.get("reading") is not None
+        ):
             from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
 
             port = _open["store"] = StorePort.open(Path(_open["root"]), _open["log"])

@@ -15576,6 +15576,20 @@
    "successor": "ab5a1b085544880ca29dbc6a5de2d7aa419069fc7106cfc928bfd3d8abbcad39",
    "change": "Evidence documents are kept once per machine, dated by their acceptance",
    "reason": "evidence documents are held once per machine in world, each identified by its own id with its body's digest as a column; every body equals its bytes and keeps its 0.2.7 facts and availability times, so the canonicalization binding moves with its storage and keeps its meaning, its successor recorded"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "5bdc9f009204c57ef569d82c32df1df951ac63ca7eeeca2128c08e6c99b4f96d",
+   "successor": "01133406e6c5153e9c7513cdfae0e08865e18c54c09009de3be5bc44a6cff175",
+   "change": "Evidence documents are read through world at their selection's cutoff",
+   "reason": "evidence bodies are read through the shared world at each caller's cutoff, with the workspace kept as rollback; a copied workspace replays every reference, set and document read equal through world, workspace and rollback, a legacy document's later version keeps its own availability, and a reference reads its exact bytes, so the two bindings move by their read path, not by value"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "ab5a1b085544880ca29dbc6a5de2d7aa419069fc7106cfc928bfd3d8abbcad39",
+   "successor": "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476",
+   "change": "Evidence documents are read through world at their selection's cutoff",
+   "reason": "evidence bodies are read through the shared world at each caller's cutoff, with the workspace kept as rollback; a copied workspace replays every reference, set and document read equal through world, workspace and rollback, a legacy document's later version keeps its own availability, and a reference reads its exact bytes, so the two bindings move by their read path, not by value"
   }
  ]
 }

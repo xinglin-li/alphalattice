@@ -29,6 +29,7 @@ from ..sources.contracts import (
     source_object_bytes,
     source_object_relative,
 )
+from ..storage import world_reads
 from .contracts import (
     AlternativeEvidenceCanonicalDocument,
     AlternativeEvidenceDocumentReference,
@@ -95,21 +96,56 @@ class AlternativeEvidenceDocumentPublisher:
             document, content_sha256=sha256_hex(document.content)
         )
 
-    def holds_source_object(self, content_sha256: str) -> bool:
-        """Whether bytes are already kept at this content address."""
-        path = resolve_confined(self.workspace.root, source_object_relative(content_sha256))
-        return bool(path.is_file())
+    def holds_source_object(
+        self, reference: AcquiredEvidenceDocumentReference, *, as_of: datetime | None
+    ) -> bool:
+        """Whether the reference's bytes are held: as world knew its document at `as_of` when world
+        serves the evidence reads (`world_reads.serving`) and holds that body, else at this
+        workspace's content address. `as_of` None asks this workspace's own store, as a writer
+        sizing what it adds does."""
+        port = None if as_of is None else world_reads.serving()
+        if port is not None and as_of is not None:
+            served = world_reads.body(port, reference, as_of)
+            if served.held:
+                return served.content is not None
+        path = resolve_confined(self.workspace.root, reference.content_object_path)
+        if port is None or as_of is None or not path.is_file():
+            return bool(path.is_file())
+        content = source_object_bytes(
+            path.read_bytes(), reference.content_sha256, reference.content_bytes
+        )
+        return world_reads.known(port, content, as_of) is not False
+
+    def require_known(self, content: bytes, *, as_of: datetime | None) -> None:
+        """Refuse as missing a body world holds but did not know at `as_of`, however it is read:
+        from this workspace's store, under another source's reference, or inline. Nothing when
+        world does not serve the evidence reads, `as_of` is None, or world does not hold it."""
+        port = None if as_of is None else world_reads.serving()
+        knew = None if port is None or as_of is None else world_reads.known(port, content, as_of)
+        if knew is False:
+            raise ValueError("alternative_evidence.source_object_missing")
 
     def resolve_source_object(
-        self, reference: AcquiredEvidenceDocumentReference
+        self, reference: AcquiredEvidenceDocumentReference, *, as_of: datetime | None
     ) -> AcquiredEvidenceDocument:
-        """The document with its retained bytes, or a refusal that names what is wrong."""
+        """The document with its retained bytes, or a refusal that names what is wrong: read through
+        world's `evidence_doc_asof` at `as_of` when world serves the evidence reads, a body world
+        did not know then refused as missing; else from this workspace's store, as `as_of` None
+        always reads, for a store being imported."""
+        port = None if as_of is None else world_reads.serving()
+        if port is not None and as_of is not None:
+            served = world_reads.body(port, reference, as_of)
+            if served.held:
+                if served.content is None:
+                    raise ValueError("alternative_evidence.source_object_missing")
+                return reference.resolve(served.content)
         path = resolve_confined(self.workspace.root, reference.content_object_path)
         if not path.is_file():
             raise ValueError("alternative_evidence.source_object_missing")
         content = source_object_bytes(
             path.read_bytes(), reference.content_sha256, reference.content_bytes
         )
+        self.require_known(content, as_of=as_of)
         try:
             return reference.resolve(content)
         except ValueError as error:

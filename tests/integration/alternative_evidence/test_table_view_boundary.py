@@ -160,7 +160,7 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
         request = _request(("AAPL",), budget=3)
         _registry, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
         )
         assert len(document_set.documents) == 1
         generation = runtime.build_retrieval(
@@ -229,7 +229,9 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
                 canonical.workspace_document_id, canonical.workspace_revision
             )
             text = content.decode("utf-8")
-            original = runtime.original_reader(document_set)(canonical.workspace_document_id)
+            original = runtime.original_reader(document_set, as_of=None)(
+                canonical.workspace_document_id
+            )
             assert original is not None
             assert original[1] == span.table_view.parent_source_content_hash
             _verify_table_view(span, text=text, reference=canonical, original=original)

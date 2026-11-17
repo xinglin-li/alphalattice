@@ -96,9 +96,11 @@ class LocalSourceLookup(Protocol):
     entry's exact resource, or None.
     """
 
-    def find(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceDocument | None: ...
+    def find(
+        self, entry: SecFilingInventoryEntry, *, as_of: datetime
+    ) -> AcquiredEvidenceDocument | None: ...
 
-    def holds(self, entry: SecFilingInventoryEntry) -> bool: ...
+    def holds(self, entry: SecFilingInventoryEntry, *, as_of: datetime) -> bool: ...
 
     def deferral(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceSourceDeferral | None: ...
 
@@ -790,7 +792,7 @@ class SecEdgarSource:
                     for value in entries
                     if local is None
                     or (
-                        not local.holds(value)
+                        not local.holds(value, as_of=request.evidence_as_of)
                         and _deferral_eligible(local.deferral(value), request, cap, explicit_retry)
                     )
                 )
@@ -820,7 +822,7 @@ class SecEdgarSource:
             record = _OutcomeRecorder(outcomes, entity_id=entity_id, filing=filing)
             if local is not None:
                 try:
-                    held = local.find(filing)
+                    held = local.find(filing, as_of=request.evidence_as_of)
                 except ValueError as error:
                     record("FAILED", detail=f"local integrity: {error}")
                     continue

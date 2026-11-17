@@ -995,7 +995,9 @@ def test_the_runtime_commits_the_blocks_a_session_scored_and_the_receipt_names_i
         published_at=later_request.evidence_as_of,
     )
     later_set = later.canonicalize(
-        source_set=later_source_set, published_at=later_request.evidence_as_of
+        source_set=later_source_set,
+        published_at=later_request.evidence_as_of,
+        as_of=later_request.evidence_as_of,
     )
     later_generation = later.build_retrieval(
         document_set=later_set, built_at=later_request.evidence_as_of

@@ -78,7 +78,9 @@ def _prepare(runtime: Any, request: AlternativeEvidenceRequest, documents: tuple
         documents=documents,
         published_at=request.evidence_as_of,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=request.evidence_as_of)
+    document_set = runtime.canonicalize(
+        source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
+    )
     generation = runtime.build_retrieval(document_set=document_set, built_at=request.evidence_as_of)
     return document_set, generation
 

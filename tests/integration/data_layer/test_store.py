@@ -578,7 +578,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     ]
 
 
-A, B, C = ("a" * 64, "b" * 64, "c" * 64)  # three bodies' digests
+A, B, C, D = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)  # four bodies' digests
 
 
 def document(doc_id: str, digest: str, available: str, **facts: str) -> dict:
@@ -592,7 +592,8 @@ def document(doc_id: str, digest: str, available: str, **facts: str) -> dict:
 @pytest.mark.proves("data_layer.a_legacy_document_is_known_from_its_availability")
 def test_a_legacy_document_is_known_from_its_availability_never_its_filing_date(root):
     """A filing is known at its acceptance, not its filing date's midnight; a recorded import at
-    its capture; another body of a held document no earlier than its admission."""
+    its capture; a held document's other 0.2.7 body at its own availability; and a body observed
+    now over a legacy one no earlier than its admission."""
     filed, accepted = "2024-01-05 00:00:00+00", "2024-01-05 21:30:00+00"
     filing = document(str(uuid.UUID(int=1)), A, accepted, published_at=filed)
     filing |= {"published_precision": "DATE", "accepted_at": accepted}
@@ -605,11 +606,15 @@ def test_a_legacy_document_is_known_from_its_availability_never_its_filing_date(
         text = canonical(rule | {"spec": {"lag_seconds": 0}}).decode()
         log.record("definition.registered", ("definition", "evidence"), attrs, text=text)
         port = StorePort.open(root, log)
-        for rows in ([filing, recorded], [filing | {"doc_digest": C}]):
+        restated = "2024-02-01 00:00:00+00"  # the filing's other body, in 0.2.7 from then
+        for rows in ([filing, recorded], [filing | {"doc_digest": C, "available_at": restated}]):
             with stage(
                 root, "evidence_doc", YF, arrow(rows), lag=("evidence-availability", 1)
             ) as s:
                 port.commit(s)
+        before = log.clock()
+        with stage(root, "evidence_doc", YF, arrow([recorded | {"doc_digest": D}])) as s:
+            port.commit(s)  # observed now, over the legacy import
         admitted = log.clock()
         read = port.lake.execute
         known = read(
@@ -620,19 +625,30 @@ def test_a_legacy_document_is_known_from_its_availability_never_its_filing_date(
             at: read(
                 f"SELECT list(doc_digest ORDER BY doc_digest) FROM evidence_doc_asof({at})"
             ).fetchone()[0]
-            for at in (1_704_412_800_000_000, 1_704_490_200_000_000, 1_709_287_200_000_000)
+            for at in (
+                1_704_412_800_000_000,
+                1_704_490_200_000_000,
+                1_706_745_600_000_000,
+                1_709_287_200_000_000,
+            )
         }
         port.close()
-    acceptance, captured = 1_704_490_200_000_000, 1_709_287_200_000_000
-    assert known[:2] == [
+    acceptance, restated, captured = (
+        1_704_490_200_000_000,
+        1_706_745_600_000_000,
+        1_709_287_200_000_000,
+    )
+    assert known[:3] == [
         (A, acceptance, "evidence-availability"),
         (B, captured, "evidence-availability"),
+        (C, restated, "evidence-availability"),  # legacy over legacy: its own availability
     ]
-    assert known[2][0] == C and captured < known[2][1] <= admitted
+    assert known[3][0] == D and before < known[3][1] <= admitted and known[3][2] is None
     assert seen == {
         1_704_412_800_000_000: None,  # the filing date's midnight: nothing is public yet
         acceptance: [A],
-        captured: [A, B],  # the held filing's other body is known only now
+        restated: [C],  # the filing's other body, from its own availability
+        captured: [B, C],  # the observed body is known only now, after every cutoff here
     }
 
 

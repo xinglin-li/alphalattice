@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from alphalattice.evidence.alternative_evidence.publication.usage import (
     record_provider_stage_usage,
 )
+from alphalattice.kernel.data_layer import history as data_history
 from alphalattice.kernel.knowledge.hybrid import (
     VectorBlockSource,
     committed_database_relative,
@@ -122,6 +123,7 @@ from ..sources.contracts import (
 )
 from ..sources.recorded import RecordedEvidenceDocument
 from ..sources.sec_edgar import SecEdgarSource
+from ..storage import world as evidence_world
 from .execution import CpuBudgetStore
 from .history import require_current_selection
 from .identity import (
@@ -486,10 +488,10 @@ class VerifiedSourceLookup:
                     found[accession] = reference
         return tuple(found[key] for key in sorted(found))
 
-    def holds(self, entry: SecFilingInventoryEntry) -> bool:
-        """Check cheaply whether a reference names a present body.
+    def holds(self, entry: SecFilingInventoryEntry, *, as_of: datetime) -> bool:
+        """Check cheaply whether a reference names a body held at the selection's cutoff `as_of`.
 
-        Preflight uses this without verifying bytes. A damaged store raises
+        Preflight uses this before any transfer. A damaged store raises
         the same integrity refusal as ``find``.
         """
         self._require_intact(entry.accepted_at)
@@ -499,11 +501,15 @@ class VerifiedSourceLookup:
                 if value.source_cik is not None
                 else value.entity_id == entry.entity_id
             )
-            if matches and self._documents.holds_source_object(value.content_sha256):
+            if matches and self._documents.holds_source_object(value, as_of=as_of):
                 return True
         return False
 
-    def find(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceDocument | None:
+    def find(
+        self, entry: SecFilingInventoryEntry, *, as_of: datetime
+    ) -> AcquiredEvidenceDocument | None:
+        """The verified body a reference names for the entry, as held at the selection's cutoff
+        `as_of`; None when none is held, never a refusal for a body evicted."""
         self._require_intact(entry.accepted_at)
         candidates = [
             value
@@ -522,7 +528,7 @@ class VerifiedSourceLookup:
         candidates.sort(key=lambda value: value.source_document_name is None)
         for reference in candidates:
             try:
-                return self._documents.resolve_source_object(reference)
+                return self._documents.resolve_source_object(reference, as_of=as_of)
             except ValueError as error:
                 if "source_object_missing" in str(error):
                     continue  # bytes evicted: not held, never a refusal
@@ -917,16 +923,30 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             admit=self.admit_storage,
         )
         self.record_days[SOURCE_SET_CATEGORY].note(source_set.source_set_hash, acquired_at)
+        self.admit_to_world()
         return source_set
 
+    def admit_to_world(self) -> None:
+        """Admit this workspace's new documents into world, so a read through world at once finds
+        them; only in a Host whose history records, which holds world's StorePort."""
+        opened = data_history.opened_log()
+        if opened is not None:
+            evidence_world.admit(
+                self.artifacts.root.parent, self.documents.workspace.root, opened[1]
+            )
+
     def resolve_source_documents(
-        self, source_set: AcquiredEvidenceSourceSet
+        self, source_set: AcquiredEvidenceSourceSet, *, as_of: datetime | None
     ) -> tuple[AcquiredEvidenceDocument, ...]:
-        """Resolve either durable source-set form with verified bytes."""
-        if isinstance(source_set, AcquiredEvidenceDocumentSet):
+        """Resolve either durable source-set form with verified bytes, as held at its request's
+        cutoff `as_of`."""
+        if isinstance(source_set, AcquiredEvidenceDocumentSet):  # inline: its bytes at the cutoff
+            for document in source_set.documents:
+                self.documents.require_known(document.content, as_of=as_of)
             return source_set.documents
         return tuple(
-            self.documents.resolve_source_object(reference) for reference in source_set.documents
+            self.documents.resolve_source_object(reference, as_of=as_of)
+            for reference in source_set.documents
         )
 
     def acquire_live(
@@ -973,7 +993,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 not self.artifacts.holds(SOURCE_COMMIT_CATEGORY, record.commit_hash, record)
             )
             additional = 0
-            if not self.documents.holds_source_object(reference.content_sha256):
+            if not self.documents.holds_source_object(reference, as_of=None):  # this store
                 additional += len(document.content)
             if needs_record:
                 additional += len(self.artifacts.serialized(record))
@@ -1064,12 +1084,14 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         *,
         source_set: AcquiredEvidenceSourceSet,
         published_at: datetime,
+        as_of: datetime,
         reading_depth: AlternativeEvidenceReadingDepth = (
             AlternativeEvidenceReadingDepth.FULL_FILING
         ),
         began: Callable[[int], None] | None = None,
     ) -> AlternativeEvidenceDocumentSet:
-        """Canonicalize a source set into a sealed document set.
+        """Canonicalize a source set into a sealed document set, its bodies as held at its
+        request's cutoff `as_of`.
 
         ``began(1)`` hears each document as its canonical text is taken up.
         """
@@ -1087,7 +1109,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             return self.sealed_canonicals.find(document, reading_depth=reading_depth)
 
         admitted, rejected = canonicalize_source_documents(
-            self.resolve_source_documents(source_set),
+            self.resolve_source_documents(source_set, as_of=as_of),
             reading_depth=reading_depth,
             known_canonical=known_canonical,
         )
@@ -1556,12 +1578,13 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         )
 
     def original_reader(
-        self, document_set: AlternativeEvidenceDocumentSet
+        self, document_set: AlternativeEvidenceDocumentSet, *, as_of: datetime | None
     ) -> Callable[[str], tuple[bytes, str, str] | None]:
         """Build a reader for verified original document bytes.
 
         Map workspace document IDs to original bytes, content SHA-256, and
-        media type through the sealed source set and verified object store.
+        media type through the sealed source set and verified object store, as
+        held at the selection's cutoff `as_of`.
         Table views render from those originals. Return ``None`` for a
         document without an original reference; refuse a referenced original
         that is missing or fails verification.
@@ -1584,7 +1607,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             reference = references.get(document_id)
             if reference is None:
                 return None
-            resolved = self.documents.resolve_source_object(reference)
+            resolved = self.documents.resolve_source_object(reference, as_of=as_of)
             return resolved.content, reference.content_sha256, reference.media_type
 
         return original_for
@@ -1625,7 +1648,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             document_set=document_set,
             generation=generation,
             evidence_as_of=evidence_as_of,
-            original_for=self.original_reader(document_set),
+            original_for=self.original_reader(document_set, as_of=evidence_as_of),
             admit=self.storage_admission,
             block_for=self.vector_block_source(document_set),
             pair_scores=self.pair_score_admission(

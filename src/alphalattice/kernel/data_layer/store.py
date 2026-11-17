@@ -512,7 +512,9 @@ class StorePort:
         that listing has had one market. An UNMARKETED row (a document) is known its lag after its
         own valid time, its availability. A legacy row of a key world already holds is a change
         observed now: known no earlier than its admission or the version it replaces, so no read
-        before then sees it. A legacy interval with an end, for a key world does not hold yet, is
+        before then sees it; but a legacy document over a legacy version (its known_at empty) is
+        another 0.2.7 fact with its own availability, known then, never before the version it
+        replaces. A legacy interval with an end, for a key world does not hold yet, is
         written as its two versions: the open one known from its start, the closing one from its
         end. In a TIMED table, a held key is superseded only by a row its source wrote after the
         newest version's value was last written (its ordering time, `newest`), and a later write
@@ -563,8 +565,9 @@ class StorePort:
         named = f"'{quoted}' AS lag_rule, {version}::INTEGER AS lag_rule_version"
         if table in UNMARKETED:
             derived = f"coalesce({valid}) + to_seconds({lag})"
-            asof = (
+            asof = (  # over a legacy version, a 0.2.7 fact with its own availability as well
                 f"CASE WHEN p.version_id IS NULL THEN {derived}"
+                f" WHEN p.known_at IS NULL THEN greatest({derived}, p.known_asof)"
                 f" ELSE greatest({derived}, {at}, p.known_asof) END"
             )
             return (

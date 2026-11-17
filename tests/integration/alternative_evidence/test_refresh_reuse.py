@@ -94,7 +94,9 @@ def _prepare(
 ) -> dict[str, Any]:
     request = _request(as_of=as_of, budget=budget)
     registry, snapshot, source_set = _acquire(runtime, transport, request, registry=registry)
-    document_set = runtime.canonicalize(source_set=source_set, published_at=source_set.acquired_at)
+    document_set = runtime.canonicalize(
+        source_set=source_set, published_at=source_set.acquired_at, as_of=source_set.acquired_at
+    )
     generation = runtime.build_retrieval(
         document_set=document_set, built_at=document_set.published_at
     )
@@ -463,7 +465,9 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
                 runtime, transport, request, registry=first["registry"]
             )
             document_set = runtime.canonicalize(
-                source_set=source_set, published_at=source_set.acquired_at
+                source_set=source_set,
+                published_at=source_set.acquired_at,
+                as_of=source_set.acquired_at,
             )
             generation = runtime.build_retrieval(
                 document_set=document_set, built_at=document_set.published_at, reuse_for=request

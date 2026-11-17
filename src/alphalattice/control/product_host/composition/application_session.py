@@ -270,7 +270,9 @@ class WorkspaceApplicationSession:
             if workspace_id is not None:  # a Host's open admits its market data and documents
                 world.admit(root / "market-data.duckdb", workspace_id)
                 world.admit_sectors(root / "market-data.duckdb", workspace_id)
-                evidence_world.admit(root, workspace_id)
+                evidence_world.admit(
+                    runtime / "artifacts", runtime / "evidence-knowledge", workspace_id
+                )
             gate = WorkspaceMutationGate()
             registry = DuckDbTaskControlRegistry(
                 resolve_task_control_database(root),

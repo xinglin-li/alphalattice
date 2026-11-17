@@ -147,7 +147,7 @@ def _open(tmp_path: Path, request: AlternativeEvidenceRequest) -> tuple[Any, Any
         documents=(*_filings_with_debt(entities), *_repeating_filings()),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return runtime, document_set, generation
 
@@ -213,7 +213,7 @@ def test_a_late_filing_notice_is_delivered_in_the_governance_lane(tmp_path: Path
             documents=(*_filings_with_debt(("AAPL",)), notice),
             published_at=_NOW,
         )
-        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
         receipt, spans = runtime.select_evidence(
             request=request, document_set=document_set, generation=generation
@@ -603,6 +603,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
                 published_at=_NOW + timedelta(hours=1),
             )[1],
             published_at=_NOW + timedelta(hours=1),
+            as_of=_NOW + timedelta(hours=1),
         )
         other_generation = runtime.build_retrieval(
             document_set=other_set, built_at=_NOW + timedelta(hours=1)
@@ -1453,7 +1454,7 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
         )
         _registry_snapshot, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
         )
         generation = runtime.build_retrieval(
             document_set=document_set, built_at=request.evidence_as_of
@@ -1686,7 +1687,7 @@ def test_a_routed_table_is_delivered_as_a_view_inside_the_matter_allowance(
         )
         _registry_snapshot, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
         )
         generation = runtime.build_retrieval(
             document_set=document_set, built_at=request.evidence_as_of
@@ -1828,7 +1829,7 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
             ),
             published_at=_NOW,
         )
-        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
         receipt, spans = runtime.select_evidence(
             request=request, document_set=document_set, generation=generation

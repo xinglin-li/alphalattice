@@ -807,7 +807,10 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 # receipt was committed.
                 count.expect(len(source_set.documents))
                 document_set = self.runtime.canonicalize(
-                    source_set=source_set, published_at=source_set.acquired_at, began=count.advance
+                    source_set=source_set,
+                    published_at=source_set.acquired_at,
+                    as_of=request.evidence_as_of,
+                    began=count.advance,
                 )
                 count.finish(len(document_set.documents))
                 evidence = _evidence(
@@ -2253,7 +2256,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 raise ValueError("alternative_evidence.brief_span_source_mismatch")
             if span.table_view is not None:
                 if original_for is None:
-                    original_for = self.runtime.original_reader(document_set)
+                    original_for = self.runtime.original_reader(
+                        document_set, as_of=request.evidence_as_of
+                    )
                 _verify_table_view(
                     span,
                     text=text,

@@ -339,7 +339,9 @@ def _source_documents(
     if missing == knowledge_root:
         raise ValueError("evidence_review.source_objects_root_missing")
     publisher = AlternativeEvidenceDocumentPublisher(knowledge_root)
-    return tuple(publisher.resolve_source_object(value) for value in source_set.documents)
+    return tuple(  # the imported source's own store, not this machine's documents
+        publisher.resolve_source_object(value, as_of=None) for value in source_set.documents
+    )
 
 
 def _publish(

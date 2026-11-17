@@ -74,6 +74,19 @@
       "layer": "unit",
       "seconds": 1
     },
+    "alternative_evidence.evidence_reads_setting_is_named": {
+      "description": "The evidence reads setting reads world when unset, the workspace's own store when it says workspace, and refuses any other value by name.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "alternative_evidence.evidence_reads_through_world": {
+      "description": "An evidence document's body is read through world at its selection's cutoff, admitted when its acquisition ends, and from the workspace under the rollback setting.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "lower_layer": "The read goes through the Host's StorePort and the as-of macro over a real DuckLake catalog and the data root's blobs.",
+      "seconds": 20
+    },
     "alternative_evidence.historical_identity_excludes_current_and_known": {
       "description": "Observed Evidence history excludes current and supported bindings while retaining each unknown tuple once.",
       "owner": "alphalattice.evidence.alternative_evidence",
