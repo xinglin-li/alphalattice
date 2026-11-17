@@ -157,10 +157,12 @@ class StorePort:
 
     @classmethod
     def open(cls, root: Path, log: HostLog) -> StorePort:
-        """Attach the catalog, the log read-only and the reading surface, then run `start`."""
+        """Attach the catalog and the reading surface's world macros, then run `start`. The log
+        is never attached: this process writes it through Python's sqlite3, and a second SQLite
+        library closing its descriptor would release the writer's locks on the file."""
         import duckdb  # lazy: DuckDB is the optional data extra; only a Host with data opens this
 
-        lake = duckdb.connect(  # in memory: the catalog and the log are attached to it
+        lake = duckdb.connect(  # in memory: the catalog is attached to it
             ":memory:",
             config={
                 "autoinstall_known_extensions": False,
@@ -174,13 +176,13 @@ class StorePort:
         for sql in (
             f"ATTACH 'ducklake:sqlite:{machine}/catalog.sqlite' AS lake"
             f" (DATA_PATH '{data}/', DATA_INLINING_ROW_LIMIT 1000)",
-            f"ATTACH '{machine}/log.sqlite' AS log (TYPE SQLITE, READ_ONLY)",
             "SET TimeZone = 'UTC'",
         ):
             lake.execute(sql).complete()
         catalog_matches(lake)  # before the views, which name its columns
         for sql in statements(schema_text("views.sql")):
-            lake.execute(sql).complete()
+            if "log." not in sql:
+                lake.execute(sql).complete()
         port = cls(root, log, lake)
         port.started = start(root, log, lake)
         for sql in statements(schema_text("telemetry.sql")):

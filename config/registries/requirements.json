@@ -345,6 +345,12 @@
       "seconds": 1,
       "retired": "2026-11-17: no digest remains for the source time to stay out of; a source time never decides newness, proved by data_layer.a_correction_is_known_from_its_admission's rewrite row"
     },
+    "data_layer.a_stuck_log_reader_is_ended": {
+      "description": "A reading views process that does not answer within its bound is ended, reaped and refused by name, so the history it serves is never held.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_timed_row_needs_its_source_time": {
       "description": "Staging refuses by name a raw_bar or corporate_action row without its source's own write time, which orders it against a held value.",
       "owner": "alphalattice.kernel.data_layer",
@@ -563,6 +569,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
+    },
+    "data_layer.one_sqlite_library_opens_the_log": {
+      "description": "Only the reading views' own process attaches the log in DuckDB; every other reading session leaves it out, so a process writing the log opens it with one SQLite library.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "lower_layer": "It reads the whole source tree from disk.",
+      "seconds": 10
     },
     "data_layer.only_a_host_opens_its_store": {
       "description": "A process whose Host history is not open gets no StorePort and admits nothing.",

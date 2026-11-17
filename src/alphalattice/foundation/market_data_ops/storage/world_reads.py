@@ -10,7 +10,10 @@ tables until the Host has, and so does a process whose data root never admitted 
 Inside a market data update (`writing`) the writer's reads take the workspace's tables, and the
 Host admits once at its end.
 A world read runs on `session`: in the Host a cursor on its StorePort's session, and in any other
-process the data root's reading surface attached read-only (`reading_session`), opened once.
+process the data root's catalog attached read-only (`reading_session`, without the log), opened
+once. DuckDB never opens the log: the facts a read takes from it come through Python's sqlite3,
+the Host's own connection or a read-only one (`_log_rows`), so a process opens the file with one
+SQLite library, whose locks no second library's closing descriptor releases.
 Each relation reads world as of a cutoff in microseconds: a selection's, or `LATEST`, all that is
 known. A listing is named by its 0.2.7 id, which world keeps as its alias (world.LISTING_ALIAS),
 and a provider by its lineage's name.
@@ -22,9 +25,11 @@ import json
 import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Final
+
+import pyarrow as pa
 
 from alphalattice.control.workspace_runtime.database import (
     live_workspace_connections,
@@ -32,6 +37,7 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import sql_path
@@ -86,7 +92,7 @@ def session() -> Iterator[Any | None]:
         with _lock:
             surface = _held.get(root)
             if surface is None and (root / "machine" / "catalog.sqlite").is_file():
-                surface = _held[root] = reading_session(root)
+                surface = _held[root] = reading_session(root, log=False)
         cursor = None if surface is None else surface.cursor()
     try:
         yield cursor
@@ -122,7 +128,7 @@ def reading(
             return
         catalog = cursor.execute(
             "SELECT path FROM duckdb_databases() WHERE database_name = 'lake'"
-        ).fetchone()[0]
+        ).fetchall()[0][0]
         key = (catalog, path, dataset, json.dumps(store_fingerprint(database)))
         verdict = _served.get(key)
         if (
@@ -134,13 +140,13 @@ def reading(
         if verdict is None:
             current = marks()
             host = history.opened_log()
-            served = _admitted(cursor, current, host, dataset)
-            ours = host is not None and _folder(cursor, host[1]) == database.parent
+            served = _admitted(current, dataset)
+            ours = host is not None and _folder(host[1]) == database.parent
             # an admission attaches the file, which an instance this process holds open refuses
             held = ours and live_workspace_connections(database) is not None
             if not served and ours and not held:
                 admit(database, host[1])
-                served = _admitted(cursor, current, host, dataset)
+                served = _admitted(current, dataset)
             verdict = (served, _snapshot(cursor))
             if served or not held:  # a held file's admission is owed to the next read
                 _served[key] = verdict
@@ -151,6 +157,7 @@ def reading(
         if not served:
             yield None
             return
+        _log_tables(cursor)
         cursor.begin()
         try:
             if dataset == "sector" and not world.sector_holds(database, cursor, cutoff_us=LATEST):
@@ -208,17 +215,10 @@ def selected(database: Path) -> int | None:
     if found is None:
         return None
     sql = (
-        "SELECT s.cutoff_us, w.folder FROM {1}selection s JOIN {1}workspace w USING"
-        " (workspace_id) WHERE {0}(s.spec, '$.binding_hash') = ? ORDER BY s.made_seq"
+        "SELECT s.cutoff_us, w.folder FROM selection s JOIN workspace w USING"
+        " (workspace_id) WHERE json_extract(s.spec, '$.binding_hash') = ? ORDER BY s.made_seq"
     )
-    host = history.opened_log()
-    if host is not None:  # the Host's own log, its open batch included
-        rows = [tuple(row) for row in host[0].read(sql.format("json_extract", ""), (found,))]
-    else:
-        with session() as cursor:
-            if cursor is None:
-                return None
-            rows = cursor.execute(sql.format("json_extract_string", "log."), [found]).fetchall()
+    rows = _log_rows(sql, (found,))
     workspace = database.parents[3]
     for cutoff, folder in rows:  # the folder as the log records it, the copy's in its own form
         if folder and Path(folder).is_dir() and os.path.samefile(folder, workspace):
@@ -262,6 +262,7 @@ def holds(database: Path, cutoff_us: int) -> bool:
     with session() as cursor:
         if cursor is None:
             return False
+        _log_tables(cursor)
         alias = f"bound_{binding(database) or 'database'}"
         cursor.execute(f"ATTACH '{sql_path(database)}' AS {alias} (READ_ONLY)").fetchall()
         try:
@@ -281,23 +282,17 @@ def holds(database: Path, cutoff_us: int) -> bool:
 
 def _snapshot(cursor: Any) -> int:
     """The catalog's current snapshot: a new one is committed by every admission."""
-    return int(cursor.execute("SELECT * FROM lake.current_snapshot()").fetchone()[0])
+    return int(cursor.execute("SELECT * FROM lake.current_snapshot()").fetchall()[0][0])
 
 
-def _admitted(
-    cursor: Any, marks: dict[str, Any], host: tuple[Any, str] | None, dataset: str = DATASET
-) -> bool:
+def _admitted(marks: dict[str, Any], dataset: str = DATASET) -> bool:
     """Whether one of world's market admissions that took every row it marks (`taken`) recorded
-    these marks: read from the Host's own log, its open batch included, or else from the log the
-    session attached."""
-    sql = (  # SQLite's json_extract gives text, as DuckDB's json_extract_string does
-        "SELECT {0}(attrs, '$.marks'), {0}(attrs, '$.dropped.equal_time') FROM {1}event"
-        " WHERE type = 'admission' AND {0}(attrs, '$.dataset') = ?"
+    these marks, as the log holds them (`_log_rows`)."""
+    admitted = _log_rows(
+        "SELECT json_extract(attrs, '$.marks'), json_extract(attrs, '$.dropped.equal_time')"
+        " FROM event WHERE type = 'admission' AND json_extract(attrs, '$.dataset') = ?",
+        (dataset,),
     )
-    if host is not None:
-        admitted = host[0].read(sql.format("json_extract", ""), (dataset,))
-    else:
-        admitted = cursor.execute(sql.format("json_extract_string", "log."), [dataset]).fetchall()
     return bool(marks) and marks in taken(admitted)
 
 
@@ -309,12 +304,50 @@ def taken(admissions: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
     return [json.loads(marks) for marks, equal in admissions if marks and equal is None]
 
 
-def _folder(cursor: Any, workspace_id: str) -> Path | None:
+def _folder(workspace_id: str) -> Path | None:
     """The folder the log records for a workspace, resolved; None when it records none."""
-    found = cursor.execute(
-        "SELECT folder FROM log.workspace WHERE workspace_id = ?", [workspace_id]
-    ).fetchone()
-    return None if found is None or found[0] is None else Path(found[0]).resolve()
+    found = _log_rows("SELECT folder FROM workspace WHERE workspace_id = ?", (workspace_id,))
+    return None if not found or found[0][0] is None else Path(found[0][0]).resolve()
+
+
+_LOG_TABLES: Final = (
+    (
+        "definition_lineage",
+        "SELECT definition_id, name FROM definition_lineage",
+        pa.schema([("definition_id", pa.string()), ("name", pa.string())]),
+    ),
+    (
+        "admission",
+        "SELECT admission_id, known_us FROM admission",
+        pa.schema([("admission_id", pa.string()), ("known_us", pa.int64())]),
+    ),
+)
+"""The log's tables a world session's relations join, each with the read that fills it and the
+schema it is registered with."""
+
+
+def _log_tables(cursor: Any) -> None:
+    """Register on `cursor` the log's tables its relations join (`_LOG_TABLES`), as the log holds
+    them now: after any admission this read made, whose providers they name."""
+    for name, sql, schema in _LOG_TABLES:
+        rows = [dict(zip(schema.names, row, strict=True)) for row in _log_rows(sql, ())]
+        cursor.register(name, pa.Table.from_pylist(rows, schema=schema))
+
+
+def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
+    """Rows of `sql` over the log: in the process that holds it, through the HostLog's own
+    connection, its open batch included; in any other, through a read-only one (`log.attach`).
+    Both are Python's sqlite3, the one SQLite library a process opens the log with. No rows in a
+    data root with no log yet."""
+    host = history.opened_log()
+    held = host[0] if host is not None else history.holding()
+    if held is not None:
+        return [tuple(row) for row in held.read(sql, tuple(params))]
+    root = history.data_root()
+    if not (root / "machine" / "log.sqlite").is_file():
+        return []
+    with closing(attach(root)) as con:
+        return [tuple(row) for row in con.execute(sql, tuple(params)).fetchall()]
 
 
 def relations(
@@ -359,7 +392,7 @@ def _held_by(row: str, held_us: int | None) -> str:
     """The condition that a world row's admission was committed by `held_us`; true without it."""
     if held_us is None:
         return "true"
-    admitted = f"SELECT admission_id FROM log.admission WHERE known_us <= {held_us}"
+    admitted = f"SELECT admission_id FROM admission WHERE known_us <= {held_us}"
     return f"{row}.admission_id IN ({admitted})"
 
 
@@ -367,7 +400,7 @@ def _named(row: str, cutoff_us: int, held_us: int | None, named: tuple[str, str]
     """The joins that name a world row's listing by its 0.2.7 id and its provider by name, and the
     filter on the row: its admission held by `held_us`, and its listing, the read's own ids when it
     names its listings, else world's alias of every listing."""
-    provider = f" JOIN log.definition_lineage named ON named.definition_id = {row}.provider_id"
+    provider = f" JOIN definition_lineage named ON named.definition_id = {row}.provider_id"
     where = f" WHERE {_held_by(row, held_us)}"
     if named is None:
         return (

@@ -44,7 +44,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, envelope, uuid7
-from alphalattice.kernel.data_layer.reading import experience, goal_notes, reading_session
+from alphalattice.kernel.data_layer.reading import LogReader, reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
 from alphalattice.kernel.shared_kernel.environment import offline
 
@@ -235,8 +235,11 @@ def open_history(
         held(root)
         if "reading" not in _open:
             where = data_root() if root is None else root
-            try:
-                _open["reading"] = reading_session(where)
+            try:  # the views' DuckDB, checked here without the log, which only the reader opens
+                session = reading_session(where, log=False)
+                if session is not None:
+                    session.close()
+                _open["reading"] = None if session is None else LogReader(where)
             except Exception as error:  # DuckDB raises its own errors too
                 close_history()  # the data root's lock goes with it, so the next start can open it
                 raise DataError(
@@ -494,8 +497,8 @@ def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:
         if reading is None:
             return None
         _open["log"].flush()
-        trials = experience(reading, **filters)
-        notes = goal_notes(reading, **filters)
+        trials = reading.read("experience", **filters)
+        notes = reading.read("goal_notes", **filters)
         record("experience.read", attrs={"count": len(trials)})
         _open["log"].flush()
         return {"trials": trials, "notes": notes}
