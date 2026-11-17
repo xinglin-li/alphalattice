@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -256,6 +257,8 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     architecture = {
         "packages": [{"package_id": "local_application", "physical_namespace_target": namespace}]
     }
+    if scenario == "growth":
+        architecture["packages"][0]["product_area"] = "interface"
     owners = {
         "nouns": {
             namespace: {
@@ -354,6 +357,8 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         legacy_lazy_imports={import_key: 1} if scenario == "import-debt" else {},
     )
     write(baseline, initial)
+    if scenario == "growth":
+        write("config/registries/test-sizes.json", {"post_merge_only": []})
     commit("Seed independently reviewed " + scenario + " history")
     from devtools.architecture import registries as owner  # one pairing read per check
 
@@ -373,6 +378,36 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         retained({})
         check(0, "--baseline", baseline)
     elif scenario == "growth":
+        import check_playpen as gate
+
+        monkeypatch.setattr(gate, "ROOT", tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "check_playpen.py",
+                "--staged",
+                "--registry-baseline",
+                baseline,
+                "--registry-update",
+                "--only",
+                "registries",
+            ],
+        )
+        before = (tmp_path / baseline).read_bytes()
+        for description, result in (({}, 1), ({"description": "Cache fixture values."}, 0)):
+            cache_rows["entries"]["new"] = description
+            if not result:
+                cache_rows["entries"]["legacy"] = {"description": "Retain the fixture lookup."}
+            stage(caches, cache_rows)
+            try:
+                actual = gate.main(ensure_environment=lambda: None)
+            except SystemExit as error:
+                actual = error.code
+            assert actual == result
+            assert ((tmp_path / baseline).read_bytes() == before) is bool(result)
+        (tmp_path / baseline).write_bytes(before)
+        cache_rows["entries"]["legacy"] = {}
         cache_rows["entries"]["new"] = {}
         stage(caches, cache_rows)
         assert "description" in check(1)

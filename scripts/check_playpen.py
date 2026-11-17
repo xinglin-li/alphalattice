@@ -619,7 +619,7 @@ def shrink_only_growth(
     ]
 
 
-def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
+def _check_registries(*, staged: bool, baseline: str | None = None, update: bool = False) -> bool:
     """Run the canonical registry guards and the staged census ratchet."""
 
     paths = _git_lines(
@@ -648,10 +648,6 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
 
     # A reference left at a moved name's old place, found before the rename lands.
     found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
-    if staged:
-        found += census_check(
-            ROOT, baseline=baseline, moves=moves, inputs=inputs
-        )  # one pairing read
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
@@ -701,6 +697,10 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             )
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
         found.append(f"test_size.rule: verify deferred structural declarations: {error}")
+    if staged:
+        found += census_check(
+            ROOT, baseline=baseline, update=update and not found, moves=moves, inputs=inputs
+        )  # one pairing read; never publish an update from a refused registry stage
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)
@@ -1311,6 +1311,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )
+    parser.add_argument(
+        "--registry-update", action="store_true", help="Refresh a clean staged registry census."
+    )
     parser.add_argument("--all-python", action="store_true")
     parser.add_argument("--strict-mypy-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
@@ -1358,6 +1361,8 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     ensure_environment()
     gate_started, parser = perf_counter(), _parser()
     args = parser.parse_args()
+    if args.registry_update and (not args.staged or not args.registry_baseline):
+        parser.error("--registry-update requires --staged and --registry-baseline")
     if args.strict_mypy_only:
         _run(
             "strict-mypy",
@@ -1477,7 +1482,9 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         ("operation-registry", _check_operation_registry),
         (
             "registries",
-            lambda: _check_registries(staged=args.staged, baseline=args.registry_baseline),
+            lambda: _check_registries(
+                staged=args.staged, baseline=args.registry_baseline, update=args.registry_update
+            ),
         ),
         ("boundaries", lambda: _check_boundaries(staged=args.staged, base_ref=args.base)),
         ("import-contracts", _check_import_contracts),
