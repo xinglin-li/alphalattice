@@ -362,6 +362,8 @@ def _goal_closed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("task.requested")
 def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A Task enters QUEUED, or a 0.2.7 Task the upgrade imports at the lifecycle its store held
+    (its first save then moves nothing): an admission is not a move."""
     task = e["subject_id"]
     parent, goal, _ = home = task_parent(e, a, lambda g: _goal_held(con, g, e["workspace_id"]))
     held = "SELECT workspace_id FROM task_workspace WHERE task_id = ?"
@@ -374,7 +376,7 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         "INSERT INTO task (task_id, parent_task_id, goal_id, workspace_id, type_id, state,"
         " trace_id, product_version, requested_seq, task_kind, input_hash, plan_hash, lifecycle,"
         " admitted_us, updated_us, admission_sequence, submitted_by_json)"
-        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)",
+        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             task,
             *home,
@@ -385,6 +387,7 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a["type"],
             a["input_hash"],
             a["plan_hash"],
+            a.get("lifecycle", "QUEUED"),
             registry_us(a["admitted_at"]),
             registry_us(a["admitted_at"]),
             a.get("admission_sequence"),

@@ -585,6 +585,10 @@ class DuckDbTaskControlRegistry:
             "admission_sequence": admission_sequence,
             "submitted_by": None if submitted_by is None else submitted_by.model_dump(mode="json"),
         }
+        if (
+            record.lifecycle is not TaskLifecycle.QUEUED
+        ):  # a 0.2.7 Task enters at its stored lifecycle
+            attrs["lifecycle"] = record.lifecycle.value
         self._record("task.requested", record.task_id, attrs, text=frozen, version=2)
         self._save_task(None, record)
         for ordinal, item in enumerate(items):

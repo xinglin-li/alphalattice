@@ -404,18 +404,28 @@ def test_a_kill_between_the_import_and_the_retirement_resumes_with_nothing_lost(
     for salt in ("killed-first", "killed-second"):
         envelope, goal, plan = task_contract(salt=salt)
         registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now)
-    registry.start_next(
+    started = registry.start_next(
         compatibility=compatibility(plan), worker_instance_id=uuid4(), observed_at=now
     )
+    assert started is not None
+    running, _ = started
+    registry.request_cancel(  # a Task stored past a move its admission never made
+        task_id=running.task_id, expected_task_hash=running.record_hash, observed_at=now
+    )
     originals = registry.tasks()
+    assert {task.lifecycle for task in originals} == {
+        TaskLifecycle.QUEUED,
+        TaskLifecycle.CANCEL_REQUESTED,
+    }
     write_0_2_7_store(registry)
 
     def killed(*_paths: object) -> None:
         raise _Killed
 
     monkeypatch.setattr(owner.os, "replace", killed)
-    with pytest.raises(_Killed):
+    with pytest.raises((_Killed, Exception)) as ended:
         lose_the_log_keeping_frozen_requests(registry, gate, monkeypatch, tmp_path / "data")
+    assert ended.type is _Killed, f"the import refused before the kill: {ended.value!r}"
     history.close_history()  # the process is gone; what its unit committed stays
     monkeypatch.undo()
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(tmp_path / "data"))
