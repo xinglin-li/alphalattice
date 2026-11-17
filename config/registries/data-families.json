@@ -1,7 +1,7 @@
 {
   "schema": "alphalattice.data-families.v1",
   "owner": "devtools.architecture",
-  "note": "Every family the 0.2.7 product persists, the evidence 0.2.8's cards read: its writers and readers by module, its location kind, its bytes on one real workspace (null when that workspace holds none), its data class (one of the eight below) and shape tier (1 core, 2 versioned definitions, 3 contract content, 4 opaque bodies), and the 0.2.8 table that takes it or the reason it retires. A writer is module:Class or module:function; the commit refuses a persisting writer no family lists. Only later cards move a family.",
+  "note": "Every family the 0.2.7 product persists, the evidence 0.2.8's cards read: its writers and readers by module, its location kind, its bytes on one real workspace (null when that workspace holds none), its data class (one of the eight below) and shape tier (1 core, 2 versioned definitions, 3 contract content, 4 opaque bodies), and the 0.2.8 table that takes it or the reason it retires. A writer is module:Class or module:function; the commit refuses a persisting writer no family lists. Only later cards move a family. A persistence_owner names the domain writer when it delegates physical writes to a shared store or database; writers remain the census of physical write sites. Retired writer records preserve historical names and deletion commits without claiming a current writer.",
   "measured_on": "one real workspace, the QA original ls1-chain (15.3 GB, 4,138 files), read in place and read-only on 2026-11-14 on the workshop's main Windows machine (Intel Core, 32 logical CPUs) while the workshop's other lines ran; bytes are DuckDB blocks in use per table, SQLite pages per table, or file sizes under each path prefix, none of which depends on load. null: the measured workspace holds none of the family, or it lies outside a workspace",
   "classes": [
     "external-observation",
@@ -207,7 +207,8 @@
         "product_host.storage.input_references",
         "research_foundation.runtime.delta_service",
         "risk_research.surfaces.returns"
-      ]
+      ],
+      "persistence_owner": "market_data_ops.storage.duckdb:MarketDataRepository"
     },
     "universe-membership-journal": {
       "summary": "the universe bootstrap boundary and its append-only membership events and source observations",
@@ -272,7 +273,8 @@
         "product_host.storage.input_references",
         "research_foundation.runtime.delta_service",
         "risk_research.surfaces.returns"
-      ]
+      ],
+      "persistence_owner": "market_data_ops.storage.duckdb:MarketDataRepository"
     },
     "market-quality-admission": {
       "summary": "current data-quality and universe-quality admission state",
@@ -1645,7 +1647,8 @@
         "research_foundation.mandate.foundation",
         "research_foundation.publication.sponsorship",
         "research_foundation.runtime.delta_service"
-      ]
+      ],
+      "home": "log artifact for migration receipts until the existing 0.2.8 retirement"
     },
     "feature-catalog-crud": {
       "summary": "disposable governed Feature Catalog revisions, increments, plans and transitions",
@@ -1854,7 +1857,8 @@
         "sector_research.experiments.resolution",
         "sector_research.experiments.service",
         "sector_research.inputs.membership"
-      ]
+      ],
+      "home": "log views of guardian and progress events"
     },
     "portfolio-score-evidence": {
       "summary": "development score model evidence and its pointer",
@@ -1870,7 +1874,14 @@
         "portfolio_strategy_lab.inputs.alpha_scores.AlphaPortfolioDevelopmentRuntime"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "portfolio_strategy_lab.inputs.alpha_scores.runtime:AlphaPortfolioDevelopmentRuntime"
+      ],
+      "writer_retirement_commits": [
+        "17d637e0715713ce383ef844f7a4f3edcf72f6ef"
+      ]
     },
     "portfolio-scores": {
       "summary": "Portfolio score builds, chunks and the current pointer, in-sample and policy out-of-sample",
@@ -1888,7 +1899,16 @@
         "portfolio_strategy_lab.inputs.alpha_scores.PortfolioOosAlphaScoreStore"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "portfolio_strategy_lab.inputs.alpha_scores.storage:AlphaPortfolioScoreStore",
+        "portfolio_strategy_lab.inputs.alpha_scores.oos:PortfolioOosAlphaScoreStore"
+      ],
+      "writer_retirement_commits": [
+        "17d637e0715713ce383ef844f7a4f3edcf72f6ef",
+        "39c2b67bb454b19471b045377ba4d03f0c22eb24"
+      ]
     },
     "pre-research-summaries": {
       "summary": "pre-research authority summaries",
@@ -1904,7 +1924,15 @@
         "product_host.publication.PreResearchAuthoritySummaryStore"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "product_host.publication.research_program:PreResearchAuthoritySummaryStore"
+      ],
+      "writer_retirement_commits": [
+        "65e347c604070fbd5e50b7be9fc7c23d896c12ac"
+      ],
+      "home": "log view of pre-research authority events"
     },
     "sector-context": {
       "summary": "sector context manifests and surfaces",
@@ -1992,7 +2020,16 @@
         "risk_research.publication.CurrentRiskService"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "factor_research.publication.current:CurrentFactorResearchService",
+        "risk_research.publication.current:CurrentRiskService"
+      ],
+      "writer_retirement_commits": [
+        "92df17c23dd9cbcba92dcd6ba9f5618cca3ff626",
+        "17d637e0715713ce383ef844f7a4f3edcf72f6ef"
+      ]
     },
     "factor-candidate-evidence": {
       "summary": "Factor Research candidate evidence, markers and protocol health",
@@ -2069,7 +2106,9 @@
         "product_host.research_authoring.frozen_portfolio",
         "product_host.research_authoring.panel_methodology_sources",
         "product_host.research_authoring.portfolio_handoff"
-      ]
+      ],
+      "store_step": "session mark series store",
+      "placement_reason": "The published listing and session mark chunks are series consumed by Portfolio and research handoffs; preserve the registered results.series home."
     },
     "protected-validation": {
       "summary": "the validation gate's permits, claims and receipts",
@@ -2084,10 +2123,14 @@
       "authority_owners": [
         "model_validation.ProtectedValidationStore"
       ],
-      "writers": [],
+      "writers": [
+        "workspace_runtime.content_store:CommittedIndex",
+        "workspace_runtime.content_store:ContentAddressedStore"
+      ],
       "readers": [
         "product_host.composition.portfolio_finalization"
-      ]
+      ],
+      "persistence_owner": "model_validation.protected_gate:ProtectedValidationStore"
     },
     "portfolio-benchmark": {
       "summary": "Portfolio benchmark input surfaces",
@@ -2153,7 +2196,14 @@
         "portfolio_strategy_lab.evaluation.PortfolioPolicyOosStore"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "portfolio_strategy_lab.evaluation.oos:PortfolioPolicyOosStore"
+      ],
+      "writer_retirement_commits": [
+        "39c2b67bb454b19471b045377ba4d03f0c22eb24"
+      ]
     },
     "portfolio-inputs": {
       "summary": "the research desk's Portfolio inputs and their pointer",
@@ -2169,7 +2219,14 @@
         "portfolio_strategy_lab.inputs._PortfolioInputStore"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "portfolio_strategy_lab.inputs.admission:_PortfolioInputStore"
+      ],
+      "writer_retirement_commits": [
+        "17d637e0715713ce383ef844f7a4f3edcf72f6ef"
+      ]
     },
     "portfolio-signal-comparisons": {
       "summary": "fast and slow return-signal comparison evidence",
@@ -2185,7 +2242,14 @@
         "portfolio_strategy_lab.inputs.return_signals.PortfolioSignalArtifactStore"
       ],
       "writers": [],
-      "readers": []
+      "readers": [],
+      "writer_status": "retired; no current writer",
+      "historical_writers": [
+        "portfolio_strategy_lab.inputs.return_signals.horizon_blend:PortfolioSignalArtifactStore"
+      ],
+      "writer_retirement_commits": [
+        "298e6ddc3cf3d167894df43c7c88f796d5d6bfb0"
+      ]
     },
     "portfolio-advancement": {
       "summary": "advancement artifacts and the by-program receipt index",
@@ -2323,7 +2387,9 @@
         "product_host.composition.research_history",
         "product_host.composition.upgrade_overview",
         "product_host.composition.verification_sweep"
-      ]
+      ],
+      "store_step": "research evidence log artifact store",
+      "placement_reason": "Published experiment evidence is read by research history and handoff operations; preserve log trial and artifact."
     },
     "workspace-data-requests": {
       "summary": "the person's confirmed workspace data change requests",
@@ -2370,7 +2436,9 @@
         "product_host.composition.portfolio_result_context",
         "product_host.composition.research_history",
         "product_host.composition.review_updates"
-      ]
+      ],
+      "store_step": "Portfolio research pipeline log store",
+      "placement_reason": "The Host writes research pipeline and update transitions for Portfolio operations and history; their registered home is log task and event."
     },
     "goals": {
       "summary": "the Host's Goals",
@@ -2466,7 +2534,9 @@
         "product_host.data_preparation.host",
         "product_host.storage.input_references",
         "research_foundation.runtime.delta_service"
-      ]
+      ],
+      "store_step": "pre-research head log store",
+      "placement_reason": "The current head and its pending transition are an authority reference and event consumed by research input binding; preserve log live_ref and event."
     },
     "risk-calibration": {
       "summary": "compact common-mode calibration research evidence",
@@ -2671,7 +2741,9 @@
         "product_host.research_authoring.portfolio_handoff",
         "product_host.research_authoring.qualification_handoff",
         "product_host.research_authoring.risk_handoff"
-      ]
+      ],
+      "store_step": "research program log store",
+      "placement_reason": "Sealed experiment programs are recipes and trial authority consumed by research handoffs; preserve log recipe and trial."
     },
     "evidence-records": {
       "summary": "Evidence and CRO records: requests, registries, snapshots, document sets, retrieval generations, receipts, briefs, packages, publications and dossiers",
@@ -2882,7 +2954,9 @@
         "product_host.research_authoring.factor_handoff",
         "product_host.research_authoring.foundation",
         "research_foundation.publication.sponsorship"
-      ]
+      ],
+      "store_step": "Factor development evidence log store",
+      "placement_reason": "A78-A80 are Factor development evidence and curation receipts read by Factor execution, verification and curation; Factor owns their log trial, selection and artifact, rather than the retrieval index."
     },
     "retrieval-model-copy": {
       "summary": "the retained retrieval recipe's model copy",

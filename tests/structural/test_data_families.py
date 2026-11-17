@@ -38,6 +38,63 @@ def test_every_persisting_writer_and_authority_group_is_in_one_data_family() -> 
     )
     sites = discover_persistence_sites(sources, source_root=ROOT / "src")
     assert data_family_violations(sites, registry, groups=groups) == ()
+    families = registry["families"]
+    assert {
+        name: families[name].get("persistence_owner")
+        for name in ("protected-validation", "universe-manifests", "universe-membership-journal")
+    } == {
+        "protected-validation": "model_validation.protected_gate:ProtectedValidationStore",
+        "universe-manifests": "market_data_ops.storage.duckdb:MarketDataRepository",
+        "universe-membership-journal": "market_data_ops.storage.duckdb:MarketDataRepository",
+    }
+    for name in (
+        "session-marks",
+        "portfolio-research-pipeline",
+        "pre-research-head",
+        "research-programs",
+        "research-experiments",
+        "factor-development",
+    ):
+        assert families[name].get("home") and families[name].get("writers")
+        assert families[name].get("store_step") and families[name].get("placement_reason")
+    # 0.2.8 rows 8a and 8b: A24-A32, A40-A53, A56, A60, A69 and A77-A80.
+    for name in (
+        "portfolio-score-evidence",
+        "portfolio-scores",
+        "research-migrations",
+        "pre-research-summaries",
+        "sector-context",
+        "execution-outcomes",
+        "research-current-pointers",
+        "factor-candidate-evidence",
+        "session-marks",
+        "protected-validation",
+        "guardian-views",
+        "portfolio-benchmark",
+        "tradability",
+        "portfolio-oos-consumption",
+        "portfolio-inputs",
+        "portfolio-signal-comparisons",
+        "portfolio-advancement",
+        "portfolio-finalization",
+        "portfolio-public-ledger",
+        "strategy-lab-evidence",
+        "research-experiments",
+        "portfolio-research-pipeline",
+        "pre-research-head",
+        "research-programs",
+        "feature-trials",
+        "factor-development",
+    ):
+        family = families[name]
+        assert family.get("home"), name
+        if family.get("writer_status") == "retired; no current writer":
+            assert not family["writers"] and not family.get("persistence_owner"), name
+            assert family.get("historical_writers") and family.get("writer_retirement_commits"), (
+                name
+            )
+        else:
+            assert family.get("writers") or family.get("persistence_owner"), name
 
 
 @pytest.mark.proves("architecture.an_unlisted_persisting_writer_is_refused")
