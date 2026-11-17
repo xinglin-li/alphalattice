@@ -506,7 +506,7 @@
       "seconds": 1
     },
     "data_layer.paths_are_quoted_sql_literals": {
-      "description": "A data root path enters DuckDB SQL as a string literal with forward slashes and each quote doubled, so a folder named with a quote attaches.",
+      "description": "A data root path enters DuckDB SQL as a literal with forward slashes, each quote doubled and a Windows extended-length prefix dropped, so any such path attaches.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -929,7 +929,7 @@
       "seconds": 10
     },
     "local_application.research_runs_are_recorded_as_trials": {
-      "description": "A sealed research run is a trial with its selection, recipe and evidence artifact, a rerun is another trial, and the history replays ALL EQUAL.",
+      "description": "A sealed research run is a trial with its selection, recipe, evidence artifact and optional running Task; attribution preserves content identity, a direct rerun has no Task, and the history replays ALL EQUAL.",
       "lower_layer": "The run is the real workflow over a real workspace, and the history a real SQLite log.",
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
@@ -972,6 +972,12 @@
       "layer": "contract",
       "seconds": 10
     },
+    "market_data_ops.market_reads_setting_is_world_or_workspace": {
+      "description": "The market reads setting is world when unset, names world or the workspace when set, and refuses any other value by name.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.sector_provider_conformance": {
       "description": "Every current-sector provider names itself and the symbol asked, gives a stripped sector and a 64-hex payload hash, answers alike twice, and refuses an unknown symbol with a typed provider failure.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -991,6 +997,19 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 15
+    },
+    "market_data_ops.world_relations_read_as_of_their_cutoff": {
+      "description": "Each workspace market table a value read names has a world relation of the same name, read through world's as-of macros at the cutoff given.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "market_data_ops.world_serves_the_workspace_market_reads": {
+      "description": "Market value reads are equal under both settings; world serves them while it holds the workspace's tables, the Host admitting a write first and a child reading the workspace until then.",
+      "lower_layer": "World's read-only attach, the Host's admission and the workspace's marks need a real catalog, log and workspace database.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 10
     },
     "observation_runtime.a_page_that_does_not_advance_is_named": {
       "description": "If a reader followed a ledger page that does not move its cursor, it would read the same page forever.",
@@ -1491,6 +1510,13 @@
       "description": "A test is killed only as hung, at its size's hang guard (Bazel's small 60, medium 300, large 900 s); its speed is judged at admission, solo, never by a kill under load.",
       "owner": "devtools.testing",
       "layer": "unit",
+      "seconds": 1
+    },
+    "testing.a_test_leaking_its_interpreter_or_a_person_root_fails_by_name": {
+      "description": "If a test changed sys.path or the working directory, or resolved a Host root outside its run, a later test or the person's data would pay for it.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "lower_layer": "The guards run in pytest's own setup and teardown hooks and wrap loaded modules, which the unit layer's audit refuses inside a test body.",
       "seconds": 1
     },
     "testing.an_os_only_test_names_its_os": {

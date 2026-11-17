@@ -227,10 +227,10 @@ def read_workspace_inputs(
     with market.database.retain(read_only=True):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
-            with market.database.connect(read_only=True) as connection:
+            with market.market_reads() as (connection, tables):
                 physical = connection.execute(
-                    "SELECT max(d) FROM (SELECT session_date d FROM raw_daily_bar_current "
-                    "UNION ALL SELECT session_date FROM provider_adjusted_close_current)"
+                    f"SELECT max(d) FROM (SELECT session_date d FROM {tables['bars']} "
+                    f"UNION ALL SELECT session_date FROM {tables['adjusted']})"
                 ).fetchone()
             if not physical or physical[0] is None:
                 raise ValueError("workspace_preparation.qualified_local_inputs_required")
@@ -2008,7 +2008,14 @@ class WorkspaceDataUpdateApplication:
             if stage == _STAGES[0]
             else WorkspaceDatabase(self.session.workspace).retain(read_only=False)
         )
-        with scope:
+        # one market data update per writing step: its reads take the workspace, and the Host
+        # admits once, when the step ends and has released the file
+        update = (
+            nullcontext()
+            if stage == _STAGES[0]
+            else MarketDataRepository(self.session.workspace).writing()
+        )
+        with update, scope:
             rule_task = decision_task or (bound_to[0].task_id if bound_to else None)
             diagnose = (
                 self.data_rule(rule_task)

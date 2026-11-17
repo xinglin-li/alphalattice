@@ -31,3 +31,27 @@ rule:
 constraints:
   F:
     regex: ^(run|Popen|call|check_call|check_output)$
+---
+id: test-loopback-records-every-path
+language: python
+severity: error
+message: >-
+  A test's loopback server records every request it receives, so another local program's probe of that
+  port (a chat app's RPC handshake) changes what the test asserts. Record only the paths the test serves,
+  and answer any other with 404.
+rule:
+  all:
+    - kind: function_definition
+      has: {field: name, regex: '^do_[A-Z]+$'}
+    - inside:
+        stopBy: end
+        kind: class_definition
+        has: {field: superclasses, regex: 'BaseHTTPRequestHandler'}
+    - has:
+        stopBy: end
+        pattern: $RECEIVED.append($$$)
+    - not:
+        has:
+          stopBy: end
+          kind: if_statement
+          has: {field: condition, regex: 'self\.path'}

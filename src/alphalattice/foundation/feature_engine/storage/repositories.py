@@ -889,42 +889,45 @@ class FeatureStateRepository(WorkspaceRepository):
 
         The reads of ``projected_feature_frame``, by columns where a listing has a row per
         session: a build's writer reads them and the worker that computes the listing projects
-        them (``projected_feature_rows``), so the writer builds no object per bar.
+        them (``projected_feature_rows``), so the writer builds no object per bar. The values
+        come from the market's reads (``MarketDataRepository.market_reads``); the raw-evidence
+        hash, a receipt of the workspace's rows, from the workspace.
         """
-        self._market_data._assert_manifest_scope(manifest, (listing_id,))
-        connection = _connection or self._connect(read_only=True)
-        owns_connection = _connection is None
-        try:
-            bars = self._market_data._raw_bar_table(
-                connection, listing_id, start=start, through=through
+        market = self._market_data
+        market._assert_manifest_scope(manifest, (listing_id,))
+        with market.market_reads(_connection) as (reading, tables):
+            bars = market._raw_bar_table(
+                reading, listing_id, start=start, through=through, tables=tables
             )
             if not bars.num_rows:
                 raise ValueError("listing has no raw bars for feature materialization")
             first_session = cast(date, bars.column("session_date")[0].as_py())
-            provider = self._market_data._provider_for_listing(connection, listing_id)
+            provider = market._provider_for_listing(reading, listing_id, tables)
             # What ``actions`` reads, under the provider read once for the listing's inputs.
-            actions = self._market_data._current_actions(connection, listing_id, provider)
-            raw_hash = self._market_data._raw_evidence_hash(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                history_start=first_session,
-                history_end=through,
-            )
+            actions = market._current_actions(reading, listing_id, provider, tables)
             adjusted_close = cast(
                 pa.Table,
-                connection.execute(
-                    """
+                reading.execute(
+                    f"""
                     SELECT session_date, adjusted_close
-                    FROM provider_adjusted_close_current
+                    FROM {tables["adjusted"]}
                     WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
                     ORDER BY session_date
                     """,
                     [listing_id, provider, first_session, through],
                 ).to_arrow_table(),
             )
+        connection = _connection or self._connect(read_only=True)
+        try:
+            raw_hash = market._raw_evidence_hash(
+                connection,
+                listing_id=listing_id,
+                provider=provider,
+                history_start=first_session,
+                history_end=through,
+            )
         finally:
-            if owns_connection:
+            if _connection is None:
                 connection.close()
         return FeatureSourceInputs(
             listing_id=listing_id,
@@ -955,16 +958,17 @@ class FeatureStateRepository(WorkspaceRepository):
         market = self._market_data
         for listing_id, (manifest, _start) in starts.items():
             market._assert_manifest_scope(manifest, (listing_id,))
-        connection = _connection or self._connect(read_only=True)
-        owns_connection = _connection is None
-        try:
+        with market.market_reads(_connection) as (reading, named):
             tables = market._raw_bar_tables(
-                connection,
+                reading,
                 {listing: start for listing, (_m, start) in starts.items()},
                 through=through,
+                tables=named,
             )
             providers = _selected_providers(
-                connection, [listing for listing, table in tables.items() if table.num_rows]
+                reading,
+                [listing for listing, table in tables.items() if table.num_rows],
+                named["mappings"],
             )
             held = sorted(
                 listing for listing, provider in providers.items() if provider is not None
@@ -975,20 +979,13 @@ class FeatureStateRepository(WorkspaceRepository):
                 listing: cast(date, tables[listing].column("session_date")[0].as_py())
                 for listing in held
             }
-            actions = market.actions_by_listing(held, _connection=connection)
-            raw_hashes = market._raw_evidence_hashes(
-                connection,
-                {
-                    listing: (cast(str, providers[listing]), firsts[listing], through)
-                    for listing in held
-                },
-            )
+            actions = market.actions_by_listing(held, _connection=_connection)
             adjusted = cast(
                 pa.Table,
-                connection.execute(
-                    """
+                reading.execute(
+                    f"""
                     SELECT listing_id, provider, session_date, adjusted_close
-                    FROM provider_adjusted_close_current
+                    FROM {named["adjusted"]}
                     WHERE listing_id IN (SELECT unnest(?::VARCHAR[]))
                       AND session_date BETWEEN ? AND ?
                     ORDER BY listing_id, session_date
@@ -996,8 +993,17 @@ class FeatureStateRepository(WorkspaceRepository):
                     [held, min(firsts.values()), through],
                 ).to_arrow_table(),
             )
+        connection = _connection or self._connect(read_only=True)
+        try:
+            raw_hashes = market._raw_evidence_hashes(
+                connection,
+                {
+                    listing: (cast(str, providers[listing]), firsts[listing], through)
+                    for listing in held
+                },
+            )
         finally:
-            if owns_connection:
+            if _connection is None:
                 connection.close()
         listings = adjusted.column("listing_id").to_pylist()
         selected = [
@@ -3658,13 +3664,14 @@ class PanelStateRepository(WorkspaceRepository):
             ).fetchall()
             missing = tuple(sorted(set(listing_ids) - {str(row[0]) for row in rows}))
             if missing and allow_missing_market_observations:
-                has_source = connection.execute(
-                    """
-                    SELECT DISTINCT listing_id FROM raw_daily_bar_current
-                    WHERE session_date = ? AND listing_id IN (SELECT unnest(?))
-                    """,
-                    [as_of_session, missing],
-                ).fetchall()
+                with self._market_data.market_reads() as (reading, tables):
+                    has_source = reading.execute(
+                        f"""
+                        SELECT DISTINCT listing_id FROM {tables["bars"]}
+                        WHERE session_date = ? AND listing_id IN (SELECT unnest(?))
+                        """,
+                        [as_of_session, missing],
+                    ).fetchall()
                 if has_source:
                     raise ValueError("feature.panel_member_row_not_materialized")
                 rows = sorted([*rows, *((listing_id, None) for listing_id in missing)])

@@ -12,8 +12,15 @@ TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 
 
 @pytest.mark.proves("data_layer.paths_are_quoted_sql_literals")
-def test_a_path_is_a_sql_literal_with_forward_slashes_and_quotes_doubled():
-    """A Windows path reads with forward slashes, and a quote in a folder's name is doubled, so the
-    literal it is placed in neither ends early nor changes meaning."""
-    path = PureWindowsPath("D:\\research\\o'brien\\lake.ducklake")
-    assert sql_path(path) == "D:/research/o''brien/lake.ducklake"
+@pytest.mark.parametrize(
+    ("spelled", "literal"),
+    [
+        (r"D:\research\o'brien\lake.ducklake", "D:/research/o''brien/lake.ducklake"),
+        (r"\\?\D:\research\lake.duckdb", "D:/research/lake.duckdb"),
+        (r"\\?\UNC\server\share\lake.duckdb", "//server/share/lake.duckdb"),
+    ],
+)
+def test_a_path_is_a_sql_literal_with_forward_slashes_and_quotes_doubled(spelled, literal):
+    """A Windows path, an extended-length one in its ordinary spelling, reads with forward slashes
+    and each quote doubled, so the literal attaches and neither ends early nor changes meaning."""
+    assert sql_path(PureWindowsPath(spelled)) == literal

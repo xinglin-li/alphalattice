@@ -11,6 +11,7 @@ import base64
 import contextlib
 import hashlib
 import io
+import itertools
 import json
 import os
 import re
@@ -637,6 +638,75 @@ def _starts_child(call: ast.Call) -> bool:
         or (module == "os" and name in OS_CHILDREN)
         or (module == "asyncio" and name in ASYNC_CHILDREN)
     )
+
+
+TEST_MODULE_CODE = re.compile(r"(?:^|[\s;])(?:from\s+tests\.[\w.]+\s+import\b|import\s+tests\.)")
+TEST_MODULE_TARGET = re.compile(r"^tests(?:\.\w+)+:\w+$")
+
+
+def _names_a_test_module(value: ast.AST, after: ast.AST | None) -> bool:
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        text = value.value
+        return bool(TEST_MODULE_CODE.search(text) or TEST_MODULE_TARGET.match(text)) or (
+            text.startswith("tests.")
+            and isinstance(after, ast.Constant)
+            and after.value == "-m"  # `-m tests.x`, read backwards from the module
+        )
+    if isinstance(value, ast.JoinedStr):  # f"{__name__}:target" names this test module
+        parts = value.values
+        return any(
+            isinstance(part, ast.FormattedValue)
+            and isinstance(part.value, ast.Name)
+            and part.value.id == "__name__"
+            and isinstance(following, ast.Constant)
+            and str(following.value).startswith(":")
+            for part, following in itertools.pairwise(parts)
+        )
+    return False
+
+
+def test_module_children(tree: ast.Module) -> list[int]:
+    """The lines where a child process is started on a test module (`tests.*`): a
+    `module:function` target, an import in a `-c` script, or `-m`. The child imports it by
+    name in a fresh interpreter, where `tests` is whichever package its import path finds first,
+    possibly another checkout's; a source module resolves to this tree."""
+    lines: set[int] = set()
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    module = _assigns(ast.Module([node for node in tree.body if isinstance(node, ast.Assign)], []))
+    for scope in [tree, *(node for node in ast.walk(tree) if isinstance(node, functions))]:
+        assigned = module if scope is tree else module | _assigns(scope)
+        for call in ast.walk(scope):
+            if isinstance(call, ast.Call) and _child_names_a_test_module(call, assigned):
+                lines.add(call.lineno)
+    return sorted(lines)
+
+
+def _assigns(scope: ast.AST) -> dict[str, list[ast.AST]]:
+    """Every value each plain name is assigned within a scope: a name a function assigns twice
+    resolves to both, and one assigned in another function never shadows it."""
+    found: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found.setdefault(target.id, []).append(node.value)
+    return found
+
+
+def _child_names_a_test_module(call: ast.Call, assigned: Mapping[str, list[ast.AST]]) -> bool:
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    if not (_starts_child(call) or name == "run_in_child"):
+        return False
+    for given in [*call.args, *(keyword.value for keyword in call.keywords)]:
+        roots = assigned.get(given.id, [given]) if isinstance(given, ast.Name) else [given]
+        for root in roots:
+            nodes = list(ast.walk(root))
+            for previous, node in zip([None, *nodes], nodes, strict=False):
+                values = assigned.get(node.id, [node]) if isinstance(node, ast.Name) else [node]
+                if any(_names_a_test_module(value, previous) for value in values):
+                    return True
+    return False
 
 
 def _cases(argvalues: ast.AST, tables: Mapping[str, ast.AST]) -> int:
@@ -1934,6 +2004,14 @@ def problems(
     if not path.endswith(".py"):
         return found
     found += _test_problems(path, old, new, ruff)
+    children = test_module_children(_tree(new))
+    if len(children) > len(test_module_children(_tree(old or ""))):
+        found += [
+            f"{path}:{line}: a child process starts on a test module (tests.*), which a fresh "
+            "interpreter may import from another checkout; start it on a source module "
+            "(devtools.testing.child_targets holds the test-only targets)"
+            for line in children
+        ]
     if path.startswith("tests/unit/"):
         found.extend(
             row for row in _lint(path, _tree(new)) if row.startswith("testing.layer_contract:")
@@ -2132,6 +2210,28 @@ def _shape_moves(base: str | None) -> tuple[dict[str, str], dict[str, str]]:
     return staged_moves(ROOT, pairs=pairs), unique_moves(pairs)
 
 
+def unpackaged_test_dirs(changed: Iterable[str], tracked: Iterable[str]) -> list[str]:
+    """Each test folder a changed test module or conftest sits in, or under, that is no package:
+    without its ``__init__.py`` pytest imports the file by its bare name, so two same-named files
+    collide."""
+    packages = {path.rsplit("/", 1)[0] for path in tracked if path.endswith("/__init__.py")}
+    missing: set[str] = set()
+    for path in changed:
+        name = path.rsplit("/", 1)[-1]
+        collected = name == "conftest.py" or (name.startswith("test_") and name.endswith(".py"))
+        if not (path.startswith("tests/") and collected):
+            continue
+        folder = path.rsplit("/", 1)[0]
+        while (folder == "tests" or folder.startswith("tests/")) and folder not in packages:
+            missing.add(folder)
+            folder = folder.rsplit("/", 1)[0] if "/" in folder else ""
+    return [
+        f"{folder}: a test folder with no __init__.py imports its modules by bare name, so a "
+        f"same-named test file elsewhere collides; add {folder}/__init__.py"
+        for folder in sorted(missing)
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _shape_args(argv)
     if args.weekly:
@@ -2233,6 +2333,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+    tracked = (
+        _git("ls-tree", "-r", "--name-only", "-z", "HEAD", "--", "tests")
+        if args.base
+        else _git("ls-files", "-z", "--", "tests")
+    )
+    if tracked.returncode:
+        print("TEST-LAYOUT test listing unreadable; restore the Git index", file=sys.stderr)
+        return 1
+    found += unpackaged_test_dirs(staged, tracked.stdout.split("\0"))
     added = [p for p in candidates if all(parent + ":" + p not in texts for parent in parents)]
     if added:
         try:

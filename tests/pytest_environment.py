@@ -5,11 +5,13 @@ temporary roots it made with it (pytest_fixture_setup)."""
 
 from __future__ import annotations
 
+import functools
 import getpass
 import os
 import sys
 import tempfile
 import time
+import types
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -34,6 +36,96 @@ RUNNING_TEST: dict[str, object] = {"id": None, "private": False, "factory": None
 # generations go with the passed test, and the root with a clean session (backups_made).
 BACKUP_ROOT: Path | None = None
 DATA_ROOT: Path | None = None
+MODEL_STORE: Path | None = None
+# The places a test may resolve a Host root to: the run's temporary roots, and for the model
+# store also an admitted shared kit. The person's own data, backup and model folders are never
+# among them, whatever a variable the run inherited names.
+OWNED_ROOTS: list[Path] = []
+MODEL_ROOTS: list[Path] = []
+# A workshop test host names its read-only cache of model packs in this test-only variable as
+# well as in ALPHALATTICE_MODEL_STORE; the product's own variable, which a person's shell may
+# set, is never its own authority, whatever its path.
+SHARED_MODEL_KIT = "ALPHALATTICE_TEST_MODEL_KIT"
+PERSON_RESOLVERS = (  # module, resolver, the variable naming its root, whether it reads home
+    ("alphalattice.kernel.data_layer.history", "data_root", "ALPHALATTICE_DATA_ROOT", False),
+    (
+        "alphalattice.control.product_host.storage.backup",
+        "default_backup_root",
+        "ALPHALATTICE_BACKUP_ROOT",
+        False,
+    ),
+    (
+        "alphalattice.kernel.knowledge.model_store",
+        "default_store_root",
+        "ALPHALATTICE_MODEL_STORE",
+        True,  # its pointer file lies under the home folder
+    ),
+)
+
+
+def _owned(path: Path, roots: list[Path]) -> bool:
+    """Whether ``path``'s resolved target lies in a root: a link under a root that leads out of
+    it is outside."""
+    place = Path(os.path.realpath(path))
+    return any(place.is_relative_to(Path(os.path.realpath(root))) for root in roots)
+
+
+def model_store_root(named: str, kit: str, make: Any) -> Path:
+    """The run's model store: the inherited store when the test host named that same folder as
+    its shared kit, else ``make()``, a store of the run's own."""
+    if named and kit and os.path.realpath(named) == os.path.realpath(kit):
+        return Path(os.path.realpath(named))
+    return Path(make())
+
+
+def _default_bases(reads_home: bool) -> list[Path]:
+    """The folders a resolver's platform default stands on, as the product chooses them."""
+    key = "LOCALAPPDATA" if os.name == "nt" else "XDG_DATA_HOME"
+    bases = [Path(os.environ[key])] if os.environ.get(key) else [Path.home()]
+    return bases + ([Path.home()] if reads_home else [])
+
+
+GUARDED: dict[Any, Any] = {}  # each wrapped resolver, and its guard
+
+
+def _owned_only(
+    resolve: Any, where: str, variable: str, reads_home: bool, roots: list[Path]
+) -> Any:
+    @functools.wraps(resolve)
+    def owned(*args: Any, **kwargs: Any) -> Any:
+        # judged before the resolver runs, so a person's pointer or folder is never even read
+        named = os.environ.get(variable, "").strip()
+        bases = [] if named else _default_bases(reads_home)
+        outside = [base for base in bases if not _owned(base, roots)]
+        if not outside and _owned(found := resolve(*args, **kwargs), roots):
+            return found
+        raise AssertionError(
+            f"tests.person_root_resolved: {RUNNING_TEST.get('id') or 'a test'} reached "
+            f"{outside[0] if outside else found} through {where}, outside this run's own roots; "
+            f"keep {variable} set, or point its default's folders at tmp_path"
+        )
+
+    return owned
+
+
+def guard_person_roots() -> None:
+    """Wrap each loaded Host root resolver so a test that reaches a default outside this run's
+    roots fails by name; called before each test, so a resolver imported since is wrapped too,
+    and so is a module's own name for one it imported (`from ... import data_root`)."""
+    for name, attribute, variable, reads_home in PERSON_RESOLVERS:
+        resolve = getattr(sys.modules.get(name), attribute, None)
+        if resolve is not None and resolve not in GUARDED.values():
+            roots = MODEL_ROOTS if variable == "ALPHALATTICE_MODEL_STORE" else OWNED_ROOTS
+            where = f"{name}.{attribute}"
+            GUARDED[resolve] = _owned_only(resolve, where, variable, reads_home, roots)
+            setattr(sys.modules[name], attribute, GUARDED[resolve])
+    names = {attribute for _, attribute, _, _ in PERSON_RESOLVERS}
+    for module in list(sys.modules.values()):
+        if getattr(module, "__name__", "").startswith("alphalattice."):
+            space = vars(module)
+            for attribute in names & space.keys():
+                if isinstance(space[attribute], types.FunctionType) and space[attribute] in GUARDED:
+                    space[attribute] = GUARDED[space[attribute]]
 
 
 def backups_made() -> frozenset[str]:
@@ -132,6 +224,19 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
     # The Host's research history: one data root per test process, never the machine's own.
     DATA_ROOT = Path(tempfile.mkdtemp(prefix="alphalattice-test-data-", dir=backup_parent))
     os.environ["ALPHALATTICE_DATA_ROOT"] = str(DATA_ROOT)
+    # The Host's model packs: an admitted shared kit (a read-only cache of packs), else one per
+    # test process; never the person's own, which a run once loaded and filled.
+    global MODEL_STORE
+    MODEL_STORE = model_store_root(
+        os.environ.get("ALPHALATTICE_MODEL_STORE", "").strip(),
+        os.environ.get(SHARED_MODEL_KIT, "").strip(),
+        lambda: tempfile.mkdtemp(prefix="alphalattice-test-models-", dir=backup_parent),
+    )
+    os.environ["ALPHALATTICE_MODEL_STORE"] = str(MODEL_STORE)
+    OWNED_ROOTS[:] = [backup_parent, Path(tempfile.gettempdir())]
+    if basetemp is not None:
+        OWNED_ROOTS.append(Path(os.path.abspath(str(basetemp))).parent)
+    MODEL_ROOTS[:] = [*OWNED_ROOTS, MODEL_STORE]
 
 
 def served_root(workspace: Path) -> Path:

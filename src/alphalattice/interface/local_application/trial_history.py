@@ -79,6 +79,7 @@ def started(sealed: SealedSubmission) -> Trial | None:
         "recipe_key": recipe,
         "seeds": [envelope.determinism.seed],
         "product_version": _product_version(),
+        "task_id": sealed.task_id,
         "context": {"program": program.program_hash, "sessions": len(program.resolved_sessions)},
     }
     if sealed.hypothesis_id is not None:

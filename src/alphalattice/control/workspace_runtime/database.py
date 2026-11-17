@@ -63,7 +63,7 @@ _EPOCHS: dict[Path, tuple[str, bool]] = {}
 instance opened read only (`seal_epoch`)."""
 
 
-def _fingerprint(path: Path) -> list[list[int] | None]:
+def store_fingerprint(path: Path) -> list[list[int] | None]:
     """The store file's and its WAL's size and mtime, as any program writing them leaves them."""
     stamps: list[list[int] | None] = []
     for item in (path, Path(f"{path}.wal")):
@@ -119,7 +119,7 @@ def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnecti
     and clears the record until this instance's close records it again.
     """
 
-    before = _fingerprint(path)
+    before = store_fingerprint(path)
     with span("read", "duckdb_instance_open"):
         raw = _connect(path, read_only=read_only)
     try:
@@ -673,7 +673,7 @@ def _closed(path: Path) -> None:
                     # The open cleared the record, so a close that can't write it reads as a crash
                     # (`seal_epoch`): seals are re-derived, and the Task that closed goes on.
                     with suppress(WorkspaceConflictError):
-                        _write_seal_record(path, epoch=epoch, fingerprint=_fingerprint(path))
+                        _write_seal_record(path, epoch=epoch, fingerprint=store_fingerprint(path))
         _STATE.notify_all()
 
 

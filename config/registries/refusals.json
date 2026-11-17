@@ -9243,6 +9243,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "A market's sessions come from the calendars its profiles name; calendars disagreeing on a session leave its closes unknown."
 },
+"market_data.market_reads_unknown": {
+"owner": "market_data",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Market value reads come from world or from the workspace's own tables; a setting naming anything else is refused before any read."
+},
 "market_data.market_profile_invalid": {
 "owner": "market_data",
 "category": "FAILED_PRECONDITION",

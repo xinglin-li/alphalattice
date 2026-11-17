@@ -153,12 +153,14 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     experiments = host.operations.experiments  # type: ignore[union-attr]
     manifest_before = read_research_workspace_manifest(host.workspace).manifest_hash
     tasks_before = len(host.session.task_control_registry.tasks())  # type: ignore[union-attr]
-    head_before = _json(host, "/api/activity")["head"]
+    items_before = len(_json(host, "/api/activity")["items"])
 
     # Two actors' previews side by side: the second PLAN no longer displaces the first.
     plan_a = _plan(host, _declaration(host, tmp_path / "a.yaml", 20260816))["data"]
     plan_b = _plan(host, _declaration(host, tmp_path / "b.yaml", 20260817))["data"]
     hash_a, hash_b = plan_a["plan_hash"], plan_b["plan_hash"]
+    after_plans = _json(host, "/api/activity")  # its head is the log's ordinal, not an item count
+    assert len(after_plans["items"]) == items_before + 4  # two PLAN pairs
     assert hash_a != hash_b
     assert plan_a["preview"] == {"retention": "ON_DISK_UNTIL_EXPIRY", "expires_after_minutes": 60}
     # Sealed by its hash: a restart or an eviction finds it, a changed file does not.
@@ -206,8 +208,11 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     # Reading previews admits nothing, records no activity and moves no pointer.
     assert len(host.session.task_control_registry.tasks()) == tasks_before  # type: ignore[union-attr]
     assert read_research_workspace_manifest(host.workspace).manifest_hash == manifest_before
-    head_after_reads = _json(host, "/api/activity")["head"]
-    assert head_after_reads == head_before + 4  # two PLAN pairs; the preview reads added nothing
+    read = _json(host, "/api/activity")
+    assert (read["head"], read["items"]) == (
+        after_plans["head"],
+        after_plans["items"],
+    )  # reads add nothing
 
     # An unknown hash is MISSING and never resolved to the latest preview.
     missing = _preview(host, "f" * 64)

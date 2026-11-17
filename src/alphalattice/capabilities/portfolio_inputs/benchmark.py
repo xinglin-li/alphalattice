@@ -18,6 +18,9 @@ from alphalattice.capabilities.portfolio_backtesting.benchmark import (
 )
 from alphalattice.foundation.feature_engine.producers.reference_data import MarketReference
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
+from alphalattice.foundation.market_data_ops.publication.projection import (
+    action_set_hash as actions_hash,
+)
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -214,13 +217,12 @@ def _benchmark_source_lineage(
     """
     market._assert_manifest_scope(reference.manifest, (reference.listing_id,))
     through = max(formation_sessions) + date.resolution * 10
-    connection = market._connect(read_only=True)
-    try:
-        provider = market._provider_for_listing(connection, reference.listing_id)
-        row = connection.execute(
-            """
+    with market.market_reads() as (reading, tables):
+        provider = market._provider_for_listing(reading, reference.listing_id, tables)
+        row = reading.execute(
+            f"""
             SELECT min(session_date)
-            FROM raw_daily_bar_current
+            FROM {tables["bars"]}
             WHERE listing_id = ? AND provider = ?
               AND session_date BETWEEN ? AND ?
             """,
@@ -228,6 +230,9 @@ def _benchmark_source_lineage(
         ).fetchone()
         if row is None or row[0] is None:
             raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.axis_unavailable")
+        actions = market._current_actions(reading, reference.listing_id, provider, tables)
+    connection = market._connect(read_only=True)
+    try:  # the raw-evidence hash is a receipt of the workspace's rows
         raw_hash = market._raw_evidence_hash(
             connection,
             listing_id=reference.listing_id,
@@ -235,10 +240,9 @@ def _benchmark_source_lineage(
             history_start=cast(date, row[0]),
             history_end=through,
         )
-        action_hash = market._active_action_set_hash(reference.listing_id, _connection=connection)
     finally:
         connection.close()
-    return raw_hash, action_hash
+    return raw_hash, actions_hash(actions)
 
 
 def resolve_portfolio_benchmark_source_binding(

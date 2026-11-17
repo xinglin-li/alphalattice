@@ -17,6 +17,7 @@ from alphalattice.control.task_control.contracts import (
     WorkItemLifecycle,
 )
 from alphalattice.control.task_control.ledger import SubmittingAgent, TaskAdmissionRequest
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     TaskTransitionRejected,
@@ -243,6 +244,8 @@ def test_a_kill_between_the_import_and_the_retirement_resumes_with_nothing_lost(
     now = datetime(2026, 8, 5, 15, tzinfo=UTC)
     gate = WorkspaceMutationGate()
     registry = DuckDbTaskControlRegistry(resolve_task_control_database(tmp_path), gate=gate)
+    # two wait before one starts, whatever the machine's processors give `auto`
+    write_queue_setting(registry.database_path.parent, "2", chosen_by="HUMAN", chosen_at=now)
     for salt in ("killed-first", "killed-second"):
         envelope, goal, plan = task_contract(salt=salt)
         registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now)

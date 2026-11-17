@@ -62,6 +62,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
+    market_update,
 )
 from alphalattice.foundation.market_data_ops.storage.rebase import (
     RawBarRebase,
@@ -282,6 +283,7 @@ class CurrentUniverseMaintenance:
             )
         self._admitted = True
 
+    @market_update(lambda runner: runner.store)
     def run(
         self,
         *,

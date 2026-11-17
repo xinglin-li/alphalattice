@@ -3718,10 +3718,6 @@ def test_the_kept_backups_are_read_without_making_one(tmp_path: Path):
         assert again["generations"] == first["generations"]
 
 
-def stop_child_for_cli_start_check(*, cancelled):
-    os._exit(7)
-
-
 def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
     alpha_case, monkeypatch, tmp_path, capsys
 ):
@@ -3736,7 +3732,7 @@ def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
         plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
         assert plan["status"] == "PLANNED", plan
         with pytest.raises(ChildInterrupted):
-            run_in_child(f"{__name__}:stop_child_for_cli_start_check", {})
+            run_in_child("devtools.testing.child_targets:exit_at_start", {})
         request = tmp_path / "run.json"
         request.write_text(
             json.dumps({"operation": "EXPERIMENT_RUN", "experiment_plan_hash": plan["plan_hash"]}),

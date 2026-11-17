@@ -6,9 +6,9 @@ import json
 from typing import Any
 
 import pytest
-from tests._support.history_fixtures import native_first_use
 
 from alphalattice.kernel.data_layer.breakdown import goal_trace
+from tests._support.history_fixtures import native_first_use
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/breakdown.py"
 S = 1_000_000  # microseconds in a second

@@ -39,6 +39,7 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
+from devtools.testing import isolation
 from devtools.testing.collection import CONTRACT as LAYER_CONTRACT
 from tests import pytest_environment as environment
 
@@ -46,6 +47,16 @@ pytest_plugins = [
     "devtools.testing.collection",
     *(["tests.agent_eval.hooks"] if (Path(__file__).parent / "agent_eval").is_dir() else []),
 ]
+
+
+_INTERPRETER = pytest.StashKey[isolation.State]()
+
+
+def _interpreter_leak(item: pytest.Item) -> str:
+    """What a finished test left changed in its interpreter, every fixture's teardown done; ""
+    for an item whose setup recorded nothing, such as a test's own stand-in."""
+    before = item.stash.get(_INTERPRETER, None)
+    return "" if before is None else isolation.interpreter_leak(item.nodeid, before)
 
 
 def _unit_contract(request: pytest.FixtureRequest) -> bool:
@@ -704,6 +715,8 @@ def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
     11-07). Every test that reads backups names its own root, so this one is only a sink. Read
     outermost, before a unit test's file audit begins."""
     item.stash[_BACKUPS] = environment.backups_made()
+    item.stash[_INTERPRETER] = isolation.interpreter_state()  # read by _interpreter_leak
+    environment.guard_person_roots()  # a Host root outside this run's own fails the test by name
     return (yield)
 
 
@@ -725,8 +738,11 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
     try:
         yield
     except BaseException:
-        raise  # a fixture teardown failure keeps the test's diagnostics
+        _interpreter_leak(item)  # put back; a fixture teardown failure keeps its diagnostics
+        raise
     else:
+        if leak := _interpreter_leak(item):  # the test that leaked fails, never a later one
+            raise AssertionError(leak)
         factory = item.config._tmp_path_factory  # type: ignore[attr-defined]
         if not passed or factory._retention_policy != "failed":
             return

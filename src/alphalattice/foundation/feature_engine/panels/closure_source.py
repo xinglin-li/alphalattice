@@ -28,6 +28,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     PANEL_IDENTITY_COLUMNS,
     panel_chunk_order,
 )
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
 
 @dataclass(frozen=True)
@@ -301,11 +302,14 @@ class PanelClosureSourceRepository:
                 missing = table.filter(pa.array([not item for item in present])).select(
                     ["session_date", "listing_id"]
                 )
-                connection.register("panel_missing_base_keys", missing)
-                if connection.execute(
-                    """SELECT count(*) FROM panel_missing_base_keys k
-                    JOIN raw_daily_bar_current r USING (session_date, listing_id)"""
-                ).fetchone()[0]:
+                market = MarketDataRepository(self._database_path.parent)
+                with market.market_reads() as (reading, tables):
+                    reading.register("panel_missing_base_keys", missing)
+                    observed = reading.execute(
+                        f"""SELECT count(*) FROM panel_missing_base_keys k
+                        JOIN {tables["bars"]} r USING (session_date, listing_id)"""
+                    ).fetchone()[0]
+                if observed:
                     raise ValueError("feature_panel.base_row_not_materialized")
         finally:
             connection.close()

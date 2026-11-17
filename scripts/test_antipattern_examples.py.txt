@@ -50,3 +50,23 @@ def test_windows_only():
 def test_zero_flags():
     # ruleid: test-child-visible-window
     assert subprocess.run(["git", "--version"], input="", timeout=30, creationflags=0)
+
+
+class Recorder(BaseHTTPRequestHandler):
+    # A loopback fake that keeps whatever reaches its port.
+    # ruleid: test-loopback-records-every-path
+    def do_GET(self):
+        requests.append(self.path)
+        self.send_response(200)
+        self.end_headers()
+
+
+class OwnPaths(BaseHTTPRequestHandler):
+    # ok: test-loopback-records-every-path
+    def do_POST(self):
+        if self.path != "/v1/traces":
+            self.send_error(404)
+            return
+        received.append(self.rfile.read(int(self.headers["Content-Length"])))
+        self.send_response(200)
+        self.end_headers()

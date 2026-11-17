@@ -159,8 +159,15 @@ def load_extensions(connection) -> None:
 
 
 def sql_path(path: PurePath) -> str:
-    """`path` for a DuckDB string literal: forward slashes, each quote doubled."""
-    return path.as_posix().replace("'", "''")
+    """`path` for a DuckDB string literal: forward slashes, each quote doubled, and a Windows
+    extended-length path (`//?/D:/...`, `//?/UNC/server/...` as forward slashes give them) in its
+    ordinary spelling, which DuckDB can open and derive its WAL's name from."""
+    text = path.as_posix()
+    if text.startswith("//?/UNC/"):
+        text = "//" + text[len("//?/UNC/") :]
+    elif text.startswith("//?/"):
+        text = text[len("//?/") :]
+    return text.replace("'", "''")
 
 
 def duckdb_session(root: Path) -> Any | None:

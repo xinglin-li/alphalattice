@@ -15275,6 +15275,76 @@
    "successor": "e2900bfeb526b3fa61a3da8e68e6605f64b8a899593653bdc34f443f7d9a114f",
    "change": "Keep each workspace's Tasks in the log of its data root",
    "reason": "lawful change: a workspace's Task Control registry is built with the workspace id its manifest names (composition/workspace.py _task_registry), so its Tasks are keyed on the data root's log under that id; no preparation input, parameter, data decision rule (rule_hash unchanged), binding, receipt or result changes; successor recorded in config/identity-successors.json as TL"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "241e5e6bb3b591982dc373d07b62dba54ac62963c5a1e3329e03751d0e7e2174",
+   "successor": "8e8954080092dccd7edb850a35d34fbbdc1410b2593730fa5ebc8d67380a71ff",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fed3467e9eaff2731095d93662dcc420906306344797de9ef3eb3076a295048d",
+   "successor": "c045d6856ec9e2437c301045261a7c31bab583ceb41a5606e33851a7a5038e91",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "ac5778064c6d5c7d82b87e74c4aa635c74bf8d0e5a5d4302e675518944fb9311",
+   "successor": "aad624cbd6f20fa0020cfef16e5e1ae4050e82e76cf831a03bee133a48c895df",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "af1602595d82f00fbffcb43800789e154cefa77bcf14a15ca242da2e56f6ab0f",
+   "successor": "72c4b68610f57fd5d9ed11a4275839195d9536e93f0d8ae89fddcc7f0ba82b4b",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "04fb95199d3f8862bf7e7c4916f3069f19fb440e4e3c8ee80a521bfc25cfe372",
+   "successor": "7c55b011c9a500bf7c2eb560c9248a0abf1a513ba7ead4bd396ec9f7384e1e78",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "82f27216919f552e7a86668316e735de19e0e4a638aaaf17dceb8fd012f445b6",
+   "successor": "c9415e283437a330b0a75c234d36c3660bd138f6005ab8a38043a9f3c2e1ea3e",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e2900bfeb526b3fa61a3da8e68e6605f64b8a899593653bdc34f443f7d9a114f",
+   "successor": "dda37bce47e671a77c8ae5279bfefa669f5a5e4de09548cfa3a2c3066ba912f2",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "successor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "successor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "be660fae1790536200994d0a754d77214971d0d1f9d230d1552f536737b6ef75",
+   "successor": "47fa63e23c088760068f81130e9565461d6eae1d8053147c574be58e11e36d51",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
   }
  ]
 }

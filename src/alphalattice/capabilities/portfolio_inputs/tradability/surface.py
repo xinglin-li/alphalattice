@@ -51,25 +51,24 @@ def _read_raw_bar_table(
     start: date,
     through: date,
 ) -> pa.Table:
-    """Read one bounded OHLCV block without growing the central store API."""
+    """Read one bounded OHLCV block, through the store's market reads, without growing the
+    central store API."""
     if not listing_ids or listing_ids != tuple(sorted(set(listing_ids))):
         raise TradabilitySurfaceError("data_tradability.listing_axis_invalid")
     if start > through:
         raise TradabilitySurfaceError("data_tradability.source_range_invalid")
-    connection = store._connect(read_only=True)
-    try:
-        return connection.execute(
-            """
+    with store.market_reads() as (connection, tables):
+        block: pa.Table = connection.execute(
+            f"""
             SELECT listing_id, provider, session_date, open, high, low, close, volume
-            FROM raw_daily_bar_current
+            FROM {tables["bars"]}
             WHERE listing_id IN (SELECT unnest(?))
               AND session_date BETWEEN ? AND ?
             ORDER BY session_date, listing_id
             """,
             [list(listing_ids), start, through],
         ).to_arrow_table()
-    finally:
-        connection.close()
+    return block
 
 
 def _decision_schema() -> pa.Schema:

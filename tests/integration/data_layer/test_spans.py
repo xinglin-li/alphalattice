@@ -8,7 +8,6 @@ import threading
 import urllib.request
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
@@ -30,6 +29,7 @@ from alphalattice.interface.local_application.web import (
 from alphalattice.kernel.data_layer import create_data_root, history
 from alphalattice.kernel.data_layer.log import HostLog, envelope
 from alphalattice.kernel.data_layer.spans import LogSpanExporter, tracer_provider
+from devtools.testing import child_targets
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
 T0 = 1_794_700_000_000_000
@@ -57,6 +57,9 @@ def otlp_receiver(monkeypatch):
 
     class Receiver(BaseHTTPRequestHandler):
         def do_POST(self):
+            if self.path != "/v1/traces":  # another local program's probe is no export
+                self.send_error(404)
+                return
             received.append(self.rfile.read(int(self.headers["Content-Length"])))
             self.send_response(200)
             self.end_headers()
@@ -129,11 +132,7 @@ def test_a_span_the_log_refuses_is_counted_never_raised(log):
 
 
 TRACE, CLIENT_SPAN = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"
-
-
-def read_bytes(path: str, cancelled) -> int:
-    """A worker's data read: the size of the file at `path`."""
-    return len(Path(path).read_bytes())
+_TARGET = f"{child_targets.__name__}:file_size"  # a worker's data read
 
 
 @pytest.mark.proves("data_layer.a_clients_trace_reaches_its_workers")
@@ -149,7 +148,7 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
 
     @web.route("POST", "/api/read", mutates=True)
     def read(_query, _payload):
-        return {"bytes": run_in_child(f"{__name__}:read_bytes", {"path": str(tmp_path / "bars")})}
+        return {"bytes": run_in_child(_TARGET, {"path": str(tmp_path / "bars")})}
 
     @web.route("GET", "/api/poll")
     def poll(_query, _payload):
@@ -225,7 +224,7 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
         step["span_id"],
     )
     assert step["workspace_id"] == call["workspace_id"] == "w1"
-    assert json.loads(call["attrs"]) == {"call": f"{__name__}:read_bytes", "trial_id": "t7"}
+    assert json.loads(call["attrs"]) == {"call": _TARGET, "trial_id": "t7"}
     assert json.loads(step["attrs"])["route"] == "POST /api/read"
     exported = [
         span

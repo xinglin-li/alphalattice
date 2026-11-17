@@ -3,7 +3,7 @@
 import json
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -513,6 +513,11 @@ def _git_backend(texts, paths, state=None):
         output = "base" if action == "rev-list" else "1\t0\tsrc/example.py\n"
         if "-z" in command:
             output = (state or {}).get("raw", "") if "--raw" in command else "\0".join(paths) + "\0"
+        if action in {"ls-files", "ls-tree"}:  # the tracked tree: each test folder a package
+            folders = {str(PurePosixPath(path).parent) for path in paths}
+            folders |= {str(up) for path in folders for up in PurePosixPath(path).parents}
+            inits = [f"{folder}/__init__.py" for folder in folders if folder.startswith("tests")]
+            output = "\0".join([*paths, *inits]) + "\0"
         if action == "cat-file":
             rows = [
                 texts.get(
@@ -626,6 +631,51 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
         f"{PATH}::test_c: Ruff PT014 findings grow 0 -> 1; drop the duplicate parametrize case",
     ]
     assert not problems(PATH, old, snapshots["moved"], (found["old"], found["moved"]))
+    # a test module's folder, and each folder up to tests/, is a package: else it imports by its
+    # bare name and a same-named test file elsewhere collides with it
+    tracked = ("tests/__init__.py", "tests/unit/__init__.py", "tests/unit/a/__init__.py")
+    for changed, refused in (
+        ("tests/unit/a/test_x.py", []),
+        ("tests/unit/b/test_x.py", ["tests/unit/b"]),
+        ("tests/unit/b/c/test_x.py", ["tests/unit/b", "tests/unit/b/c"]),
+        ("tests/unit/b/data.json", []),
+        ("tests/unit/b/support.py", []),
+        ("tests/unit/b/conftest.py", ["tests/unit/b"]),
+        ("src/b/test_x.py", []),
+    ):
+        named = [row.split(":", 1)[0] for row in shape.unpackaged_test_dirs([changed], tracked)]
+        assert named == refused, changed
+    assert (
+        "add tests/unit/b/__init__.py"
+        in shape.unpackaged_test_dirs(["tests/unit/b/test_x.py"], tracked)[0]
+    )
+    # a child process starts on a source module, never a test module a fresh interpreter may
+    # import from another checkout's tests package
+    for source, refused in (
+        ('run_in_child(f"{__name__}:stop", {})\n', True),
+        ('run_in_child("tests.unit.case:stop", {})\n', True),
+        (
+            'code = "from tests.support import x"\nsubprocess.run([sys.executable, "-c", code])\n',
+            True,
+        ),
+        ('subprocess.run([sys.executable, "-m", "tests.tool"], timeout=9)\n', True),
+        (  # a name another function reassigns still resolves to its own function's script
+            'def f():\n    code = "import tests.x"\n    subprocess.run(["py", "-c", code])\n'
+            'def g():\n    code = "pass"\n',
+            True,
+        ),
+        (
+            'def f():\n    code = "pass"\n    subprocess.run(["py", "-c", code])\n'
+            'def g():\n    code = "import tests.x"\n',
+            False,
+        ),
+        ('run_in_child("devtools.testing.child_targets:exit_at_start", {})\n', False),
+        ('subprocess.run([sys.executable, "-m", "pytest", "-p", "tests.conftest"])\n', False),
+        ('probe.write_text("from tests.support import x")\n', False),  # a file, not a child
+    ):
+        found = [row for row in problems(PATH, None, source) if "test module (tests.*)" in row]
+        assert bool(found) is refused, source
+        assert not [row for row in problems(PATH, source, source) if "test module" in row]
 
 
 @pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")

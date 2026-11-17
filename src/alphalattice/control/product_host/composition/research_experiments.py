@@ -3820,6 +3820,7 @@ class ResearchExperimentApplication:
                 program=plan.program,
                 binding=actor,
                 hypothesis_id=task.input.payload.get("hypothesis_id"),
+                task_id=str(task.task_id),
             )
             if plan.program.kind == ALPHA_EXPERIMENT_KIND:
                 with self._fit_threads(plan.program.program_hash):

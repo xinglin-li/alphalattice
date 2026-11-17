@@ -46,6 +46,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseOnboardingListing,
     HydrationDeferred,
     MarketDataRepository,
+    market_update,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
@@ -446,6 +447,7 @@ class CurrentUniverseOnboarding:
                 )
             )
 
+    @market_update(lambda runner: runner.store)
     def run(
         self,
         *,

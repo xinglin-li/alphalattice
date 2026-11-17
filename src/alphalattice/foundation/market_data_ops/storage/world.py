@@ -87,6 +87,14 @@ _WRITTEN: Final = "strftime({0}, '%Y-%m-%d %H:%M:%S.%f+00')"
 """A 0.2.7 write time, which 0.2.7 keeps in UTC, as StorePort reads a staged time."""
 
 
+def table_marks(run: Any, schema: str = "") -> dict[str, list[int]]:
+    """Each of TABLES' marks, read with `run` from the database `schema` names (with its dot)."""
+    return {
+        table: run(f"SELECT [count(*), bit_xor(hash(t))] FROM {schema}{table} t").fetchone()[0]
+        for table in TABLES
+    }
+
+
 def world_listing(listing_id: str) -> str:
     """A 0.2.7 listing's world id."""
     return str(uuid.uuid5(LISTINGS, listing_id))
@@ -114,12 +122,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         ).fetchall()
         if not {row[0] for row in held} >= set(TABLES):
             return None
-        marks = {
-            table: run(
-                f"SELECT [count(*), bit_xor(hash(t))] FROM {WORKSPACE}.{table} t"
-            ).fetchone()[0]
-            for table in TABLES
-        }
+        marks = table_marks(run, f"{WORKSPACE}.")
         last = port.log.read(
             "SELECT json_extract(attrs, '$.marks') FROM event WHERE type = 'admission'"
             " AND subject_id = ? AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC"

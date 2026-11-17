@@ -166,15 +166,19 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
         str(generation),
         str(backups.root),
     ]
-    options = dict(
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=20,
-        env=os.environ | {"PYTHONDONTWRITEBYTECODE": "1"},
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    first = subprocess.run(child, **options)
+
+    def upgrade(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=os.environ | {"PYTHONDONTWRITEBYTECODE": "1"},
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    first = upgrade(child)
     assert first.returncode == 9, first.stderr
     assert (workspace / "one.mode").read_text() == "new"
     assert (workspace / "two.mode").read_text() == "old"
@@ -189,10 +193,10 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
     newer_workspace = backups.create(reason="REQUEST")
     assert newer_workspace.generation_hash != kept.generation_hash
     newer_machine = backup_data_root(root, tmp_path / "machine-backups")
-    wrong = subprocess.run([*child[:5], str(newer_machine), child[-1]], **options)
+    wrong = upgrade([*child[:5], str(newer_machine), child[-1]])
     assert wrong.returncode == 2 and "pre-upgrade" in wrong.stdout
     assert (workspace / "two.attempts").read_text() == "x"
-    again = subprocess.run(child, **options)
+    again = upgrade(child)
     assert again.returncode == 0, again.stderr
     assert json.loads(again.stdout.strip().splitlines()[-1]) == {
         "state": "complete",

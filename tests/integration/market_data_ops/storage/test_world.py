@@ -8,8 +8,6 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
-from tests.workspace_maintenance.audit_workspace import audit_one
 
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -17,10 +15,12 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
-from alphalattice.foundation.market_data_ops.storage import world
+from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.project import definition_id
+from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
+from tests.workspace_maintenance.audit_workspace import audit_one
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world.py"
 DAYS = (date(2026, 7, 27), date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 30))
@@ -158,3 +158,66 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     }
     assert corrected == {"rows": {"raw_bar": 4}}
     assert seen == [[101.0] * 4 + [103.0], [101.0] * 3 + [103.0] * 2]
+
+
+@pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
+def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_write_first(
+    workspace: tuple[MarketDataRepository, UniverseManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reads are equal under both settings: world serves them while it holds the tables, the Host
+    admitting a write first and an update once, and the workspace answers an unadmitted write."""
+    store, manifest, database = workspace
+    ids = ["listing-aapl", "listing-msft"]
+    uses = {"world": 0}
+    relations = world_reads.relations
+
+    def counted(cutoff_us: int = world_reads.LATEST) -> dict[str, str]:
+        uses["world"] += 1
+        return relations(cutoff_us)
+
+    def read(setting: str) -> tuple[object, ...]:
+        monkeypatch.setenv(world_reads.SETTING, setting)
+        before = uses["world"]
+        values = (
+            store.raw_bars_by_listing(ids),
+            store.actions_by_listing(ids),
+            store.provider_adjusted_closes("listing-aapl", through=NEW),
+            store.listing_raw_ranges(ids),
+        )
+        return values, uses["world"] - before
+
+    def admissions() -> int:
+        return history.store().log.read(
+            "SELECT count(*) FROM event WHERE type = 'admission'"
+            " AND json_extract(attrs, '$.dataset') = 'market'"
+        )[0][0]
+
+    monkeypatch.setattr(world_reads, "relations", counted)
+    host = [read("workspace"), read("world")]  # the Host admits the unadmitted tables first
+    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)
+    written = [read("workspace"), read("world")]
+    before = admissions()
+    # an update writing and reading listing by listing, its commits in a retained instance's
+    # WAL; the held file defers the admission to the first read after it closes
+    with store.database.retain(read_only=False):
+        with store.writing():
+            bars(store, manifest, (NEW,), 104.0, 2)
+            inside = read("world")
+            bars(store, manifest, (NEW,), 105.0, 3)
+        held = (admissions() - before, read("world"))
+    after = read("world")  # the first read after the file closes admits
+    updated = (admissions() - before, after)
+    history.release_history()
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(database.parent.parent / "data"))
+    child = [read("workspace"), read("world")]
+    bars(store, manifest, (NEW,), 106.0, 4)  # a write no Host has admitted
+    unseen = [read("workspace"), read("world")]
+    assert [(own[0] == seen[0], own[1], seen[1]) for own, seen in (host, written, child)] == [
+        (True, 0, 4)
+    ] * 3
+    assert written[1][0][0]["listing-aapl"][-1].close == 103.0
+    assert (inside[0][0]["listing-aapl"][-1].close, inside[1]) == (104.0, 0)
+    assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (0, 105.0, 0)
+    assert (updated[0], updated[1][0][0]["listing-aapl"][-1].close, updated[1][1]) == (1, 105.0, 4)
+    assert (unseen[0][0] == unseen[1][0], unseen[1][1]) == (True, 0)
