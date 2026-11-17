@@ -33,8 +33,7 @@ DAYS = (date(2026, 7, 27), date(2026, 7, 28), date(2026, 7, 29), date(2026, 7, 3
 NEW = date(2026, 7, 31)
 SYMBOLS = ("AAPL", "MSFT")
 CURRENT = """(SELECT * FROM lake.world.{0} x WHERE NOT x.retracted AND NOT EXISTS (SELECT 1
-    FROM lake.world.superseded s WHERE s.value_digest = x.value_digest
-    AND s.admission_id = x.admission_id))"""
+    FROM lake.world.superseded s WHERE s.version_id = x.version_id))"""
 FIXTURE, OLD_ID, DISPLAY = (
     definition_id("provider", name)
     for name in ("fixture", world.LISTING_ALIAS, world.DISPLAY_ALIAS)

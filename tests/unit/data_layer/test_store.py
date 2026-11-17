@@ -3,15 +3,13 @@ cannot admit."""
 
 from __future__ import annotations
 
-import datetime
 import uuid
 
 import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.chain import canonical, digest
-from alphalattice.kernel.data_layer.store import as_columns, delete, digested
+from alphalattice.kernel.data_layer.store import admissible, as_columns, delete
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 
@@ -38,6 +36,8 @@ def test_a_handle_outside_staging_data_and_blobs_is_refused(tmp_path, handle):
 
 
 ROW = {"listing_id": str(uuid.UUID(int=7)), "session_date": "2024-01-02"}
+WRITTEN = {"source_observed_at": "2024-01-03 00:00:00+00"}
+NO_TIME = {"source_observed_at": None}
 
 
 def arrow(rows: list[dict]) -> pa.Table:
@@ -51,7 +51,7 @@ def arrow(rows: list[dict]) -> pa.Table:
     [
         pytest.param(
             "raw_bar",
-            arrow([ROW, ROW | {"close": 2.0}]),
+            arrow([ROW | WRITTEN, ROW | WRITTEN | {"close": 2.0}]),
             False,
             "admission_key_repeated",
             id="key twice",
@@ -62,101 +62,47 @@ def arrow(rows: list[dict]) -> pa.Table:
         pytest.param(
             "session", arrow([ROW]), True, "legacy_table_unanchored", id="legacy, no date"
         ),
-        pytest.param(
-            "raw_bar",
-            arrow([ROW | {"session_date": datetime.date(2024, 1, 2)}]),
-            False,
-            "admission_column_unsupported",
-            id="a date column",
-        ),
     ],
 )
 def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, legacy, code):
-    """Two versions of one key in one admission, a table StorePort does not admit, a legacy
-    batch with no valid date or a column canonical() has no form for are refused by name; a
-    world row is digested with its provider's lineage where its key has one."""
+    """Two versions of one key in one admission, a table StorePort does not admit or a legacy
+    batch with no valid date are refused by name."""
     with pytest.raises(DataError) as refused:
-        digested(table, "yf", rows, legacy=legacy)
+        admissible(table, "yf", rows, legacy=legacy)
     assert refused.value.failure.code == f"data_layer.{code}"
-    world = [sorted(digested(table, "yf", arrow([ROW])).column_names) for table in WORLD]
-    assert world == [
-        ["listing_id", "provider_id", "session_date", "value_digest"],
-        ["listing_id", "session_date", "value_digest"],
-    ]
-    outcome = ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}
-    assert digested("execution_outcome", "yf", arrow([outcome])).to_pylist() == [outcome]
 
 
-WORLD = ("raw_bar", "listing")
-BAR = ROW | {"open": 1.25, "close": 2.5, "volume": 1200.0}
-SYMBOL = {"listing_id": ROW["listing_id"], "symbol": "AAA", "valid_from": "2024-01-02"}
-
-
-@pytest.mark.proves("data_layer.stage_digest_is_canonicals")
+@pytest.mark.proves("data_layer.a_timed_row_needs_its_source_time")
 @pytest.mark.parametrize(
-    ("table", "row", "later", "legacy"),
+    "rows",
     [
-        pytest.param("raw_bar", BAR | {"adjusted_close": 2.4}, {}, False, id="float"),
-        pytest.param("raw_bar", BAR | {"adjusted_close": None}, {}, False, id="null"),
-        pytest.param("raw_bar", BAR, {}, False, id="adjusted close absent"),
-        pytest.param(
-            "raw_bar", ROW | {"volume": 1200, "shares": -(2**62)}, {}, False, id="integer"
-        ),
-        pytest.param(
-            "raw_bar",
-            ROW | {"listing_id": '上海 Ünï \\ "q"\t\x01'},
-            {},
-            False,
-            id="non-ASCII, escaped text",
-        ),
-        pytest.param(
-            "raw_bar",
-            ROW | {"session_date": "2024-02-29", "ok": True},
-            {},
-            False,
-            id="date string, boolean",
-        ),
-        pytest.param(
-            "raw_bar",
-            BAR | {"open": 1e-05, "high": 1e16, "low": -0.0, "close": 123456789.0},
-            {},
-            False,
-            id="float forms",
-        ),
-        pytest.param(
-            "raw_bar",
-            BAR | {"open": float("nan"), "high": float("-inf")},
-            {},
-            False,
-            id="nan and infinity",
-        ),
-        pytest.param(
-            "provider_symbol",
-            SYMBOL | {"valid_to": "2024-01-09"},
-            {"valid_to": None},
-            True,
-            id="legacy interval, one with an end",
-        ),
+        pytest.param([ROW], id="absent"),
+        pytest.param([ROW | WRITTEN, ROW | {"session_date": "2024-01-03"} | NO_TIME], id="null"),
     ],
 )
-def test_a_world_rows_digest_is_its_canonical_digest(table, row, later, legacy):
-    """Each digest built over an admission's columns is blake3 over canonical() of its row, byte
-    for byte, for every column type a row can carry."""
-    other = row | {"valid_from" if legacy else "session_date": "2023-01-03"} | later
-    staged = digested(table, "yf", arrow([row, other]), legacy=legacy)
-    content = [
-        {name: value for name, value in given.items() if name != "source_observed_at"}
-        | {"provider_id": "yf"}
-        for given in (row, other)
+def test_a_timed_row_without_its_source_time_is_refused(rows):
+    """A raw_bar or corporate_action row without its source's own write time is refused by name,
+    since nothing could order it against a held value."""
+    for table in ("raw_bar", "corporate_action"):
+        with pytest.raises(DataError) as refused:
+            admissible(table, "yf", arrow(rows))
+        assert refused.value.failure.code == "data_layer.admission_source_time_missing"
+
+
+@pytest.mark.proves("data_layer.a_world_row_carries_its_providers_lineage")
+def test_a_world_row_is_staged_with_its_providers_lineage_and_a_results_row_as_it_came():
+    """A world row whose key names a provider is staged with the lineage it was admitted under;
+    other world rows and a results row are staged as they came."""
+    world = [
+        sorted(admissible(table, "yf", arrow([ROW | WRITTEN])).column_names)
+        for table in ("raw_bar", "listing")
     ]
-    assert staged.column("value_digest").to_pylist() == [
-        digest(canonical(given)) for given in content
+    assert world == [
+        ["listing_id", "provider_id", "session_date", "source_observed_at"],
+        ["listing_id", "session_date", "source_observed_at"],
     ]
-    if legacy:
-        assert staged.column("open_digest").to_pylist() == [
-            digest(canonical(given | {"valid_to": None})) if given["valid_to"] else None
-            for given in content
-        ]
+    outcome = ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}
+    assert admissible("execution_outcome", "yf", arrow([outcome])).to_pylist() == [outcome]
 
 
 @pytest.mark.proves("data_layer.staging_keeps_every_rows_columns")
@@ -169,25 +115,3 @@ def test_staging_keeps_a_column_only_a_later_row_carries():
         "session_date": ["2024-01-02"] * 2,
         "valid_to": [None, "2024-01-09"],
     }
-
-
-@pytest.mark.proves("data_layer.a_source_time_is_not_content")
-def test_a_source_time_moves_no_digest_and_a_closed_interval_carries_its_open_one():
-    """The source's write time stays out of a row's value digest, so a later write of the same
-    values is the same version; a legacy interval with an end also carries its open version's
-    digest, the digest of the same row with no end."""
-    bar = ROW | {"close": 1.0, "source_observed_at": "2024-02-01 00:00:00+00"}
-    later = bar | {"source_observed_at": "2024-03-01 00:00:00+00"}
-    first, again = (digested("raw_bar", "yf", arrow([row])).to_pylist()[0] for row in (bar, later))
-    symbol = {"provider_id": "yf", "symbol": "AAA", "valid_from": "2024-01-05"}
-    symbol |= {"listing_id": ROW["listing_id"]}
-    closed, still_open = (
-        digested(
-            "provider_symbol", "yf", arrow([symbol | {"valid_to": end}]), legacy=True
-        ).to_pylist()
-        for end in ("2024-01-08", None)
-    )
-    assert first["value_digest"] == again["value_digest"]
-    assert first["source_observed_at"] == bar["source_observed_at"]
-    assert closed[0]["open_digest"] == still_open[0]["value_digest"]
-    assert "open_digest" not in still_open[0]

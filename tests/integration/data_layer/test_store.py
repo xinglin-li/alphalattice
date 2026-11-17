@@ -21,6 +21,7 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer import log as host
+from alphalattice.kernel.data_layer import store as storeport
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog, envelope
 from alphalattice.kernel.data_layer.project import definition_id
@@ -36,6 +37,7 @@ from alphalattice.kernel.data_layer.store import (
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
+WRITTEN = {"source_observed_at": "2024-02-01 00:00:00+00"}  # a source's own write
 YF, CALENDAR = definition_id("provider", "yf"), definition_id("provider", "calendar")
 CHILD = {
     "env": os.environ | {"PYTHONPATH": str(Path(host.__file__).parents[3])},
@@ -62,10 +64,12 @@ def arrow(rows: list[dict]) -> pa.Table:
     return pa.table(as_columns(rows))
 
 
-def bars(count: int, close: float = 1.0) -> pa.Table:
-    """`count` daily bars of one listing from 2024-01-01."""
-    days = (f"2024-{day // 28 + 1:02d}-{day % 28 + 1:02d}" for day in range(count))
-    return arrow([{"listing_id": LISTING, "session_date": day, "close": close} for day in days])
+def bars(count: int, close: float = 1.0, day: int = 1) -> pa.Table:
+    """`count` daily bars of one listing from 2024-01-01, their source writing them on February
+    `day`."""
+    days = (f"2024-{d // 28 + 1:02d}-{d % 28 + 1:02d}" for d in range(count))
+    bar = {"listing_id": LISTING, "close": close, "source_observed_at": f"2024-02-{day:02d}"}
+    return arrow([bar | {"session_date": d} for d in days])
 
 
 def outcome(day: str, simple_return: float | None = 0.1) -> dict:
@@ -165,11 +169,15 @@ with HostLog.open(root) as log:
 """
 DAYS = [f"{2000 + d // 336}-{d % 336 // 28 + 1:02d}-{d % 28 + 1:02d}" for d in range(1500)]
 BATCHES = {
-    "observed": ("raw_bar", None, [{"listing_id": LISTING, "session_date": d} for d in DAYS]),
+    "observed": (
+        "raw_bar",
+        None,
+        [{"listing_id": LISTING, "session_date": d} | WRITTEN for d in DAYS],
+    ),
     "legacy": (
         "raw_bar",
         ["yf-close", 1],
-        [{"listing_id": LISTING, "session_date": d} for d in DAYS],
+        [{"listing_id": LISTING, "session_date": d} | WRITTEN for d in DAYS],
     ),
     "results": (
         "execution_outcome",
@@ -234,7 +242,7 @@ def test_start_collects_orphan_staging_and_unnamed_data_files(root, monkeypatch)
     (root / "staging" / "adm-crashed").mkdir()
     orphan = named[0].parent / f"ducklake-{uuid.UUID(int=1)}.parquet"
     orphan.write_bytes(b"PAR1")
-    with HostLog.open(root) as log, stage(root, "raw_bar", YF, bars(3, 2.0)) as live:
+    with HostLog.open(root) as log, stage(root, "raw_bar", YF, bars(3, 2.0, day=2)) as live:
         first = StorePort.open(root, log)  # a Host restarting while a producer stages
         first.commit(live)
         first.close()
@@ -259,7 +267,7 @@ def test_start_collects_orphan_staging_and_unnamed_data_files(root, monkeypatch)
 
         monkeypatch.setattr(host, "lock_byte", start_then_lock)
         try:
-            with stage(root, "raw_bar", YF, bars(1, 3.0)) as late:
+            with stage(root, "raw_bar", YF, bars(1, 3.0, day=3)) as late:
                 port = StorePort.open(root, log)
                 port.commit(late)
                 port.close()
@@ -335,7 +343,7 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
         with stage(root, "raw_bar", YF, bars(3)) as first:
             port.commit(first)
         wall[0] -= 3_600 * 10**9  # an hour back
-        with stage(root, "raw_bar", YF, bars(1, close=2.0)) as correction:
+        with stage(root, "raw_bar", YF, bars(1, close=2.0, day=2)) as correction:
             port.commit(correction)
         a, b = (
             dict(log.read("SELECT admission_id, known_us FROM admission"))[s.admission_id]
@@ -363,8 +371,9 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     first close on or after its valid date; a batch moving a listing's market or naming an
     unregistered scheme is refused; typed columns read back whole."""
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
+    bar |= WRITTEN
     action = {"listing_id": LISTING, "effective_date": "2024-01-06", "kind": "split"}
-    action |= {"action_id": "s1", "provisional": True, "provenance": "derived"}
+    action |= {"action_id": "s1", "provisional": True, "provenance": "derived"} | WRITTEN
     symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
     rule, noon = ("yf-close", 1), "2024-01-07 12:00:00+00"  # Saturday's action counts from Monday
     sector = {"scheme_id": definition_id("sector_scheme", "gics"), "listing_id": LISTING}
@@ -457,44 +466,189 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     ]
 
 
+HELD = {"listing_id": LISTING, "session_date": "2024-01-05", "open": 0.0, "close": 5.0} | WRITTEN
+LATER = {"source_observed_at": "2024-02-02 00:00:00+00"}
+UNTIMED = {name: value for name, value in HELD.items() if name not in WRITTEN}
+FUTURE = HELD | {"session_date": "2099-01-02"}  # known from a close still to come
+SYMBOL = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
+RULE, MOVED_RULE = ("yf-close", 1), ("yf-close", 2)
+SAME = (None, 0, 0, {}, 1, 0)
+
+
 @pytest.mark.proves("data_layer.a_correction_is_known_from_its_admission")
-def test_a_batch_again_adds_nothing_and_a_correction_is_known_from_its_admission(root):
-    """A batch admitted again adds nothing, and a legacy correction of a held key is known only
-    from its admission."""
-    bar = {"listing_id": LISTING, "session_date": "2024-01-05", "close": 1.0}
-    later = bar | {"session_date": "2099-01-02"}  # known from a close still to come
-    batches = [
-        [bar, later],
-        [bar, later],
-        [bar | {"close": 2.0, "published_at": "2024-01-05 21:30:00+00"}],
-        [bar | {"close": 2.0, "retracted": True}],
-    ]
+@pytest.mark.parametrize(
+    ("table", "held", "staged", "added", "expected"),
+    [
+        pytest.param("raw_bar", ([HELD], None), ([HELD], None), None, SAME, id="again"),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"adjusted_close": None}], None),
+            None,
+            SAME,
+            id="a column absent, then null",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"retracted": False}], None),
+            None,
+            SAME,
+            id="retracted absent, then false",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"close": 5, "open": -0.0}], None),
+            None,
+            SAME,
+            id="a float, then an integer and -0",
+        ),
+        pytest.param(
+            "raw_bar", ([HELD], None), ([HELD], None), "dividend", SAME, id="a column added later"
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"close": 6.0} | LATER], None),
+            None,
+            (None, 1, 0, {}, 2, 1),
+            id="a correction",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"retracted": True} | LATER], None),
+            None,
+            (None, 1, 0, {}, 2, 1),
+            id="a retraction",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | LATER], None),
+            None,
+            (None, 0, 1, {}, 1, 0),
+            id="a rewrite of the held value",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([UNTIMED | {"close": 6.0}], None),
+            None,
+            ("admission_source_time_missing", 0, 0, {}, 1, 0),
+            id="no source time",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], None),
+            ([HELD | {"close": 6.0, "source_observed_at": "2024-01-31 00:00:00+00"}], None),
+            None,
+            (None, 0, 0, {"older": 1}, 1, 0),
+            id="an all-dropped batch",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], RULE),
+            ([HELD | {"close": 6.0} | LATER], RULE),
+            None,
+            (None, 1, 0, {}, 2, 1),
+            id="a legacy correction",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([HELD], RULE),
+            ([HELD | {"close": 6.0} | LATER], MOVED_RULE),
+            None,
+            ("lag_rule_version_moved", 0, 0, {}, 1, 0),
+            id="another lag version",
+        ),
+        pytest.param(
+            "raw_bar",
+            ([FUTURE], RULE),
+            ([FUTURE | {"close": 6.0} | LATER], None),
+            None,
+            ("admission_out_of_order", 0, 0, {}, 1, 0),
+            id="known before the held version",
+        ),
+        pytest.param(
+            "provider_symbol",
+            ([SYMBOL | {"valid_to": "2024-01-05"}], RULE),
+            ([SYMBOL | {"valid_to": "2024-01-08"}], RULE),
+            None,
+            (None, 1, 0, {}, 3, 2),
+            id="an interval pair",
+        ),
+    ],
+)
+def test_one_fact_is_one_version_however_it_is_staged(
+    root, monkeypatch, table, held, staged, added, expected
+):
+    """A staged row is a new version only when its conformed content differs from its key's newest
+    one: each held version is superseded once, a new one is known from its admission, and an
+    all-dropped batch is recorded with its drops once, though its commit is retried."""
     with HostLog.open(root) as log:
-        sessions = [("2024-01-05", "21:00:00", False), ("2099-01-02", "21:00:00", False)]
-        port = seed(root, log, sessions)
-        admitted = []
-        for rows in batches:
-            with stage(root, "raw_bar", YF, arrow(rows), lag=("yf-close", 1)) as staged:
-                admitted.append((staged.admission_id, port.commit(staged)))
-        with (
-            stage(root, "raw_bar", YF, arrow([later | {"close": 3.0}])) as observed,
-            pytest.raises(DataError, match="known_asof order") as late,
-        ):
-            port.commit(observed)
-        known = dict(log.read("SELECT admission_id, known_us FROM admission"))
-        fixed, withdrawn = (known[admission] for admission, _ in admitted[2:])
-        read = "SELECT list(close ORDER BY session_date) FROM raw_bar_asof(?)"
-        ten_pm = 1_704_492_000_000_000  # 2024-01-05 22:00 UTC: the first bar's lag after its close
-        seen = [
-            port.lake.execute(read, (cutoff,)).fetchone()[0]
-            for cutoff in (ten_pm, fixed - 1, fixed, withdrawn)
-        ]
-        versions = port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchone()[0]
+        port = seed(
+            root,
+            log,
+            [
+                ("2024-01-05", "21:00:00", False),
+                ("2024-01-08", "18:00:00", True),
+                ("2099-01-02", "21:00:00", False),
+            ],
+        )
+        rule = {"family": "lag_rule", "name": "yf-close", "version": 2}
+        text = canonical(
+            rule
+            | {"text": "two hours after", "spec": {"lag_seconds": 7200}}
+            | {"relation": "not_comparable"}
+        )
+        log.record("definition.registered", ("definition", "yf-close/2"), rule, text=text.decode())
+        with stage(root, table, YF, arrow(held[0]), lag=held[1]) as first:
+            port.commit(first)
+        if added:  # a nullable column the table gains after the held version
+            port.lake.execute(f"ALTER TABLE lake.world.{table} ADD COLUMN {added} DOUBLE")
+        refused, done, admission = None, None, None
+        try:
+            with stage(root, table, YF, arrow(staged[0]), lag=staged[1]) as second:
+                admission = second.admission_id
+                if expected[3]:  # its commit fails after the record, and is retried
+
+                    def failing(log, lake):
+                        monkeypatch.setattr(storeport, "repair", repair)
+                        raise OSError("the repair failed")
+
+                    monkeypatch.setattr(storeport, "repair", failing)
+                    with pytest.raises(OSError, match="the repair failed"):
+                        port.commit(second)
+                done = port.commit(second)
+        except DataError as error:
+            refused = error.failure.code.removeprefix("data_layer.")
+        read = port.lake.execute
+        versions = read(f"SELECT count(*) FROM lake.world.{table}").fetchone()[0]
+        replaced, most = read(
+            "SELECT count(*), coalesce(max(n), 0) FROM"
+            " (SELECT count(*) AS n FROM lake.world.superseded GROUP BY version_id)"
+        ).fetchone()
+        events = log.read(
+            "SELECT json_extract(attrs, '$.dropped'), json_extract(attrs, '$.known_us') FROM event"
+            " WHERE type = 'admission.committed' AND subject_id = ?",
+            (admission,),
+        )
+        known = {int(at) for _, at in events}
+        unknown = read(
+            f"SELECT count(*) FROM lake.world.{table} WHERE admission_id = ?"
+            " AND epoch_us(known_asof) NOT IN (SELECT unnest(?::BIGINT[]))",
+            (admission, sorted(known)),
+        ).fetchone()[0]
         port.close()
-    assert [done.snapshot is None for _, done in admitted] == [False, True, False, False]
-    assert seen == [[1.0], [1.0], [2.0], None]
-    assert versions == 4
-    assert late.value.failure.code == "data_layer.admission_out_of_order"
+    got = (done.rows, done.rewritten, done.dropped) if done else (0, 0, {})
+    assert (refused, *got, versions, replaced) == expected
+    assert most <= 1
+    assert [json.loads(dropped or "{}") for dropped, _ in events] == (
+        [expected[3]] if any(expected[1:4]) else []
+    )
+    assert unknown == 0
 
 
 @pytest.mark.proves("data_layer.a_source_supersedes_only_with_a_later_write")
@@ -534,8 +688,8 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
         known = dict(log.read("SELECT admission_id, known_us FROM admission"))[moved[0]]
         read = "SELECT list(valid_to ORDER BY valid_to) FROM lake.world.provider_symbol x"
         read += " WHERE known_asof <= make_timestamptz(?) AND NOT EXISTS (SELECT 1 FROM"
-        read += " lake.world.superseded s WHERE s.value_digest = x.value_digest"
-        read += " AND s.admission_id = x.admission_id AND s.superseded_asof <= make_timestamptz(?))"
+        read += " lake.world.superseded s WHERE s.version_id = x.version_id"
+        read += " AND s.superseded_asof <= make_timestamptz(?))"
         ten_pm, half_day = 1_704_492_000_000_000, 1_704_740_400_000_000  # 01-05 22:00, 01-08 19:00
         ends = [
             port.lake.execute(read, (cutoff, cutoff)).fetchone()[0]
@@ -571,7 +725,8 @@ from pathlib import Path
 import pyarrow as pa
 from alphalattice.kernel.data_layer.store import as_columns, definition_id, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
-         "close": float(i)} for i in range(100_000)]
+         "close": float(i), "source_observed_at": "2024-02-01 00:00:00+00"}
+        for i in range(100_000)]
 print("hashing", flush=True)
 rows = pa.table(as_columns(rows))
 with stage(Path(sys.argv[1]), "raw_bar", definition_id("provider", "yf"), rows) as staged:
@@ -581,8 +736,8 @@ with stage(Path(sys.argv[1]), "raw_bar", definition_id("provider", "yf"), rows) 
 
 @pytest.mark.proves("data_layer.heavy_work_runs_beside_the_writer")
 def test_an_append_waits_no_longer_while_a_large_admission_is_staged(root):
-    """Staging digests rows in the process that has them, never under the writer: an append and
-    its flush made while 100,000 rows are digested and written wait as an ordinary one does."""
+    """Staging checks and writes rows in the process that has them, never under the writer: an
+    append and its flush made while 100,000 rows are staged wait as an ordinary one does."""
     with HostLog.open(root) as log:
 
         def wait() -> float:

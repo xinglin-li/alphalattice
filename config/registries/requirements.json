@@ -286,7 +286,7 @@
       "seconds": 20
     },
     "data_layer.a_correction_is_known_from_its_admission": {
-      "description": "StorePort admits a repeated batch as nothing and knows a legacy correction of a held key only from its admission.",
+      "description": "StorePort admits one fact as one version however a writer stages it, a changed value as a new version known from its admission, and supersedes each held version once.",
       "lower_layer": "The versions are written to and read as of from a real DuckLake catalog through the views.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
@@ -308,6 +308,19 @@
     },
     "data_layer.a_source_time_is_not_content": {
       "description": "A row's value digest leaves out its source's write time, and a legacy closed interval carries the digest of its open version.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1,
+      "retired": "2026-11-17: no digest remains for the source time to stay out of; a source time never decides newness, proved by data_layer.a_correction_is_known_from_its_admission's rewrite row"
+    },
+    "data_layer.a_timed_row_needs_its_source_time": {
+      "description": "Staging refuses by name a raw_bar or corporate_action row without its source's own write time, which orders it against a held value.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_world_row_carries_its_providers_lineage": {
+      "description": "Staging gives a world row whose key names a provider the lineage it is admitted under, and stages other rows as they came.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -556,7 +569,8 @@
       "description": "Each world row's value_digest, built over its admission's Arrow columns, is blake3 over canonical() of the row with its provider's lineage, byte for byte, for every column type a row can carry.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-17: a world version is named by an engine-minted version_id and judged new by comparing its columns, so no row digest is built"
     },
     "data_layer.stage_refuses_what_it_cannot_admit": {
       "description": "Staging refuses by name two versions of one key in one admission, a table StorePort does not admit and a legacy batch with no valid date, before anything is staged.",

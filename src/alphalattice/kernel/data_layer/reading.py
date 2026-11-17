@@ -15,7 +15,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from alphalattice.kernel.data_layer.root import duckdb_session, schema_text, sql_path, statements
+from alphalattice.kernel.data_layer.root import (
+    catalog_matches,
+    duckdb_session,
+    schema_text,
+    sql_path,
+    statements,
+)
 
 READING_DEFERRED = "reading views: deferred (DuckDB's sqlite extension absent)"
 
@@ -37,6 +43,7 @@ def reading_session(root: Path) -> Any | None:
             connection.execute(
                 f"ATTACH 'ducklake:sqlite:{catalog}' AS lake (DATA_PATH '{data}/', READ_ONLY)"
             ).complete()
+            catalog_matches(connection)
         for statement in statements(schema_text("views.sql")):
             if lake or "lake." not in statement:
                 connection.execute(statement).complete()

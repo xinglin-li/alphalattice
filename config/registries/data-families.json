@@ -83,7 +83,7 @@
       "summary": "append-only revisions of bars, corporate actions, adjusted series and rebases",
       "class": "external-observation",
       "tier": 1,
-      "home": "catalog world.raw_bar and world.corporate_action, one row per value_digest with known_at",
+      "home": "catalog world.raw_bar and world.corporate_action, one row per version (version_id) with known_at",
       "location": "workspace-database",
       "bytes": 262144,
       "covers": [

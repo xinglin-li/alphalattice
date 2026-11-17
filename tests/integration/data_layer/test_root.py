@@ -365,8 +365,8 @@ def _files(root: Path) -> dict[str, str]:
 
 @pytest.mark.proves("data_layer.root_created_twice_is_all_equal")
 def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_path):
-    """The second creation makes and changes nothing; another schema version is refused by name.
-    The catalog is made at its first use, not with the root."""
+    """The second creation makes and changes nothing; another schema version of a database or of
+    the catalog is refused by name. The catalog is made at its first use, not with the root."""
     first = create_data_root(tmp_path)
     assert not (tmp_path / "machine" / "catalog.sqlite").exists()
     assert (catalog(tmp_path), catalog(tmp_path)) == (True, False)
@@ -387,6 +387,17 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         "passage_vec",
         "index_meta",
     }
+    old = reading_session(tmp_path)  # a catalog an earlier schema made: an old column name
+    with closing(old):
+        old.execute("DETACH lake")
+        path = (tmp_path / "machine" / "catalog.sqlite").as_posix()
+        old.execute(
+            f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{tmp_path.as_posix()}/data/')"
+        )
+        old.execute("ALTER TABLE lake.world.superseded RENAME COLUMN version_id TO value_digest")
+    with pytest.raises(DataError, match=r"world.superseded differ") as moved:
+        reading_session(tmp_path)
+    assert moved.value.failure.code == "data_layer.schema_mismatch"
     con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
     con.execute("PRAGMA user_version = 9")
     con.close()

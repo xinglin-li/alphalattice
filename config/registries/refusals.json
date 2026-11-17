@@ -6530,10 +6530,15 @@
 "category": "INVALID_ARGUMENT",
 "classification_note": "An event's type and version are not registered event types."
 },
-"data_layer.admission_column_unsupported": {
+"data_layer.admission_column_foreign": {
 "owner": "data_layer",
 "category": "INVALID_ARGUMENT",
-"classification_note": "An admission's column has a type canonical() has no form for (a date, a time, a nested value); StorePort digests text, numbers, booleans and nulls."
+"classification_note": "An admission's rows carry a column their world table does not hold, which a conformed admission would otherwise drop unseen."
+},
+"data_layer.admission_source_time_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A raw_bar or corporate_action row carries its source's own last write of the value, without which it could supersede a value its source wrote later."
 },
 "data_layer.admission_key_repeated": {
 "owner": "data_layer",
@@ -6559,6 +6564,11 @@
 "owner": "data_layer",
 "category": "FAILED_PRECONDITION",
 "classification_note": "A legacy batch names a lag rule version the log does not hold with a whole lag; the rule is registered first."
+},
+"data_layer.lag_rule_version_moved": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy batch's keys are held under another lag rule version, whose derived known_asof an upgrade step re-derives before rows under the new version are admitted."
 },
 "data_layer.admission_out_of_order": {
 "owner": "data_layer",

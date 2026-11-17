@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
@@ -220,6 +221,31 @@ def catalog(root: Path) -> bool | None:
     finally:
         connection.close()
     return True
+
+
+def catalog_matches(lake: Any) -> None:
+    """Refuse a catalog, attached as `lake`, whose tables are not catalog.sql's: a catalog is made
+    once by its schema and, like the root's databases, never migrated or rebuilt in place. A
+    table a later step adds (a feature set's) is not catalog.sql's and is not compared."""
+    declared = {
+        f"{schema}.{table}": re.findall(r"^  (\w+) ", body, re.M)
+        for schema, table, body in re.findall(
+            r"^CREATE TABLE (\w+)\.(\w+) \((.*?)^\);", schema_text("catalog.sql"), re.M | re.S
+        )
+    }
+    held: dict[str, list[str]] = {}
+    for schema, table, column in lake.execute(
+        "SELECT schema_name, table_name, column_name FROM duckdb_columns()"
+        " WHERE database_name = 'lake' ORDER BY schema_name, table_name, column_index"
+    ).fetchall():
+        held.setdefault(f"{schema}.{table}", []).append(column)
+    moved = sorted(name for name, columns in declared.items() if held.get(name) != columns)
+    if moved:
+        raise DataError(
+            f"the data root's catalog was made by another catalog schema ({', '.join(moved)}"
+            " differ); it is never migrated in place: admit its workspaces into a new data root",
+            code="data_layer.schema_mismatch",
+        )
 
 
 def create_data_root(path: Path) -> DataRoot:

@@ -8,12 +8,13 @@ The data root's files, by who names them:
     data/                    DuckLake's files, named by its catalog; any other file is collected
     blobs/<artifact_id>      an artifact's body, kept while a live_ref holds it
 
-The write order (catalog.sql's header). `stage` mints the admission's id, digests its rows and
-writes their Parquet under staging. It needs no log, lock or catalog, so it runs beside the
-writer, in the process that fetched the rows, and hands the writer only a commit request
-(`Staged`): the digests are Python work, and in the Host's process they would hold the
-interpreter while an append waits. `StorePort.commit` is the writer: one catalog snapshot inserts
-the rows, writes the supersession of every world version they replace and carries in its commit
+The write order (catalog.sql's header). `stage` mints the admission's id and writes its rows'
+Parquet under staging. It needs no log, lock or catalog, so it runs beside the writer, in the
+process that fetched the rows, and hands the writer only a commit request (`Staged`): in the
+Host's process the rows' Python and Arrow work would hold the interpreter while an append waits.
+`StorePort.commit` is the writer: one catalog snapshot conforms the rows to their table's types,
+names each new version by an id the engine mints, inserts the rows, writes the supersession of
+every world version they replace and carries in its commit
 info the whole envelope of the `admission.committed` it owes; then `repair`
 appends that event, durably, and the staging folder is deleted. `start` runs the same `repair`
 when the Host opens, so the normal path and crash recovery are one path, and collects what no
@@ -36,11 +37,12 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
     free_floor_shortfall,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, row_digests
+from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import (
     catalog,
+    catalog_matches,
     load_extensions,
     schema_text,
     sql_path,
@@ -59,8 +61,22 @@ WORLD_KEYS: Final = {
     "session": ("market", "session_date"),
     "evidence_doc": ("doc_digest",),
 }
-"""Each world table catalog.sql defines, with its key less value_digest. An observed row is known
-from its admission's moment: known_at and known_asof are both the log's clock."""
+"""Each world table catalog.sql defines, with its key. An observed row is known from its
+admission's moment: known_at and known_asof are both the log's clock."""
+ADMITTED: Final = (
+    "version_id",
+    "known_at",
+    "known_asof",
+    "lag_rule",
+    "lag_rule_version",
+    "admission_id",
+)
+"""The columns StorePort writes on each world row at its admission; no writer sends them. A
+legacy row names the lag rule and version its known_asof was derived by."""
+SOURCE: Final = ("source_observed_at", "source_payload_digest")
+"""The world columns that record how a source wrote a value, never the fact. A world table's
+content is its every other catalog column (its key, its values and `retracted`): a staged row is
+a new version only when its content differs from its key's newest version's."""
 TABLE_IDS: Final = {table: definition_id("world_table", table) for table in WORLD_KEYS}
 """Each world table's lineage id, as the seed registers it: world.superseded names a table by it."""
 LINEAGES: Final = {
@@ -82,32 +98,26 @@ LEGACY_VALID: Final = {
 }
 """The world tables a legacy batch may fill, each with the date a row's lag rule counts from: the
 first of these the row has, so an interval's closing version is known only from its end."""
-OBSERVED: Final = "source_observed_at"
+OBSERVED: Final = SOURCE[0]
 TIMED: Final = frozenset({"raw_bar", "corporate_action"})
 """The world tables whose rows carry their source's own last write of the value (OBSERVED): a held
 key is superseded only by a row its source wrote after the newest version's value was last
-written. The time is not content, so it stays out of value_digest."""
+written. The time is SOURCE, never content."""
 REWRITTEN: Final = "rewritten"
 """A row of a TIMED table whose source wrote its key's newest value again, later: world.rewritten
 records the write against that version, which adds no version and moves its ordering time."""
-OPENING: Final = "open_digest"
-"""A staged legacy interval row with an end carries its open version's digest here: StorePort writes
-the interval's two versions when world does not hold its key yet."""
 DROPPED: Final = ("older", "equal_time")
 """Why a changed row of a held key was not admitted: its source wrote it before the newest version,
 or at the same time with another value, which keeps the held version."""
 PARTITION: Final = {"raw_bar": "session_date"}
 """The date column whose year partitions a table, as catalog.sql sets it; any other table is one
 part, `all`. An admission's event names the knowledge times it brought to each part."""
-DIGEST_BATCH: Final = 1 << 20
-"""The rows whose canonical bytes are built at once: a year of a market's bars, under Arrow's
-2 GiB string limit with room for wide rows."""
 METADATA: Final = "__ducklake_metadata_lake"
 """The DuckLake catalog's own tables, as the Host's session names them."""
 
 
 class Staged(NamedTuple):
-    """One admission's rows, digested and written under staging, waiting for its commit."""
+    """One admission's rows, written under staging, waiting for its commit."""
 
     admission_id: str
     table: str
@@ -155,8 +165,10 @@ class StorePort:
             f" (DATA_PATH '{data}/', DATA_INLINING_ROW_LIMIT 1000)",
             f"ATTACH '{machine}/log.sqlite' AS log (TYPE SQLITE, READ_ONLY)",
             "SET TimeZone = 'UTC'",
-            *statements(schema_text("views.sql")),
         ):
+            lake.execute(sql).complete()
+        catalog_matches(lake)  # before the views, which name its columns
+        for sql in statements(schema_text("views.sql")):
             lake.execute(sql).complete()
         port = cls(root, log, lake)
         port.started = start(root, log, lake)
@@ -230,7 +242,8 @@ class StorePort:
     ) -> tuple[int, dict[str, int], int]:
         """One snapshot: the supersession of each world version the rows replace, then the rows and
         the later writes of held values, carrying the event it owes; the rows admitted, those
-        dropped and the rewrites recorded, with no snapshot when it admits and records none."""
+        dropped and the rewrites recorded, with no snapshot when it admits and records none. A
+        batch whose changed rows were all dropped is recorded with no snapshot (`_judged`)."""
         table, admission = staged.table, staged.admission_id
         parquet = self.root / "staging" / admission / f"{table}.parquet"
         source = f"read_parquet('{sql_path(parquet)}')"
@@ -243,7 +256,8 @@ class StorePort:
         run = self.lake.execute
         rows, dropped, rewritten = f"SELECT * FROM {source}", {}, 0
         if world:  # read once, before the supersession changes which version is a key's newest
-            known_rows = self._known(table, source, columns, known, lag)
+            rule = None if staged.lag is None or lag is None else (*staged.lag, lag)
+            known_rows = self._known(table, source, columns, known, rule)
             run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
             fates = dict(run("SELECT fate, count(*) FROM temp.admitting GROUP BY ALL").fetchall())
             dropped = {fate: int(count) for fate, count in fates.items() if fate in DROPPED}
@@ -251,10 +265,12 @@ class StorePort:
             rows = "SELECT * EXCLUDE (fate, _held) FROM temp.admitting WHERE fate = 'admit'"
         try:
             parts, count = self._parts(table, rows) if world else (None, staged.row_count)
+            if world and (count or staged.lag is not None):
+                self._in_order(table, target, same, staged.lag)
             if not count and not rewritten:
+                if dropped:
+                    self._judged(staged, known, dropped)
                 return 0, dropped, 0
-            if world:
-                self._in_order(table, target, rows, same)
             if not world and run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same}").fetchone():
                 raise DataError(
                     f"{table} already holds rows of these keys; an artifact's rows are admitted"
@@ -286,29 +302,25 @@ class StorePort:
                 table_id, key = TABLE_IDS[table], WORLD_KEYS[table]
                 same = " AND ".join(f"t.{k} = n.{k}" for k in key)
                 pair = " AND ".join(f"o.{k} = c.{k}" for k in key)
-                run(
-                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', t.value_digest,"
-                    f" t.admission_id, n.known_asof, '{admission}' FROM {target} t, ({rows}) n"
+                run(  # once, by its earliest replacement: an interval's pair replaces it once
+                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', t.version_id,"
+                    f" min(n.known_asof), '{admission}' FROM {target} t, ({rows}) n"
                     f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-                    f" WHERE s.table_id = '{table_id}' AND s.value_digest = t.value_digest"
-                    " AND s.admission_id = t.admission_id)"
+                    f" WHERE s.table_id = '{table_id}' AND s.version_id = t.version_id)"
+                    " GROUP BY t.version_id"
                 ).complete()
                 run(
-                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', o.value_digest,"
-                    f" '{admission}', c.known_asof, '{admission}' FROM ({rows}) o, ({rows}) c"
+                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', o.version_id,"
+                    f" c.known_asof, '{admission}' FROM ({rows}) o, ({rows}) c"
                     f" WHERE {pair} AND o._opening AND NOT c._opening"
                 ).complete()
-                if table in TIMED and OBSERVED in columns:
+                if table in TIMED:
                     run(
-                        f"INSERT INTO lake.world.rewritten SELECT '{table_id}', value_digest,"
-                        f" _held, CAST({OBSERVED} AS TIMESTAMPTZ), '{admission}'"
-                        f" FROM temp.admitting WHERE fate = '{REWRITTEN}'"
+                        f"INSERT INTO lake.world.rewritten SELECT '{table_id}', _held,"
+                        f" {OBSERVED}, '{admission}' FROM temp.admitting"
+                        f" WHERE fate = '{REWRITTEN}'"
                     ).complete()
-                withdrawn = "" if "retracted" in columns else ", false AS retracted"
-                rows = (
-                    f"SELECT * EXCLUDE (_opening){withdrawn}, '{admission}' AS admission_id"
-                    f" FROM ({rows})"
-                )
+                rows = f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
             order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
             run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
             run("COMMIT").complete()
@@ -316,13 +328,28 @@ class StorePort:
             run("ROLLBACK").complete()
             raise
 
-    def _in_order(self, table: str, target: str, rows: str, same: str) -> None:
+    def _in_order(self, table: str, target: str, same: str, lag: tuple[str, int] | None) -> None:
         """Refuse rows known before a version of their key already admitted: a key's versions
-        are admitted in their known_asof order, so each supersedes the one before it."""
-        late = self.lake.execute(
-            f"SELECT count(*) FROM {target} t, ({rows}) n WHERE {same}"
-            " AND n.known_asof < t.known_asof"
-        ).fetchone()[0]
+        are admitted in their known_asof order, so each supersedes the one before it. Refuse a
+        legacy batch any of whose keys world holds under another lag rule or version: those
+        rows' known_asof was derived by it, and an upgrade step re-derives them first."""
+        moved = "0"
+        if lag is not None:
+            moved = (
+                "count(*) FILTER (WHERE t.lag_rule_version IS NOT NULL AND (t.lag_rule"
+                " IS DISTINCT FROM n.lag_rule OR t.lag_rule_version IS DISTINCT FROM"
+                " n.lag_rule_version))"
+            )
+        late, other = self.lake.execute(
+            "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
+            f" {moved} FROM {target} t, temp.admitting n WHERE {same}"
+        ).fetchone()
+        if other:
+            raise DataError(
+                f"{other} {table} rows' keys are held under another lag rule or version than"
+                f" {lag}; re-derive the held rows under it first, or admit under theirs",
+                code="data_layer.lag_rule_version_moved",
+            )
         if late:
             raise DataError(
                 f"{late} {table} rows would be known before a version of their key already"
@@ -330,15 +357,39 @@ class StorePort:
                 code="data_layer.admission_out_of_order",
             )
 
-    def _known(
-        self, table: str, source: str, columns: set[str], known: int, lag: int | None
-    ) -> str:
-        """Every staged row with its known_at, its known_asof and its fate, as a query: `admit`,
-        `same` (already its key's newest version), `held_opening` (the open version of an interval
-        world already holds), or a DROPPED reason. A row may carry `retracted` to withdraw its
-        key's fact.
+    def _judged(self, staged: Staged, known: int, dropped: dict[str, int]) -> None:
+        """Record an admission whose every changed row was dropped, with each drop's count, once:
+        a retried commit of it finds its event. No catalog commit carries the event, which names
+        the snapshot it was judged against."""
+        if self.log.read(
+            "SELECT 1 FROM event WHERE type = 'admission.committed' AND subject_id = ?",
+            (staged.admission_id,),
+        ):
+            return
+        owed = self._owed(staged, known, [], 0, dropped, 0)
+        snapshot = self.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
+        row = {column: owed[column] for column in ENVELOPE if column in owed and column != "seq"}
+        attrs = json.loads(owed["attrs"]) | {"catalog_snapshot": snapshot[0]}
+        row["attrs"] = canonical(attrs).decode()
+        self.log.append(row)
 
-        An observed row's times are both `known`. A legacy row's known_at is empty and its
+    def _known(
+        self,
+        table: str,
+        source: str,
+        columns: set[str],
+        known: int,
+        rule: tuple[str, int, int] | None,
+    ) -> str:
+        """Every staged row, conformed to its table's catalog types, with its version_id (a UUIDv7
+        the engine mints), its known_at, its known_asof and its fate, as a query: `admit`, `same`
+        (its content equals its key's newest version's, column by column, so however a writer
+        stages one fact it is one version), `held_opening` (the open version of an interval world
+        already holds), or a DROPPED reason. A row may carry `retracted` to withdraw its key's
+        fact; a column it leaves out is null, and `retracted` false.
+
+        An observed row's times are both `known`. A legacy row, staged under a lag `rule` (its
+        name, version and seconds), names the rule and version; its known_at is empty and its
         known_asof is its publication time, or its lag after the close of its market's first
         session on or after its valid date; the market is the row's own listing's, known only while
         that listing has had one market. A legacy row of a key world already holds is a change
@@ -350,54 +401,82 @@ class StorePort:
         of that same value is REWRITTEN."""
         at = f"make_timestamptz({known}::BIGINT)"
         key = WORLD_KEYS[table]
-        rows = f"SELECT *, false AS _opening FROM {source}"
-        if OPENING in columns:  # a legacy interval's open version, beside its closing one
-            end = LEGACY_VALID[table][0]
+        declared = self._declared(table, columns)
+        conformed = ", ".join(
+            f"CAST({name} AS {kind}) AS {name}"
+            if name in columns
+            else f"{'false' if name == 'retracted' else 'NULL'}::{kind} AS {name}"
+            for name, kind in declared.items()
+        )
+        rows = f"SELECT {conformed}, false AS _opening FROM {source}"
+        interval = LEGACY_VALID[table] if rule is not None else ()
+        if len(interval) == 2 and interval[0] in columns:  # an interval's open version, beside
+            end = interval[0]  # its closing one
             rows = (
-                f"SELECT * EXCLUDE ({OPENING}), false AS _opening FROM {source} UNION ALL BY NAME"
-                f" SELECT * EXCLUDE ({OPENING}, value_digest, {end}), {OPENING} AS value_digest,"
-                f" NULL AS {end}, true AS _opening FROM {source} WHERE {OPENING} IS NOT NULL"
+                f"SELECT * FROM ({rows}) UNION ALL SELECT * REPLACE (NULL::{declared[end]} AS"
+                f" {end}, true AS _opening) FROM ({rows}) WHERE {end} IS NOT NULL"
             )
         held = f" LEFT JOIN {newest(table)} p ON " + " AND ".join(f"p.{k} = n.{k}" for k in key)
-        timed = table in TIMED and OBSERVED in columns
-        written = f"CAST(n.{OBSERVED} AS TIMESTAMPTZ)"
-        value = "p.value_digest IS NOT DISTINCT FROM n.value_digest"
+        timed = table in TIMED
+        written = f"n.{OBSERVED}"
+        value = " AND ".join(
+            f"p.{name} IS NOT DISTINCT FROM n.{name}"
+            for name in declared
+            if name not in key and name not in SOURCE
+        )
         fate = "CASE"
         if timed:
             fate += f" WHEN {value} AND {written} > p.ordered_at THEN '{REWRITTEN}'"
         fate += (
             f" WHEN {value} THEN 'same'"
-            " WHEN n._opening AND p.value_digest IS NOT NULL THEN 'held_opening'"
+            " WHEN n._opening AND p.version_id IS NOT NULL THEN 'held_opening'"
         )
         if timed:
             fate += (
                 f" WHEN {written} < p.ordered_at THEN 'older'"
                 f" WHEN {written} = p.ordered_at THEN 'equal_time'"
             )
-        fate += " ELSE 'admit' END AS fate, p.admission_id AS _held"
-        if lag is None:
+        fate += " ELSE 'admit' END AS fate, p.version_id AS _held, uuidv7() AS version_id"
+        if rule is None:
             return f"SELECT n.*, {at} AS known_at, {at} AS known_asof, {fate} FROM ({rows}) n{held}"
         valid = ", ".join(f"n.{c}" for c in LEGACY_VALID[table] if c in columns)
+        name, version, lag = rule
+        quoted = name.replace("'", "''")
         derived = f"a.close_utc + to_seconds({lag})"
         if "published_at" in columns:
-            derived = f"coalesce(CAST(n.published_at AS TIMESTAMPTZ), {derived})"
+            derived = f"coalesce(n.published_at, {derived})"
         market, joined = "n.market", ""
         if table != "listing":
             market = "l.market"
             joined = (  # a listing that changed market has no market for a date before the change
                 " LEFT JOIN (SELECT listing_id, any_value(market) AS market FROM lake.world.listing"
                 " WHERE NOT retracted GROUP BY listing_id HAVING count(DISTINCT market) = 1) l"
-                " ON l.listing_id = CAST(n.listing_id AS UUID)"
+                " ON l.listing_id = n.listing_id"
             )
         asof = (
-            f"CASE WHEN p.value_digest IS NULL THEN {derived}"
+            f"CASE WHEN p.version_id IS NULL THEN {derived}"
             f" ELSE greatest({derived}, {at}, p.known_asof) END"
         )
         return (
-            f"SELECT n.*, NULL::TIMESTAMPTZ AS known_at, {asof} AS known_asof, {fate}"
+            f"SELECT n.*, NULL::TIMESTAMPTZ AS known_at, {asof} AS known_asof, {fate},"
+            f" '{quoted}' AS lag_rule, {version}::INTEGER AS lag_rule_version"
             f" FROM ({rows}) n{joined} ASOF LEFT JOIN {_current('session')} a"
-            f" ON a.market = {market} AND CAST(coalesce({valid}) AS DATE) <= a.session_date{held}"
+            f" ON a.market = {market} AND coalesce({valid}) <= a.session_date{held}"
         )
+
+    def _declared(self, table: str, columns: set[str]) -> dict[str, str]:
+        """A world table's content and SOURCE columns with their catalog types, as the engine
+        holds them; refused by name when the rows carry a column the table does not hold."""
+        described = self.lake.execute(f"DESCRIBE lake.world.{table}").fetchall()
+        declared = {row[0]: row[1] for row in described if row[0] not in ADMITTED}
+        foreign = sorted(columns - set(declared))
+        if foreign:
+            raise DataError(
+                f"{table} holds no column {', '.join(foreign)}; send only its own"
+                f" ({', '.join(declared)})",
+                code="data_layer.admission_column_foreign",
+            )
+        return declared
 
     def _parts(self, table: str, rows: str) -> tuple[list[dict[str, Any]], int]:
         """Each part the rows fall in, with the range of their known_asof there, and how many rows
@@ -470,13 +549,13 @@ def stage(
     lag: tuple[str, int] | None = None,
     floor_bytes: int = FREE_FLOOR_BYTES,
 ) -> Iterator[Staged]:
-    """Digest one admission's rows, an Arrow table or record batch reader, and write them under
-    staging as they came, in Arrow from the caller to the Parquet; the commit request it yields
+    """Write one admission's rows, an Arrow table or record batch reader, under staging as they
+    came, in Arrow from the caller to the Parquet; the commit request it yields
     is all the writer needs. `provider_id` is the provider's lineage in the log. Its producer holds
     the admission's lock until the block ends, so a Host that starts meanwhile leaves it: commit
     it inside the block. A legacy batch, rows 0.2.7 kept with no knowledge time, names its
     source's lag rule as `lag=(name, version)`. Refused by name below the free-space floor, and
-    as `digested` refuses.
+    as `admissible` refuses.
     """
     short = free_floor_shortfall(root, floor_bytes)
     if short:
@@ -486,7 +565,7 @@ def stage(
             code="data_layer.below_free_floor",
         )
     admission = uuid7()  # first: the rows and the staging folder carry it
-    staged = digested(table, provider_id, rows, legacy=lag is not None)
+    staged = admissible(table, provider_id, rows, legacy=lag is not None)
     import pyarrow.parquet as pq  # lazy: the optional data extra, as DuckDB
 
     lock = root / "staging" / f"{admission}.lock"
@@ -514,15 +593,15 @@ def newest(table: str) -> str:
     current = (
         f"SELECT x.* FROM lake.world.{table} x WHERE NOT EXISTS (SELECT 1 FROM"
         f" lake.world.superseded s WHERE s.table_id = '{table_id}'"
-        " AND s.value_digest = x.value_digest AND s.admission_id = x.admission_id)"
+        " AND s.version_id = x.version_id)"
     )
     if table not in TIMED:
         return f"({current})"
     return (
         f"(SELECT c.*, coalesce(greatest(c.{OBSERVED}, w.latest), '-infinity'::TIMESTAMPTZ)"
-        f" AS ordered_at FROM ({current}) c LEFT JOIN (SELECT value_digest, admission_id,"
-        f" max({OBSERVED}) AS latest FROM lake.world.rewritten WHERE table_id = '{table_id}'"
-        " GROUP BY ALL) w ON w.value_digest = c.value_digest AND w.admission_id = c.admission_id)"
+        f" AS ordered_at FROM ({current}) c LEFT JOIN (SELECT version_id, max({OBSERVED})"
+        f" AS latest FROM lake.world.rewritten WHERE table_id = '{table_id}' GROUP BY ALL) w"
+        " ON w.version_id = c.version_id)"
     )
 
 
@@ -532,16 +611,13 @@ def feature_table(feature_set_id: str) -> str:
     return "feature_set_" + feature_set_id.removeprefix("blake3:")
 
 
-def digested(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -> Any:
-    """The rows as one Arrow table, each world row with its value_digest, the digest of the row
-    with its provider's lineage where its table keys one, so a renamed provider moves no digest,
-    and without its source's write time (OBSERVED), which is not content; a results row as it is.
-    A legacy interval row with an end also carries its open version's digest (OPENING). Each
-    digest is canonical()'s, built over the columns.
+def admissible(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -> Any:
+    """The rows as one Arrow table, each with its provider's lineage where its table keys one, so
+    a renamed provider moves no version.
 
     Refused by name: a table StorePort does not admit, a legacy batch for a table with no valid
-    date to count a lag from, two rows of one key, since DuckLake keeps no keys, and a column
-    whose type canonical() has no form for.
+    date to count a lag from, a TIMED row with no source time (OBSERVED), which could not be
+    ordered against a held value, and two rows of one key, since DuckLake keeps no keys.
     """
     key = WORLD_KEYS.get(table) or RESULTS_KEYS.get(table)
     if key is None:
@@ -558,6 +634,12 @@ def digested(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -
     import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
     data = rows.read_all() if isinstance(rows, pa.RecordBatchReader) else rows
+    if table in TIMED and (OBSERVED not in data.column_names or data.column(OBSERVED).null_count):
+        raise DataError(
+            f"{table} rows need {OBSERVED}, the source's own last write of the value: without"
+            " it a row could supersede a value its source wrote later; send it in every row",
+            code="data_layer.admission_source_time_missing",
+        )
     if "provider_id" in key:
         lineage = pa.repeat(pa.scalar(provider_id, pa.string()), data.num_rows)
         at = data.schema.get_field_index("provider_id")
@@ -573,32 +655,7 @@ def digested(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -
             " send one version of a key",
             code="data_layer.admission_key_repeated",
         )
-    if table not in WORLD_KEYS:
-        return data
-    import pyarrow.compute as pc  # lazy: as pyarrow
-
-    content = data.drop_columns([OBSERVED]) if OBSERVED in data.column_names else data
-    staged = data.append_column("value_digest", _digests(content))
-    interval = LEGACY_VALID.get(table, ()) if legacy else ()
-    end = interval[0] if len(interval) == 2 and interval[0] in data.column_names else None
-    if end is None or data.column(end).null_count == data.num_rows:
-        return staged
-    at = content.schema.get_field_index(end)
-    opening = content.set_column(
-        at, end, pa.nulls(content.num_rows, content.schema.field(end).type)
-    )
-    unopened = pa.nulls(data.num_rows, pa.string())
-    return staged.append_column(
-        OPENING, pc.if_else(pc.is_valid(data.column(end)), _digests(opening), unopened)
-    )
-
-
-def _digests(data: Any) -> Any:
-    """Each row's digest(canonical(row)), built over the columns a batch at a time."""
-    import pyarrow as pa  # lazy: the optional data extra
-
-    batches = data.to_batches(max_chunksize=DIGEST_BATCH)
-    return pa.array([value for batch in batches for value in row_digests(batch)], pa.string())
+    return data
 
 
 def _repeated(data: Any, key: tuple[str, ...]) -> tuple[Any, ...] | None:
@@ -713,7 +770,7 @@ def _current(table: str) -> str:
     return (
         f"(SELECT * FROM lake.world.{table} x WHERE NOT x.retracted AND NOT EXISTS (SELECT 1"
         f" FROM lake.world.superseded s WHERE s.table_id = '{TABLE_IDS[table]}'"
-        " AND s.value_digest = x.value_digest AND s.admission_id = x.admission_id))"
+        " AND s.version_id = x.version_id))"
     )
 
 

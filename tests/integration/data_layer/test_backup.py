@@ -7,6 +7,7 @@ import struct
 import threading
 import uuid
 from contextlib import closing
+from datetime import UTC, datetime
 from functools import partial
 
 import pyarrow as pa
@@ -25,12 +26,15 @@ TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
 
 
 def _admit(root, port, close=1.0, count=1500):
-    """Commit synthetic normalized bars, enough for an actual Parquet file."""
+    """Commit synthetic normalized bars, enough for an actual Parquet file, their source writing
+    them now, so a later call's value supersedes an earlier one's."""
+    written = datetime.now(UTC).isoformat()
     rows = [
         {
             "listing_id": str(uuid.UUID(int=7)),
             "session_date": f"{2000 + n // 336}-{n % 336 // 28 + 1:02d}-{n % 28 + 1:02d}",
             "close": close,
+            "source_observed_at": written,
         }
         for n in range(count)
     ]
@@ -98,7 +102,7 @@ def sample(tmp_path_factory):
             },
         )
         port.lake.execute(
-            "INSERT INTO lake.world.evidence_doc VALUES ('document', 'doc-version', 'synthetic',"
+            "INSERT INTO lake.world.evidence_doc VALUES ('document', uuidv7(), 'synthetic',"
             " 'synthetic filing', NULL, now(), now(), false, 'document-admission')"
         ).complete()
         with closing(sqlite3.connect(root / "machine/index.sqlite")) as index:
