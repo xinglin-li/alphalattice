@@ -76,3 +76,21 @@ def test_staging_keeps_a_column_only_a_later_row_carries():
         "session_date": ["2024-01-02"] * 2,
         "valid_to": [None, "2024-01-09"],
     }
+
+
+@pytest.mark.proves("data_layer.a_source_time_is_not_content")
+def test_a_source_time_moves_no_digest_and_a_closed_interval_carries_its_open_one():
+    """The source's write time stays out of a row's value digest, so a later write of the same
+    values is the same version; a legacy interval with an end also carries its open version's
+    digest, the digest of the same row with no end."""
+    bar = ROW | {"close": 1.0, "source_observed_at": "2024-02-01 00:00:00+00"}
+    later = bar | {"source_observed_at": "2024-03-01 00:00:00+00"}
+    first, again = (digested("raw_bar", "yf", [row])[0] for row in (bar, later))
+    symbol = {"provider_id": "yf", "symbol": "AAA", "valid_from": "2024-01-05"}
+    symbol |= {"listing_id": ROW["listing_id"]}
+    closed = digested("provider_symbol", "yf", [symbol | {"valid_to": "2024-01-08"}], legacy=True)
+    still_open = digested("provider_symbol", "yf", [symbol | {"valid_to": None}], legacy=True)
+    assert first["value_digest"] == again["value_digest"]
+    assert first["source_observed_at"] == bar["source_observed_at"]
+    assert closed[0]["open_digest"] == still_open[0]["value_digest"]
+    assert "open_digest" not in still_open[0]

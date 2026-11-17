@@ -36,6 +36,16 @@ CREATE SCHEMA IF NOT EXISTS results;
 --   retracted      true on a version that withdraws the fact: the provider deleted the bar, or the action never
 --                  happened. A read whose newest version is retracted sees no row
 --   admission_id   the admission that brought it; the log's `admission` view
+-- raw_bar and corporate_action also carry source_observed_at: the source's own last write of the value, on the
+-- source's clock (0.2.7's observed_at, and for a bar the later of it and its adjusted close's updated_at). It is not
+-- content, so it stays out of value_digest, and it moves no knowledge time. It orders two sources' values for one key:
+-- a held key is superseded only by a row its source wrote after the held value was last written; an older row, or one
+-- written at the same time with another value, is dropped, which keeps the held version, and the admission's event
+-- counts each by its reason. A later write of the held value itself adds no version: world.rewritten records it, and
+-- the value's last write is the later of its version's own source_observed_at and those. A table whose rows carry no
+-- source time (listing, provider_symbol) keeps the newest admission's value.
+-- A legacy row of a key world already holds is a change observed at its admission: its known_asof is never before
+-- that admission, nor before the version it replaces.
 -- A new source is a definition (family 'source') that names its table here; it brings these columns and no migration.
 -- A new world table (fundamentals, exchange rates) comes with its first source and the same five columns.
 -- A legacy interval row whose end is set (listing's last_session; valid_to below) is imported as two versions:
@@ -46,7 +56,8 @@ CREATE SCHEMA IF NOT EXISTS results;
 CREATE TABLE world.listing (
   listing_id UUID NOT NULL,       -- our stable id; a symbol is an alias that changes
   value_digest VARCHAR NOT NULL,
-  market VARCHAR NOT NULL,
+  market VARCHAR NOT NULL,       -- the ISO 10383 MIC of its market's calendar
+  universe_class VARCHAR,         -- the class 0.2.7 kept as the listing's mic, such as US_INDEX_CANDIDATE
   currency VARCHAR,
   issuer_name VARCHAR,
   first_session DATE,
@@ -114,6 +125,7 @@ CREATE TABLE world.raw_bar (
   volume DOUBLE,
   adjusted_close DOUBLE,          -- the provider's adjusted close, when it gives one
   published_at TIMESTAMPTZ,       -- the provider's own publication time, when it gives one
+  source_observed_at TIMESTAMPTZ, -- the source's own last write of the value (above)
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
   retracted BOOLEAN NOT NULL,
@@ -138,6 +150,7 @@ CREATE TABLE world.corporate_action (
   provisional BOOLEAN NOT NULL,   -- announced or estimated, not yet final
   provenance VARCHAR NOT NULL,    -- how it was learned, such as provider-observation
   published_at TIMESTAMPTZ,
+  source_observed_at TIMESTAMPTZ, -- the source's own last write of the value (above)
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
   retracted BOOLEAN NOT NULL,
@@ -188,6 +201,16 @@ CREATE TABLE world.superseded (
   admission_id VARCHAR NOT NULL,         -- the replaced row's admission: one value may return in a later admission
   superseded_asof TIMESTAMPTZ NOT NULL,  -- when its replacement became known
   by_admission_id VARCHAR NOT NULL       -- the admission that replaced it
+);
+
+-- A later source write of a version's own value, in raw_bar and corporate_action: no new version, since the value is the
+-- same, but its time orders what may supersede it (the source clock above). Append-only; no read of the world sees it.
+CREATE TABLE world.rewritten (
+  table_id VARCHAR NOT NULL,             -- the world table's lineage, as in world.superseded
+  value_digest VARCHAR NOT NULL,         -- the written version's digest
+  admission_id VARCHAR NOT NULL,         -- the written version's admission
+  source_observed_at TIMESTAMPTZ NOT NULL,  -- the source's later write of the value, on its clock
+  by_admission_id VARCHAR NOT NULL       -- the admission that saw the write
 );
 
 -- ===== derived: a cache, empty by default =====

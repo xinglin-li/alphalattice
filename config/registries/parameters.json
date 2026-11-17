@@ -1,5 +1,20 @@
 {
 "entries": {
+"src/alphalattice/foundation/market_data_ops/storage/world.py::days::10": {
+"class": "METHOD",
+"count": 1,
+"description": "How far past the last valid date sessions are read, so a date after the last session finds its next one."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::hours::6": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's length in hours, with its minutes; a shorter session is a half day."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::minutes::30": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's minutes past its hours; a shorter session is a half day."
+},
 "src/alphalattice/control/data_platform/delegation.py::DataDecisionRule.max_cases::10": {
 "class": "METHOD",
 "count": 1

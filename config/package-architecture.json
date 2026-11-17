@@ -635,6 +635,7 @@
     "alphalattice.investment.sector_research.inputs.storage": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.kernel.data.calendar": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
     "alphalattice.kernel.data_layer.history": "Load the Host's history only for a step a Host records; it brings the OpenTelemetry SDK.",
+    "alphalattice.kernel.data_layer.store": "Open the catalog writer only when a Host admits world rows; it brings DuckDB and its DuckLake catalog.",
     "alphalattice.kernel.data_layer.spans": "Defer this optional implementation until a Host or a traced worker call records a span; dependencies: opentelemetry-sdk.",
     "alphalattice.kernel.knowledge._embeddings": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.kernel.knowledge._reranking": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",

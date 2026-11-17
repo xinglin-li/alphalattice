@@ -15,6 +15,9 @@ are written to that log. Research paths call `record` beside what they write tod
 in a Host whose history is open (`recording`), and returns None elsewhere. Each event is a small
 row in the step's own transaction; no artifact is kept, copied or hashed for its sake.
 
+The open history also holds the Host's StorePort (`store`), the one writer of the catalog's world
+tables, opened at its first use, so a Host that admits nothing never opens the catalog.
+
 The open history also holds the Host's tracer (`spans.tracer_provider` over its log). `step` opens
 one span for one step the Host serves, in the trace its client's W3C headers name, and `traced`
 appends the spans a worker handed back with its answer. Both do nothing outside a Host whose
@@ -34,7 +37,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
@@ -44,6 +47,9 @@ from alphalattice.kernel.data_layer.log import HostLog, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import experience, goal_notes, reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
 from alphalattice.kernel.shared_kernel.environment import offline
+
+if TYPE_CHECKING:
+    from alphalattice.kernel.data_layer.store import StorePort
 
 DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
 OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
@@ -168,6 +174,18 @@ def holding() -> HostLog | None:
     """The log this process holds, if it holds the data root named now; it takes none."""
     log: HostLog | None = _open.get("log")
     return log if log is not None and Path(_open["root"]) == data_root() else None
+
+
+def store() -> StorePort | None:
+    """The Host's StorePort over its data root, opened at the first call and kept until the history
+    closes; None outside a Host whose history is open, and without the data extra."""
+    with _lock:
+        port: StorePort | None = _open.get("store")
+        if port is None and recording() and _open.get("reading") is not None:
+            from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
+
+            port = _open["store"] = StorePort.open(Path(_open["root"]), _open["log"])
+        return port
 
 
 def workspace_on_log(
@@ -371,6 +389,7 @@ def close_history() -> None:
         _conversations.clear()
         _open.pop("hosts", None)
         _open.pop("remote", None)
+        port = _open.pop("store", None)
         reading = _open.pop("reading", None)
         log = _open.pop("log", None)
         _open.pop("workspace", None)
@@ -383,6 +402,8 @@ def close_history() -> None:
         logger.shutdown()
     if provider is not None:
         provider.shutdown()  # every span ended before the log closes
+    if port is not None:
+        port.close()
     if reading is not None:
         reading.close()
     if log is not None:

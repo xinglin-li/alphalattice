@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data_layer.history import DATA_ROOT_ENV, data_root
+from alphalattice.kernel.data_layer.history import DATA_ROOT_ENV, data_root, store
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
 
@@ -23,3 +23,10 @@ def test_the_data_root_is_its_setting_else_the_platforms_application_folder(monk
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
     expected = tmp_path / ("local/AlphaLattice" if os.name == "nt" else "xdg/alphalattice")
     assert data_root() == Path(expected)
+
+
+@pytest.mark.proves("data_layer.only_a_host_opens_its_store")
+def test_a_process_with_no_host_history_opens_no_store():
+    """A process whose Host history is not open gets no StorePort, so its workspace opens admit
+    nothing."""
+    assert store() is None

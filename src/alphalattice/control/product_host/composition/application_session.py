@@ -41,6 +41,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     platform_identity,
     process_priority,
 )
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
@@ -264,12 +265,15 @@ class WorkspaceApplicationSession:
                         code="upgrade.refused",
                     )
                 upgrade.run()
+            workspace_id = named_workspace_id(root)
+            if workspace_id is not None:  # a Host's open admits the market data into world
+                world.admit(root / "market-data.duckdb", workspace_id)
             gate = WorkspaceMutationGate()
             registry = DuckDbTaskControlRegistry(
                 resolve_task_control_database(root),
                 gate=gate,
                 submitted_by=_submitting_agent,
-                workspace_id=named_workspace_id(root),
+                workspace_id=workspace_id,
             )
             # This process just acquired the exclusive workspace lease: an old
             # RUNNING record cannot still belong to a live workspace writer.

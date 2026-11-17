@@ -285,12 +285,32 @@
       "layer": "integration",
       "seconds": 20
     },
+    "data_layer.a_correction_is_known_from_its_admission": {
+      "description": "StorePort admits a repeated batch as nothing and knows a legacy correction of a held key only from its admission.",
+      "lower_layer": "The versions are written to and read as of from a real DuckLake catalog through the views.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.a_rename_moves_no_key": {
       "description": "A renamed method, metric or feature set keeps its lineage's id, so no recipe key, measure, cache entry or derived partition moves, and every old name still finds it.",
       "lower_layer": "A rename is an event projected inside the log's own SQLite transaction; only a real log shows the rows it leaves.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
+    },
+    "data_layer.a_source_supersedes_only_with_a_later_write": {
+      "description": "StorePort writes a closed interval's two versions and supersedes a held bar only with a source write after its value's last write, which a same-value write moves without a version.",
+      "lower_layer": "The versions are written to and read as of from a real DuckLake catalog.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.a_source_time_is_not_content": {
+      "description": "A row's value digest leaves out its source's write time, and a legacy closed interval carries the digest of its open version.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.admission_is_read_as_of_before_and_after_a_correction": {
       "description": "One admission's rows share one known_at that never steps back with the wall clock; the as-of read before its correction sees them, after it sees the correction, and the replaced version is superseded in the same commit.",
@@ -478,6 +498,12 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
+    },
+    "data_layer.only_a_host_opens_its_store": {
+      "description": "A process whose Host history is not open gets no StorePort and admits nothing.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.paths_are_quoted_sql_literals": {
       "description": "A data root path enters DuckDB SQL as a string literal with forward slashes and each quote doubled, so a folder named with a quote attaches.",
@@ -922,6 +948,12 @@
         "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
     },
+    "market_data_ops.an_action_is_one_world_row": {
+      "description": "A 0.2.7 corporate action becomes one world row keeping its kind as its id, or is refused by name.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.daily_provider_conformance": {
       "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -946,6 +978,13 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "A real DuckDB store and Arrow result are needed to compare the persisted set query with its per-listing readers."
+    },
+    "market_data_ops.world_holds_the_workspace_market_tables": {
+      "description": "A workspace open admits its 0.2.7 market tables into world once, equal row for row, and a later correction is seen only from its admission.",
+      "lower_layer": "The 0.2.7 tables are written by their own owner, the world tables through a real StorePort, DuckLake catalog and log.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 15
     },
     "observation_runtime.a_page_that_does_not_advance_is_named": {
       "description": "If a reader followed a ledger page that does not move its cursor, it would read the same page forever.",

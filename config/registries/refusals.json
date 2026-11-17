@@ -9208,6 +9208,11 @@
 "owner": "local_web_session",
 "category": "FAILED_PRECONDITION"
 },
+"market_data.action_kind_unknown": {
+"owner": "market_data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "World names a closed set of action kinds; a 0.2.7 action of another kind waits for the build that names it, and the admission stops whole."
+},
 "market_data.capability_file_invalid": {
 "owner": "market_data",
 "category": "INVALID_ARGUMENT"
@@ -9227,6 +9232,11 @@
 "market_data.execution_return_non_finite": {
 "owner": "market_data",
 "category": "INVALID_ARGUMENT"
+},
+"market_data.market_calendar_ambiguous": {
+"owner": "market_data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A market's sessions come from the calendars its profiles name; calendars disagreeing on a session leave its closes unknown."
 },
 "market_data.market_profile_invalid": {
 "owner": "market_data",

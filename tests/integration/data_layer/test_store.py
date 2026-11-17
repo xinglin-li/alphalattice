@@ -11,6 +11,7 @@ import subprocess
 import sys
 import uuid
 from contextlib import closing
+from datetime import date
 from pathlib import Path
 from time import perf_counter
 
@@ -350,8 +351,8 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")
 def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_trip(root):
     """Every catalog table is admitted; a legacy row is known its rule's lag after its market's
-    first close on or after its valid date; a batch out of known order, moving a listing's market
-    or naming an unregistered scheme is refused; typed columns read back whole."""
+    first close on or after its valid date; a batch moving a listing's market or naming an
+    unregistered scheme is refused; typed columns read back whole."""
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
     action = {"listing_id": LISTING, "effective_date": "2024-01-06", "kind": "split"}
     action |= {"action_id": "s1", "provisional": True, "provenance": "derived"}
@@ -366,7 +367,6 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         ("execution_outcome", [outcome("2024-01-02"), outcome("2024-01-03", None)], None),
         ("raw_bar", [bar], ("yf-close", 2)),
         ("raw_bar", [bar | {"session_date": "2024-01-09"}], rule),
-        ("raw_bar", [bar | {"published_at": "2024-01-05 21:30:00+00"}], rule),  # before 22:00
         ("listing", [{"listing_id": MOVED, "market": "XNYS"}], None),
         ("listing", [{"listing_id": MOVED, "market": "XNAS"}], None),
         ("raw_bar", [bar | {"listing_id": MOVED}], rule),
@@ -421,14 +421,19 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         )
         port.close()
     schemas = dict(tables)
-    assert sorted(WORLD_KEYS) == [table for table in schemas["world"] if table != "superseded"]
+    kept = ("superseded", "rewritten")  # the versions' own records, keyed by no fact
+    assert sorted(WORLD_KEYS) == [table for table in schemas["world"] if table not in kept]
     assert set(RESULTS_KEYS) <= set(schemas["results"])
     at = "TIMESTAMP WITH TIME ZONE"  # 0.2.7's types in its field order; only its doubles are null
     types = ["VARCHAR"] * 2 + ["INTEGER"] + ["DATE", at] * 3 + ["SMALLINT"] + ["VARCHAR"] * 2
     types += ["DOUBLE"] * 4 + ["VARCHAR"] * 3
     assert [(kind, null) for _, kind, null in columns] == [(t, t == "DOUBLE") for t in types]
     assert {name for name, *_ in columns} == set(outcome("2024-01-02")) - {"artifact_id"}
-    assert known == [(0, ["05 22", "08 19"]), (0, ["07 12", "08 19"]), (0, ["05 22", "08 19"])]
+    assert known == [  # the closed symbol B is its open version, then its closing one
+        (0, ["05 22", "08 19"]),
+        (0, ["07 12", "08 19"]),
+        (0, ["05 22", "05 22", "08 19"]),
+    ]
     assert carried == ([0.5], True, "derived")
     assert outcomes == [(0.1, None, 1_704_205_800_000_000), (None, None, 1_704_292_200_000_000)]
     assert seen == [0, 1]
@@ -437,11 +442,118 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     assert refused == [
         "data_layer.lag_rule_unknown",
         "data_layer.legacy_anchor_missing",
-        "data_layer.admission_out_of_order",
         "data_layer.legacy_anchor_missing",
         "data_layer.result_key_present",
         "data_layer.lineage_unregistered",
     ]
+
+
+@pytest.mark.proves("data_layer.a_correction_is_known_from_its_admission")
+def test_a_batch_again_adds_nothing_and_a_correction_is_known_from_its_admission(root):
+    """A batch admitted again adds nothing, and a legacy correction of a held key is known only
+    from its admission."""
+    bar = {"listing_id": LISTING, "session_date": "2024-01-05", "close": 1.0}
+    later = bar | {"session_date": "2099-01-02"}  # known from a close still to come
+    batches = [
+        [bar, later],
+        [bar, later],
+        [bar | {"close": 2.0, "published_at": "2024-01-05 21:30:00+00"}],
+        [bar | {"close": 2.0, "retracted": True}],
+    ]
+    with HostLog.open(root) as log:
+        sessions = [("2024-01-05", "21:00:00", False), ("2099-01-02", "21:00:00", False)]
+        port = seed(root, log, sessions)
+        admitted = []
+        for rows in batches:
+            with stage(root, "raw_bar", YF, rows, lag=("yf-close", 1)) as staged:
+                admitted.append((staged.admission_id, port.commit(staged)))
+        with (
+            stage(root, "raw_bar", YF, [later | {"close": 3.0}]) as observed,
+            pytest.raises(DataError, match="known_asof order") as late,
+        ):
+            port.commit(observed)
+        known = dict(log.read("SELECT admission_id, known_us FROM admission"))
+        fixed, withdrawn = (known[admission] for admission, _ in admitted[2:])
+        read = "SELECT list(close ORDER BY session_date) FROM raw_bar_asof(?)"
+        ten_pm = 1_704_492_000_000_000  # 2024-01-05 22:00 UTC: the first bar's lag after its close
+        seen = [
+            port.lake.execute(read, (cutoff,)).fetchone()[0]
+            for cutoff in (ten_pm, fixed - 1, fixed, withdrawn)
+        ]
+        versions = port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchone()[0]
+        port.close()
+    assert [done.snapshot is None for _, done in admitted] == [False, True, False, False]
+    assert seen == [[1.0], [1.0], [2.0], None]
+    assert versions == 4
+    assert late.value.failure.code == "data_layer.admission_out_of_order"
+
+
+@pytest.mark.proves("data_layer.a_source_supersedes_only_with_a_later_write")
+def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later_write(root):
+    """A closed interval is written as its open and closing versions, a later change of its end is
+    known from its admission, and a bar is superseded only by a row its source wrote after its
+    value's last write, a later write of the same value moving that time without a version."""
+    symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
+    bar = {"listing_id": LISTING, "session_date": "2024-01-05", "close": 1.0}
+    bar |= {"source_observed_at": "2024-02-01 00:00:00+00"}
+    bars = [
+        bar,
+        bar | {"close": 0.5, "source_observed_at": "2024-01-31 00:00:00+00"},  # older
+        bar | {"close": 0.7},  # the same write time, another value
+        bar | {"close": 2.0, "source_observed_at": "2024-02-02 00:00:00+00"},  # later
+        bar | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"},  # rewritten
+        bar | {"close": 3.0, "source_observed_at": "2024-02-15 00:00:00+00"},  # before the rewrite
+        bar | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"},  # the same again
+    ]
+    rule = ("yf-close", 1)
+    with HostLog.open(root) as log:
+        port = seed(
+            root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
+        )
+        with stage(
+            root, "provider_symbol", YF, [symbol | {"valid_to": "2024-01-05"}], lag=rule
+        ) as s:
+            first = port.commit(s)
+        with stage(
+            root, "provider_symbol", YF, [symbol | {"valid_to": "2024-01-08"}], lag=rule
+        ) as s:
+            moved = (s.admission_id, port.commit(s))
+        done = []
+        for row in bars:
+            with stage(root, "raw_bar", YF, [row], lag=rule) as staged:
+                done.append(port.commit(staged))
+        known = dict(log.read("SELECT admission_id, known_us FROM admission"))[moved[0]]
+        read = "SELECT list(valid_to ORDER BY valid_to) FROM lake.world.provider_symbol x"
+        read += " WHERE known_asof <= make_timestamptz(?) AND NOT EXISTS (SELECT 1 FROM"
+        read += " lake.world.superseded s WHERE s.value_digest = x.value_digest"
+        read += " AND s.admission_id = x.admission_id AND s.superseded_asof <= make_timestamptz(?))"
+        ten_pm, half_day = 1_704_492_000_000_000, 1_704_740_400_000_000  # 01-05 22:00, 01-08 19:00
+        ends = [
+            port.lake.execute(read, (cutoff, cutoff)).fetchone()[0]
+            for cutoff in (ten_pm - 1, ten_pm, half_day, known - 1, known)
+        ]
+        closes = port.lake.execute("SELECT close FROM raw_bar_latest").fetchall()
+        versions = port.lake.execute("SELECT list(close ORDER BY close) FROM lake.world.raw_bar")
+        versions = versions.fetchone()[0]
+        port.close()
+    assert (first.rows, moved[1].rows) == (2, 1)
+    assert ends == [
+        None,
+        [date(2024, 1, 5)],
+        [date(2024, 1, 5)],
+        [date(2024, 1, 5)],
+        [date(2024, 1, 8)],
+    ]
+    assert [(d.snapshot is None, d.rows, d.dropped, d.rewritten) for d in done] == [
+        (False, 1, {}, 0),
+        (True, 0, {"older": 1}, 0),
+        (True, 0, {"equal_time": 1}, 0),
+        (False, 1, {}, 0),
+        (False, 0, {}, 1),
+        (True, 0, {"older": 1}, 0),
+        (True, 0, {}, 0),
+    ]
+    assert (closes, versions) == ([(2.0,)], [1.0, 2.0])
 
 
 STAGE = """
