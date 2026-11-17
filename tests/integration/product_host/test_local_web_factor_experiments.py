@@ -204,6 +204,7 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         body = _json(live, f"/api/experiments/readback?task_id={task_id}")
         assert body["status"] == "EXPERIMENT_PUBLISHED", body
         assert body["portfolio_source"]["alpha_task_id"] == parent_id
+        assert "risk_surface_hash" not in body["portfolio_source"]  # no Risk study is linked
         holds = [r for r in body["series"] if r["decision_mode"] == "HOLD"]
         assert len(holds) == body["execution_preview"]["hold_session_count"] > 0
         assert all(r["one_way_turnover"] == 0 for r in holds)
@@ -1119,86 +1120,102 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
             )
 
 
+DECLARED_MODELS = [
+    ("capability-1", {"family": "ridge", "alpha": 1.0}),
+    ("capability-1", {"family": "lasso", "alpha_max_multiplier": 0.1}),
+    ("capability-1", {"family": "elastic_net", "alpha_max_multiplier": 0.1, "l1_ratio": 0.5}),
+    ("capability-2", _lightgbm_parameters()),  # the main product's model, at its G6 point
+]
+
+
+def _plan_declared_model(live, alpha_case, handle, parameters):
+    """One declared model's handoff controls and PLAN preview, with no fit: the page names both
+    installed models and shows this capability's parameters, the PLAN resolves its adapter and
+    admits no Task, and the installed Agent plans the same."""
+    _root, binding, factor_task, decision, _original = alpha_case
+    payload = _alpha_payload(alpha_case, parameters, handle)
+    expected_adapter = {
+        "capability-1": "regularized_linear",
+        "capability-2": "dynamic_panel_lightgbm",
+    }[handle]
+    count = len(live.session.task_control_registry.tasks())
+    # The controls a page reads (the handoff preview's authoring options)
+    # name both installed models and show this capability's parameters;
+    # the PLAN preview names the one this declaration resolved to.
+    handoff = _json(
+        live,
+        "/api/experiments/handoff",
+        method="POST",
+        payload={
+            "task_id": factor_task,
+            "curation_receipt_hash": decision,
+            "research_input_id": binding.input_id,
+            "input_binding_hash": binding.binding_hash,
+            "experiment_document": payload["experiment_document"],
+        },
+    )
+    assert handoff["status"] == "INPUT_COMPILER_PREFLIGHT_PASSED", handoff
+    controls = handoff["authoring_options"]["controls"]
+    capability_control = next(
+        c for c in controls if c["path"] == ["alpha", "model_capability_handle"]
+    )
+    assert [o["label"] for o in capability_control["options"]] == [
+        "regularized_linear",
+        "dynamic_panel_lightgbm",
+    ]
+    document = payload["experiment_document"]
+
+    def _stated(path):
+        value = document
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        return value
+
+    shown = {
+        c["path"][-1]
+        for c in controls
+        if c["path"][:2] == ["alpha", "model_parameters"]
+        and all(_stated(cond["path"]) in cond["values"] for cond in c.get("when", []))
+    }
+    assert shown == set(parameters), (shown, set(parameters))
+    plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
+    assert plan["status"] == "PLANNED", plan
+    assert plan["numerical_call_count"] == 0
+    assert plan["execution_preview"]["model_adapter_id"] == expected_adapter
+    assert plan["execution_preview"]["fit_protocol"] == "DIRECT_FIT"
+    assert plan["execution_preview"]["model_parameters"] == parameters
+    assert len(live.session.task_control_registry.tasks()) == count
+    bridge = InstalledAgent(live.operations)
+    assert (
+        json.loads(
+            bridge.invoke(
+                PortfolioResearchAgentRequest(
+                    operation="EXPERIMENT_PLAN",
+                    **payload,
+                )
+            )
+        )
+        == plan
+    )
+    return payload, plan, count
+
+
 @pytest.mark.parametrize(
-    ("handle", "parameters"),
-    [
-        ("capability-1", {"family": "ridge", "alpha": 1.0}),
-        ("capability-1", {"family": "lasso", "alpha_max_multiplier": 0.1}),
-        ("capability-1", {"family": "elastic_net", "alpha_max_multiplier": 0.1, "l1_ratio": 0.5}),
-        ("capability-2", _lightgbm_parameters()),  # the main product's model, at its G6 point
-    ],
-    ids=["ridge", "lasso", "elastic-net", "lightgbm"],
+    ("handle", "parameters"), DECLARED_MODELS, ids=["ridge", "lasso", "elastic-net", "lightgbm"]
 )
 def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
     alpha_case, handle, parameters
 ):
     root, binding, factor_task, decision, _original = alpha_case
     manifest = (root / "research-workspace.json").read_bytes()
-    payload = _alpha_payload(alpha_case, parameters, handle)
-    expected_adapter = {
-        "capability-1": "regularized_linear",
-        "capability-2": "dynamic_panel_lightgbm",
-    }[handle]
     with _session(root) as live:
-        count = len(live.session.task_control_registry.tasks())
-        # The controls a page reads (the handoff preview's authoring options)
-        # name both installed models and show this capability's parameters;
-        # the PLAN preview names the one this declaration resolved to.
-        handoff = _json(
-            live,
-            "/api/experiments/handoff",
-            method="POST",
-            payload={
-                "task_id": factor_task,
-                "curation_receipt_hash": decision,
-                "research_input_id": binding.input_id,
-                "input_binding_hash": binding.binding_hash,
-                "experiment_document": payload["experiment_document"],
-            },
-        )
-        assert handoff["status"] == "INPUT_COMPILER_PREFLIGHT_PASSED", handoff
-        controls = handoff["authoring_options"]["controls"]
-        capability_control = next(
-            c for c in controls if c["path"] == ["alpha", "model_capability_handle"]
-        )
-        assert [o["label"] for o in capability_control["options"]] == [
-            "regularized_linear",
-            "dynamic_panel_lightgbm",
-        ]
-        document = payload["experiment_document"]
-
-        def _stated(path):
-            value = document
-            for key in path:
-                value = value.get(key) if isinstance(value, dict) else None
-            return value
-
-        shown = {
-            c["path"][-1]
-            for c in controls
-            if c["path"][:2] == ["alpha", "model_parameters"]
-            and all(_stated(cond["path"]) in cond["values"] for cond in c.get("when", []))
-        }
-        assert shown == set(parameters), (shown, set(parameters))
-        plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
-        assert plan["status"] == "PLANNED", plan
-        assert plan["numerical_call_count"] == 0
-        assert plan["execution_preview"]["model_adapter_id"] == expected_adapter
-        assert plan["execution_preview"]["fit_protocol"] == "DIRECT_FIT"
-        assert plan["execution_preview"]["model_parameters"] == parameters
-        assert len(live.session.task_control_registry.tasks()) == count
-        bridge = InstalledAgent(live.operations)
-        assert (
-            json.loads(
-                bridge.invoke(
-                    PortfolioResearchAgentRequest(
-                        operation="EXPERIMENT_PLAN",
-                        **payload,
-                    )
-                )
-            )
-            == plan
-        )
+        payload, plan, count = _plan_declared_model(live, alpha_case, handle, parameters)
+        if (handle, parameters) != DECLARED_MODELS[-1]:
+            # Every family is planned above with no fit. The run, reopen and reuse below is one
+            # path for every family, so it runs once, with the product's model. The other fits
+            # are proved at their adapter owner, test_model_adapter_boundary.py (alpha_research):
+            # test_regularized_linear_adapter_preserves_numerical_owner.
+            return
         sent = _json(
             live,
             "/api/experiments/run",
@@ -3546,12 +3563,10 @@ def test_a_portfolio_study_weighs_by_a_linked_risk_studys_volatility(risk_link):
     body = _published(link, weighed)
     source = body["portfolio_source"]
     assert source["risk_task_id"] == link.risk_task and source["risk_surface_hash"]
-    equal = _published(link, _planned(link))
-    assert "risk_surface_hash" not in equal["portfolio_source"]
-    # The same names on the same sessions, weighed by inverse volatility rather than equally:
-    # the held books differ, and no equal book is more concentrated than its iv1 twin.
-    assert body["position"]["weights"] != equal["position"]["weights"]
-    assert body["position"]["hhi"] > equal["position"]["hhi"]
+    # An unlinked study carries no risk surface (test_completed_alpha_hands_off_to_portfolio_
+    # without_refitting), and iv1 weighs apart from and more concentrated than equal weight at
+    # its owner (test_tranche_book.py::test_inverse_volatility_exponents_differ_and_equal_
+    # weight_ignores_risk), so no second, equal-weight study is published here.
 
 
 def test_a_portfolio_study_runs_a_catalog_policy_on_a_linked_risk_studys_covariance(risk_link):

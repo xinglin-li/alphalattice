@@ -9,6 +9,19 @@
       "layer": "unit",
       "seconds": 1
     },
+    "alpha_modeling.sparse_multiplier_counts_from_alpha_max": {
+      "description": "If a Lasso or Elastic-Net multiplier counted from a wrong alpha-max, a declared sparse model would fit at a penalty its recipe never named, and the adapter and its reference fit would agree on the wrong value.",
+      "owner": "alphalattice.capabilities.alpha_modeling",
+      "layer": "unit",
+      "seconds": 1,
+      "exception": {
+        "kinds": [
+          "growth"
+        ],
+        "why": "Two Lasso and Elastic-Net Host journeys were cut to plan-level checks; the adapter's owner test compares the adapter with fit_regularized_linear, which share _alpha_max, so 8 of 18 _alpha_max mutants survived it once those journeys stopped running the sparse fits.",
+        "decided": "2026-11-17: granted: one unit function with two cases and no fixture world, which turns 11 of 11 planted alpha-max mutants red; it replaces fitted Host journeys of about 100 s each, so the suite's seconds fall while its lines rise"
+      }
+    },
     "alpha_research.current_artifacts_full_proof_refuses_tamper": {
       "description": "If full proof passed an Alpha artifact changed under its name, an export or the scrub would carry bytes its commitment no longer names.",
       "owner": "alphalattice.investment.alpha_research",
