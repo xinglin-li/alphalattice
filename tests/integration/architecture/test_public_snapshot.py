@@ -135,6 +135,12 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     # A projected registry loads through its declared owner in the public tree, or is refused.
     from scripts.release import public_snapshot
 
+    with pytest.raises(
+        SnapshotRefused,
+        match=r"release\.projection_unloadable:config/registries/agent-surface\.json",
+    ):
+        public_snapshot._load_projected(out, "config/registries/agent-surface.json")
+
     for loader, refused_as in ((None, "unloaded"), ("raise ValueError('rule')", "unloadable")):
         with monkeypatch.context() as declared:
             declared.setattr(

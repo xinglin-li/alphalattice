@@ -15569,6 +15569,13 @@
    "successor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
    "change": "Keep sector classifications in the shared catalog",
    "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "033f4b3cecd20dbad9ebd6cb8aaecde58877bc07dd9175fe8049f82f018d92ca",
+   "successor": "ab5a1b085544880ca29dbc6a5de2d7aa419069fc7106cfc928bfd3d8abbcad39",
+   "change": "Evidence documents are kept once per machine, dated by their acceptance",
+   "reason": "evidence documents are held once per machine in world, each identified by its own id with its body's digest as a column; every body equals its bytes and keeps its 0.2.7 facts and availability times, so the canonicalization binding moves with its storage and keeps its meaning, its successor recorded"
   }
  ]
 }

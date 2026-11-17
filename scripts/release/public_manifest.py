@@ -1389,6 +1389,7 @@ PRIVATE_SCHEMAS = frozenset(
         "alphalattice.tests-unregistered.v1",
         "alphalattice.test-layout.v1",
         "alphalattice.agent-eval.host-facts",
+        "alphalattice.source-ratchet.v1",
     }
 )
 """Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE

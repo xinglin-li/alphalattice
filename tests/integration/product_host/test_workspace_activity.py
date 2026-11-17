@@ -315,12 +315,14 @@ def _two_bound(tmp_path, monkeypatch, receipts):
     monkeypatch.setattr(usage_module, "monotonic", lambda: elapsed[0], raising=False)
     operations = SimpleNamespace(
         workspace_session=SimpleNamespace(workspace=workspace),
+        workspace_manifest=SimpleNamespace(workspace_id="fixture-workspace"),
         dispatcher=SimpleNamespace(clock=lambda: datetime(2026, 10, 11, tzinfo=UTC)),
         native_projects=projects,
         goals=SimpleNamespace(attributed_goal=lambda _: None),
     )
 
     def read(project, binding, **kwargs):
+        assert kwargs["workspace_id"] == "fixture-workspace"
         receipt = receipts[projects.index(project)]
         if isinstance(receipt, Exception):
             raise receipt
@@ -395,6 +397,23 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
 
     bind(projects[0], usage="OFF")
     bind(projects[1])
+    admitted = []
+    monkeypatch.setattr(
+        "alphalattice.kernel.data_layer.history.receive_agent_telemetry",
+        lambda rows: admitted.extend(rows) or len(rows),
+    )
+    sample = {
+        "vendor": "codex",
+        "conversation_id": projects[0].name,
+        "session_id": None,
+        "agent_id": None,
+        "parent_agent_id": None,
+    }
+    with pytest.raises(usage_module.NativeBridgeError, match=r"native_bridge\.usage_disabled"):
+        reader.receive([sample])
+    assert admitted == []
+    assert reader.receive([sample | {"conversation_id": projects[1].name}]) == 1
+    assert len(admitted) == 1
     reader.read()
     assert set(reader.state()["sessions"]) == {"codex:" + projects[1].name}
     for project in projects:
@@ -441,7 +460,13 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     cache.mkdir(parents=True)
     (cache / "orphan.lock").touch()
     monkeypatch.setattr(usage_module, "usage_reading", lambda _: False)
-    assert reader.read() == {"status": "OFF", "sessions": []} and not list(cache.iterdir())
+    assert reader.read() == {"status": "OFF", "sessions": []}
+    # Retired scanner checkpoints are not read or allocated; old derived files belong to
+    # the storage owner's normal collection, not to the telemetry read path.
+    assert (cache / "orphan.lock").exists()
+    with pytest.raises(usage_module.NativeBridgeError, match=r"native_bridge\.usage_disabled"):
+        reader.receive([sample])
+    assert len(admitted) == 1
 
 
 @pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")

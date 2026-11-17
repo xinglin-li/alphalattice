@@ -173,6 +173,8 @@ class Route:
     external_client: bool = False
     session: bool = False
     """A read that answers only the browser holding the session cookie."""
+    otlp: tuple[str, str] | None = None
+    """Native signal and catalog workspace id, supplied together by the serving Host."""
     traced: bool = True
     """Whether a client's call opens a step span; a call's own end opens none."""
 
@@ -222,6 +224,8 @@ class AdmittedRequest:
     launch: bool = False
     provenance: RequestProvenance | None = None
     trace: tuple[tuple[str, str], ...] = ()
+    otlp_type: str = "application/json"
+    otlp_encoding: str = "identity"
     """The W3C `traceparent` and `baggage` headers the client sent, for its step's span."""
     call: CallSpan | None = None
     """The CLI invocation an external request comes from, whose span its step is under."""
@@ -316,6 +320,7 @@ class LocalWebApplication:
         mutates: bool = False,
         external_client: bool = False,
         session: bool = False,
+        otlp: tuple[str, str] | None = None,
         traced: bool = True,
     ) -> Callable[
         [Callable[[Mapping[str, list[str]], dict[str, Any]], object]],
@@ -330,6 +335,7 @@ class LocalWebApplication:
             external_client: Whether the external client may call it.
             session: Whether a read answers only the browser holding the session
                 cookie (the session read, which hands that browser its token).
+            otlp: Native signal and the Host's catalog workspace id, separate from its header key.
             traced: Whether a client's call opens a step span (a call's own end does not).
 
         Returns:
@@ -346,6 +352,7 @@ class LocalWebApplication:
                 mutates=mutates,
                 external_client=external_client,
                 session=session,
+                otlp=otlp,
                 traced=traced,
             )
             return handler
@@ -378,6 +385,7 @@ class LocalWebApplication:
         mutates: bool,
         external_client: bool = False,
         session: bool = False,
+        otlp: bool = False,
     ) -> str | None:
         """Return a refusal reason, or `None` when the request may proceed.
 
@@ -406,10 +414,8 @@ class LocalWebApplication:
             token = headers.get(CLIENT_HEADER, "")
             if not token or not secrets.compare_digest(token, self.external_token):
                 return "local_web.external_token_invalid"
-            if (
-                mutates
-                and headers.get("Content-Type", "").split(";")[0].strip().lower()
-                != "application/json"
+            if mutates and headers.get("Content-Type", "").split(";")[0].strip().lower() not in (
+                {"application/json", "application/x-protobuf"} if otlp else {"application/json"}
             ):
                 return "local_web.content_type_not_json"
             return None
@@ -477,6 +483,7 @@ class LocalWebApplication:
             mutates=bool(route and route.mutates),
             external_client=bool(route and route.external_client),
             session=bool(route and route.session),
+            otlp=bool(route and route.otlp),
         )
         if refusal is not None:
             self.refusals += 1
@@ -520,6 +527,8 @@ class LocalWebApplication:
                 for name, value in headers.items()
                 if name.lower() in TRACE_HEADERS
             ),
+            otlp_type=headers.get("Content-Type", "").split(";")[0].strip().lower(),
+            otlp_encoding=headers.get("Content-Encoding", "identity").strip().lower(),
         )
 
     def _launch(self, query: str, headers: Mapping[str, str]) -> AdmittedRequest | LocalWebResponse:
@@ -619,7 +628,24 @@ class LocalWebApplication:
         if route is None:  # pragma: no cover - preflight admits one or the other
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         payload: dict[str, Any] = {}
-        if body:
+        if route.otlp:
+            from alphalattice.kernel.data_layer.telemetry import decode  # lazy: Host ingest only
+
+            try:
+                payload = {
+                    "rows": decode(
+                        route.otlp[0],
+                        body,
+                        admitted.otlp_type,
+                        workspace_id=route.otlp[1],
+                        encoding=admitted.otlp_encoding,
+                        maximum=MAXIMUM_REQUEST_BODY_BYTES,
+                    ),
+                    "content_type": admitted.otlp_type,
+                }
+            except ValueError:
+                return self._refuse(HTTPStatus.BAD_REQUEST, "agent_telemetry.payload_invalid")
+        elif body:
             try:
                 decoded = json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -638,9 +664,9 @@ class LocalWebApplication:
             )
             if self.admission is not None:
                 action = partial(self.admission, action, writes)
-            if admitted.call is not None and route.traced:
+            if admitted.call is not None and route.traced and not route.otlp:
                 record(admitted.call, admitted.provenance)
-            traced = route.traced and (route.external_client or writes)
+            traced = route.traced and not route.otlp and (route.external_client or writes)
             with _step(route, operation, admitted, traced=traced):
                 answer = self._offer_workbench(
                     with_binding_notice(action()), admitted.provenance, operation=operation
@@ -866,7 +892,8 @@ class _Handler(BaseHTTPRequestHandler):
             )
             self._discard_announced_body()
             return
-        headers = {key: value for key, value in self.headers.items()}
+        # HTTP field names are case-insensitive; keep HTTPMessage's lookup semantics.
+        headers = cast(Mapping[str, str], self.headers)
         outcome = self.application.preflight(method=method, target=self.path, headers=headers)
         if isinstance(outcome, LocalWebResponse):
             # Refused before the body. Nothing announced is read, so an

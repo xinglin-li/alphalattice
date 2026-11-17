@@ -53,7 +53,6 @@ from alphalattice.control.product_host.composition.local_web_connection import (
 from alphalattice.control.product_host.composition.native_usage_reader import (
     NativeUsageReader,
     attach_native_usage,
-    read_usage,
 )
 from alphalattice.control.product_host.composition.portfolio_application import (
     PLAN_FIELDS as PORTFOLIO_PLAN_FIELDS,
@@ -194,6 +193,7 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     autobind_root,
+    read_session_usage,
     session_binding,
 )
 from alphalattice.interface.local_application.portfolio_research import (
@@ -752,12 +752,14 @@ class LocalPortfolioWebSession:
         )
         self.forward_prewarm = PortfolioForwardPrewarm(self.operations)
         self.forward_prewarm.attach(self.dispatcher)
+        attach_native_usage(self, self.operations, activity)
         web_application = build_local_web_application(
             service=self.service,
             operations=self.operations,
             activity=activity,
         )
         web_application.admission = self.dispatcher._admit
+        _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
         self.web = LocalWebService(application=web_application, port=self.port)
         url = self.web.start()
         connection = LocalResearchConnection(
@@ -779,7 +781,6 @@ class LocalPortfolioWebSession:
             self.operations.sweep_if_due()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
-        attach_native_usage(self, self.operations, activity)
         return url
 
     def resume(
@@ -1513,6 +1514,25 @@ def build_local_web_application(
     return web
 
 
+def _agent_telemetry_routes(
+    web: LocalWebApplication, reader: NativeUsageReader | None, workspace_id: str
+) -> None:
+    """Receive native exports on the Host's existing authenticated loopback socket."""
+    for signal in ("logs", "traces", "metrics"):
+
+        @web.route(
+            "POST", f"/v1/{signal}", mutates=True, external_client=True, otlp=(signal, workspace_id)
+        )
+        def receive(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            if reader is None:
+                raise LocalWebError("native_bridge.lead_usage_read_failed")
+            reader.receive(payload["rows"])
+            content_type = payload["content_type"]
+            return LocalWebResponse(
+                HTTPStatus.OK, b"{}" if content_type == "application/json" else b"", content_type
+            )
+
+
 def _maintenance_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
     @web.route(
         "GET",
@@ -2111,7 +2131,13 @@ def _native_session_event(
             provenance.session,
         ) != (binding.host, binding.session_id):
             return _native_session_refusal("native_bridge.event_scope_invalid")
-        return read_usage(operations, project, binding, publish, goal_id)
+        return read_session_usage(
+            project,
+            binding,
+            workspace_id=operations.workspace_manifest.workspace_id,
+            publish=publish,
+            goal_id=goal_id,
+        )
     except NativeBridgeError as error:
         return _native_session_refusal(str(error))
     except (KeyError, TypeError, ValueError) as error:

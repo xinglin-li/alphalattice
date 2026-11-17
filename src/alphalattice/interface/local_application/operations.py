@@ -226,14 +226,13 @@ GRAMMAR: Final[dict[str, Command]] = {
     "SESSION_USAGE_READ": Command(
         "session",
         "usage",
-        "Reads the usage of the agent Sessions bound to this workspace now, from their own "
-        "files and the children they record; nothing else runs, and reading off reads nothing.",
+        "Reads the bound conversations' numerical native telemetry from the catalog; "
+        "nothing else runs, and reading off reads nothing.",
     ),
     "USAGE_READING": Command(
         "usage-reading",
         "show",
-        "Shows whether the Host may read the bound agent Sessions' own files for usage, and "
-        "what it reads.",
+        "Shows whether the Host may receive and read native agent telemetry, and what it keeps.",
     ),
     "USAGE_READING_SET": Command(
         "usage-reading",

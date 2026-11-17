@@ -5,9 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -16,9 +14,8 @@ import pytest
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.interface.local_application import cli, client, native_bridge
+from alphalattice.interface.local_application import cli, client
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
@@ -35,6 +32,7 @@ from alphalattice.interface.local_application.native_setup import declare_projec
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.data_layer import history
 
 SECRET = "SYNTHETIC-PRIVATE-TRANSCRIPT-AND-ERROR"
 AT = datetime(2026, 10, 6, tzinfo=UTC)
@@ -68,54 +66,9 @@ def lead_scene(request, tmp_path, monkeypatch, recording_history):
     )
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
-    if host == "codex":
-        config = tmp_path / "codex"
-        monkeypatch.setenv("CODEX_HOME", str(config))
-        monkeypatch.setenv("CODEX_THREAD_ID", parent)
-        session = config / "sessions/2026/10/06" / f"rollout-synthetic-{parent}.jsonl"
-        records = [
-            {"type": "session_meta", "payload": {"id": parent}},
-            {"type": "response_item", "payload": {"type": "message", "content": SECRET}},
-            {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": "high"}},
-            {
-                "type": "token_usage_record",
-                "timestamp": AT.isoformat(),
-                "payload": {
-                    "response_id": "synthetic-response",
-                    "usage": {
-                        "input_tokens": 20,
-                        "cached_input_tokens": 5,
-                        "cache_write_input_tokens": 0,
-                        "output_tokens": 3,
-                    },
-                },
-            },
-        ]
-    else:
-        config = tmp_path / "claude"
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
-        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", parent)
-        session = config / "projects/p" / f"{parent}.jsonl"
-        records = [
-            {
-                "type": "assistant",
-                "timestamp": AT.isoformat(),
-                "message": {
-                    "id": "synthetic-response",
-                    "model": "claude-sonnet-5-5",
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": SECRET}],
-                    "usage": {
-                        "input_tokens": 15,
-                        "cache_read_input_tokens": 5,
-                        "cache_creation_input_tokens": 0,
-                        "output_tokens": 3,
-                    },
-                },
-            }
-        ]
-    session.parent.mkdir(parents=True)
-    session.write_text("\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8")
+    monkeypatch.setenv("CODEX_THREAD_ID" if host == "codex" else "CLAUDE_CODE_SESSION_ID", parent)
+    session = project / "never-read-native.jsonl"
+    session.write_text(SECRET, encoding="utf-8")
     observer = WorkspaceActivity(
         workspace=workspace,
         workspace_id=recording_history,
@@ -166,6 +119,19 @@ def lead_scene(request, tmp_path, monkeypatch, recording_history):
         last_request_goal=None,
     )
 
+    scene.telemetry = [_sample(scene, parent)]
+
+    def observed(vendor, session_id, *, workspace_id):
+        assert workspace_id == "fixture-workspace"
+        return [
+            row
+            for row in scene.telemetry
+            if row["vendor"] == vendor
+            and session_id in (row["conversation_id"], row["session_id"], row["parent_agent_id"])
+        ]
+
+    monkeypatch.setattr(history, "agent_telemetry", observed)
+
     def publish(document, native_provenance):
         if scene.failure == "delivery":
             # The Host's own observation owner refuses; nothing is filed.
@@ -204,6 +170,7 @@ def lead_scene(request, tmp_path, monkeypatch, recording_history):
             return read_session_usage(
                 requested,
                 binding,
+                workspace_id="fixture-workspace",
                 publish=lambda document: publish(document, native_provenance),
                 goal_id=None if goal is None else str(goal.goal_id),
             )
@@ -283,13 +250,8 @@ def test_lead_reading_from_nested_cwd_is_independent_of_child_stop_and_idempoten
     assert first[0]["status"] == "DELIVERED"
     again = lead_readings(scene.nested, dict(os.environ), workspace=scene.workspace)
     assert again[0]["status"] == "DELIVERED"
-    for reading, bytes_read in ((first[0], scene.session.stat().st_size), (again[0], 0)):
-        assert (
-            reading["read_through"],
-            reading["total_bytes"],
-            reading["bytes_read"],
-            reading["rescan"],
-        ) == (scene.session.stat().st_size, scene.session.stat().st_size, bytes_read, False)
+    for reading in (first[0], again[0]):
+        assert reading["source"] == "DUCKLAKE_OTLP"
         (member,) = reading["participants"]
         assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
             scene.parent,
@@ -316,7 +278,7 @@ def test_lead_workspace_mismatch_and_off_never_read_or_deliver(lead_scene, monke
     def no_read(*_args, **_kwargs):
         pytest.fail("A refused workspace or OFF binding must not read usage.")
 
-    monkeypatch.setattr(native_bridge, "read_session", no_read)
+    monkeypatch.setattr(history, "agent_telemetry", no_read)
     for environment in (
         {},
         {"CODEX_THREAD_ID": "other-session"},
@@ -451,20 +413,13 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
     scene = lead_scene
     assert run(scene, capsys, {"operation": "GOAL_TAKE", "goal_id": scene.goal_id})[0] == 0
     (first,) = scene.observer.read_external(ExternalActivityReadQuery())["items"]
-    records = [json.loads(line) for line in scene.session.read_text(encoding="utf-8").splitlines()]
-    later = records[-1]
-    updates = []
+    later = scene.telemetry[0].copy()
+    later["event_id"] = "later"
     if change == "timestamp":
-        later["timestamp"] = (AT + timedelta(seconds=7)).isoformat()
-    elif scene.host == "codex":
-        updates.append(
-            {"type": "turn_context", "payload": {"model": "gpt-6-luna", "effort": "xhigh"}}
-        )
+        later["time_ns"] = int((AT + timedelta(seconds=7)).timestamp() * 1e9)
     else:
         later["effort"] = "xhigh"
-    updates.append(later)
-    with scene.session.open("a", encoding="utf-8") as stream:
-        stream.write("\n".join(json.dumps(row) for row in updates) + "\n")
+    scene.telemetry.append(later)
     receipt = lead_readings(
         scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id
     )
@@ -484,16 +439,18 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
         assert before[name] == after[name]
     assert after["responses"] == "1"
     if change == "timestamp":
-        assert after["last_at"] == later["timestamp"] and after["last_at"] != before["last_at"]
+        assert (
+            after["last_at"] == (AT + timedelta(seconds=7)).isoformat()
+            and after["last_at"] != before["last_at"]
+        )
     else:
         assert after["efforts"] == "xhigh" and after["efforts"] != before.get("efforts")
     (warm,) = lead_readings(
         scene.nested, dict(os.environ), workspace=scene.workspace, goal=scene.goal_id
     )
-    assert warm["status"] == "DELIVERED" and warm["bytes_read"] == 0
+    assert warm["status"] == "DELIVERED" and warm["source"] == "DUCKLAKE_OTLP"
     for reading in (receipt[0], warm):
-        assert reading["read_through"] == reading["total_bytes"] == scene.session.stat().st_size
-        assert reading["rescan"] is False
+        assert reading["source"] == "DUCKLAKE_OTLP"
         (member,) = reading["participants"]
         assert (member["agent_id"], member["role"], member["status"], member["models"]) == (
             scene.parent,
@@ -518,7 +475,7 @@ def test_a_valid_later_response_block_forms_a_new_snapshot_without_counting_it_t
     "failure,reason",
     [
         (None, None),
-        ("missing", "native_bridge.lead_usage_file_missing"),
+        ("missing", "native_bridge.lead_usage_not_observed"),
         ("read", "native_bridge.lead_usage_read_failed"),
         ("delivery", "activity.storage_unavailable"),
         ("unexpected", "native_bridge.lead_usage_read_failed"),
@@ -536,13 +493,13 @@ def test_submit_reads_before_send_and_usage_failure_preserves_cli_output(
     scene = lead_scene
     scene.failure = failure
     if failure == "missing":
-        scene.session.unlink()
+        scene.telemetry.clear()
     elif failure == "read":
 
         def unreadable(*_args, **_kwargs):
             raise OSError(SECRET * 300)
 
-        monkeypatch.setattr(native_bridge, "read_session", unreadable)
+        monkeypatch.setattr(history, "agent_telemetry", unreadable)
     document = (
         {
             "operation": operation,
@@ -577,71 +534,38 @@ def test_submit_reads_before_send_and_usage_failure_preserves_cli_output(
         assert diagnostic["detail"] and diagnostic["next_action"]
 
 
-def _write_native(path: Path, records: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8", newline="\n"
-    )
+def _sample(scene, agent):
+    return {
+        "event_id": agent,
+        "vendor": scene.host,
+        "signal": "logs",
+        "name": "api_request",
+        "conversation_id": scene.parent if scene.host == "codex" else None,
+        "session_id": scene.parent if scene.host == "claude-code" else None,
+        "agent_id": agent,
+        "parent_agent_id": None,
+        "agent_role": None,
+        "model": "gpt-6-luna" if scene.host == "codex" else "claude-sonnet-5-5",
+        "effort": "high",
+        "response_id": "synthetic-response",
+        "time_ns": int(AT.timestamp() * 1e9),
+        "input_tokens": 20 if scene.host == "codex" else 15,
+        "uncached_input_tokens": 15,
+        "cache_read_tokens": 5,
+        "cache_write_tokens": 0,
+        "output_tokens": 3,
+        "model_seconds": 0.25,
+    }
 
 
 def _own_child(scene):
-    child = str(uuid4()) if scene.host == "codex" else "synthetic-child-" + uuid4().hex
-    records = [json.loads(line) for line in scene.session.read_text("utf-8").splitlines()]
-    if scene.host == "codex":
-        path = scene.session.with_name(scene.session.name.replace(scene.parent, child))
-        records[0] = {
-            "type": "session_meta",
-            "payload": {
-                "id": child,
-                "source": {
-                    "subagent": {
-                        "thread_spawn": {
-                            "parent_thread_id": scene.parent,
-                            "agent_role": "alphalattice_risk",
-                        }
-                    }
-                },
-            },
-        }
-    else:
-        path = scene.session.parent / scene.parent / "subagents" / f"agent-{child}.jsonl"
-        records.insert(
-            0,
-            {
-                "type": "user",
-                "sessionId": scene.parent,
-                "agentId": child,
-                "isSidechain": True,
-                "message": {"content": SECRET},
-            },
-        )
-    _write_native(path, records)
-    if scene.host == "codex":
-        # The lead's own rollout names the child it started; nothing else selects it.
-        item = {"type": "SubAgentActivity", "kind": "started", "agent_thread_id": child}
-        with scene.session.open("a", encoding="utf-8") as stream:
-            stream.write(
-                json.dumps(
-                    {"type": "event_msg", "payload": {"type": "item_completed", "item": item}}
-                )
-                + "\n"
-            )
-    if scene.host == "claude-code":
-        # The host's retained sidecar supplies role and direct spawn depth; neither is
-        # inferred from the filename, assigned role or a card's model pin.
-        path.with_suffix(".meta.json").write_text(
-            json.dumps(
-                {
-                    "agentType": "alphalattice_risk",
-                    "spawnDepth": 1,
-                    "toolUseId": "synthetic-tool-use",
-                    "description": SECRET,
-                }
-            ),
-            encoding="utf-8",
-            newline="\n",
-        )
-    return child, path
+    child = str(uuid4())
+    row = _sample(scene, child) | {
+        "parent_agent_id": scene.parent,
+        "agent_role": "alphalattice_risk",
+    }
+    scene.telemetry.append(row)
+    return child, scene.session
 
 
 def _read_owned_usage(scene, participant, child=None):
@@ -649,7 +573,11 @@ def _read_owned_usage(scene, participant, child=None):
     binding = NativeResearchBinding.read(scene.project)
     assert binding is not None
     result = read_session_usage(
-        scene.project, binding, publish=scene.publish, goal_id=scene.goal_id
+        scene.project,
+        binding,
+        workspace_id="fixture-workspace",
+        publish=scene.publish,
+        goal_id=scene.goal_id,
     )
     if result["status"] == "SKIPPED":
         return result
@@ -667,59 +595,51 @@ def _rows(scene, agent):
 
 
 def test_a_child_usage_snapshot_needs_exact_parent_binding_but_no_lifecycle_hook(lead_scene):
-    """BEHAVIOUR: own child counts are real and idempotent without claiming hook authorship."""
+    """Explicit native lineage supplies counts, never member-key or authorship authority."""
     scene = lead_scene
     child, path = _own_child(scene)
     first = _read_owned_usage(scene, "child", child)
-    assert {key: first[key] for key in ("agent_id", "role", "status", "models")} == {
-        "agent_id": child,
-        "role": "alphalattice_risk",
-        "status": "DELIVERED",
-        "models": 1,
-    }
     warm = _read_owned_usage(scene, "child", child)
-    assert warm == {**first, "bytes_read": 0}
-    assert warm["specialist_verified"] is True
+    assert first == warm
+    assert (first["agent_id"], first["role"], first["status"], first["models"]) == (
+        child,
+        "alphalattice_risk",
+        "DELIVERED",
+        1,
+    )
+    assert first["specialist_verified"] is False
     (row,) = _rows(scene, child)
-    assert row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
-    assert row["authority"] == "AGENT_PROPOSAL"
     subject = row["payload"]["subject"]
-    assert (subject["native_session_id"], subject["native_agent_id"], subject["role"]) == (
+    assert (
+        row["payload"]["event_kind"] == "NATIVE_AGENT_USAGE"
+        and row["authority"] == "AGENT_PROPOSAL"
+    )
+    assert (subject["native_session_id"], subject["native_agent_id"], subject["observed_role"]) == (
         scene.parent,
         child,
         "alphalattice_risk",
     )
+    assert subject["specialist_verified"] == "false" and "role" not in subject
     assert (subject["responses"], subject["input_tokens"], subject["output_tokens"]) == (
         "1",
         "15",
         "3",
     )
     assert subject["input_channel"] == (
-        "CODEX_SESSION_FILE" if scene.host == "codex" else "CLAUDE_CODE_SESSION_FILE"
+        "CODEX_OTLP" if scene.host == "codex" else "CLAUDE_CODE_OTLP"
     )
+    assert subject["goal_id"] == scene.goal_id
     assert "native_hook_event" not in subject and "authorship_basis" not in subject
     assert SECRET not in json.dumps(row) and str(path) not in json.dumps(row)
-    assert subject["goal_id"] == scene.goal_id
-    binding = NativeResearchBinding.read(scene.project)
-    assert binding is not None
-    with ExitStack() as locks:
-        for path in (scene.workspace / "runtime/native-usage").glob("*.lock"):
-            locks.enter_context(WorkspaceLock(path))
-        busy = read_session_usage(scene.project, binding, publish=scene.publish)
-    assert busy["status"] == "BUSY"
-    assert {row["agent_id"] for row in busy["participants"]} == {scene.parent, child}
-    assert all(row["status"] == "BUSY" for row in busy["participants"])
-    assert busy["reason"] == "native_bridge.usage_reader_busy"
     assert set_usage_reading(scene.workspace, enabled=False)["usage_reading"] == "OFF"
-    cache = scene.workspace / "runtime/native-usage"
-    assert list(cache.iterdir()) == []
+    assert _read_owned_usage(scene, "child", child)["status"] == "SKIPPED"
     assert set_usage_reading(scene.workspace, enabled=True)["usage_reading"] == "READ"
     assert _read_owned_usage(scene, "child", child)["status"] == "DELIVERED"
     assert (
         unbind_session(scene.project, session_id=scene.parent, host=scene.host)["status"]
         == "DETACHED"
     )
-    assert list(cache.iterdir()) == []
+    assert not (scene.workspace / "runtime/native-usage").exists()
 
 
 def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_reading(lead_scene):
@@ -736,7 +656,7 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
     first = _read_owned_usage(scene, "child", child)
     warm = _read_owned_usage(scene, "child", child)
     assert first["status"] == "DELIVERED" and warm == first
-    assert warm["bytes_read"] == 0
+    assert "bytes_read" not in warm
     assert len(_rows(scene, child)) == 1
 
 
@@ -745,23 +665,19 @@ def test_a_child_usage_delivery_failure_is_visible_and_retry_keeps_the_same_read
 def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_separately(
     lead_scene, mismatch
 ):
-    """The child's own parent is required, while specialist verification remains a separate fact."""
     scene = lead_scene
-    child, path = _own_child(scene)
-    records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
-    meta = records[0]["payload"]
-    spawn = meta["source"]["subagent"]["thread_spawn"]
+    child, _path = _own_child(scene)
+    row = scene.telemetry[-1]
     if mismatch == "parent":
-        spawn["parent_thread_id"] = "another-parent"
-    elif mismatch == "role":
-        spawn["agent_role"] = "alphalattice_factor"
+        row["parent_agent_id"] = "another-parent"
     elif mismatch == "missing_parent":
-        del spawn["parent_thread_id"]
+        row["parent_agent_id"] = None
+    elif mismatch == "role":
+        row["agent_role"] = "alphalattice_factor"
     elif mismatch == "missing_role":
-        del spawn["agent_role"]
+        row["agent_role"] = None
     else:
-        meta["id"] = "another-child"
-    _write_native(path, records)
+        row["agent_id"] = "another-child"
     reading = _read_owned_usage(scene, "child", child)
     if mismatch in {"role", "missing_role"}:
         role = "alphalattice_factor" if mismatch == "role" else None
@@ -772,8 +688,8 @@ def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_
             1,
         )
         assert reading["specialist_verified"] is False
-        (row,) = _rows(scene, child)
-        subject = row["payload"]["subject"]
+        (filed,) = _rows(scene, child)
+        subject = filed["payload"]["subject"]
         assert subject["specialist_verified"] == "false" and "role" not in subject
         assert subject.get("observed_role") == role
         assert (subject["responses"], subject["input_tokens"], subject["output_tokens"]) == (
@@ -782,8 +698,7 @@ def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_
             "3",
         )
     else:
-        assert (reading["agent_id"], reading["status"], reading["reason"]) == (
-            child,
+        assert reading is None or (reading["status"], reading["reason"]) == (
             "UNAVAILABLE",
             "native_bridge.child_usage_binding_unverified",
         )
@@ -792,57 +707,53 @@ def test_a_codex_child_usage_requires_its_recorded_parent_and_verifies_its_role_
 
 @pytest.mark.parametrize("lead_scene", ["claude-code"], indirect=True)
 def test_a_claude_child_usage_reads_only_the_bound_parents_own_subagent_file(lead_scene):
-    """BEHAVIOUR: the same parent id under another native project names no child of it."""
+    """Another conversation supplies no counts to this bound session."""
     scene = lead_scene
-    child, path = _own_child(scene)
-    foreign = scene.session.parent.parent / "other-project" / scene.parent / "subagents" / path.name
-    foreign.parent.mkdir(parents=True)
-    foreign.write_bytes(path.read_bytes())
-    path.unlink()
+    child, _path = _own_child(scene)
+    scene.telemetry[-1].update(session_id="another-session", parent_agent_id=None)
     assert _read_owned_usage(scene, "child", child) is None
     assert _rows(scene, child) == []
 
 
 @pytest.mark.parametrize("participant", ["lead", "child"])
-@pytest.mark.parametrize("model_count", [32, 33])
+@pytest.mark.parametrize(
+    "model_count,missing",
+    [
+        pytest.param(32, None, id="all-models"),
+        pytest.param(33, None, id="overflow"),
+        pytest.param(1, "input_tokens", id="missing-input"),
+        pytest.param(1, "output_tokens", id="missing-output"),
+    ],
+)
 def test_an_optional_usage_snapshot_publishes_all_allowed_models_or_no_overflow_rows(
-    lead_scene, participant, model_count
+    lead_scene, participant, model_count, missing
 ):
-    """BEHAVIOUR: model overflow cannot publish a plausible truncated set of cumulative totals."""
+    """A complete snapshot publishes all its models; overflow or incomplete counts files none."""
     scene = lead_scene
-    child, path = _own_child(scene) if participant == "child" else (None, scene.session)
-    existing = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
-    records = existing[:1] if scene.host == "codex" or participant == "child" else []
-    for number in range(model_count):
-        model = f"synthetic-model-{number}"
-        if scene.host == "codex":
-            records.extend(
-                [
-                    {"type": "turn_context", "payload": {"model": model, "effort": "high"}},
-                    {
-                        **existing[-1],
-                        "payload": {
-                            **existing[-1]["payload"],
-                            "response_id": f"synthetic-response-{number}",
-                        },
-                    },
-                ]
-            )
-        else:
-            records.append(
-                {
-                    **existing[-1],
-                    "message": {
-                        **existing[-1]["message"],
-                        "id": f"synthetic-response-{number}",
-                        "model": model,
-                    },
-                }
-            )
-    _write_native(path, records)
+    child, _path = _own_child(scene) if participant == "child" else (None, scene.session)
+    agent = child or scene.parent
+    own = next(row for row in scene.telemetry if row["agent_id"] == agent)
+    scene.telemetry[:] = [row for row in scene.telemetry if row["agent_id"] != agent]
+    scene.telemetry.extend(
+        own
+        | {
+            "model": f"synthetic-model-{n}",
+            "response_id": f"r{n}",
+            "event_id": f"event-{agent}-{n}",
+        }
+        for n in range(model_count)
+    )
+    if missing:
+        scene.telemetry.append(
+            own | {"response_id": "incomplete", "event_id": "incomplete", missing: None}
+        )
     result = _read_owned_usage(scene, participant, child)
     rows = _rows(scene, scene.parent if participant == "lead" else child)
-    if model_count == 33:
+    if missing:
+        assert result["status"] == "UNAVAILABLE"
+        assert result["reason"] == f"native_bridge.{participant}_usage_incomplete"
+        assert "models" not in result and rows == []
+    elif model_count == 33:
         assert result["status"] == "UNAVAILABLE" and result["read_limit"] == "models"
         assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
         assert "models" not in result and rows == []
@@ -857,34 +768,3 @@ def test_an_optional_usage_snapshot_publishes_all_allowed_models_or_no_overflow_
         assert all(row["payload"]["subject"]["input_tokens"] == "15" for row in rows)
         assert all(row["payload"]["subject"]["output_tokens"] == "3" for row in rows)
     assert SECRET not in json.dumps(result) + json.dumps(rows)
-
-
-@pytest.mark.parametrize("participant", ["lead", "child"])
-@pytest.mark.parametrize("limit", ["max_bytes", "max_line_bytes"])
-def test_an_overbound_native_usage_scan_publishes_none_of_its_complete_prefix(
-    lead_scene, monkeypatch, participant, limit
-):
-    """A prefix publishes no total; an oversized record keeps its exact refusal."""
-    scene = lead_scene
-    child, path = _own_child(scene) if participant == "child" else (None, scene.session)
-    records = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
-    records.append({"type": "user", "payload": {"content": SECRET * 1000}})
-    _write_native(path, records)
-    original = path.read_bytes()
-    # Calibrate only the public byte policy, keeping the real parser and publication owners.
-    monkeypatch.setattr(
-        native_bridge,
-        "USAGE_READ_BYTES" if limit == "max_bytes" else "USAGE_LINE_BYTES",
-        1024,
-    )
-    result = _read_owned_usage(scene, participant, child)
-    if limit == "max_bytes":
-        assert result["status"] == "PARTIAL"
-        assert result["reason"] == "native_bridge.usage_catching_up"
-        assert result["read_through"] < result["total_bytes"] and result["bytes_read"] <= 1024
-    else:
-        assert result["status"] == "UNAVAILABLE" and result["read_limit"] == limit
-        assert result["reason"] == f"native_bridge.{participant}_usage_read_failed"
-    assert "models" not in result
-    assert _rows(scene, scene.parent if participant == "lead" else child) == []
-    assert path.read_bytes() == original and SECRET not in json.dumps(result)

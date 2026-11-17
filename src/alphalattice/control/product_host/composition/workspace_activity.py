@@ -1704,6 +1704,22 @@ def _usage_view(usage: dict[str, Any]) -> dict[str, object]:
     if isinstance(reason := view["reason"], str):
         words = refusal_words(reason)
         view.update({key: words[key] for key in ("detail", "next_action") if key in words})
+    if isinstance(seconds := usage.get("model_seconds"), (float, int)) and 0 <= seconds < float(
+        "inf"
+    ):
+        view["model_seconds"] = seconds
+    links = usage.get("lineage")
+    if type(unplaced := usage.get("unplaced")) is int and unplaced >= 0:
+        view["unplaced"] = unplaced
+    if isinstance(links, (list, tuple)):
+        valid = [
+            list(pair)
+            for pair in links
+            if isinstance(pair, (list, tuple))
+            and len(pair) == 2
+            and all(isinstance(value, str) and _SESSION_ID.fullmatch(value) for value in pair)
+        ]
+        view["lineage"], view["lineage_count"] = valid[:UNVERIFIED_LIMIT], len(valid)
     unverified = usage.get("unverified")
     if isinstance(unverified, list) and unverified:
         view["unverified"] = [

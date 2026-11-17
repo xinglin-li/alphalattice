@@ -61,7 +61,7 @@ def _lead_usage_file(tmp_path, monkeypatch):
     return path
 
 
-@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_file"))
+@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_telemetry"))
 def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
     live,
     tmp_path,
@@ -84,21 +84,11 @@ def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
         event["transcript_path"] = "SECRET-PATH"
     elif problem == "child":
         _session(monkeypatch, "claude-code", "synthetic-child")
-    elif problem == "missing_file":
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "absent-host"))
     answer = client.publish_native_event(project, event)
-    if problem == "missing_file":
+    if problem == "missing_telemetry":
         assert answer == {
             "status": "UNAVAILABLE",
-            "participants": [
-                {
-                    "agent_id": "fixture-parent",
-                    "role": "research_lead",
-                    "status": "UNAVAILABLE",
-                    "reason": "native_bridge.lead_usage_file_missing",
-                }
-            ],
-            "reason": "native_bridge.lead_usage_file_missing",
+            "reason": "native_bridge.lead_usage_not_observed",
         }
     else:
         assert answer["status"] == "REFUSED"
@@ -382,6 +372,7 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     assert named_goal["goal_id"] in shown and anonymous_goal["goal_id"] not in shown
     _session(monkeypatch, "codex", "sandboxed")
     _usage_files(tmp_path, monkeypatch, "sandboxed")
+    _usage_observation(live, "codex", "sandboxed")
     reading = LocalResearchClient(live.workspace).publish_native_event(
         root, {"source": "native_usage_read"}
     )
@@ -439,6 +430,19 @@ def test_two_named_sessions_keep_their_own_workspace_and_detach_only_their_slot(
         second_before = second.record_path(project).read_bytes()
         assert second.workspace == second_workspace
         assert first.record_path(project).read_bytes() == first_before
+        _usage_observation(live, host, "fixture-first")
+        _session(monkeypatch, host, "fixture-first")
+        first_client = LocalResearchClient(live.workspace)
+        reading = first_client.publish_native_event(project, {"source": "native_usage_read"})
+        assert reading["status"] == "DELIVERED", reading
+        # Equal native ids in the other Host must never enter this workspace's activity.
+        _usage_observation(second_host, host, "fixture-first", output_tokens=999)
+        reading = first_client.publish_native_event(project, {"source": "native_usage_read"})
+        assert reading["status"] == "DELIVERED", reading
+        assert {
+            row["payload"]["subject"]["output_tokens"]
+            for row in first_client.read_external()["items"]
+        } == {"4" if host == "codex" else "3"}
         for session, workspace in (
             ("fixture-first", live.workspace),
             ("fixture-second", second_workspace),
@@ -482,6 +486,7 @@ def test_two_hosts_with_the_same_session_text_have_separate_sources_and_detach(
         binding = NativeResearchBinding.read(project, session=(host, session))
         bindings[host] = binding
         assert (binding.host, binding.session_id) == (host, session)
+        _usage_observation(live, host, session)
         reading = client.publish_native_event(project, {"source": "native_usage_read"})
         assert reading["status"] == "DELIVERED", reading
     rows = client.read_external()["items"]
@@ -587,6 +592,46 @@ def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     assert binding.record_path(project).read_bytes() == before
 
 
+def _usage_observation(live, host: str, session: str, *, output_tokens: int | None = None) -> None:
+    """Seed numerical exports through the held Host's catalog, independent of metadata files."""
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.telemetry import decode
+
+    codex = host == "codex"
+    service = "codex" if codex else "claude_code"
+    values = {
+        "conversation.id" if codex else "session.id": session,
+        "event.name": f"{service}.api_request",
+        "request_id": "fixture-response",
+        "model": "gpt-6-luna" if codex else "claude-sonnet-5-5",
+        "gen_ai.usage.input_tokens": 9 if codex else 7,
+        "gen_ai.usage.cache_read.input_tokens": 2,
+        "gen_ai.usage.cache_write.input_tokens": 0 if codex else 1,
+        "gen_ai.usage.output_tokens": output_tokens
+        if output_tokens is not None
+        else 4
+        if codex
+        else 3,
+    }
+    record = {
+        "timeUnixNano": str(int(datetime.now(UTC).timestamp() * 1e9)),
+        "attributes": [
+            {
+                "key": key,
+                "value": {"intValue": str(value)}
+                if isinstance(value, int)
+                else {"stringValue": value},
+            }
+            for key, value in values.items()
+        ],
+    }
+    payload = {"resourceLogs": [{"scopeLogs": [{"logRecords": [record]}]}]}
+    rows = decode(
+        "logs", json.dumps(payload).encode(), "application/json", workspace_id=live.workspace_id
+    )
+    history.receive_agent_telemetry(rows)
+
+
 def _usage_files(tmp_path, monkeypatch, session: str) -> None:
     """One synthetic usage file for ``session`` under each host's own root."""
     _lead_usage_file(tmp_path, monkeypatch)
@@ -687,6 +732,7 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     assert bound["attachment_preflight"]["status"] == "READY"
     binding = NativeResearchBinding.read(clone)
     assert binding.workspace == live.workspace and binding.host == host
+    _usage_observation(live, host, "fixture-parent")
     reading = client.publish_native_event(clone, {"source": "native_usage_read"})
     assert reading["status"] == "DELIVERED", reading
     (row,) = client.read_external()["items"]

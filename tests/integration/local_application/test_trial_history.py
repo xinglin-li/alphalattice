@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from dataclasses import replace
@@ -44,6 +45,57 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the Host's data root
     sealed = workflow.prepare(document, **who)
     history.open_history("w-risk", "risk", tmp_path)
+    from alphalattice.interface.local_application import trial_history
+    from alphalattice.kernel.data_layer.telemetry import decode
+
+    started = trial_history.started
+
+    def native_observation(sealed):
+        trial = started(sealed)
+        fields = {
+            "service.name": "codex",
+            "conversation.id": "trial-session",
+            "alphalattice.trial_id": trial.trial_id,
+            "model": "synthetic-model",
+            "gen_ai.usage.input_tokens": 15,
+            "gen_ai.usage.cache_read.input_tokens": 3,
+            "gen_ai.usage.cache_write.input_tokens": 0,
+            "gen_ai.usage.output_tokens": 5,
+        }
+        body = {
+            "resourceLogs": [
+                {
+                    "scopeLogs": [
+                        {
+                            "logRecords": [
+                                {
+                                    "attributes": [
+                                        {
+                                            "key": key,
+                                            "value": {
+                                                "intValue"
+                                                if isinstance(value, int)
+                                                else "stringValue": str(value)
+                                            },
+                                        }
+                                        for key, value in fields.items()
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        assert (
+            history.receive_agent_telemetry(
+                decode("logs", json.dumps(body).encode(), "application/json", workspace_id="w-risk")
+            )
+            == 1
+        )
+        return trial
+
+    monkeypatch.setattr(trial_history, "started", native_observation)
     try:
         registry = DuckDbTaskControlRegistry(
             resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
@@ -75,6 +127,20 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
             ("completed", None, "[0]", None, None),
         ]
         assert trials[0][5] == trials[1][5]
+        sums = con.execute(
+            "SELECT attrs FROM event WHERE type = 'trial' AND phase = 'completed' ORDER BY seq"
+        ).fetchall()
+        assert [json.loads(row[0])["agent_telemetry"] for row in sums] == [
+            {
+                "status": "MEASURED",
+                "model_seconds": None,
+                "responses": 1,
+                "input_tokens": 12,
+                "cache_read_tokens": 3,
+                "cache_write_tokens": 0,
+                "output_tokens": 5,
+            }
+        ] * 2
         assert [row[6] for row in trials] == [str(task.task_id), None]
         (trace_id,) = con.execute(
             "SELECT e.trace_id FROM trial t JOIN event e ON e.seq=t.registered_seq "

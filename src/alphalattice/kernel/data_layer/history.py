@@ -420,6 +420,23 @@ def record(
     names another; None outside a Host whose history is open."""
     if not recording():
         return None
+    if type_ == "trial" and more.get("phase") in {"completed", "failed", "cancelled"}:
+        try:
+            with _lock:
+                port = store()
+                native = (
+                    {"status": "UNMEASURED"}
+                    if port is None
+                    else port.trial_agent_usage(
+                        str(subject[1]), workspace_id=str(more.get("workspace", _open["workspace"]))
+                    )
+                )
+        except Exception as error:
+            logging.getLogger(__name__).warning(
+                "agent_telemetry.trial_unmeasured: %s", type(error).__name__
+            )
+            native = {"status": "UNMEASURED"}
+        attrs = dict(attrs or {}) | {"agent_telemetry": native}
     more.setdefault("workspace", _open["workspace"])
     return int(_open["log"].record(type_, subject, attrs, **more))
 
@@ -440,6 +457,34 @@ def flush() -> None:
 def opened_log() -> tuple[HostLog, str] | None:
     """The Host's log and its workspace while its history records; None outside a Host."""
     return (_open["log"], str(_open["workspace"])) if recording() else None
+
+
+def receive_agent_telemetry(rows: list[dict[str, Any]]) -> int:
+    """The Host's existing log lifetime alone may open the catalog's writer, lazily."""
+    with _lock:
+        port = store()
+        if port is None:
+            raise DataError(
+                "The Host has no writable catalog; start a Host with the data extra",
+                code="agent_telemetry.host_unavailable",
+            )
+        return port.telemetry_batch(rows)
+
+
+def agent_telemetry(host: str, session: str, *, workspace_id: str) -> list[dict[str, Any]] | None:
+    """Read the serving Host's exact workspace/vendor/session; absent means unmeasured."""
+    with _lock:
+        port = store()
+        return (
+            None if port is None else port.agent_telemetry(host, session, workspace_id=workspace_id)
+        )
+
+
+def unplaced_agent_telemetry(*, workspace_id: str) -> int | None:
+    """Count this Host workspace's records without a conversation/session identity."""
+    with _lock:
+        port = store()
+        return None if port is None else port.unplaced_telemetry(workspace_id=workspace_id)
 
 
 def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:

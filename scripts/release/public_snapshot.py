@@ -25,6 +25,10 @@ from typing import Any
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 PROVENANCE_SCHEMA = "alphalattice.release.snapshot-provenance"
 PROJECTION_LOADERS = {
+    "config/registries/agent-surface.json": (
+        "from alphalattice.interface.local_application.cli_contract import agent_surface_manifest\n"
+        "agent_surface_manifest()"
+    ),
     "config/registries/antipattern-baseline.json": (
         "sys.path.insert(0, str(root / 'scripts'))\n"
         "from check_test_shape import load_antipattern_baseline\nload_antipattern_baseline(root)"

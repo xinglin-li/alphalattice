@@ -72,6 +72,20 @@ def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, leg
     assert refused.value.failure.code == f"data_layer.{code}"
 
 
+@pytest.mark.proves("data_layer.a_document_is_keyed_by_its_doc_id")
+def test_a_legacy_document_batch_is_keyed_by_its_doc_id_with_no_market():
+    """A legacy evidence document batch, which names no market, is staged; two bodies of one
+    doc_id in one admission are refused by name, since a doc_id's versions are admitted apart."""
+    doc = {"doc_id": str(uuid.UUID(int=1)), "doc_digest": "a" * 64}
+    doc |= {"available_at": "2024-01-05 21:30:00+00"}
+    other = doc | {"doc_id": str(uuid.UUID(int=2)), "doc_digest": "b" * 64}
+    staged = admissible("evidence_doc", "sec", arrow([doc, other]), legacy=True)
+    with pytest.raises(DataError) as refused:
+        admissible("evidence_doc", "sec", arrow([doc, doc | {"doc_digest": "c" * 64}]), legacy=True)
+    assert staged.column("doc_id").to_pylist() == [doc["doc_id"], other["doc_id"]]
+    assert refused.value.failure.code == "data_layer.admission_key_repeated"
+
+
 @pytest.mark.proves("data_layer.a_timed_row_needs_its_source_time")
 @pytest.mark.parametrize(
     "rows",

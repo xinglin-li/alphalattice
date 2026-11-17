@@ -102,8 +102,13 @@ def sample(tmp_path_factory):
             },
         )
         port.lake.execute(
-            "INSERT INTO lake.world.evidence_doc VALUES ('document', uuidv7(), 'synthetic',"
-            " 'synthetic filing', NULL, now(), now(), false, 'document-admission')"
+            "INSERT INTO lake.world.evidence_doc (doc_id, version_id, provider_id, source_ref,"
+            " doc_digest, byte_count, media_type, title, document_type, entity_id,"
+            " available_at, availability_basis, right_of_use, known_asof, retracted,"
+            " admission_id) VALUES (uuidv7(), uuidv7(), 'synthetic', 'synthetic filing',"
+            " 'document', 1, 'text/html', 'synthetic filing', '10-K', 'AAA', now(),"
+            " 'OFFICIAL_ACCEPTANCE', 'SEC_PUBLIC_OFFICIAL_ACCESS', now(), false,"
+            " 'document-admission')"
         ).complete()
         with closing(sqlite3.connect(root / "machine/index.sqlite")) as index:
             index.enable_load_extension(True)

@@ -229,17 +229,28 @@
   "catalog.world.evidence_doc": {
    "home": "world",
    "key": [
-    "doc_digest",
+    "doc_id",
     "version_id"
    ],
    "id": {
-    "doc_digest": "digest: the document's content digest, its blob's address",
+    "doc_id": "uuid7",
     "version_id": "uuid7"
    },
+   "links": [
+    "provider_id",
+    "amends_doc_id"
+   ],
    "times": {
     "published_at": "utc_timestamp",
+    "accepted_at": "source_clock",
+    "available_at": "utc_timestamp",
+    "report_period_end": "market_date",
+    "retrieved_at": "utc_timestamp",
     "known_at": "utc_timestamp",
     "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
    }
   },
   "catalog.world.listing": {
@@ -1469,12 +1480,6 @@
    "says": "A definition's id is a digest of its family and first name, not an id the Host mints.",
    "problems": [
     "id: log.definition_lineage.definition_id: a digest id"
-   ]
-  },
-  "evidence-doc-digest": {
-   "says": "An evidence document is keyed by its content digest, though the world is not recomputed.",
-   "problems": [
-    "id: catalog.world.evidence_doc.doc_digest: a digest id"
    ]
   },
   "prediction-links": {

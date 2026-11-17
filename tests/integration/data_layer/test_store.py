@@ -34,6 +34,7 @@ from alphalattice.kernel.data_layer.store import (
     repair,
     stage,
 )
+from alphalattice.kernel.data_layer.telemetry import decode
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
@@ -120,6 +121,117 @@ def owe(port: StorePort) -> dict:
     ):
         port.lake.execute(sql).complete()
     return owed
+
+
+@pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
+@pytest.mark.parametrize("case", ("conversation", "workspace"))
+def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
+    """One sanitized export survives restart, without duplicate delivery or invented scope."""
+
+    def batch(session, workspace="w1"):
+        attributes = (
+            [{"key": "conversation.id", "value": {"stringValue": session}}] if session else []
+        )
+        attributes += [
+            {"key": "model", "value": {"stringValue": "synthetic-model"}},
+            {"key": "alphalattice.trial_id", "value": {"stringValue": "trial-1"}},
+            {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "15"}},
+            {"key": "gen_ai.usage.cache_read.input_tokens", "value": {"intValue": "5"}},
+            {"key": "gen_ai.usage.cache_write.input_tokens", "value": {"intValue": "0"}},
+            {"key": "gen_ai.usage.output_tokens", "value": {"intValue": "3"}},
+        ]
+        return decode(
+            "logs",
+            json.dumps(
+                {
+                    "resourceLogs": [
+                        {
+                            "resource": {
+                                "attributes": [
+                                    {"key": "service.name", "value": {"stringValue": "codex"}}
+                                ]
+                            },
+                            "scopeLogs": [
+                                {"logRecords": [{"timeUnixNano": "123", "attributes": attributes}]}
+                            ],
+                        }
+                    ]
+                }
+            ).encode(),
+            "application/json",
+            workspace_id=workspace,
+        )
+
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        try:
+            if case == "workspace":
+                first, second = batch("conversation-1"), batch("conversation-1", "w2")
+                assert port.telemetry_batch(first) == 1
+                assert port.telemetry_batch(second) == 1
+                assert port.telemetry_batch(second) == 0
+                assert port.telemetry_batch(batch(None, "w2")) == 1
+                for workspace in ("w1", "w2"):
+                    (row,) = port.agent_telemetry("codex", "conversation-1", workspace_id=workspace)
+                    assert row["workspace_id"] == workspace
+                assert port.agent_telemetry("codex", "conversation-1", workspace_id="w3") == []
+                assert port.unplaced_telemetry(workspace_id="w1") == 0
+                assert port.unplaced_telemetry(workspace_id="w2") == 1
+                assert port.trial_agent_usage("trial-1", workspace_id="w1")["output_tokens"] == 3
+                assert port.trial_agent_usage("trial-1", workspace_id="w2")["output_tokens"] == 6
+                return
+            assert port.telemetry_batch(batch("conversation-1")) == 1
+            assert port.telemetry_batch(batch("conversation-1")) == 0
+            assert port.telemetry_batch(batch("conversation-2") + batch(None)) == 2
+            (row,) = port.agent_telemetry("codex", "conversation-1", workspace_id="w1")
+            assert row["uncached_input_tokens"] == 10 and row["output_tokens"] == 3
+            assert row["agent_id"] is None and row["parent_agent_id"] is None
+            assert port.agent_telemetry("claude-code", "conversation-1", workspace_id="w1") == []
+            assert port.unplaced_telemetry(workspace_id="w1") == 1
+            totals = port.trial_agent_usage("trial-1", workspace_id="w1")
+            assert totals["status"] == "MEASURED"
+            assert totals["input_tokens"] == 30 and totals["output_tokens"] == 9
+            assert port.trial_agent_usage("absent", workspace_id="w1") == {
+                "status": "UNMEASURED",
+                "incomplete": 0,
+            }
+            from alphalattice.interface.local_application.native_bridge import (
+                NativeResearchBinding,
+                read_session_usage,
+            )
+            from alphalattice.kernel.data_layer import history
+
+            monkeypatch.setattr(
+                history,
+                "agent_telemetry",
+                lambda host, session, *, workspace_id: port.agent_telemetry(
+                    host, session, workspace_id=workspace_id
+                ),
+            )
+            posted = []
+
+            def publish(document):
+                posted.append(document)
+                return {"status": "APPENDED"}
+
+            receipt = read_session_usage(
+                root,
+                NativeResearchBinding("conversation-1", root, ()),
+                workspace_id="w1",
+                publish=publish,
+            )
+            assert receipt["status"] == "DELIVERED"
+            assert receipt["member_claims"] == "UNMEASURED" and receipt["lineage"] == []
+            assert posted[0]["subject"]["input_tokens"] == "10"
+            assert posted[0]["subject"]["input_channel"] == "CODEX_OTLP"
+        finally:
+            port.close()
+        port = StorePort.open(root, log)
+        try:
+            assert len(port.agent_telemetry("codex", "conversation-1", workspace_id="w1")) == 1
+            assert port.unplaced_telemetry(workspace_id="w1") == 1
+        finally:
+            port.close()
 
 
 @pytest.mark.proves("data_layer.repair_appends_each_owed_event_once")
@@ -464,6 +576,64 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         "data_layer.result_key_present",
         "data_layer.lineage_unregistered",
     ]
+
+
+A, B, C = ("a" * 64, "b" * 64, "c" * 64)  # three bodies' digests
+
+
+def document(doc_id: str, digest: str, available: str, **facts: str) -> dict:
+    """One legacy evidence document, as the evidence admission stages it."""
+    row = {"doc_id": doc_id, "provider_id": YF, "source_ref": doc_id, "doc_digest": digest}
+    row |= {"byte_count": 1, "media_type": "text/html", "title": "t", "document_type": "10-K"}
+    row |= {"entity_id": "AAA", "availability_basis": "OFFICIAL_ACCEPTANCE"}
+    return row | {"available_at": available, "right_of_use": "SEC_PUBLIC_OFFICIAL_ACCESS"} | facts
+
+
+@pytest.mark.proves("data_layer.a_legacy_document_is_known_from_its_availability")
+def test_a_legacy_document_is_known_from_its_availability_never_its_filing_date(root):
+    """A filing is known at its acceptance, not its filing date's midnight; a recorded import at
+    its capture; another body of a held document no earlier than its admission."""
+    filed, accepted = "2024-01-05 00:00:00+00", "2024-01-05 21:30:00+00"
+    filing = document(str(uuid.UUID(int=1)), A, accepted, published_at=filed)
+    filing |= {"published_precision": "DATE", "accepted_at": accepted}
+    capture = "2024-03-01 10:00:00+00"
+    recorded = document(str(uuid.UUID(int=2)), B, capture, published_at=filed)
+    recorded |= {"availability_basis": "RECORDED_IMPORT_CAPTURE_ACCEPTANCE_UNKNOWN"}
+    rule = {"family": "lag_rule", "name": "evidence-availability", "version": 1, "text": "at once"}
+    with HostLog.open(root) as log:
+        attrs = {key: rule[key] for key in ("family", "name", "version")}
+        text = canonical(rule | {"spec": {"lag_seconds": 0}}).decode()
+        log.record("definition.registered", ("definition", "evidence"), attrs, text=text)
+        port = StorePort.open(root, log)
+        for rows in ([filing, recorded], [filing | {"doc_digest": C}]):
+            with stage(
+                root, "evidence_doc", YF, arrow(rows), lag=("evidence-availability", 1)
+            ) as s:
+                port.commit(s)
+        admitted = log.clock()
+        read = port.lake.execute
+        known = read(
+            "SELECT doc_digest, epoch_us(known_asof), lag_rule FROM lake.world.evidence_doc"
+            " ORDER BY doc_digest"
+        ).fetchall()
+        seen = {
+            at: read(
+                f"SELECT list(doc_digest ORDER BY doc_digest) FROM evidence_doc_asof({at})"
+            ).fetchone()[0]
+            for at in (1_704_412_800_000_000, 1_704_490_200_000_000, 1_709_287_200_000_000)
+        }
+        port.close()
+    acceptance, captured = 1_704_490_200_000_000, 1_709_287_200_000_000
+    assert known[:2] == [
+        (A, acceptance, "evidence-availability"),
+        (B, captured, "evidence-availability"),
+    ]
+    assert known[2][0] == C and captured < known[2][1] <= admitted
+    assert seen == {
+        1_704_412_800_000_000: None,  # the filing date's midnight: nothing is public yet
+        acceptance: [A],
+        captured: [A, B],  # the held filing's other body is known only now
+    }
 
 
 HELD = {"listing_id": LISTING, "session_date": "2024-01-05", "open": 0.0, "close": 5.0} | WRITTEN

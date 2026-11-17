@@ -134,6 +134,9 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     "prospective child observation are checked separately.",
     ("session", "unbind"): "Remove this project's binding: the bound session's own, or the "
     "person's from their own shell, outside any agent session. The research is unchanged.",
+    ("session", "exporters"): "Print native agent exporter settings for the served Host; "
+    "only on the person's yes, write Claude Code's project settings. "
+    "Codex's user config is printed.",
 }
 """The client's own commands, answered by the client itself, as `serve` and `request` are; every
 other command is an operation of the registry (OP1)."""
@@ -591,7 +594,14 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--usage",
             choices=("read", "off"),
             default="read",
-            help="off: do not discover or read native Session files for model and token usage.",
+            help="off: neither receive nor read native telemetry for this Session's usage.",
+        )
+    elif (noun, verb) == ("session", "exporters"):
+        child.add_argument(
+            "--configure-claude",
+            action="store_true",
+            help="Only on the person's yes: merge the exporter environment into the project's "
+            ".claude/settings.local.json. Without this flag, print both agents' settings only.",
         )
     elif (noun, verb) == ("backup", "restore"):
         child.add_argument(
@@ -1774,6 +1784,47 @@ WORKSPACE_FREE: Final = frozenset({("session", "unbind")})
 person's own shell, which names none, may remove it."""
 
 
+def _exporters(args: argparse.Namespace, started: float) -> int:
+    """Print both native exporters; the explicit person-consent flag writes Claude's only."""
+    from alphalattice.interface.local_application.native_bridge import (  # lazy: exporters only
+        NativeBridgeError,
+        session_project,
+    )
+    from alphalattice.interface.local_application.native_setup import (  # lazy: exporters only
+        agent_exporters,
+    )
+
+    try:
+        connection = client.LocalResearchConnection.read(args.workspace)
+        project = (
+            session_project(args.workspace, "claude-code")
+            if args.configure_claude
+            else args.workspace
+        )
+        answer = agent_exporters(project, connection, configure_claude=args.configure_claude)
+    except client.LocalResearchClientError as error:
+        return _refused(error, started)
+    except (NativeBridgeError, OSError, ValueError) as error:
+        code = (
+            str(error)
+            if isinstance(error, NativeBridgeError)
+            else "native_bridge.configuration_path_invalid"
+        )
+        return _refused(code, started)
+    print(
+        answer_json(
+            envelope(
+                operation="AGENT_EXPORTERS",
+                outcome="OK",
+                body=answer,
+                elapsed_seconds=time.perf_counter() - started,
+                **_saved(args, answer),
+            )
+        )
+    )
+    return 0
+
+
 def _unbind(args: argparse.Namespace, started: float) -> int:
     """Remove this project's binding (`session unbind`): the bound session's own, or the
     person's from their own shell; never another project's."""
@@ -2032,6 +2083,8 @@ def _command(
         return _sandbox(args, started, sandbox)
     if getattr(args, "client_command", None) == ("session", "bind"):
         return _bind(args, started)
+    if getattr(args, "client_command", None) == ("session", "exporters"):
+        return _exporters(args, started)
     if getattr(args, "client_command", None) == ("problem", "report"):
         return _problem(args, started)
     if getattr(args, "client_command", None) in {("model", "scaffold"), ("model", "check")}:

@@ -1,5 +1,12 @@
 {
   "entries": {
+    "answer:ACTIVITY_LIST.calls": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
     "answer:ACTIVITY_LIST.cursor": {
       "required": true,
       "schema": {
@@ -832,6 +839,21 @@
         "type": "array"
       }
     },
+    "answer:ANALYST_READS.read_request": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "answer:ANALYST_READS.status": {
       "required": true,
       "schema": {
@@ -1093,6 +1115,14 @@
             "type": "null"
           }
         ]
+      }
+    },
+    "answer:CANCEL.restored_membership": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:CANCEL.running_since": {
@@ -3629,6 +3659,14 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:DATA_UPDATE_PLAN.restored_membership": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:DATA_UPDATE_PLAN.source_access": {
@@ -6297,6 +6335,14 @@
         "type": "integer"
       }
     },
+    "answer:EVIDENCE_PREVIEW.resumable_preparation": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:EVIDENCE_PREVIEW.retrieval": {
       "required": true,
       "schema": {
@@ -6653,6 +6699,86 @@
       }
     },
     "answer:EVIDENCE_SELECT/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_READ.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_READ.notes": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_READ.trials": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_READ.unattributed_in_page": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_READ/ErrorInfo.reason": {
       "required": true,
       "schema": {
         "type": "string"
@@ -15897,6 +16023,13 @@
         "default": null
       }
     },
+    "answer:HOST_STOP.finishing_task_ids": {
+      "required": true,
+      "schema": {
+        "items": {},
+        "type": "array"
+      }
+    },
     "answer:HOST_STOP.next_action": {
       "required": true,
       "schema": {
@@ -16894,9 +17027,56 @@
     },
     "answer:OPERATION_LIST": {
       "$defs": {
+        "ErrorInfo": {
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "type": "string"
+            },
+            "domain": {
+              "type": "string"
+            },
+            "field_violations": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "message": {
+              "type": "string"
+            },
+            "message_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "category",
+            "domain",
+            "reason",
+            "message_id",
+            "message",
+            "field_violations"
+          ],
+          "type": "object"
+        },
         "FilteredOperationListAnswer": {
           "additionalProperties": false,
           "properties": {
+            "error_info": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ErrorInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "operation_fields": {
               "additionalProperties": true,
               "type": "object"
@@ -16933,6 +17113,17 @@
             "capacity": {
               "additionalProperties": true,
               "type": "object"
+            },
+            "error_info": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ErrorInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "execution_mode": {
               "type": "string"
@@ -20668,6 +20859,14 @@
         "type": "object"
       }
     },
+    "answer:RESEARCH_UPDATE_PLAN.restored_membership": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:RESEARCH_UPDATE_PLAN.score_sessions": {
       "required": false,
       "schema": {
@@ -21094,6 +21293,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:RESEARCH_UPDATE_RUN.resumed_on_own_move": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_RUN.retry_after_at": {
@@ -26791,6 +26998,7 @@
         "COMMITTEE_SUBMIT"
       ]
     },
+    "command:committee verdict": {},
     "command:committee wait": {},
     "command:cpu-budget": {},
     "command:cpu-budget set": {
@@ -26923,6 +27131,12 @@
     "command:evidence-consent show": {
       "operations": [
         "EVIDENCE_CONSENT"
+      ]
+    },
+    "command:experience": {},
+    "command:experience list": {
+      "operations": [
+        "EXPERIENCE_READ"
       ]
     },
     "command:feature": {},
@@ -27357,6 +27571,7 @@
     "command:serve": {},
     "command:session": {},
     "command:session bind": {},
+    "command:session exporters": {},
     "command:session unbind": {},
     "command:session usage": {
       "operations": [
@@ -27834,6 +28049,12 @@
         "PROCEED_WITH_NOTES"
       ]
     },
+    "message:PERSON_QUESTION/committee.daily": {
+      "operations": [
+        "COMMITTEE_DAILY_SET"
+      ],
+      "owner": "alphalattice.interface.local_application"
+    },
     "message:PERSON_QUESTION/network.daily_updates": {
       "operations": [
         "NETWORK_ACCESS_SET",
@@ -27850,6 +28071,12 @@
     "message:PERSON_QUESTION/review.analyst_reads": {
       "operations": [
         "ANALYST_READS_SET"
+      ],
+      "owner": "alphalattice.interface.local_application"
+    },
+    "message:PERSON_QUESTION/workspace.select_existing": {
+      "operations": [
+        "NATIVE_CONFIGURE"
       ],
       "owner": "alphalattice.interface.local_application"
     },
@@ -28406,6 +28633,16 @@
         "analysis_publication_hash"
       ]
     },
+    "operation:EXPERIENCE_READ": {
+      "allowed": [
+        "experience_hypothesis",
+        "experience_method",
+        "experience_workspace",
+        "goal_id",
+        "history_limit"
+      ],
+      "required": []
+    },
     "operation:EXPERIMENTS": {
       "allowed": [],
       "required": []
@@ -28675,6 +28912,7 @@
     },
     "operation:EXPERIMENT_RUN": {
       "allowed": [
+        "experience_hypothesis",
         "experiment_plan_hash",
         "recovery_task_hash",
         "recovery_task_id"
@@ -33080,6 +33318,137 @@
       "required": false,
       "type": null
     },
+    "option:committee verdict/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee verdict/--file": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee verdict/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--key": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:committee verdict/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:committee verdict/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee verdict/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:committee verdict/--role": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--update": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee verdict/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:committee verdict/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:committee wait/--goal": {
       "choices": null,
       "nargs": null,
@@ -37208,6 +37577,137 @@
       "type": "Path"
     },
     "option:evidence/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience list/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience list/--from-workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--hypothesis": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--limit": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience list/--method": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience list/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience list/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience list/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience list/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience list/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -46517,6 +47017,12 @@
       "required": false,
       "type": null
     },
+    "option:research-update show/--update": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:research-update show/--view": {
       "choices": [
         "compact",
@@ -49001,6 +49507,67 @@
       "type": "Path"
     },
     "option:session bind/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--configure-claude": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:session exporters/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:session exporters/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:session exporters/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:session exporters/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -52601,6 +53168,12 @@
       "required": false,
       "type": null
     },
+    "option:study run/--hypothesis": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:study run/--lang": {
       "choices": [
         "en",
@@ -55150,6 +55723,7 @@
     "refusal:activity.failure_detail_withheld": {},
     "refusal:activity.limit_invalid": {},
     "refusal:activity.observation_id_invalid": {},
+    "refusal:activity.observer_failed": {},
     "refusal:activity.query_field_unknown": {},
     "refusal:activity.query_parameter_invalid": {},
     "refusal:activity.query_selection_conflict": {},
@@ -55162,8 +55736,10 @@
     "refusal:actor_execution.specialist_reference_invalid": {},
     "refusal:actor_execution.specialist_text_empty": {},
     "refusal:actor_execution.usage_model_id_inconsistent": {},
+    "refusal:agent_bundle.admission_busy": {},
     "refusal:agent_bundle.analyst_task_required": {},
     "refusal:agent_bundle.analyst_unit_required": {},
+    "refusal:agent_bundle.answer_replay_inconsistent": {},
     "refusal:agent_bundle.answer_settled": {},
     "refusal:agent_bundle.answer_slot_taken": {},
     "refusal:agent_bundle.directory_holds_another_bundle": {},
@@ -55178,6 +55754,9 @@
     "refusal:agent_bundle.seal_bound_exceeded": {},
     "refusal:agent_bundle.specialist_task_changed": {},
     "refusal:agent_bundle.specialist_task_required": {},
+    "refusal:agent_telemetry.host_unavailable": {},
+    "refusal:agent_telemetry.payload_invalid": {},
+    "refusal:agent_telemetry.signal_invalid": {},
     "refusal:alpha_modeling.lightgbm_thread_canary_mismatch": {},
     "refusal:alpha_research.active_marker_compare_and_swap_failed": {},
     "refusal:alpha_research.active_path_downside_variance_zero": {},
@@ -55313,6 +55892,7 @@
     "refusal:alpha_research.current_score_readback_failed": {},
     "refusal:alpha_research.current_sector_map_unavailable": {},
     "refusal:alpha_research.dependence_policy_input_invalid": {},
+    "refusal:alpha_research.development_artifact_identity_invalid": {},
     "refusal:alpha_research.development_child_estimator_missing": {},
     "refusal:alpha_research.development_child_fit_evidence_missing": {},
     "refusal:alpha_research.development_child_lineage_invalid": {},
@@ -56268,6 +56848,7 @@
     "refusal:alternative_evidence.external_submission_identity_invalid": {},
     "refusal:alternative_evidence.external_submission_invalid": {},
     "refusal:alternative_evidence.finding_handle_duplicate": {},
+    "refusal:alternative_evidence.first_unit_wait_expired": {},
     "refusal:alternative_evidence.host_policy_binding_invalid": {},
     "refusal:alternative_evidence.host_policy_unauthorized": {},
     "refusal:alternative_evidence.identity_invalid": {},
@@ -56478,6 +57059,8 @@
     "refusal:arrow_identity.member_names_must_be_strings": {},
     "refusal:arrow_identity.rows_member_already_present": {},
     "refusal:arrow_identity.values_member_already_present": {},
+    "refusal:budget.inconsistent_inode_receipt": {},
+    "refusal:budget.invalid_inode_receipt": {},
     "refusal:catalog.json": {},
     "refusal:catalog.replace_blocked": {},
     "refusal:causal_inputs.admission_result_disposition_inconsistent": {},
@@ -56636,6 +57219,34 @@
     "refusal:data.universe_spy_axis_misaligned": {},
     "refusal:data.universe_spy_return_non_finite": {},
     "refusal:data.unrepaired_split_adjustment": {},
+    "refusal:data_layer.admission_key_repeated": {},
+    "refusal:data_layer.admission_out_of_order": {},
+    "refusal:data_layer.artifact_body_missing": {},
+    "refusal:data_layer.artifact_body_unexpected": {},
+    "refusal:data_layer.artifact_trial_unregistered": {},
+    "refusal:data_layer.below_free_floor": {},
+    "refusal:data_layer.chain_broken": {},
+    "refusal:data_layer.data_folder_unreadable": {},
+    "refusal:data_layer.definition_not_owner": {},
+    "refusal:data_layer.definition_superseded": {},
+    "refusal:data_layer.event_attrs_form": {},
+    "refusal:data_layer.event_attrs_missing": {},
+    "refusal:data_layer.event_secret": {},
+    "refusal:data_layer.event_text_missing": {},
+    "refusal:data_layer.event_text_unbound": {},
+    "refusal:data_layer.event_text_unexpected": {},
+    "refusal:data_layer.event_type_unregistered": {},
+    "refusal:data_layer.extension_unavailable": {},
+    "refusal:data_layer.handle_outside_root": {},
+    "refusal:data_layer.host_running": {},
+    "refusal:data_layer.lag_rule_unknown": {},
+    "refusal:data_layer.legacy_anchor_missing": {},
+    "refusal:data_layer.legacy_table_unanchored": {},
+    "refusal:data_layer.live_ref_held": {},
+    "refusal:data_layer.result_key_present": {},
+    "refusal:data_layer.schema_mismatch": {},
+    "refusal:data_layer.staging_taken": {},
+    "refusal:data_layer.world_table_not_admitted": {},
     "refusal:data_tradability.adv20_warmup_unavailable": {},
     "refusal:data_tradability.artifact_identity_invalid": {},
     "refusal:data_tradability.artifact_uri_invalid": {},
@@ -56691,6 +57302,7 @@
     "refusal:devtools.evidence_root_declaration_invalid": {},
     "refusal:devtools.private_evidence_lane_unavailable": {},
     "refusal:domain.invalid": {},
+    "refusal:evaluation.profile_workspace_unobserved": {},
     "refusal:evidence_review.accession_scope_invalid": {},
     "refusal:evidence_review.accession_scope_requires_one_entity": {},
     "refusal:evidence_review.acquisition_window_invalid": {},
@@ -56758,6 +57370,12 @@
     "refusal:execution.cpu_budget_invalid": {},
     "refusal:execution.cpu_budget_unreadable": {},
     "refusal:execution.memory_insufficient": {},
+    "refusal:experience.history_unavailable": {},
+    "refusal:experience.hypothesis_existing_run": {},
+    "refusal:experience.hypothesis_goal": {},
+    "refusal:experience.hypothesis_unknown": {},
+    "refusal:experience.hypothesis_workspace": {},
+    "refusal:explorer.wall_deadline": {},
     "refusal:factor_formula.comparison_invalid": {},
     "refusal:factor_formula.constant_invalid": {},
     "refusal:factor_formula.not_canonical": {},
@@ -57000,6 +57618,7 @@
     "refusal:feature_input.case_page_invalid": {},
     "refusal:feature_input.case_record_tampered": {},
     "refusal:feature_input.case_resolution_authority_absent": {},
+    "refusal:feature_input.case_store_unavailable": {},
     "refusal:feature_input.continuation_identity_absent": {},
     "refusal:feature_input.continuation_identity_mismatch": {},
     "refusal:feature_input.continuation_source_not_active": {},
@@ -57063,6 +57682,7 @@
     "refusal:feature_research.completed_preparation_required": {},
     "refusal:feature_research.create_factor_id_mismatch": {},
     "refusal:feature_research.definition_cycle": {},
+    "refusal:feature_research.document_invalid": {},
     "refusal:feature_research.execution_changed_rebuild": {},
     "refusal:feature_research.finish_or_recover_existing_task": {},
     "refusal:feature_research.formula_implementation_changed_replan": {},
@@ -57163,6 +57783,7 @@
     "refusal:goal.goal_id_mismatch": {},
     "refusal:goal.goal_id_required": {},
     "refusal:goal.head_invalid": {},
+    "refusal:goal.hypothesis_must_be_open": {},
     "refusal:goal.identity_mismatch": {},
     "refusal:goal.not_found": {},
     "refusal:goal.operation_not_supported": {},
@@ -57185,6 +57806,9 @@
     "refusal:guanyin.incident_record_tampered": {},
     "refusal:guanyin.incident_record_unreadable": {},
     "refusal:guanyin.remedy_not_offered": {},
+    "refusal:host_facts.fake_source_missing": {},
+    "refusal:host_facts.observation_incomplete": {},
+    "refusal:host_facts.observed_at_without_offset": {},
     "refusal:knowledge.access_denied": {},
     "refusal:live_evidence.causal_time_invalid": {},
     "refusal:local_application.advancement_not_wired": {},
@@ -57275,6 +57899,10 @@
     "refusal:local_web.analysis_publication_hash_required": {},
     "refusal:local_web.application_absent": {},
     "refusal:local_web.assets_stale": {},
+    "refusal:local_web.call_context_invalid": {},
+    "refusal:local_web.call_context_missing": {},
+    "refusal:local_web.call_end_invalid": {},
+    "refusal:local_web.child_ownership_unavailable": {},
     "refusal:local_web.detached_breakaway_denied": {},
     "refusal:local_web.goal_header_invalid": {},
     "refusal:local_web.goal_id_invalid": {},
@@ -57419,10 +58047,15 @@
     "refusal:native_bridge.start_not_observed": {},
     "refusal:native_bridge.usage_catching_up": {},
     "refusal:native_bridge.usage_cumulative_mismatch": {},
+    "refusal:native_bridge.usage_disabled": {},
     "refusal:native_bridge.usage_reader_busy": {},
     "refusal:native_bridge.usage_reading_human_only": {},
     "refusal:native_bridge.workspace_mismatch": {},
     "refusal:native_bridge.workspace_missing": {},
+    "refusal:native_meter.host_instance_changed": {},
+    "refusal:native_meter.host_listener_ambiguous": {},
+    "refusal:native_meter.host_listener_unmeasured": {},
+    "refusal:native_meter.host_port_unmeasured": {},
     "refusal:native_usage.read_limit_exceeded": {},
     "refusal:observation.correlation_ambiguous": {},
     "refusal:observation.correlation_selector_invalid": {},
@@ -57443,11 +58076,40 @@
     "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
     "refusal:person_confirmation.not_the_persons_words": {},
+    "refusal:person_confirmation.question_code_required": {},
     "refusal:person_confirmation.question_mismatch": {},
+    "refusal:person_confirmation.question_missing": {},
     "refusal:person_confirmation.question_unknown": {},
+    "refusal:person_confirmation.question_words_differ": {},
     "refusal:person_confirmation.refused": {},
     "refusal:person_confirmation.repeat_unknown": {},
     "refusal:person_confirmation.session_required": {},
+    "refusal:pipeline.definition_missing": {},
+    "refusal:pipeline.definition_unreadable": {},
+    "refusal:pipeline.flake_evidence_unavailable": {},
+    "refusal:pipeline.out_used": {},
+    "refusal:pipeline.plugin_unknown": {},
+    "refusal:pipeline.plugin_unloadable": {},
+    "refusal:pipeline.receipt_cost_unmeasured": {},
+    "refusal:pipeline.receipt_incomplete": {},
+    "refusal:pipeline.receipt_inconsistent": {},
+    "refusal:pipeline.receipt_malformed": {},
+    "refusal:pipeline.receipt_mismatch": {},
+    "refusal:pipeline.receipt_missing": {},
+    "refusal:pipeline.receipt_unknown": {},
+    "refusal:pipeline.receipt_unreadable": {},
+    "refusal:pipeline.row_invalid": {},
+    "refusal:pipeline.row_provided_twice": {},
+    "refusal:pipeline.row_unprovided": {},
+    "refusal:pipeline.row_unregistered": {},
+    "refusal:pipeline.row_unused": {},
+    "refusal:pipeline.schema_unknown": {},
+    "refusal:pipeline.size_overhead_unmeasured": {},
+    "refusal:pipeline.size_selection_unmeasured": {},
+    "refusal:pipeline.size_workspace_unmeasured": {},
+    "refusal:pipeline.stage_invalid": {},
+    "refusal:pipeline.stage_unknown": {},
+    "refusal:pipeline.workspace_unreadable": {},
     "refusal:portfolio_advancement.correction_did_not_supersede": {},
     "refusal:portfolio_advancement.correction_identity_invalid": {},
     "refusal:portfolio_advancement.lane_advanced_without_an_artifact": {},
@@ -58471,6 +59133,7 @@
     "refusal:process_capacity.parallelism_override_invalid": {},
     "refusal:process_capacity.resolution_input_invalid": {},
     "refusal:process_capacity.resolved_plan_invalid": {},
+    "refusal:process_metrics.cpu_unavailable": {},
     "refusal:process_metrics.monitor_already_started": {},
     "refusal:process_metrics.monitor_not_started": {},
     "refusal:process_metrics.sample_interval_invalid": {},
@@ -58572,10 +59235,24 @@
     "refusal:replay.receipt_binding": {},
     "refusal:replay.receipt_coverage": {},
     "refusal:replay.receipt_incomplete": {},
+    "refusal:replay.receipt_interval": {},
     "refusal:replay.receipt_legs": {},
     "refusal:replay.receipt_peak": {},
     "refusal:replay.receipt_profile": {},
     "refusal:replay.receipt_time": {},
+    "refusal:requirements.duplicate_key": {},
+    "refusal:requirements.entries_out_of_order": {},
+    "refusal:requirements.legacy_absent": {},
+    "refusal:requirements.legacy_missing": {},
+    "refusal:requirements.legacy_seed_target_invalid": {},
+    "refusal:requirements.legacy_seed_unplaced": {},
+    "refusal:requirements.legacy_seeded": {},
+    "refusal:requirements.row_invalid": {},
+    "refusal:requirements.schema": {},
+    "refusal:requirements.schema_ambiguous": {},
+    "refusal:requirements.schema_candidate_unreadable": {},
+    "refusal:requirements.unknown_id": {},
+    "refusal:requirements.unregistered": {},
     "refusal:research_authoring.alpha_composition_incomplete": {},
     "refusal:research_authoring.as_of_precedes_end": {},
     "refusal:research_authoring.authority_identity_invalid": {},
@@ -58744,6 +59421,7 @@
     "refusal:research_experiment.evidence_window_mismatch": {},
     "refusal:research_experiment.execution_binding_changed": {},
     "refusal:research_experiment.factor_parent_required": {},
+    "refusal:research_experiment.hypothesis_invalid": {},
     "refusal:research_experiment.input_authority_changed": {},
     "refusal:research_experiment.input_database_binding_mismatch": {},
     "refusal:research_experiment.input_database_tampered": {},
@@ -58844,6 +59522,7 @@
     "refusal:research_lane.sample_handle_invalid": {},
     "refusal:research_strategy.completed_parent_required": {},
     "refusal:research_strategy.completed_preparation_required": {},
+    "refusal:research_strategy.declaration_invalid": {},
     "refusal:research_strategy.duplicate_parent": {},
     "refusal:research_strategy.evidence_binding_mismatch": {},
     "refusal:research_strategy.evidence_invalid": {},
@@ -58954,6 +59633,7 @@
     "refusal:research_workspace.training_source_outside_workspace": {},
     "refusal:research_workspace.training_source_unresolved": {},
     "refusal:research_workspace.uninstalled_strategy_conflict": {},
+    "refusal:result_cache.request_invalid": {},
     "refusal:risk_report.completed_portfolio_required": {},
     "refusal:risk_report.completed_risk_required": {},
     "refusal:risk_report.cutoff_after_portfolio": {},
@@ -59474,16 +60154,52 @@
     "refusal:tasks.artifact_readback_absent": {},
     "refusal:tasks.artifact_readback_failed": {},
     "refusal:tasks.cursor_moved_reload": {},
+    "refusal:test_layout.fixture_collision": {},
+    "refusal:test_layout.fixture_scope": {},
+    "refusal:test_layout.fixture_visibility": {},
+    "refusal:test_layout.input_unreadable": {},
+    "refusal:test_layout.path_collision": {},
+    "refusal:test_layout.path_invalid": {},
+    "refusal:test_layout.preimage_changed": {},
+    "refusal:test_layout.registry_collision": {},
+    "refusal:test_layout.registry_invalid": {},
+    "refusal:test_layout.unmapped_reference": {},
+    "refusal:test_size.admission_invalid": {},
+    "refusal:test_size.admission_limit": {},
+    "refusal:test_size.admission_limits": {},
+    "refusal:test_size.admission_unmeasured": {},
+    "refusal:test_size.budget_admission": {},
+    "refusal:test_size.changed_identity": {},
+    "refusal:test_size.changed_unmeasured": {},
     "refusal:test_size.conflicting": {},
+    "refusal:test_size.cost": {},
+    "refusal:test_size.cost_unmeasured": {},
+    "refusal:test_size.data_files_invalid": {},
     "refusal:test_size.declaration_invalid": {},
     "refusal:test_size.default_size": {},
     "refusal:test_size.defaults": {},
+    "refusal:test_size.fence_invalid": {},
+    "refusal:test_size.footprint_unmeasured": {},
+    "refusal:test_size.framework_fixtures_invalid": {},
+    "refusal:test_size.growth": {},
+    "refusal:test_size.lane_unknown": {},
     "refusal:test_size.large": {},
+    "refusal:test_size.large_contract": {},
+    "refusal:test_size.large_duplicate": {},
+    "refusal:test_size.large_reason": {},
+    "refusal:test_size.limits": {},
+    "refusal:test_size.mandatory_missing": {},
     "refusal:test_size.owner_conflict": {},
     "refusal:test_size.owner_missing": {},
+    "refusal:test_size.required_selection_invalid": {},
     "refusal:test_size.rule": {},
     "refusal:test_size.schema": {},
     "refusal:test_size.sizes": {},
+    "refusal:test_size.whole_tree_guards_invalid": {},
+    "refusal:testing.layer_contract": {},
+    "refusal:testing.layer_contract_unmeasured": {},
+    "refusal:testing.worker_capture_unavailable": {},
+    "refusal:testing.worker_identity_unknown": {},
     "refusal:universe_membership.decision_precedes_observation": {},
     "refusal:universe_membership.effective_session_precedes_knowledge": {},
     "refusal:universe_membership.effective_session_unavailable": {},
@@ -59493,6 +60209,7 @@
     "refusal:universe_membership.observation_precedes_previous": {},
     "refusal:universe_membership.observation_session_mismatch": {},
     "refusal:universe_membership.timestamp_timezone_required": {},
+    "refusal:upgrade.refused": {},
     "refusal:upgrade_overview.confirmation_stale": {},
     "refusal:validation.artifact_invalid": {},
     "refusal:validation.attempt_input_mismatch": {},
@@ -59501,6 +60218,8 @@
     "refusal:validation.insufficient_history": {},
     "refusal:validation.invalid_split_spec": {},
     "refusal:validation.timeline_invalid": {},
+    "refusal:wait.stopped": {},
+    "refusal:wait.timeout": {},
     "refusal:workbench.completed_authored_portfolio_required": {},
     "refusal:workbench.forward_holdings_source_mismatch": {},
     "refusal:workbench.performance_selection_invalid": {},
@@ -59593,6 +60312,7 @@
     "refusal:workspace_data_update.workspace_manifest_changed": {},
     "refusal:workspace_database.access_mode_conflict_on_this_thread": {},
     "refusal:workspace_database.read_only_retention_cannot_write": {},
+    "refusal:workspace_database.runtime_extension_refused": {},
     "refusal:workspace_maintenance.candidate_data_recheck_history_invalid": {},
     "refusal:workspace_maintenance.candidate_data_recheck_incomplete": {},
     "refusal:workspace_maintenance.candidate_data_recheck_scope_invalid": {},
@@ -59606,6 +60326,7 @@
     "refusal:workspace_maintenance.initialization_consent_required": {},
     "refusal:workspace_maintenance.manifest_update_consent_required": {},
     "refusal:workspace_maintenance.membership_change_without_effective_session": {},
+    "refusal:workspace_maintenance.membership_owner_unproved": {},
     "refusal:workspace_maintenance.membership_revision_mismatch": {},
     "refusal:workspace_maintenance.precision_kept_without_authority": {},
     "refusal:workspace_maintenance.semantic_index_handoff_failed": {},
@@ -60439,6 +61160,54 @@
         "anyOf": [
           {
             "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_hypothesis": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_method": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_workspace": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 256,
+            "minLength": 1,
             "type": "string"
           },
           {
@@ -62290,6 +63059,7 @@
         "GOAL_SUBMIT",
         "GOAL_ABANDON",
         "RESEARCH_HISTORY",
+        "EXPERIENCE_READ",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",
         "EXPERIMENT_DELIVERY_EXPORT",
@@ -62431,6 +63201,8 @@
         "SESSION_USAGE_READ",
         "USAGE_READING",
         "USAGE_READING_SET",
+        "ANALYST_READS",
+        "ANALYST_READS_SET",
         "CPU_BUDGET_SHOW",
         "CPU_BUDGET_SET",
         "HOST_STOP",

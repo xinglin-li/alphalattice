@@ -49,6 +49,7 @@ from alphalattice.kernel.data_layer.root import (
     sql_path,
     statements,
 )
+from alphalattice.kernel.data_layer.telemetry import usage
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -60,7 +61,7 @@ WORLD_KEYS: Final = {
     "raw_bar": ("provider_id", "listing_id", "session_date"),
     "corporate_action": ("provider_id", "listing_id", "effective_date", "kind", "action_id"),
     "session": ("market", "session_date"),
-    "evidence_doc": ("doc_digest",),
+    "evidence_doc": ("doc_id",),
 }
 """Each world table catalog.sql defines, with its key. An observed row is known from its
 admission's moment: known_at and known_asof are both the log's clock."""
@@ -96,9 +97,14 @@ LEGACY_VALID: Final = {
     "sector": ("valid_to", "valid_from"),
     "raw_bar": ("session_date",),
     "corporate_action": ("effective_date",),
+    "evidence_doc": ("available_at",),
 }
 """The world tables a legacy batch may fill, each with the date a row's lag rule counts from: the
 first of these the row has, so an interval's closing version is known only from its end."""
+UNMARKETED: Final = frozenset({"evidence_doc"})
+"""The legacy tables whose rows name no market: a row is known from its LEGACY_VALID time itself
+plus its lag, never a session's close, and its publication time never dates it. A filing's
+availability is its acceptance, later than its filing date's midnight."""
 OBSERVED: Final = SOURCE[0]
 TIMED: Final = frozenset({"raw_bar", "corporate_action"})
 """The world tables whose rows carry their source's own last write of the value (OBSERVED): a held
@@ -177,7 +183,111 @@ class StorePort:
             lake.execute(sql).complete()
         port = cls(root, log, lake)
         port.started = start(root, log, lake)
+        for sql in statements(schema_text("telemetry.sql")):
+            lake.execute(sql).complete()
+        lake.execute(
+            "CREATE VIEW agent_telemetry AS SELECT *,"
+            " CASE WHEN vendor = 'codex' THEN CASE WHEN input_tokens >="
+            " coalesce(cache_read_tokens, 0) + coalesce(cache_write_tokens, 0) THEN input_tokens"
+            " - coalesce(cache_read_tokens, 0) - coalesce(cache_write_tokens, 0) END"
+            " ELSE input_tokens END AS uncached_input_tokens,"
+            " conversation_id IS NULL AND session_id IS NULL AS unplaced"
+            ", CASE WHEN name IN ('claude_code.api_request', 'codex.api_request')"
+            " THEN 'gen_ai.client.inference' WHEN name = 'claude_code.subagent_completed'"
+            " THEN 'gen_ai.agent.completed' ELSE name END AS event_name"
+            " FROM lake.telemetry.event"
+        ).complete()
         return port
+
+    def telemetry_batch(self, rows: list[dict[str, Any]]) -> int:
+        """Commit one already sanitized native export under the catalog's existing writer.
+
+        The whole HTTP batch is one snapshot. Only the decoder's fixed columns may enter;
+        repeated delivery keeps the original rows. No raw payload is staged on disk.
+        """
+        if not rows:
+            return 0
+        import pyarrow as pa  # lazy: the Host's existing data extra
+
+        with self._writer:
+            received_us = self.log.clock()
+            batch = pa.Table.from_pylist(
+                [
+                    row | {"received_us": received_us, "record_index": i}
+                    for i, row in enumerate(rows)
+                ]
+            )
+            self.lake.register("agent_batch", batch)
+            try:
+                self.lake.execute("BEGIN TRANSACTION").complete()
+                before = self.lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchone()[
+                    0
+                ]
+                self.lake.execute(
+                    "INSERT INTO lake.telemetry.event BY NAME"
+                    " SELECT DISTINCT b.* FROM agent_batch b WHERE NOT EXISTS"
+                    " (SELECT 1 FROM lake.telemetry.event e WHERE e.event_id = b.event_id)"
+                ).complete()
+                after = self.lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchone()[0]
+                self.lake.execute("COMMIT").complete()
+                return int(after - before)
+            except BaseException:
+                self.lake.execute("ROLLBACK").complete()
+                raise
+            finally:
+                self.lake.unregister("agent_batch")
+
+    def agent_telemetry(
+        self, host: str, session: str, *, workspace_id: str
+    ) -> list[dict[str, Any]]:
+        """Read this workspace's exact vendor and conversation/session, in event order."""
+        with self._writer:
+            result = self.lake.execute(
+                "SELECT * FROM agent_telemetry WHERE workspace_id = ? AND vendor = ?"
+                " AND (conversation_id = ? OR session_id = ? OR parent_agent_id = ?)"
+                " ORDER BY received_us, record_index",
+                [workspace_id, host, session, session, session],
+            )
+            columns = [column[0] for column in result.description]
+            return [dict(zip(columns, row, strict=True)) for row in result.fetchall()]
+
+    def unplaced_telemetry(self, *, workspace_id: str) -> int:
+        """Count only this workspace's observations without a conversation or session."""
+        with self._writer:
+            return int(
+                self.lake.execute(
+                    "SELECT count(*) FROM agent_telemetry WHERE workspace_id = ? AND unplaced",
+                    [workspace_id],
+                ).fetchone()[0]
+            )
+
+    def trial_agent_usage(self, trial: str, *, workspace_id: str) -> dict[str, Any]:
+        """The observed native sums a trial closes with, with no invented zero on absence."""
+        with self._writer:
+            result = self.lake.execute(
+                "SELECT * FROM agent_telemetry WHERE workspace_id = ? AND trial_id = ?"
+                " ORDER BY received_us, record_index",
+                [workspace_id, trial],
+            )
+            columns = [column[0] for column in result.description]
+            rows = [dict(zip(columns, row, strict=True)) for row in result.fetchall()]
+        observed = usage(rows)
+        if not observed["models"] or observed["incomplete"]:
+            return {"status": "UNMEASURED", "incomplete": observed["incomplete"]}
+        return {
+            "status": "MEASURED",
+            "model_seconds": observed["model_seconds"],
+            **{
+                field: sum(row[field] for row in observed["models"])
+                for field in (
+                    "responses",
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_read_tokens",
+                    "cache_write_tokens",
+                )
+            },
+        }
 
     def commit(self, staged: Staged) -> Committed:
         """Commit one staged admission as one catalog snapshot, then its owed event. A world row
@@ -397,7 +507,8 @@ class StorePort:
         name, version and seconds), names the rule and version; its known_at is empty and its
         known_asof is its publication time, or its lag after the close of its market's first
         session on or after its valid date; the market is the row's own listing's, known only while
-        that listing has had one market. A legacy row of a key world already holds is a change
+        that listing has had one market. An UNMARKETED row (a document) is known its lag after its
+        own valid time, its availability. A legacy row of a key world already holds is a change
         observed now: known no earlier than its admission or the version it replaces, so no read
         before then sees it. A legacy interval with an end, for a key world does not hold yet, is
         written as its two versions: the open one known from its start, the closing one from its
@@ -447,6 +558,17 @@ class StorePort:
         valid = ", ".join(f"n.{c}" for c in LEGACY_VALID[table] if c in columns)
         name, version, lag = rule
         quoted = name.replace("'", "''")
+        named = f"'{quoted}' AS lag_rule, {version}::INTEGER AS lag_rule_version"
+        if table in UNMARKETED:
+            derived = f"coalesce({valid}) + to_seconds({lag})"
+            asof = (
+                f"CASE WHEN p.version_id IS NULL THEN {derived}"
+                f" ELSE greatest({derived}, {at}, p.known_asof) END"
+            )
+            return (
+                f"SELECT n.*, NULL::TIMESTAMPTZ AS known_at, {asof} AS known_asof, {fate},"
+                f" {named} FROM ({rows}) n{held}"
+            )
         derived = f"a.close_utc + to_seconds({lag})"
         if "published_at" in columns:
             derived = f"coalesce(n.published_at, {derived})"
@@ -464,8 +586,7 @@ class StorePort:
         )
         return (
             f"SELECT n.*, NULL::TIMESTAMPTZ AS known_at, {asof} AS known_asof, {fate},"
-            f" '{quoted}' AS lag_rule, {version}::INTEGER AS lag_rule_version"
-            f" FROM ({rows}) n{joined} ASOF LEFT JOIN {_current('session')} a"
+            f" {named} FROM ({rows}) n{joined} ASOF LEFT JOIN {_current('session')} a"
             f" ON a.market = {market} AND coalesce({valid}) <= a.session_date{held}"
         )
 

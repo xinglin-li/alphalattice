@@ -3,6 +3,13 @@
   "version": 1,
   "note": "G1: each core noun's one owner package, from the plan's owner table (develop-wave-2, \"G1's map\"; the contested choices decided by the user on 2026-09-27). The owner defines a noun -- its types, state and decisions -- and every other package only imports it. A noun is recognised by the public types its `defined_by` modules export. `folds_in` lists what other packages still define of it and the card that moves it: G2 refuses a new definition outside the owner, naming the owner, against this list, which only shrinks. An owner a card creates names it (`created_by`).",
   "nouns": {
+    "offline native transcript evidence": {
+      "description": "Recorded native responses, exact token counts and member-key evidence read explicitly by offline acceptance graders.",
+      "owner": "scripts.agent_eval",
+      "defined_by": ["scripts.agent_eval.graders.metrics"],
+      "folds_in": [],
+      "note": "Consumers are the existing agent_eval graders, runners and historical reports. The Host runtime reads usage through the telemetry catalog; its bounded first-record Codex authorization remains in local_application.native_usage. Offline readers allocate no persistent checkpoint."
+    },
     "test golden workspace": {
       "description": "Owns one invocation's shared product-written fixtures and independent consumer copies.",
       "covers": "one invocation and its controller PID/birth, requested-key pins, shared key/payload readers, exclusive cold fill, input and payload manifests, private copies, and explicit-close/death retention evidence; runtime attestation and persistent publication follow separately",
@@ -4922,6 +4929,7 @@
         "alphalattice.kernel.data_layer.root",
         "alphalattice.kernel.data_layer.spans",
         "alphalattice.kernel.data_layer.store",
+        "alphalattice.kernel.data_layer.telemetry",
         "alphalattice.kernel.data_layer.upgrade"
       ],
       "folds_in": [],

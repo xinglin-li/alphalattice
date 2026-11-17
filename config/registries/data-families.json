@@ -3172,7 +3172,6 @@
       "bytes": null,
       "writers": [
         "alternative_evidence.sources.admission:record_evidence_source_consent",
-        "local_application.native_bridge:_reading",
         "local_application.native_bridge:set_usage_reading",
         "product_host.composition.committee:set_daily",
         "product_host.composition.evidence_review_bundles:set_analyst_reads",
@@ -3458,7 +3457,8 @@
       "location": "workspace-runtime",
       "bytes": null,
       "writers": [
-        "alternative_evidence.documents.workspace:AlternativeEvidenceDocumentPublisher"
+        "alternative_evidence.documents.workspace:AlternativeEvidenceDocumentPublisher",
+        "alternative_evidence.storage.world:_keep"
       ],
       "readers": [
         "alternative_evidence.retrieval.service",
@@ -3592,6 +3592,7 @@
         "local_application.native_setup:_create_or_match",
         "local_application.native_setup:_install_declarations",
         "local_application.native_setup:strip_product_hooks",
+        "local_application.native_setup:agent_exporters",
         "local_application.retrieval_environment:_run_uv",
         "local_application.retrieval_environment:create"
       ],
@@ -3710,6 +3711,21 @@
         "sector_research.experiments.resolution",
         "sector_research.experiments.service",
         "sector_research.experiments.verification"
+      ]
+    },
+    "agent-telemetry": {
+      "summary": "native agent numerical observations and explicit attribution, with prompt and tool content removed before storage",
+      "class": "external-observation",
+      "tier": 1,
+      "home": "catalog telemetry.event through StorePort; agent_telemetry maps vendor usage and event names",
+      "location": "machine-data-root",
+      "bytes": null,
+      "writers": [],
+      "readers": [
+        "data_layer.history",
+        "data_layer.store",
+        "local_application.native_bridge",
+        "product_host.composition.native_usage_reader"
       ]
     },
     "data-root": {

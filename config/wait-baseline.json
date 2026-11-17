@@ -84,7 +84,6 @@
     "src/alphalattice/interface/local_application/dispatcher.py::retry-without-bound": 2,
     "src/alphalattice/interface/local_application/dispatcher.py::swallowed-in-loop": 1,
     "src/alphalattice/interface/local_application/failure_codes.py::swallowed-in-loop": 1,
-    "src/alphalattice/interface/local_application/native_bridge.py::swallowed-in-loop": 1,
     "src/alphalattice/interface/local_application/native_setup.py::call-without-timeout": 1,
     "src/alphalattice/interface/local_application/native_setup.py::swallowed-in-loop": 1,
     "src/alphalattice/interface/local_application/retrieval_environment.py::call-without-timeout": 1,

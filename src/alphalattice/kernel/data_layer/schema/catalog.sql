@@ -191,18 +191,38 @@ CREATE TABLE world.session (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (doc_digest, version_id). An outside evidence document (a filing; later, news); its body is under blobs/,
--- addressed by doc_digest. A withdrawal is a new version with retracted, as in every world table. The listings a
--- document names are the index's entities. A legacy document without published_at is known from the time 0.2.7
--- acquired it, never earlier.
+-- key: (doc_id, version_id). An outside evidence document (a filing; later, news): doc_id is the Host's UUIDv7 for one
+-- source document, its source's own id (`source_ref`: an SEC accession and its primary document) held as a column. Its
+-- body is under blobs/, addressed by doc_digest, the BLAKE3 of the body's bytes: unique among the documents, so one body
+-- acquired twice is one document, and never the key. A new version of a doc_id is the same source document acquired
+-- again with other bytes, or withdrawn (retracted). An amending filing is its own document, naming the one it amends.
+-- Its times are 0.2.7's, each kept apart: publication at its precision (DATE or INSTANT), the source's acceptance, and
+-- its availability, what reads are bounded by: the acceptance itself, or a recorded import's capture, later
+-- (`availability_basis` says which). A legacy document is known from its availability, never its filing date.
 CREATE TABLE world.evidence_doc (
-  doc_digest VARCHAR NOT NULL,
+  doc_id UUID NOT NULL,
   version_id UUID NOT NULL,
-  source VARCHAR NOT NULL,
-  title VARCHAR,
+  provider_id VARCHAR NOT NULL,    -- the source (SEC_EDGAR, ISSUER_RECORDED), as a provider lineage
+  source_ref VARCHAR NOT NULL,     -- the source's own id of the document
+  doc_digest VARCHAR NOT NULL,     -- the body's BLAKE3, 64 hex digits: its blob's file name
+  byte_count BIGINT NOT NULL,
+  media_type VARCHAR NOT NULL,
+  title VARCHAR NOT NULL,
+  document_type VARCHAR NOT NULL,  -- the source's form (10-K, 8-K/A) or a recorded import's kind
+  entity_id VARCHAR NOT NULL,      -- the issuer as 0.2.7's evidence names it
   published_at TIMESTAMPTZ,
+  published_precision VARCHAR,     -- DATE | INSTANT; null when never recorded
+  accepted_at TIMESTAMPTZ,         -- the source's acceptance (EDGAR acceptanceDateTime)
+  available_at TIMESTAMPTZ NOT NULL,
+  availability_basis VARCHAR NOT NULL, -- OFFICIAL_ACCEPTANCE | RECORDED_IMPORT_CAPTURE[_ACCEPTANCE_UNKNOWN] | SOURCE_STATED
+  report_period_end DATE,
+  right_of_use VARCHAR NOT NULL,   -- SEC_PUBLIC_OFFICIAL_ACCESS | USER_PROVIDED_FOR_LOCAL_RESEARCH
+  amends_doc_id UUID,              -- the document an amending filing amends
+  retrieved_at TIMESTAMPTZ,        -- when 0.2.7 obtained the bytes: never a disclosure time
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
+  lag_rule VARCHAR,
+  lag_rule_version INTEGER,
   retracted BOOLEAN NOT NULL,
   admission_id VARCHAR NOT NULL
 );

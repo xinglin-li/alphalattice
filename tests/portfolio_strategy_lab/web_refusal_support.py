@@ -193,6 +193,7 @@ PUBLIC_SEAMS = frozenset(
         "read_external",
         "admitted_session_project",
         "record",
+        "receive",
     }
 )
 ACTIVATION_OPERATIONS = frozenset({"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"})
@@ -342,6 +343,8 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
             ("POST", call_span.CALL_PATH): ({"ended_us": 2, "exit_code": 0}, "record", None),
         }
     )
+    for signal in ("logs", "traces", "metrics"):
+        plans[("POST", f"/v1/{signal}")] = {}, "receive", None
     assert seeded_fields == REQUIRED_SEED_FIELDS, {
         "new_seed_fields": sorted(seeded_fields - REQUIRED_SEED_FIELDS),
         "retired_seed_fields": sorted(REQUIRED_SEED_FIELDS - seeded_fields),
@@ -369,6 +372,8 @@ def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
         owner = live.service
     elif seam in {"read", "read_external"}:
         owner = live.activity
+    elif seam == "receive":
+        owner = live.native_usage_reader
     elif seam in {"activate", "deactivate"}:
         owner = live.operations.activations
     elif seam == "configure":
@@ -433,6 +438,13 @@ def loopback_request(
     return status, answer
 
 
+def over_loopback(live: Any, probe: RouteProbe) -> tuple[int, dict[str, Any]]:
+    """The probe over a loopback connection of its own, closed after its answer."""
+    assert live.web is not None
+    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
+        return loopback_request(connection, live, probe)
+
+
 def assert_owner_refusal(answer: dict[str, Any], case: RefusalCase) -> None:
     """Keep every owner's code and the exact catalogue words where declared."""
     code = answer.get("failure_code") or answer.get("refused")
@@ -489,35 +501,37 @@ def exercise_matrix(
     assert cases and live.web is not None
     # Each handler x case runs once through the Host's preflight and dispatch; the socket and
     # HTTP parsing around them are the same for every case, so only a route's first case
-    # crosses them, on one persistent loopback connection.
-    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
-        for probe in probes:
-            original_handler = probe.route.handler
-            for index, case in enumerate(cases):
-                with monkeypatch.context() as patch:
-                    counter = inject_public_refusal(patch, live, probe, case)
-                    status, answer = loopback_request(
-                        connection if index == 0 else None, live, probe
-                    )
-                label = (probe.key, case.name, probe.seam)
-                assert counter["calls"] == 1, (label, "owner not reached", status, answer)
-                assert live.web.application.routes[probe.key].handler is original_handler, label
-                # Native setup and Task Control publish these refusals as owner answers;
-                # other raised owner refusals keep the HTTP400 boundary.
-                owner_returned = (
-                    probe.seam == "admitted_session_project"
-                    and case.name
-                    == "alphalattice.interface.local_application.native_bridge.NativeBridgeError"
-                ) or (
-                    probe.seam == "load_authoring_document"
-                    and case.name in RETURNED_TASK_AUTHORITY_ERRORS
+    # crosses them, each on its own loopback connection: the server closes a keep-alive socket
+    # idle past its handler timeout, and a route's in-process cases can outlast it.
+    for probe in probes:
+        original_handler = probe.route.handler
+        for index, case in enumerate(cases):
+            with monkeypatch.context() as patch:
+                counter = inject_public_refusal(patch, live, probe, case)
+                status, answer = (
+                    over_loopback(live, probe)
+                    if index == 0
+                    else loopback_request(None, live, probe)
                 )
-                assert status == (200 if owner_returned else expected_status), (
-                    label,
-                    status,
-                    answer,
-                )
-                assert_owner_refusal(answer, case)
+            label = (probe.key, case.name, probe.seam)
+            assert counter["calls"] == 1, (label, "owner not reached", status, answer)
+            assert live.web.application.routes[probe.key].handler is original_handler, label
+            # Native setup and Task Control publish these refusals as owner answers;
+            # other raised owner refusals keep the HTTP400 boundary.
+            owner_returned = (
+                probe.seam == "admitted_session_project"
+                and case.name
+                == "alphalattice.interface.local_application.native_bridge.NativeBridgeError"
+            ) or (
+                probe.seam == "load_authoring_document"
+                and case.name in RETURNED_TASK_AUTHORITY_ERRORS
+            )
+            assert status == (200 if owner_returned else expected_status), (
+                label,
+                status,
+                answer,
+            )
+            assert_owner_refusal(answer, case)
 
 
 def exercise_registered_handler_matrix(
@@ -628,20 +642,19 @@ def exercise_untyped_fault_matrix(live: Any, monkeypatch: Any) -> None:
         representatives[probe.seam] = probe
     assert set(representatives) == PUBLIC_SEAMS | ACTIVATION_SEAMS
     assert live.web is not None
-    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
-        for probe in representatives.values():
-            original_handler = probe.route.handler
-            with monkeypatch.context() as patch:
-                counter = inject_public_refusal(patch, live, probe, fault)
-                status, answer = loopback_request(connection, live, probe)
-            label = (probe.key, probe.seam)
-            assert counter["calls"] == 1, (label, "owner not reached", status, answer)
-            assert live.web.application.routes[probe.key].handler is original_handler, label
-            assert status == 500, (label, status, answer)
-            code = answer.get("failure_code") or answer.get("refused")
-            assert untyped_failure(str(code)), (label, answer)
-            assert str(code).startswith("local_web.handler_failed:RuntimeError:"), (label, answer)
-            assert marker not in json.dumps(answer, ensure_ascii=False), (label, answer)
+    for probe in representatives.values():
+        original_handler = probe.route.handler
+        with monkeypatch.context() as patch:
+            counter = inject_public_refusal(patch, live, probe, fault)
+            status, answer = over_loopback(live, probe)
+        label = (probe.key, probe.seam)
+        assert counter["calls"] == 1, (label, "owner not reached", status, answer)
+        assert live.web.application.routes[probe.key].handler is original_handler, label
+        assert status == 500, (label, status, answer)
+        code = answer.get("failure_code") or answer.get("refused")
+        assert untyped_failure(str(code)), (label, answer)
+        assert str(code).startswith("local_web.handler_failed:RuntimeError:"), (label, answer)
+        assert marker not in json.dumps(answer, ensure_ascii=False), (label, answer)
 
 
 __all__ = [

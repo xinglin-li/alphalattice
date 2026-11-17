@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import urllib.request
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -23,6 +24,7 @@ from alphalattice.interface.local_application import native_setup as setup
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
+    workspace_connection_key,
 )
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
@@ -99,9 +101,7 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     assert subject["pin_differs"] == "model,effort"
     assert subject["last_at"] == document["occurred_at"] == usage["last_at"]
     assert subject["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
-    assert subject["input_channel"] == (
-        "CODEX_SESSION_FILE" if host == "codex" else "CLAUDE_CODE_SESSION_FILE"
-    )
+    assert subject["input_channel"] == ("CODEX_OTLP" if host == "codex" else "CLAUDE_CODE_OTLP")
     for count in (
         "responses",
         "input_tokens",
@@ -136,6 +136,70 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     assert stored["observation_id"] == first["observation_id"]
     assert stored["source_sequence"] == document["producer_sequence"]
     assert stored["payload"]["subject"] == subject
+
+    # The native exporter uses this same authenticated Host socket and writer.
+    from alphalattice.kernel.data_layer import history
+
+    connection = LocalResearchConnection.read(live.workspace)
+    exporters = setup.agent_exporters(project, connection)
+    exporter_headers = tomllib.loads(exporters["codex_config"])["otel"]["exporter"]["otlp-http"][
+        "headers"
+    ]
+    attrs = {
+        "conversation.id" if host == "codex" else "session.id": "socket-session",
+        "model": "synthetic-model",
+        "gen_ai.usage.input_tokens": 15,
+        "gen_ai.usage.cache_read.input_tokens": 3,
+        "gen_ai.usage.cache_write.input_tokens": 4,
+        "gen_ai.usage.output_tokens": 5,
+        "gen_ai.input.messages": "PRIVATE-PROMPT-CANARY",
+    }
+    payload = {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [{"key": "service.name", "value": {"stringValue": host}}]
+                },
+                "scopeLogs": [
+                    {
+                        "logRecords": [
+                            {
+                                "timeUnixNano": "123",
+                                "body": {"stringValue": "PRIVATE-TOOL-CANARY"},
+                                "attributes": [
+                                    {
+                                        "key": key,
+                                        "value": {
+                                            "intValue"
+                                            if isinstance(value, int)
+                                            else "stringValue": str(value)
+                                        },
+                                    }
+                                    for key, value in attrs.items()
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    }
+    request = urllib.request.Request(
+        connection.url + "/v1/logs",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            **exporter_headers,
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        assert response.status == 200 and response.read() == b"{}"
+    (received,) = history.agent_telemetry(
+        host, "socket-session", workspace_id=connection.workspace_id
+    )
+    assert received["output_tokens"] == 5 and received["workspace_id"] == connection.workspace_id
+    assert "PRIVATE" not in json.dumps(received)
+    assert received["parent_agent_id"] is None
 
 
 def test_a_reading_with_an_unusable_record_time_files_at_its_reading_time(tmp_path):
@@ -209,6 +273,7 @@ def test_off_binding_admits_only_its_exact_lead_without_native_discovery(tmp_pat
     assert not binding.serves(("claude-code", "parent"))
 
 
+@pytest.mark.proves("local_application.agent_exporters_preview_before_project_write")
 def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypatch, capsys):
     entry = _entry()
     roles = entry._roles()
@@ -268,6 +333,30 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
     assert NativeResearchBinding.read(tmp_path) is None
     assert hooks.read_bytes() == before
     assert "native_bridge.session_mismatch" in capsys.readouterr().out
+    # Native exporter settings remain a preview until the person's explicit yes.
+    connection = LocalResearchConnection(
+        str(workspace.resolve()), "w1", "http://127.0.0.1:12345/", "a" * 32, "b" * 32
+    )
+    settings = tmp_path / ".claude/settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text(json.dumps({"model": "kept", "env": {"KEPT": "yes"}}))
+    settings_before = settings.read_bytes()
+    preview = setup.agent_exporters(tmp_path, connection)
+    assert settings.read_bytes() == settings_before and preview["claude_written"] is False
+    assert preview["claude_env"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == connection.url.rstrip("/")
+    codex = tomllib.loads(preview["codex_config"])["otel"]
+    assert codex["log_user_prompt"] is False
+    transport = workspace_connection_key(workspace)
+    assert codex["exporter"]["otlp-http"]["headers"]["X-Alphalattice-Workspace"] == transport
+    assert (
+        f"X-Alphalattice-Workspace={transport}"
+        in preview["claude_env"]["OTEL_EXPORTER_OTLP_HEADERS"]
+    )
+    written = setup.agent_exporters(tmp_path, connection, configure_claude=True)
+    configured = json.loads(settings.read_text())
+    assert written["claude_written"] is True and configured["model"] == "kept"
+    assert configured["env"] == {"KEPT": "yes", **preview["claude_env"]}
+    assert hooks.read_bytes() == before
 
 
 def _hook_group(event: str, matcher: str) -> dict[str, object]:
@@ -931,7 +1020,7 @@ def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
     )
     assert filed["producer_id"] == "claude-code-native"
     assert filed["subject"]["native_host"] == "claude-code"
-    assert filed["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    assert filed["subject"]["input_channel"] == "CLAUDE_CODE_OTLP"
     with pytest.raises(NativeBridgeError, match="event_scope_invalid"):
         observation_request(project, binding, {"source": "native_usage", "usage": _usage("codex")})
 
@@ -1077,18 +1166,6 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             2,
             "the rollouts a Codex specialist's spawn chain reads, a first record each: its "
             "lead's own and a specialist's specialist's",
-        ),
-        "USAGE_READ_BYTES": (
-            bridge.USAGE_READ_BYTES,
-            "==",
-            512 * 1024 * 1024,
-            "a complete optional native session scan; overflow publishes no prefix",
-        ),
-        "USAGE_LINE_BYTES": (
-            bridge.USAGE_LINE_BYTES,
-            "==",
-            8 * 1024 * 1024,
-            "one complete native JSONL record; an overbound record publishes no prefix",
         ),
         "USAGE_MODEL_ROWS": (
             bridge.USAGE_MODEL_ROWS,

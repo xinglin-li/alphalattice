@@ -35,6 +35,12 @@ ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
+CREATE MACRO evidence_doc_asof(cutoff_us) AS TABLE
+SELECT r.* FROM lake.world.evidence_doc r
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:f32f870f25736dde4f9aed2ef136f06e8d3deb862aa447ad8eabfe844d8e2577'
+           AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
+
 -- Every version with the moment the next one replaced it (world.superseded), for a walk-forward read over many decision times in one
 -- pass: version v is what decision time t saw when known_asof <= t < visible_to (or visible_to is null), with t never
 -- past the selection's cutoff and a retracted v showing nothing. A price adjustment as of t applies only actions with

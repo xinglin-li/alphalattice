@@ -205,7 +205,14 @@ _USAGE_FIELDS = (
     "sample_time_kind",
     "sampled_at",
 )
-_NATIVE_USAGE_CHANNELS = frozenset({"CODEX_SESSION_FILE", "CLAUDE_CODE_SESSION_FILE"})
+_NATIVE_USAGE_CHANNELS = frozenset(
+    {
+        "CODEX_SESSION_FILE",
+        "CLAUDE_CODE_SESSION_FILE",  # retained historical observations
+        "CODEX_OTLP",
+        "CLAUDE_CODE_OTLP",
+    }
+)
 
 
 def _usage_metadata(entry: Mapping[str, object]) -> dict[str, object]:

@@ -25,6 +25,9 @@ dependencies = [
     "opentelemetry-api>=1.45.2,<2",
     "opentelemetry-sdk>=1.45.2,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
+    # The Host's OTLP receiver uses these already-locked protocol packages directly.
+    "opentelemetry-proto>=1.45.2,<2",
+    "protobuf>=7.35.1,<8",
     "opentelemetry-instrumentation-system-metrics>=0.66b2,<1",
     "opentelemetry-processor-baggage>=0.66b2,<1",  # stamps our baggage ids on spans and records
     "sqlite-vec>=0.1.9,<0.2",

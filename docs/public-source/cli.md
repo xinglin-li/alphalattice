@@ -159,3 +159,13 @@ and applicable size limits.
 Read Portfolio metrics with the unit declared for their `metric_units`
 path. Unknown sections list available paths. [Research flows](research-flows.md)
 explains result claims, and [Privacy](privacy.md) explains observed usage.
+
+`alphalattice session exporters --workspace W` prints native exporter settings for
+the running Host: Claude Code's project environment and Codex's user-config lines.
+Only on the person's yes, add `--configure-claude` to merge the environment into
+the admitted project's local Claude Code settings; other settings are retained.
+Codex's user config is always printed, never written. These settings contain the
+Host's local authentication token; keep them private and regenerate them after a
+Host restart. The endpoint accepts loopback exports only and removes prompt, tool
+and opt-in content before storage. `session bind --usage off` disables this
+Session's ingest and usage reading. Missing exports remain unmeasured.

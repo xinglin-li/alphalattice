@@ -138,6 +138,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     blobs = {
         "config/anywhere/listing.json": b'{"schema": "alphalattice.release.public-manifest"}',
         "config/anywhere/escaped.json": b'{"schema": "alphalattice.tests\\u002dunregistered.v1"}',
+        "config/anywhere/admissions.json": b'{"schema": "alphalattice.source-ratchet.v1"}',
         "config/anywhere/other.json": b'{"schema": "alphalattice.public.v1"}',
         "config/anywhere/torn.json": b'{"schema": "alphalattice.public.v1"',
         "tests/structural/test_declared.py": b'"""Reads it.\n\nPRIVATE\\x5fTEST: needs it."""\n',
@@ -148,6 +149,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     assert declared == {
         "config/anywhere/listing.json",
         "config/anywhere/escaped.json",
+        "config/anywhere/admissions.json",
         "config/anywhere/torn.json",
         "tests/structural/test_declared.py",
         "tests/structural/test_torn.py",

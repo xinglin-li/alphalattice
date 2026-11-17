@@ -1,5 +1,5 @@
 # Native sessions and Team
-Date: 2026-10-08
+Date: 2026-11-16
 
 A Session binds itself when it first works on a workspace, and its first research request opens a goal when it holds none. A committee member's bundle, message or review answer counts toward its floor's or thread's open goal instead, and a committee message never opens one; once that goal has closed, a member's request opens the Session's own goal, as a first research request does. Binding starts no model, agent or Task and grants no execution or write rights. Each host Session has its own ignored local record, holding host, Session, workspace and roles, never a token or research authority; a new Session binds independently. Run `alphalattice session bind` only to rebind or to turn usage reading off, and `alphalattice session unbind` only to change your own Session's workspace, usage or roles. Never edit another Session's record. A bundle carries its workspace location, never authority. If its route refuses a stale binding, run its exact offered binding commands in your own Session, then retry unchanged; an inherited parent binding stays intact. Explicit --workspace still selects the named workspace, and legacy bundles keep their existing route. When an agent sandbox denies the project's `.codex` folder, the binding is kept in the workspace's own folder: every Host record, usage reading and `session unbind --workspace <dir>` still find it, and each answer's `session_binding` (`BOUND_IN_WORKSPACE`) says to name `--workspace` on each command. `NOT_BOUND` names its `cause` and `path` and asks the person to serve from a shell that can write it. Never widen the sandbox for a binding.
 
@@ -11,6 +11,22 @@ Team and the Goal's Conversation show what the product recorded of a bound Sessi
 
 ## Usage
 
-With reading on, the Host reads the bound Session's own session file and the specialists that file records, when a goal is taken or submitted, an answer is submitted, a Team or Goal page opens, or `alphalattice session usage` asks; never on a timer and never another Session's file. It keeps models, efforts, token counts and times and discards conversation, tool bodies and raw keys. From a Claude Code specialist's own commands that name a member key it keeps only bounded attribution facts (the key's hash, the thread or a hash of the bundle path, the role, whether it submitted, hashed command identifiers, and the message IDs or answer references its accepted submits made): such a specialist shows as that member, and Team shows each message its own accepted submit made under it; what you submit for a member stays yours. A format it does not know reads as unavailable, never as zero, and research continues. `alphalattice session bind --usage off` keeps one Session unread; the person's switch turns reading off for every Session of the workspace; only the person decides it, and you relay their yes.
+With reading on, the Host receives native telemetry on its authenticated loopback
+socket and reads exact bound conversations from DuckLake at research milestones or
+`alphalattice session usage`. It discards prompt/tool text and opt-in attributes before
+storage. Native model, effort, counts, times and explicit parent links are observations;
+missing parents and member claims stay unmeasured. A Claude subagent's telemetry does
+not prove possession of a committee member key. Keyed submissions keep the product's
+recorded submitter, and prior file-derived observations remain readable.
+
+Run `alphalattice session exporters --workspace <explicit-workspace>` to print both agents'
+settings. Only on the person's yes, `--configure-claude` writes Claude's project-local
+environment; Codex's user-configuration lines are always printed. Repeat after a Host
+restart. No extension is downloaded at runtime. The Codex binding authorizer separately
+keeps its bounded first-record parent check; no transcript turns are read for usage.
+`alphalattice session bind --usage off` keeps that Session's matched exports and usage
+unread; the person's workspace switch refuses all native ingest and reading. Only the
+person decides the workspace switch, and you relay their yes. Named failures never
+stop research or invent zero usage.
 
 Usage notices apply to the selected host Session. Unverified participants are shown as a bounded sample with the total count; an omitted identifier is neither a verified participant nor zero usage. Turning that Session's reading off clears its notice.

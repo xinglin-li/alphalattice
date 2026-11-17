@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
-from alphalattice.control.product_host.composition import committee
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -25,7 +24,6 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     autobind_root,
-    clear_usage_checkpoints,
     read_session_usage,
     session_project,
     usage_reading,
@@ -43,27 +41,14 @@ if TYPE_CHECKING:
 
 UNVERIFIED_LIMIT: Final = 8
 CATCHING_UP: Final = "native_bridge.usage_catching_up"
-PROGRESS: Final = ("read_through", "total_bytes", "bytes_read", "rescan")
-
-
-def read_usage(
-    operations: PortfolioResearchOperations,
-    project: Path,
-    binding: NativeResearchBinding,
-    publish: Callable[[dict[str, Any]], dict[str, Any]],
-    goal_id: str | None,
-) -> dict[str, object]:
-    """One bound Session's usage, its subagents' member keys verified by the committee.
-
-    The goal store is reached only when a child's file holds claims to verify.
-    """
-
-    def proof(claims: Sequence[Mapping[str, Any]]) -> Mapping[str, str] | None:
-        return committee.member_of(operations.goals.store, claims)
-
-    return read_session_usage(
-        project, binding, publish=publish, goal_id=goal_id, member_proof=proof
-    )
+PROGRESS: Final = (
+    "read_through",
+    "total_bytes",
+    "bytes_read",
+    "rescan",
+    "model_seconds",
+    "lineage",
+)
 
 
 def own_standing(receipt: dict[str, Any]) -> dict[str, object]:
@@ -77,7 +62,12 @@ def own_standing(receipt: dict[str, Any]) -> dict[str, object]:
     if receipt.get("status") == "SKIPPED":
         return {"status": "OFF", "reason": None}
     members = [m for m in receipt.get("participants") or () if isinstance(m, dict)]
-    unverified = [str(m.get("agent_id")) for m in members if m.get("reason") == UNVERIFIED]
+    unverified = [
+        str(m.get("agent_id"))
+        for m in members
+        if m.get("reason") == UNVERIFIED
+        or (m.get("role") is None and not m.get("specialist_verified"))
+    ]
     failed = [
         m for m in members if m.get("status") != "DELIVERED" and m.get("reason") != UNVERIFIED
     ]
@@ -101,9 +91,9 @@ class NativeUsageReader:
     """Read the bound Sessions' usage when research asks, never on a timer.
 
     A milestone -- a goal's take or submission, an answer's submission -- or a Goal or Team page
-    opening asks. Each Session bound to this workspace whose reading is on is read from its own
-    file and the children that file records (`read_session_usage`); no other Session's file is
-    opened. One read runs at a time, a Session read within `RECENT` is not read again, and a
+    opening asks. Each bound Session whose reading is on is read from its exact catalog scope,
+    with only explicit parent links. One read runs at a time, and a Session read within `RECENT`
+    is not read again. A
     failure is named in `state`, never a refusal of research.
     """
 
@@ -123,6 +113,7 @@ class NativeUsageReader:
         self._status = "NOT_BOUND"
         self._reason: str | None = None
         self._progress: dict[str, object] = {}
+        self._unplaced: int | None = None
 
     def state(self) -> dict[str, object]:
         """The last reading's standing, never native lifecycle or completeness proof.
@@ -138,10 +129,36 @@ class NativeUsageReader:
             else self._status,
             "reason": self._reason,
             **self._progress,
+            **({"unplaced": self._unplaced} if self._unplaced is not None else {}),
             "sessions": {f"{host}:{sid}": own for (host, sid), own in self._sessions.items()},
         }
 
-    def _bindings(self) -> tuple[tuple[Path, NativeResearchBinding], ...]:
+    def receive(self, rows: list[dict[str, Any]]) -> int:
+        """Admit sanitized exports only while the workspace and exact bindings allow it."""
+        from alphalattice.kernel.data_layer.history import (  # lazy: Host log only
+            receive_agent_telemetry,
+        )
+
+        if not usage_reading(self.workspace):
+            raise NativeBridgeError("native_bridge.usage_disabled")
+        for _, binding in self._bindings(fail_closed=True):
+            if binding.usage == "OFF" and any(
+                row["vendor"] == binding.host
+                and binding.session_id
+                in (
+                    row["conversation_id"],
+                    row["session_id"],
+                    row["agent_id"],
+                    row["parent_agent_id"],
+                )
+                for row in rows
+            ):
+                raise NativeBridgeError("native_bridge.usage_disabled")
+        return cast(int, receive_agent_telemetry(rows))
+
+    def _bindings(
+        self, *, fail_closed: bool = False
+    ) -> tuple[tuple[Path, NativeResearchBinding], ...]:
         found: list[tuple[Path, NativeResearchBinding]] = []
         projects: set[tuple[Path, str]] = set()
         for host in HOSTS:
@@ -149,6 +166,8 @@ class NativeUsageReader:
                 projects.add((session_project(self.workspace, host), host))
             except NativeBridgeError as error:
                 if str(error) != "native_bridge.project_declaration_missing":
+                    if fail_closed:
+                        raise
                     self._remember_failure(safe_failure_code(str(error)))
             # A workspace kept outside its project: the projects this Host admitted it from.
             projects.update((admitted, host) for admitted in self.operations.native_projects)
@@ -156,6 +175,8 @@ class NativeUsageReader:
             try:
                 project = admitted_session_project(self.workspace, candidate, host)
                 bindings, diagnostics = NativeResearchBinding.binding_entries(project)
+                if fail_closed and diagnostics:
+                    raise NativeBridgeError(diagnostics[0]["failure_code"])
                 self._binding_diagnostics(diagnostics)
                 found.extend(
                     (project, binding)
@@ -164,8 +185,12 @@ class NativeUsageReader:
                 )
             except NativeBridgeError as error:
                 if str(error) != "native_bridge.project_declaration_missing":
+                    if fail_closed:
+                        raise
                     self._remember_failure(safe_failure_code(str(error)))
             except Exception as error:
+                if fail_closed:
+                    raise NativeBridgeError("native_bridge.lead_usage_read_failed") from error
                 self._reason = self._reason or (
                     owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
                 )
@@ -173,11 +198,15 @@ class NativeUsageReader:
         root = autobind_root(self.workspace)
         try:
             held, diagnostics = NativeResearchBinding.binding_entries(root)
+            if fail_closed and diagnostics:
+                raise NativeBridgeError(diagnostics[0]["failure_code"])
             self._binding_diagnostics(diagnostics)
             found.extend(
                 (root, binding) for binding in held if binding.workspace.resolve() == self.workspace
             )
         except Exception as error:
+            if fail_closed:
+                raise NativeBridgeError("native_bridge.lead_usage_read_failed") from error
             self._reason = self._reason or (
                 owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
             )
@@ -243,7 +272,13 @@ class NativeUsageReader:
                 finally:
                     REQUEST_PROVENANCE.reset(token)
 
-        receipt = read_usage(self.operations, project, binding, publish, goal_id)
+        receipt = read_session_usage(
+            project,
+            binding,
+            workspace_id=self.operations.workspace_manifest.workspace_id,
+            publish=publish,
+            goal_id=goal_id,
+        )
         self._read_at[(binding.host, binding.session_id)] = (monotonic(), receipt)
         own = self._sessions[binding.host, binding.session_id] = own_standing(receipt)
         self._progress = {key: own[key] for key in PROGRESS if key in own}
@@ -272,11 +307,24 @@ class NativeUsageReader:
             self._progress = {}
             if not usage_reading(self.workspace):
                 # The person's switch: no binding is even looked for.
-                clear_usage_checkpoints(self.workspace)
                 self._status = "OFF"
+                self._unplaced = None
                 self._progress, self._sessions = {}, {}
                 self._read_at.clear()
                 return {"status": "OFF", "sessions": []}
+            from alphalattice.kernel.data_layer.history import (  # lazy: Host log only
+                unplaced_agent_telemetry,
+            )
+
+            try:
+                self._unplaced = unplaced_agent_telemetry(
+                    workspace_id=self.operations.workspace_manifest.workspace_id
+                )
+            except Exception as error:
+                self._unplaced = None
+                self._remember_failure(
+                    owner_failure_code(error) or "native_bridge.lead_usage_read_failed"
+                )
             found = self._bindings()
             binding_reason = self._reason
             active = tuple(item for item in found if item[1].usage != "OFF")

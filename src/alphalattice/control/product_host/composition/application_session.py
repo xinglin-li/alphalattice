@@ -41,6 +41,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     platform_identity,
     process_priority,
 )
+from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.kernel.data.errors import DataError
@@ -266,9 +267,10 @@ class WorkspaceApplicationSession:
                     )
                 upgrade.run()
             workspace_id = named_workspace_id(root)
-            if workspace_id is not None:  # a Host's open admits the market data into world
+            if workspace_id is not None:  # a Host's open admits its market data and documents
                 world.admit(root / "market-data.duckdb", workspace_id)
                 world.admit_sectors(root / "market-data.duckdb", workspace_id)
+                evidence_world.admit(root, workspace_id)
             gate = WorkspaceMutationGate()
             registry = DuckDbTaskControlRegistry(
                 resolve_task_control_database(root),
