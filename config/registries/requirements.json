@@ -622,10 +622,23 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.first_failed_native_phase_ends_the_run": {
+      "description": "A controller run ends at its first native phase with a nonzero exit, NATIVE_FAILED, and a run whose phases all exit zero ends STOPPED_BY_HARNESS, with its owner and Host stopped either way.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The controller's phase loop references the native turn monitor, which imports subprocess, and the unit layer refuses it; the table stands in the owner and the monitor and starts no process."
+    },
     "evaluation.golden_consumers_queue_behind_their_builder": {
       "description": "Under a parallel run, a session golden's first consumer keeps its place and builds it, and its other consumers are queued where the recorded work ahead passes that build, or last when it is unrecorded, never blocked on its lock.",
       "owner": "devtools.evaluation",
       "layer": "integration",
+      "seconds": 1
+    },
+    "evaluation.launch_form_binds_its_owner": {
+      "description": "A native run's launch form decides its process owner: an owned Job alone, or a named owner inside its bound checkout; another binding or an unknown form is refused by name before an owner exists.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
       "seconds": 1
     },
     "evaluation.listener_boundary_samples_survive_fast_host_exit": {
@@ -679,6 +692,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "evaluation.native_phase_keeps_its_observed_records": {
+      "description": "A real native phase reads its prompt and a Host asset, keeps its stream, process and memory records, and keeps a failed memory reading as an incomplete row naming its error.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Its behaviour is a real child process, its loopback read and the process records the monitor samples."
+    },
     "evaluation.native_snapshot_tolerates_process_exit": {
       "description": "A native activity snapshot continues when an observed process exits or becomes inaccessible before sampling, preserving other observed processes.",
       "owner": "devtools.evaluation",
@@ -711,6 +731,12 @@
       "layer": "integration",
       "seconds": 1,
       "lower_layer": "The poster's whole job is starting one bounded process and recording its exit, and the unit layer refuses a module that imports subprocess."
+    },
+    "evaluation.pre_session_time_stays_apart_from_turns": {
+      "description": "A native run's process time keeps an invocation that never opened a session apart from its measured turns, and a phase without its output reads unavailable, never zero.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
+      "seconds": 1
     },
     "evaluation.release_gates_run_as_one_inspect_task": {
       "description": "The native release gates run as one Inspect AI task over each host's one prepared leg, with every gate's verdict and the scenario person's questions in its log.",

@@ -159,18 +159,19 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(
                 while not self.stop_requested() and time.monotonic() < deadline:
                     time.sleep(0.01)
                 calls.append("stopped" if self.stop_requested() else "missed")
-            root = resolve_playpen_root(Path(__file__))
-            host = subprocess.Popen(
-                [sys.executable, "-c", _WATCHED_STDIN, str(root)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                text=True,
-            )
-            assert host.stdout is not None and host.stdin is not None
-            assert host.stdout.readline().strip() == "started"
-            host.stdin.write("noise\n" + lines)
-            host.stdin.close()
-            assert host.wait(timeout=30) == 0
+            if not during and lines != "ignored\nstop\n":  # one real child per ending
+                root = resolve_playpen_root(Path(__file__))
+                host = subprocess.Popen(
+                    [sys.executable, "-c", _WATCHED_STDIN, str(root)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+                assert host.stdout is not None and host.stdin is not None
+                assert host.stdout.readline().strip() == "started"
+                host.stdin.write("noise\n" + lines)
+                host.stdin.close()
+                assert host.wait(timeout=30) == 0
             calls.append("start")
             return "http://127.0.0.1:12345/"
 
@@ -571,6 +572,74 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     assert not alive, [p.name() for p in alive]
 
 
+class _ExitedHost:
+    """The child a stubbed detached spawn returns: it has exited, as a Host that cannot serve."""
+
+    pid = 4242
+    returncode = 1
+    _handle = 0x4242  # the handle a Windows job proof reads
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def terminate(self):
+        pass
+
+
+def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace:
+    """Record the launcher's detached spawns, and fake Windows' job reads for the escape.
+
+    A real spawn is kept only where a real Host must run; elsewhere an exited stand-in returns.
+    """
+    from alphalattice.control.product_host.composition import web_launcher
+
+    native = subprocess.Popen
+    record = SimpleNamespace(spawned=[], flags=[], fault_handlers=[])
+
+    def spawn(*args, **kwargs):
+        if web_launcher.LAUNCH_KEY_VARIABLE not in kwargs.get("env", {}):
+            return native(*args, **kwargs)  # any other child runs as it would
+        if "alphalattice.control.product_host.composition.web_launcher" in args[0]:
+            record.fault_handlers.append(kwargs["env"].get("PYTHONFAULTHANDLER"))
+        record.flags.append(kwargs.get("creationflags", 0))
+        if real:
+            # Started without breakaway: a runner whose Job forbids it still owns the child.
+            kwargs["creationflags"] = record.flags[-1] & ~getattr(
+                subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0
+            )
+            record.spawned.append(native(*args, **kwargs))
+        else:
+            record.spawned.append(_ExitedHost())
+        return record.spawned[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    if os.name == "nt":
+
+        def proof(_child, _job, inside):
+            inside._obj.value = (
+                escape == "denied" or not record.flags[-1] & subprocess.CREATE_BREAKAWAY_FROM_JOB
+            )
+            return escape != "unproven"
+
+        def limits(_job, _kind, output, _size, _length):
+            output._obj.BasicLimitInformation.LimitFlags = 0x2000
+            return escape != "unproven"
+
+        lock_api = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel = SimpleNamespace(
+            IsProcessInJob=proof,
+            QueryInformationJobObject=limits,
+            LockFileEx=lock_api.LockFileEx,
+            UnlockFileEx=lock_api.UnlockFileEx,
+        )
+        monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
+        monkeypatch.setattr(ctypes, "get_last_error", lambda: 87 if escape == "unproven" else 0)
+    return record
+
+
 @pytest.mark.parametrize("escape", ["escaped", "denied", "unproven"])
 @pytest.mark.parametrize("lang", ["en", "zh"])
 @pytest.mark.parametrize("panel_host", [None, "claude-code", "codex"])
@@ -586,38 +655,9 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         monkeypatch.setenv(name, str(tmp_path))
     monkeypatch.setattr(web_launcher.tempfile, "tempdir", None)
     monkeypatch.delenv("PYTHONFAULTHANDLER", raising=False)
-    native, spawned, flags, host_fault_handlers = subprocess.Popen, [], [], []
-
-    def spawn(*args, **kwargs):
-        if "alphalattice.control.product_host.composition.web_launcher" in args[0]:
-            host_fault_handlers.append(kwargs["env"].get("PYTHONFAULTHANDLER"))
-        flags.append(kwargs.get("creationflags", 0))
-        kwargs["creationflags"] = flags[-1] & ~getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
-        spawned.append(native(*args, **kwargs))
-        return spawned[-1]
-
-    def proof(_child, _job, inside):
-        inside._obj.value = (
-            escape == "denied" or not flags[-1] & subprocess.CREATE_BREAKAWAY_FROM_JOB
-        )
-        return escape != "unproven"
-
-    monkeypatch.setattr(subprocess, "Popen", spawn)
-    if os.name == "nt":
-
-        def limits(_job, _kind, output, _size, _length):
-            output._obj.BasicLimitInformation.LimitFlags = 0x2000
-            return escape != "unproven"
-
-        lock_api = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel = SimpleNamespace(
-            IsProcessInJob=proof,
-            QueryInformationJobObject=limits,
-            LockFileEx=lock_api.LockFileEx,
-            UnlockFileEx=lock_api.UnlockFileEx,
-        )
-        monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
-        monkeypatch.setattr(ctypes, "get_last_error", lambda: 87 if escape == "unproven" else 0)
+    # one row starts the real Host a detached launch exits from; the others stand in for it
+    real = (escape, lang, panel_host) == ("escaped", "en", None)
+    spawns = _detached_spawns(monkeypatch, escape, real=real)
     taken = tmp_path / "taken"
     taken.mkdir()
     (taken / "stray.txt").write_text("not a workspace", encoding="utf-8")
@@ -637,7 +677,7 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_web.service_not_started"
         assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS"
-        assert str(taken) in refused["detail"] and not flags
+        assert str(taken) in refused["detail"] and not spawns.flags
     # A folder can become unreadable after the foreign-file check, before discovery.
     with monkeypatch.context() as unreadable:
         unreadable.setattr(web_launcher, "holds_foreign_files", lambda _: True)
@@ -647,7 +687,7 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         assert web_launcher._workspace_refusal(taken) == 2
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_web.service_not_started"
-        assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not flags
+        assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not spawns.flags
     # A folder with a Host's connection record is the launch's to read: that Host may serve it.
     record = local_client.LocalResearchConnection.path(taken)
     record.parent.mkdir()
@@ -666,14 +706,15 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     refused = json.loads(capsys.readouterr().out)
     assert refused["failure_code"] == "research_workspace.nonempty_manifest_absent"
     assert refused["workspaces"] == [str(beside.resolve())]
-    assert "terminal_command" not in refused and not flags
+    assert "terminal_command" not in refused and not spawns.flags
     (taken / "research-workspace.json").write_text("not a manifest", encoding="utf-8")
     assert main(launch, serve=web_launcher.main) == 2
     exited = json.loads(capsys.readouterr().out)
     if escape == "escaped" or os.name != "nt":
         assert exited["failure_code"] == "local_web.detached_host_exited"
-        assert "research_workspace." in Path(exited["detail"].rsplit(": ", 1)[1]).read_text()
-        if os.name == "nt":
+        log = Path(exited["detail"].rsplit(": ", 1)[1])  # the log the refusal names
+        assert "research_workspace." in log.read_text() if real else log.is_file()
+        if real and os.name == "nt":
             probe = "import ctypes; print(bool(ctypes.windll.kernel32.GetConsoleWindow()))"
             host = f"import subprocess, sys; subprocess.run([sys.executable, '-c', {probe!r}])"
             log = tmp_path / "probe.log"
@@ -721,8 +762,8 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
             configured = native_setup._configure("codex", taken)
             assert configured["next_commands"]["serve"] == exited["terminal_command"]
         assert not list(tmp_path.glob("alphalattice-host-*.log"))
-    assert host_fault_handlers and all(value == "1" for value in host_fault_handlers)
-    assert spawned and all(child.poll() is not None for child in spawned)
+    assert spawns.fault_handlers and all(value == "1" for value in spawns.fault_handlers)
+    assert spawns.spawned and all(child.poll() is not None for child in spawns.spawned)
     assert web_launcher.main(["--workspace", str(tmp_path), "--detach", "--stop-on-stdin"]) == 2
     tied = json.loads(capsys.readouterr().out)
     assert tied["failure_code"] == "local_web.detach_with_stop_on_stdin"

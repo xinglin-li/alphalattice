@@ -1765,7 +1765,7 @@ def test_a_build_writes_the_same_bytes_whatever_its_workers(tmp_path, monkeypatc
 def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
     """Control: Panel is same whatever its workers."""
 
-    manifest = fixture_manifest(listing_count=60)
+    manifest = fixture_manifest(listing_count=30)
     as_of = SESSIONS[400]
     written: dict[int, tuple[object, ...]] = {}
     for workers in (1, 3):
@@ -1773,7 +1773,7 @@ def test_a_panel_is_the_same_whatever_its_workers(tmp_path) -> None:
             tmp_path / f"workers-{workers}", manifest, end=as_of, spy="a" * 64
         )
         workspace.provider.sectors = {
-            item.symbol: f"Sector-{index // 20}" for index, item in enumerate(manifest.listings)
+            item.symbol: f"Sector-{index // 10}" for index, item in enumerate(manifest.listings)
         }
         workspace.provider.sectors["SPY"] = "Reference"
         workspace.service.feature_workers = workers
