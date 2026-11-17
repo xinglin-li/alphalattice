@@ -15681,6 +15681,132 @@
    "successor": "3a9ac45eff67d6193325f8e7e12a0dcf6cf5ae2172afe65da78cd6ea1285a230",
    "change": "Read admitted universe membership from shared data, with rollback",
    "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "9742856c37d3bca91406b4d02ae4a1615d970a1dd97f66168aeae3700d5da2cc",
+   "successor": "bf71439c1cd9841bcaa3a2dcf662a3c7b3a86314d05742bbf86c5b1f3c381297",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "fa1a05d97b7361acd6c412677a210cf8759b76a3378218a8e00266928e2c822d",
+   "successor": "2fe5641a945a9e5ced999d3b6732623112dad74245378f998778d29cf710dcce",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "967b82dd7020af43f783447ca1da69d19bd8d68e98336e95e10783102c9463bb",
+   "successor": "5677f8d8b6468f59df75e24de8643f9bfd3f1280843c9ae0c9bc14d5b371ed05",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "98d2b205a21b77d3eb654099763ed1de8c67f2af6ee2a46aaa856fd74b7bb9ea",
+   "successor": "6fe08fac7802b86906db3080bf6ecb75e1a1e6754d9d973a7537ed0a8c60612a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b69a5488a5c5b14fb132f3a4dabab8c6dba48be20cdb1aa1ccdd37ff9e228916",
+   "successor": "67e0f269f1a2f9ba2435a3cc5ee450b11a393d5c1dc7922944015b4bdd8cffc9",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "44bb74a51812e2403c87cb5befa96fe3955fecc036af2ed4c1c38cadc0ac770f",
+   "successor": "84946270d924fe7183b020f098033471fbfd2d16a6f37b686d59dc84678ae2ca",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "98e67718d5c725a837d30281bae0daa6e714733069a8293cc46d3d52cc9d7f4d",
+   "successor": "f137766a773cc08946a45df19961ec771b70a6f8126a001cafedbc9f32a060ec",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "e18e7481cd4ee8e815bde61e435e8f927e18b6a21bd4e8cb904917b38d7904ed",
+   "successor": "eb9928c7ff4a9514c6549e7b18e0a7cfc09f35e0e64ac6fc0d2526bbb5da663b",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "30348543ff8974c5a7f92e5cae148b836c27d792c8ab7a1a5d3072ecbd7150fd",
+   "successor": "6250a34921163a07afd73a70c6d7068695167925192f73d5f488d8149c3aeeef",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "2bc46ab6857bc05f710737c49fe93e7098235d932d974ae6e457f4e86ba1948e",
+   "successor": "07a75a32be5f03c0edd66bdb6451dc2150a9da05226d0f3a40b779932206177f",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "aa6fc0be00f186456f31571122aec1ed6f635a5fa5de78e5b7751430aee7700a",
+   "successor": "ae90feb8713b784898bf26f2423598ee81c5e182622d4e3d4fee5b4ac19da360",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "584734d6c35d562a3e5374d36112f44dff82af1a79a24c65b5048dc5dc433332",
+   "successor": "a2f1aadde76e2f234d1e1e59cc55e731b383147d6e57215df2a133e444b6a808",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a645e59d654e938aced1fb697699b18b5318f943d3dab6de9900b64b39c839a6",
+   "successor": "559441365172d497e589632cca32a97432b58b54579de78237c97fd15c0554b7",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "successor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "successor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "406913a9deb02dd1268b2311ec647c0375a0efa390335fc41291a2c27e2e9694",
+   "successor": "2fde2054f52763795f51abf1cafed6c654ad06438bc2e523a580ddfc6c3c718b",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "93fd7574092e7ad941602580ebc443b1f4c862a8298b3abf6f27d1dacea2236d",
+   "successor": "b999ccbbb74a1562c6a84b309266e8fb1a838950f601bb92124855818f388fb3",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "79eb1ab3817f464f29aace88c058275511cb060bda3aefb6b4e19226e9cfc466",
+   "successor": "52b7d4af184fc14ef7d6e9d5a6c27a1c7f4d5d56da26c95506abe8801515ab1a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
   }
  ]
 }

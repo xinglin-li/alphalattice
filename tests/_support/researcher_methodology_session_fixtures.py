@@ -11,11 +11,27 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.data_layer import history
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     build_real_risk_workspace,
     development_feature_catalog,
 )
+
+
+@pytest.fixture(scope="module")
+def outcome_catalog_root(tmp_path_factory: pytest.TempPathFactory):
+    """The shared workspace's outcome catalog stays with this worker across its modules."""
+    patch = pytest.MonkeyPatch()
+    root = tmp_path_factory.getbasetemp() / "methodology-outcome-catalog"
+    patch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
+    history.open_history("methodology-outcomes", "Methodology outcomes", root, root=root)
+    try:
+        yield root
+    finally:
+        if history.holding() is not None:
+            history.close_history()
+        patch.undo()
 
 
 @pytest.fixture(scope="session")

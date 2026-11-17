@@ -100,6 +100,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from devtools.architecture.structural import (
     dependency_closure,
@@ -355,20 +356,27 @@ def publish_causal_outcomes(
     """
 
     store = MarketDataRepository(workspace.workspace)
-    published = CausalExecutionOutcomePublisher(
-        # Annotated ``PanelStateRepository`` on the publisher, but every method it
-        # reaches for -- the research manifest, the source watermark, raw bars and
-        # actions -- belongs to the market store. The annotation is stale; the
-        # market repository is what the code actually requires.
-        store=store,  # type: ignore[arg-type]
-        resolver=ArtifactResolver(workspace.artifact_root),
-        artifact_root=workspace.artifact_root,
-        mutation_gate=WorkspaceMutationGate(),
-    ).publish_daily(
-        panel_manifest_ref=workspace.panel_manifest_ref,
-        completed_at=at,
-        **({} if recipe_id is None else {"recipe_id": recipe_id}),
-    )
+    opened = not history.recording()
+    if opened:
+        history.open_history("outcomes-fixture", "Outcome fixture", workspace.workspace)
+    try:
+        published = CausalExecutionOutcomePublisher(
+            # Annotated ``PanelStateRepository`` on the publisher, but every method it
+            # reaches for -- the research manifest, the source watermark, raw bars and
+            # actions -- belongs to the market store. The annotation is stale; the
+            # market repository is what the code actually requires.
+            store=store,  # type: ignore[arg-type]
+            resolver=ArtifactResolver(workspace.artifact_root),
+            artifact_root=workspace.artifact_root,
+            mutation_gate=WorkspaceMutationGate(),
+        ).publish_daily(
+            panel_manifest_ref=workspace.panel_manifest_ref,
+            completed_at=at,
+            **({} if recipe_id is None else {"recipe_id": recipe_id}),
+        )
+    finally:
+        if opened:
+            history.close_history()
     return str(published.manifest.snapshot_hash), str(published.manifest_artifact.uri)
 
 

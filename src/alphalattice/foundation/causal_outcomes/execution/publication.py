@@ -948,7 +948,7 @@ class CausalExecutionOutcomePublisher:
             ):
                 raise ValueError("causal execution marker-last readback differs")
             for chunk in surface.published_chunks(manifest):
-                self.artifacts.resolve_chunk(chunk)
+                self.artifacts.read_chunk(chunk)
         receipt_values = {
             "kind": "CausalExecutionOutcomeReceipt",
             "snapshot_hash": manifest.snapshot_hash,

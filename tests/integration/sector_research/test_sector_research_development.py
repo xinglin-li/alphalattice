@@ -68,6 +68,9 @@ from alphalattice.investment.sector_research.targets.execution import (
     seal_sector_target_evidence,
 )
 from alphalattice.protocols.actor_execution import ActorKind
+from tests._support.researcher_methodology_session_fixtures import (
+    outcome_catalog_root as outcome_catalog_root,
+)
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     _sector_revision,
@@ -390,7 +393,7 @@ def _service(workspace: RealRiskWorkspace) -> SectorResearchDevelopmentService:
 
 
 @pytest.fixture(scope="module")
-def sector_publication(real_risk_workspace: RealRiskWorkspace):  # type: ignore[no-untyped-def]
+def sector_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path):  # type: ignore[no-untyped-def]
     """One real EWMA experiment and one ZERO control over the shared workspace."""
 
     snapshot_hash, _manifest_ref = publish_causal_outcomes(real_risk_workspace)
@@ -882,6 +885,7 @@ def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ign
 
 def test_the_campaign_compares_calibrates_decides_and_replays(  # type: ignore[no-untyped-def]
     real_risk_workspace: RealRiskWorkspace,
+    outcome_catalog_root: Path,
 ) -> None:
     """A real sector campaign compares, calibrates, validates, seals, and replays its evidence
     without numerical recomputation."""

@@ -271,13 +271,33 @@ from alphalattice.kernel.data_layer import store
 from alphalattice.kernel.data_layer.log import HostLog
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
 lag = batch["lag"] and tuple(batch["lag"])
-with HostLog.open(root) as log:
-    port = store.StorePort.open(root, log)
-    yf = store.definition_id("provider", "yf")
-    rows = pa.table(store.as_columns(batch["rows"]))
-    with store.stage(root, batch["table"], yf, rows, lag=lag) as staged:
-        setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
-        port.commit(staged)
+if batch.get("owner"):
+    from datetime import date, datetime
+    from alphalattice.kernel.data_layer import history
+    rows = batch["rows"]
+    for row in rows:
+        row.pop("artifact_id")
+        for name in ("formation_session", "entry_session", "holding_end_session"):
+            row[name] = date.fromisoformat(row[name])
+        for name in ("formation_close_at", "entry_open_at", "holding_end_open_at"):
+            row[name] = datetime.fromisoformat(row[name])
+    values = pa.Table.from_pylist(rows)
+    index = values.schema.get_field_index("holding_end_open_split_adjusted")
+    values = values.set_column(
+        index, "holding_end_open_split_adjusted", pa.nulls(len(rows), pa.float64())
+    )
+    history.open_history("crash-fixture", "crash", root.parent / "workspace", root)
+    history.store()
+    setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
+    history.write_execution_outcome("a" * 64, values)
+else:
+    with HostLog.open(root) as log:
+        port = store.StorePort.open(root, log)
+        yf = store.definition_id("provider", "yf")
+        rows = pa.table(store.as_columns(batch["rows"]))
+        with store.stage(root, batch["table"], yf, rows, lag=lag) as staged:
+            setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
+            port.commit(staged)
 """
 DAYS = [f"{2000 + d // 336}-{d % 336 // 28 + 1:02d}-{d % 28 + 1:02d}" for d in range(1500)]
 BATCHES = {
@@ -310,7 +330,7 @@ BATCHES = {
     ],
 )
 def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
-    root, batch, point, rows, repaired
+    root, batch, point, rows, repaired, monkeypatch
 ):
     """A Host killed at each point of an observed, legacy or results write order leaves no half
     snapshot: the next start finds all its rows or none, its event once, and no staging left."""
@@ -319,7 +339,9 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
         with HostLog.open(root) as log:
             seed(root, log, [("2005-01-03", "21:00:00", False)]).close()
     sent = root.parent / "batch.json"  # a file: 1,500 rows exceed a Windows command line
-    sent.write_text(json.dumps({"table": table, "lag": lag, "rows": given}))
+    sent.write_text(
+        json.dumps({"table": table, "lag": lag, "rows": given, "owner": batch == "results"})
+    )
     child = subprocess.run(
         [sys.executable, "-c", KILL, str(root), point, str(sent)], **CHILD, timeout=120
     )
@@ -339,6 +361,75 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     assert port.started["repaired"] == [row[0] for row in events if repaired]
     assert [handle.split("/")[0] for handle in port.started["collected"]] == ["staging"]
     assert list((root / "staging").iterdir()) == []
+    if batch == "results":
+        from datetime import datetime
+
+        from alphalattice.kernel.data_layer import history
+
+        records = [{k: v for k, v in row.items() if k != "artifact_id"} for row in given]
+        for row in records:
+            for name in ("formation_session", "entry_session", "holding_end_session"):
+                row[name] = date.fromisoformat(row[name])
+            for name in ("formation_close_at", "entry_open_at", "holding_end_open_at"):
+                row[name] = datetime.fromisoformat(row[name])
+        expected = pa.Table.from_pylist(records)
+        index = expected.schema.get_field_index("holding_end_open_split_adjusted")
+        expected = expected.set_column(
+            index, "holding_end_open_split_adjusted", pa.nulls(len(records), pa.float64())
+        )
+        history.open_history("crash-fixture", "crash", root.parent / "workspace", root)
+        try:
+            if point == "commit":
+                # A concurrent log unit must be able to enter history while the first
+                # outcome opens StorePort: the log guard precedes history's lock.
+                from concurrent.futures import ThreadPoolExecutor
+                from threading import Event
+
+                unit_held, opening = Event(), Event()
+                store = history.store
+
+                def first_store():
+                    opening.set()
+                    return store()
+
+                def log_unit():
+                    with history._open["log"].unit():
+                        unit_held.set()
+                        assert opening.wait(5)
+                        acquired = history._lock.acquire(timeout=2)
+                        if acquired:
+                            history._lock.release()
+                        return acquired
+
+                monkeypatch.setattr(history, "store", first_store)
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    unit = pool.submit(log_unit)
+                    assert unit_held.wait(5)
+                    writer = pool.submit(history.write_execution_outcome, "a" * 64, expected)
+                    assert unit.result(timeout=10), "first outcome inverted the log/history locks"
+                    artifact = writer.result(timeout=30)
+            else:
+                artifact = history.write_execution_outcome("a" * 64, expected)
+            actual = history.read_execution_outcome("a" * 64).select(expected.column_names)
+            assert actual.cast(expected.schema).equals(expected)
+            assert (
+                len(
+                    history._open["log"].read(
+                        "SELECT 1 FROM artifact WHERE artifact_id = ?", (artifact,)
+                    )
+                )
+                == 1
+            )
+            assert (
+                len(
+                    history._open["log"].read(
+                        "SELECT 1 FROM measure WHERE artifact_id = ?", (artifact,)
+                    )
+                )
+                == 1
+            )
+        finally:
+            history.close_history()
 
 
 @pytest.mark.proves("data_layer.start_collects_what_no_write_owns")
@@ -509,7 +600,9 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
         )
         for table, rows, lag in batches:
-            with stage(root, table, YF, arrow(rows), lag=lag) as staged:
+            with stage(
+                root, table, None if table in RESULTS_KEYS else YF, arrow(rows), lag=lag
+            ) as staged:
                 try:
                     port.commit(staged)
                 except DataError as error:
@@ -549,6 +642,10 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             " FROM event WHERE type = 'admission.committed' AND json_extract(attrs, '$.dataset')"
             " = 'raw_bar'"
         )
+        lineage = log.read(
+            "SELECT provider_id, json_extract(e.attrs, '$.artifact_ids') FROM admission a"
+            " JOIN event e ON e.seq = a.admission_seq WHERE dataset = 'execution_outcome'"
+        )
         port.close()
     schemas = dict(tables)
     kept = ("superseded", "rewritten")  # the versions' own records, keyed by no fact
@@ -567,6 +664,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     assert carried == ([0.5], True, "derived")
     assert outcomes == [(0.1, None, 1_704_205_800_000_000), (None, None, 1_704_292_200_000_000)]
     assert seen == [0, 1]
+    assert [tuple(row) for row in lineage] == [(None, '["art-1"]')]
     part = {"part": "2024", "min_known_asof_us": ten_pm, "max_known_asof_us": 1_704_740_400_000_000}
     assert [(version, json.loads(parts)) for version, parts in admitted] == [(1, [part])]
     assert refused == [

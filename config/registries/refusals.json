@@ -17,6 +17,14 @@
 "task_control.telemetry_clock_naive": {"owner": "alphalattice.control.task_control", "category": "INVALID_ARGUMENT", "classification_note": "The observation lacks an aware source clock; repair its producer rather than guessing an import time."},
 "task_control.telemetry_log_unavailable": {"owner": "alphalattice.control.task_control", "category": "UNAVAILABLE", "classification_note": "The optional observation could not be written or read from the log; its reader reports unavailable and retains its last valid observation."},
 "explorer.wall_deadline": {"owner": "devtools.evaluation", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded explorer walk exceeded its wall deadline; inspect the trace before another walk."},
+"causal_outcomes.upgrade_path_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome path leaves its backed-up workspace."},
+"causal_outcomes.upgrade_chunk_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome chunk does not match its recorded identity."},
+"research_experiment.outcome_body_incomplete": {"owner": "alphalattice.control.product_host", "category": "FAILED_PRECONDITION", "classification_note": "Restore the complete catalog outcome before binding the research input."},
+"data_layer.history_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "Open the Host data root before writing or reading its catalog."},
+"data_layer.outcome_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected outcome body cannot be reused as present."},
+"data_layer.outcome_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The recorded outcome's catalog body is incomplete."},
+"data_layer.outcome_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested outcome body is not present in the catalog."},
+"causal_outcomes.outcome_store_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the explicit legacy rollback reader."},
 "upgrade.refused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Upgrade cannot serve before its backups, declared family order, immutable ID mapping and ALL EQUAL family verification are satisfied."},
 "workspace_database.runtime_extension_refused": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "Workspace connections use the installed data dependencies and refuse runtime extension installation or loading."},
 "data_layer.extension_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An installed extension cannot load; restore the engine-matched locked data dependencies before creating the catalog."},
@@ -6545,6 +6553,11 @@
 "owner": "data_layer",
 "category": "INVALID_ARGUMENT",
 "classification_note": "A raw_bar or corporate_action row carries its source's own last write of the value, without which it could supersede a value its source wrote later."
+},
+"data_layer.admission_lineage_invalid": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A world admission names its outside provider; a results admission names none, since its rows are an artifact's body."
 },
 "data_layer.admission_key_repeated": {
 "owner": "data_layer",

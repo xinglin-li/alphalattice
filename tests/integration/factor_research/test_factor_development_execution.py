@@ -68,6 +68,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
 )
+from tests._support.researcher_methodology_session_fixtures import (
+    outcome_catalog_root as outcome_catalog_root,
+)
 from tests.researcher_methodology_surface.factor_evidence_support import (
     DEVELOPMENT_EVIDENCE_POLICY,
     DEVELOPMENT_REDUNDANCY_POLICY,
@@ -90,7 +93,9 @@ def _document(inventory: tuple[Any, ...]) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def factor_outcomes(real_risk_workspace: RealRiskWorkspace) -> tuple[str, str]:
+def factor_outcomes(
+    real_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path
+) -> tuple[str, str]:
     """The causal outcomes a Factor program reads, published by the real writer.
 
     Published here rather than in the shared builder: Risk never reads execution

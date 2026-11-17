@@ -159,7 +159,7 @@ def risk_development_run(
 
 
 @pytest.fixture(scope="module")
-def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
     """The exact original real input build, once per run, including its bind/reuse assertions."""
 
     def build(root: Path) -> dict:
@@ -180,25 +180,52 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
             strategy_artifacts=(artifact,),
         )
         publish_research_workspace_manifest(root, manifest)
-        outcome, _ref = publish_causal_outcomes(
-            real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
-        )
-        first = bind_factor_inputs(
-            workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-        )
-        before = (root / "research-workspace.json").read_bytes()
-        assert (
-            bind_factor_inputs(
-                workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-            )
-            == first
-        )
-        assert (root / "research-workspace.json").read_bytes() == before
-        assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
-        assert not tuple((root / "research-inputs").rglob("sealed-holdout"))
-        return {}
+        from alphalattice.kernel.data_layer import history
+        from alphalattice.kernel.data_layer.backup import backup_data_root
 
-    source, _metadata = session_workspace(tmp_path_factory, "factor_input", build)
+        catalog_root = root.parent / "outcome-catalog"
+        with history.own_root(catalog_root):
+            history.open_history("factor-seed", "factor seed", root)
+            try:
+                outcome, _ref = publish_causal_outcomes(
+                    real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
+                )
+                first = bind_factor_inputs(
+                    workspace=root,
+                    source=real_risk_workspace.workspace,
+                    outcome_snapshot_hash=outcome,
+                )
+                before = (root / "research-workspace.json").read_bytes()
+                assert (
+                    bind_factor_inputs(
+                        workspace=root,
+                        source=real_risk_workspace.workspace,
+                        outcome_snapshot_hash=outcome,
+                    )
+                    == first
+                )
+                assert (root / "research-workspace.json").read_bytes() == before
+                assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
+                assert not tuple((root / "research-inputs").rglob("sealed-holdout"))
+            finally:
+                history.close_history()
+        generation = backup_data_root(catalog_root, root.parent / "outcome-backups")
+        return {"generation": str(generation.relative_to(root.parent))}
+
+    source, metadata = session_workspace(
+        tmp_path_factory, "factor_input", build, inputs={"outcome_catalog": 3}
+    )
+    catalog = tmp_path_factory.mktemp("factor-outcome-catalog") / "root"
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.backup import restore_data_root
+
+    restore_data_root(source.parent / metadata["generation"], catalog)
+
+    patch = pytest.MonkeyPatch()
+    patch.setenv("ALPHALATTICE_DATA_ROOT", str(catalog))
+    request.addfinalizer(patch.undo)
+    assert history.open_history("factor-fixture", "factor fixture", catalog) is None
+    request.addfinalizer(history.close_history)
     return source
 
 

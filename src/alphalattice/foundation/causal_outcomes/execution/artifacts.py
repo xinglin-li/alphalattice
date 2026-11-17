@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .compile import _SCHEMA_ID, _schema
@@ -412,27 +413,14 @@ class _ExecutionOutcomeArtifactStore:
                 ),
             }
         )
-        path = self._parquet_path(split, content_hash)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        history.write_execution_outcome(content_hash, ordered)
         metadata = {
-            b"alphalattice.snapshot_kind": b"CausalExecutionOutcomeChunk",
-            b"alphalattice.chunk_hash": content_hash.encode(),
-            b"alphalattice.split": split.encode(),
+            "alphalattice.snapshot_kind": "CausalExecutionOutcomeChunk",
+            "alphalattice.chunk_hash": content_hash,
+            "alphalattice.split": split,
         }
-        if not path.exists():
-            staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-            pq.write_table(ordered.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, path)
-        parquet = pq.ParquetFile(path)
-        actual_metadata = parquet.schema_arrow.metadata or {}
-        if actual_metadata.get(b"alphalattice.chunk_hash") != content_hash.encode():
-            raise ValueError("causal execution chunk metadata is invalid")
         metadata_hash = hashlib.sha256(
-            json.dumps(
-                {key.decode(): value.decode() for key, value in sorted(actual_metadata.items())},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
         dates = ordered.column("formation_session").to_pylist()
         year = dates[0].year
@@ -453,6 +441,21 @@ class _ExecutionOutcomeArtifactStore:
         if metadata.get(b"alphalattice.chunk_hash") != chunk.content_hash.encode():
             raise ValueError("causal execution chunk readback is invalid")
         return path
+
+    def read_chunk(
+        self, chunk: CausalExecutionOutcomeChunk, *, columns: list[str] | None = None
+    ) -> pa.Table:
+        """Read a catalog body, or the explicit legacy rollback until row U migrates it."""
+        mode = os.environ.get("ALPHALATTICE_EXECUTION_OUTCOME_STORE", "catalog")
+        if mode == "legacy":  # contract: remove when row U migrates existing file-bound outcomes
+            return pq.read_table(self.resolve_chunk(chunk), columns=columns)
+        if mode != "catalog":
+            raise ValueError("causal_outcomes.outcome_store_invalid")
+        table = history.read_execution_outcome(chunk.content_hash, columns)
+        if table.num_rows != chunk.row_count:
+            raise ValueError("causal execution outcome catalog row count is invalid")
+        schema = _schema() if columns is None else pa.schema([_schema().field(c) for c in columns])
+        return table.cast(schema)
 
     def manifests(self) -> tuple[CausalExecutionOutcomeManifest, ...]:
         root = self.root / "manifests"

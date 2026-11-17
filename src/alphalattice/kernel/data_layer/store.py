@@ -89,7 +89,8 @@ LINEAGES: Final = {
 """The world columns that name a lineage, with its family: a row names a registered one."""
 RESULTS_KEYS: Final = {"execution_outcome": ("artifact_id", "listing_id", "formation_session")}
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
-written once: a key already in the catalog is refused."""
+written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
+outside provider: its admission names no provider and lists the artifacts it holds."""
 LEGACY_VALID: Final = {
     "listing": ("last_session", "first_session"),
     "provider_symbol": ("valid_to", "valid_from"),
@@ -128,11 +129,13 @@ class Staged(NamedTuple):
 
     admission_id: str
     table: str
-    provider_id: str
-    """The provider's lineage, as the log registers it."""
+    provider_id: str | None
+    """A world admission's provider lineage, as the log registers it; None for a results one."""
     row_count: int
     lag: tuple[str, int] | None
     """A legacy batch's lag rule, by name and version; None for an observed one."""
+    artifacts: tuple[str, ...] = ()
+    """A results admission's artifact ids, its rows' lineage; empty for a world one."""
 
 
 class Committed(NamedTuple):
@@ -323,7 +326,7 @@ class StorePort:
             row[0]
             for row in self.lake.execute(f"DESCRIBE SELECT * FROM '{sql_path(parquet)}'").fetchall()
         }
-        named = {("provider", staged.provider_id)}
+        named = set() if staged.provider_id is None else {("provider", staged.provider_id)}
         for column, family in LINEAGES.items():
             if column in columns and column != "provider_id":
                 found = self.lake.execute(f"SELECT DISTINCT {column} FROM '{sql_path(parquet)}'")
@@ -655,6 +658,8 @@ class StorePort:
         }
         if staged.lag is not None:
             attrs |= {"lag_rule": staged.lag[0], "lag_rule_version": staged.lag[1]}
+        if staged.artifacts:
+            attrs["artifact_ids"] = list(staged.artifacts)
         if dropped:
             attrs["dropped"] = dropped
         if rewritten:
@@ -675,7 +680,7 @@ class StorePort:
 def stage(
     root: Path,
     table: str,
-    provider_id: str,
+    provider_id: str | None,
     rows: Any,
     *,
     lag: tuple[str, int] | None = None,
@@ -683,7 +688,8 @@ def stage(
 ) -> Iterator[Staged]:
     """Write one admission's rows, an Arrow table or record batch reader, under staging as they
     came, in Arrow from the caller to the Parquet; the commit request it yields
-    is all the writer needs. `provider_id` is the provider's lineage in the log. Its producer holds
+    is all the writer needs. `provider_id` is a world table's provider lineage in the log, and None
+    for a results table, whose rows' artifact_id is their lineage. Its producer holds
     the admission's lock until the block ends, so a Host that starts meanwhile leaves it: commit
     it inside the block. A legacy batch, rows 0.2.7 kept with no knowledge time, names its
     source's lag rule as `lag=(name, version)`. Refused by name below the free-space floor, and
@@ -711,7 +717,12 @@ def stage(
     try:
         (root / "staging" / admission).mkdir()
         pq.write_table(staged, root / "staging" / admission / f"{table}.parquet")
-        yield Staged(admission, table, provider_id, staged.num_rows, lag)
+        artifacts = (
+            tuple(sorted(set(staged.column("artifact_id").to_pylist())))
+            if table in RESULTS_KEYS
+            else ()
+        )
+        yield Staged(admission, table, provider_id, staged.num_rows, lag, artifacts)
     finally:
         drop(held, lock)
 
@@ -743,7 +754,7 @@ def feature_table(feature_set_id: str) -> str:
     return "feature_set_" + feature_set_id.removeprefix("blake3:")
 
 
-def admissible(table: str, provider_id: str, rows: Any, *, legacy: bool = False) -> Any:
+def admissible(table: str, provider_id: str | None, rows: Any, *, legacy: bool = False) -> Any:
     """The rows as one Arrow table, each with its provider's lineage where its table keys one, so
     a renamed provider moves no version.
 
@@ -757,6 +768,13 @@ def admissible(table: str, provider_id: str, rows: Any, *, legacy: bool = False)
             f"{table} is not a table StorePort admits; it admits"
             f" {', '.join([*WORLD_KEYS, *RESULTS_KEYS])}",
             code="data_layer.world_table_not_admitted",
+        )
+    if (provider_id is None) is (table in WORLD_KEYS):
+        raise DataError(
+            f"a {table} admission names a provider lineage for a world table and none for a results"
+            " table, whose rows' artifact_id is their lineage; stage it with"
+            f" {'its provider' if table in WORLD_KEYS else 'no provider'}",
+            code="data_layer.admission_lineage_invalid",
         )
     if legacy and table not in LEGACY_VALID:
         raise DataError(

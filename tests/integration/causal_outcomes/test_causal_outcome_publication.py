@@ -152,6 +152,19 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
     assert len(reads) == 2
 
 
+@pytest.fixture
+def outcome_host(tmp_path):
+    from alphalattice.kernel.data_layer import history
+
+    def start():
+        history.open_history("outcome-fixture", "outcome fixture", tmp_path / "host")
+
+    try:
+        yield start
+    finally:
+        history.close_history()
+
+
 def _publish(workspace: RealRiskWorkspace, *, hours: int) -> PublishedCausalExecutionOutcome:
     with patch.object(
         MarketDataRepository,
@@ -172,10 +185,12 @@ def _publish(workspace: RealRiskWorkspace, *, hours: int) -> PublishedCausalExec
 @pytest.mark.private_data
 def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     tmp_path: Path,
+    outcome_host,
 ) -> None:
     """A re derived snapshot keeps its one seal and reuses exactly afterwards."""
 
     workspace = build_real_risk_workspace(tmp_path / "workspace")
+    outcome_host()
     first = _publish(workspace, hours=0)
     assert first.receipt.action == "PUBLISHED"
     snapshot_hash = first.manifest.snapshot_hash
@@ -238,6 +253,7 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
 @pytest.mark.private_data
 def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     tmp_path: Path,
+    outcome_host,
 ) -> None:
     """A superseded panel with an index on disk is refused before any read."""
 
@@ -247,6 +263,8 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     )
 
     workspace = build_real_risk_workspace(tmp_path / "workspace")
+    active = build_real_risk_workspace(tmp_path / "active")
+    outcome_host()
     resolver = ArtifactResolver(workspace.artifact_root)
     first = _publish(workspace, hours=0)
     assert first.receipt.action == "PUBLISHED"
@@ -293,7 +311,6 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     with pytest.raises(ValueError, match="requires an ACTIVE Feature Panel snapshot"):
         FeaturePanelReader(resolver).listing_axis(workspace.panel_manifest_ref)
 
-    active = build_real_risk_workspace(tmp_path / "active")
     active_resolver = ArtifactResolver(active.artifact_root)
     panel = active_resolver.load_feature_panel_manifest(active.panel_manifest_ref)
     summary = dict(panel["safe_summary"])
@@ -322,10 +339,11 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     )
 
 
-def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path: Path) -> None:
+def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
+    tmp_path: Path, outcome_host
+) -> None:
     """Parallel derivation publishes the identical snapshot and bytes."""
 
-    from alphalattice.control.product_host.research_authoring.factor_inputs import file_digest
     from alphalattice.foundation.causal_outcomes.execution import publication as owner
     from alphalattice.foundation.causal_outcomes.execution.compile import (
         ListingRowDerivation,
@@ -339,6 +357,7 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
 
     serial_workspace = build_real_risk_workspace(tmp_path / "serial")
     parallel_workspace = build_real_risk_workspace(tmp_path / "parallel")
+    outcome_host()
 
     def publish(workspace: RealRiskWorkspace, *, workers: int) -> PublishedCausalExecutionOutcome:
         return CausalExecutionOutcomePublisher(
@@ -361,8 +380,8 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(tmp_path
     chunks = serial.manifest.development_chunks
     assert chunks and parallel.manifest.development_chunks == chunks
     for chunk in chunks:
-        assert file_digest(parallel_reader.artifacts.resolve_chunk(chunk)) == file_digest(
-            serial_reader.artifacts.resolve_chunk(chunk)
+        assert parallel_reader.artifacts.read_chunk(chunk).equals(
+            serial_reader.artifacts.read_chunk(chunk)
         )
     # One listing, one unit: derived here and in a worker process alike.
     store = MarketDataRepository(serial_workspace.workspace)
@@ -416,7 +435,9 @@ def _new_children_after_wait(parent, previous):
     return psutil.wait_procs(children, timeout=3)[1]
 
 
-def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path: Path) -> None:
+def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(
+    tmp_path: Path, outcome_host
+) -> None:
     """Control: Worker failure publishes nothing and leaves no worker behind."""
 
     import psutil
@@ -472,6 +493,7 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     live = live_workspace_connections(store.database.path)
     assert live is None or live.handles == 0
     with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
+        outcome_host()
         published = publish()
     assert published.receipt.action == "PUBLISHED"
     assert _new_children_after_wait(me, children_before) == []
@@ -594,7 +616,9 @@ def test_existing_seal_reuse_ignores_only_the_source_revision_counter() -> None:
 
 
 @pytest.mark.private_data
-def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(tmp_path: Path) -> None:
+def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(
+    tmp_path: Path, outcome_host
+) -> None:
     """Outcomes and risk keep the historical members of a ragged panel."""
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
@@ -636,6 +660,7 @@ def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(tmp_pat
     )
 
     source = build_real_risk_workspace(tmp_path / "workspace")
+    outcome_host()
     exit_day = date(2026, 8, 3)
     day = date(2026, 8, 11)
     now = datetime(2026, 8, 11, 22, tzinfo=UTC)

@@ -112,6 +112,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
 )
+from tests._support.researcher_methodology_session_fixtures import (
+    outcome_catalog_root as outcome_catalog_root,
+)
 from tests.researcher_methodology_surface.alpha_development_support import (
     _ALPHA_STORE_ROOT,
     _FROZEN_AT,
@@ -210,7 +213,9 @@ def _rebuilt_receipt(
 
 @pytest.fixture(scope="module")
 def alpha_authority(
-    real_risk_workspace: RealRiskWorkspace, tmp_path_factory: pytest.TempPathFactory
+    real_risk_workspace: RealRiskWorkspace,
+    tmp_path_factory: pytest.TempPathFactory,
+    outcome_catalog_root: Path,
 ) -> tuple[str, tuple[str, ...], Path]:
     """One Factor development checkpoint, published where Alpha can be told to look.
 

@@ -1767,6 +1767,7 @@ def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
         include_alpha_handoff=True,
     )
     enhanced = read_factor_bundle(tmp_path, binding.binding_hash)
+    assert enhanced.binding_version == 2 and enhanced.outcomes
     assert compatible_factor_inputs(bundle, enhanced)
     assert binding.binding_hash != original.binding_hash
     target = tmp_path / "research-inputs" / binding.binding_hash / "source"

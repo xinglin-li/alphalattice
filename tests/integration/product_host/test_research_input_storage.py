@@ -34,6 +34,7 @@ from alphalattice.control.task_control.contracts import (
     TaskInputEnvelope,
     WorkItemDefinition,
 )
+from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
@@ -263,9 +264,59 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     from alphalattice.control.product_host.research_authoring.factor_inputs import (
+        compatible_factor_inputs,
         read_factor_bundle,
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
+
+    # Old file-bound identities remain readable; new bindings name the catalog artifact and digest.
+    digest = "c" * 64
+    artifact, other_artifact = uuid7(), uuid7()
+    chunk = f"artifacts/data-operations/execution-outcomes/development/chunks/{digest}.parquet"
+    common = {
+        "panel_snapshot_hash": "a" * 64,
+        "outcome_snapshot_hash": "b" * 64,
+        "sessions": (date(2024, 1, 2),),
+    }
+    old = FactorInputBundle.create(**common, files=((chunk, "d" * 64), ("panel", "e" * 64)))
+    new = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((artifact, digest),),
+    )
+    changed = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((other_artifact, "f" * 64),),
+    )
+    different_artifact = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((other_artifact, digest),),
+    )
+    with pytest.raises(ValueError, match="input_manifest_invalid"):
+        FactorInputBundle.create(
+            **common,
+            files=(("panel", "e" * 64),),
+            binding_version=2,
+            outcomes=(("sha256:" + digest, digest),),
+        )
+    import pyarrow as pa
+
+    rows = pa.table({"listing": ["one", "two"], "return": [None, 0.1]})
+    read_old = lambda _path: rows
+    read_new = lambda _artifact: rows
+    assert old.binding_hash != new.binding_hash
+    assert not compatible_factor_inputs(old, new)  # No row proof is no compatibility.
+    assert compatible_factor_inputs(old, new, read_legacy=read_old, read_catalog=read_new)
+    assert not compatible_factor_inputs(old, changed, read_legacy=read_old, read_catalog=read_new)
+    assert not compatible_factor_inputs(new, different_artifact)
+    assert not compatible_factor_inputs(
+        old, new, read_legacy=read_old, read_catalog=lambda _: rows.slice(0, 1)
+    )
 
     # Emulate Windows' path limit at the real bundle-reader boundary.
     long_root = tmp_path / ("long-workspace-" + "x" * 80)

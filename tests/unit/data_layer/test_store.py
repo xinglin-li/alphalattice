@@ -47,28 +47,47 @@ def arrow(rows: list[dict]) -> pa.Table:
 
 @pytest.mark.proves("data_layer.stage_refuses_what_it_cannot_admit")
 @pytest.mark.parametrize(
-    ("table", "rows", "legacy", "code"),
+    ("table", "provider", "rows", "legacy", "code"),
     [
         pytest.param(
             "raw_bar",
+            "yf",
             arrow([ROW | WRITTEN, ROW | WRITTEN | {"close": 2.0}]),
             False,
             "admission_key_repeated",
             id="key twice",
         ),
         pytest.param(
-            "alpha_score", arrow([ROW]), False, "world_table_not_admitted", id="not admitted"
+            "alpha_score", "yf", arrow([ROW]), False, "world_table_not_admitted", id="not admitted"
         ),
         pytest.param(
-            "session", arrow([ROW]), True, "legacy_table_unanchored", id="legacy, no date"
+            "session", "yf", arrow([ROW]), True, "legacy_table_unanchored", id="legacy, no date"
+        ),
+        pytest.param(
+            "raw_bar",
+            None,
+            arrow([ROW | WRITTEN]),
+            False,
+            "admission_lineage_invalid",
+            id="world, no provider",
+        ),
+        pytest.param(
+            "execution_outcome",
+            "yf",
+            arrow([ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}]),
+            False,
+            "admission_lineage_invalid",
+            id="results, a provider",
         ),
     ],
 )
-def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(table, rows, legacy, code):
+def test_staging_refuses_a_repeated_key_and_an_unadmitted_table(
+    table, provider, rows, legacy, code
+):
     """Two versions of one key in one admission, a table StorePort does not admit or a legacy
     batch with no valid date are refused by name."""
     with pytest.raises(DataError) as refused:
-        admissible(table, "yf", rows, legacy=legacy)
+        admissible(table, provider, rows, legacy=legacy)
     assert refused.value.failure.code == f"data_layer.{code}"
 
 
@@ -116,7 +135,7 @@ def test_a_world_row_is_staged_with_its_providers_lineage_and_a_results_row_as_i
         ["listing_id", "session_date", "source_observed_at"],
     ]
     outcome = ROW | {"artifact_id": "a", "formation_session": "2024-01-02"}
-    assert admissible("execution_outcome", "yf", arrow([outcome])).to_pylist() == [outcome]
+    assert admissible("execution_outcome", None, arrow([outcome])).to_pylist() == [outcome]
 
 
 @pytest.mark.proves("data_layer.staging_keeps_every_rows_columns")

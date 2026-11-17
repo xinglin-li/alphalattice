@@ -100,6 +100,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import build_external_factor_workspace
+from tests._support.researcher_methodology_session_fixtures import (
+    outcome_catalog_root as outcome_catalog_root,
+)
 from tests.researcher_methodology_surface.external_factor_method import (
     EXTERNAL_FACTOR_ID,
     EXTERNAL_IMPLEMENTATION_ID,
@@ -204,7 +207,9 @@ class ExternalFactorRun:
 
 
 @pytest.fixture(scope="module")
-def external_outcomes(external_factor_workspace: RealRiskWorkspace) -> RealRiskWorkspace:
+def external_outcomes(
+    external_factor_workspace: RealRiskWorkspace, outcome_catalog_root: Path
+) -> RealRiskWorkspace:
     """The external workspace with the causal outcomes a Factor program reads, published once.
 
     Every test that runs a Factor program here names this rather than counting on another

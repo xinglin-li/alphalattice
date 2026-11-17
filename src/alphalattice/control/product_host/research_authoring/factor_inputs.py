@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -12,9 +13,10 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, BinaryIO, Self, cast
+from typing import Any, BinaryIO, Literal, Self, cast
 from uuid import UUID
 
+import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
@@ -249,6 +251,11 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
     database_snapshot_hash: str | None = Field(
         default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
     )
+    # contract: legacy file-bound bundles remain readable until row U migrates them.
+    binding_version: Literal[2] | None = Field(default=None, exclude_if=lambda v: v is None)
+    outcomes: tuple[tuple[str, str], ...] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     binding_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @classmethod
@@ -290,6 +297,23 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
             or len({p for p, _ in self.files}) != len(self.files)
             or self.binding_hash
             != canonical_hash(self.model_dump(mode="json", exclude={"binding_hash"}))
+        ):
+            raise AuthoringError("research_experiment.input_manifest_invalid")
+        if (self.binding_version is None) != (self.outcomes is None):
+            raise AuthoringError("research_experiment.input_manifest_invalid")
+        if self.outcomes is not None and (
+            not self.outcomes
+            or self.outcomes != tuple(sorted(set(self.outcomes)))
+            or len({artifact for artifact, _ in self.outcomes}) != len(self.outcomes)
+            or any(
+                not re.fullmatch(
+                    r"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+                    artifact,
+                )
+                or len(content) != 64
+                or any(character not in "0123456789abcdef" for character in content)
+                for artifact, content in self.outcomes
+            )
         ):
             raise AuthoringError("research_experiment.input_manifest_invalid")
         if (
@@ -462,16 +486,56 @@ def _logical_files(source: Path, snapshot: str) -> tuple[Path, ...]:
     return tuple(confined(source, p.relative_to(source).as_posix()) for p in paths)
 
 
-def compatible_factor_inputs(original: FactorInputBundle, candidate: FactorInputBundle) -> bool:
-    """A handoff may add logical metadata, never replace the original inputs."""
-    return (
+def compatible_factor_inputs(
+    original: FactorInputBundle,
+    candidate: FactorInputBundle,
+    *,
+    read_legacy: Callable[[str], Any] | None = None,
+    read_catalog: Callable[[str], Any] | None = None,
+) -> bool:
+    """A mixed handoff is compatible only after the old and catalog rows compare equal."""
+
+    def outcome_file(name: str) -> bool:
+        return (
+            name.startswith("artifacts/data-operations/execution-outcomes/")
+            and "/chunks/" in name
+            and name.endswith(".parquet")
+        )
+
+    if not (
         original.panel_snapshot_hash == candidate.panel_snapshot_hash
         and original.outcome_snapshot_hash == candidate.outcome_snapshot_hash
         and original.sessions == candidate.sessions
         and dict(original.files).get("market-data.duckdb", original.database_snapshot_hash)
         == dict(candidate.files).get("market-data.duckdb", candidate.database_snapshot_hash)
-        and {(p, h) for p, h in original.files if p != "market-data.duckdb"}.issubset(
+    ):
+        return False
+    if original.outcomes is None and candidate.outcomes is None:
+        return {(p, h) for p, h in original.files if p != "market-data.duckdb"}.issubset(
             {(p, h) for p, h in candidate.files if p != "market-data.duckdb"}
+        )
+    if not {
+        (p, h) for p, h in original.files if p != "market-data.duckdb" and not outcome_file(p)
+    }.issubset(
+        {(p, h) for p, h in candidate.files if p != "market-data.duckdb" and not outcome_file(p)}
+    ):
+        return False
+    if original.outcomes is not None and candidate.outcomes is not None:
+        return original.outcomes == candidate.outcomes
+    if read_legacy is None or read_catalog is None:
+        return False
+    legacy = original if original.outcomes is None else candidate
+    current = candidate if original.outcomes is None else original
+    files = {Path(name).stem: name for name, _ in legacy.files if outcome_file(name)}
+    artifacts = {digest: artifact for artifact, digest in current.outcomes or ()}
+    return (
+        bool(files)
+        and files.keys() == artifacts.keys()
+        and all(
+            (old := read_legacy(files[digest])).equals(
+                read_catalog(artifacts[digest]).cast(old.schema)
+            )
+            for digest in files
         )
     )
 
@@ -639,12 +703,19 @@ def _bind_factor_inputs(
             )
         )
     store = reader.artifacts
+    outcome_refs = []
+    legacy = os.environ.get("ALPHALATTICE_EXECUTION_OUTCOME_STORE", "catalog") == "legacy"
     for chunk in outcome.development_chunks:
-        confined(
-            source,
-            str(store._parquet_path(chunk.split, chunk.content_hash).relative_to(source)),
-        )
-        paths.append(store.resolve_chunk(chunk))
+        if legacy:  # contract: row U retires the old file-bound reader and bundles.
+            path = store.resolve_chunk(chunk)
+            confined(source, str(path.relative_to(source)))
+            paths.append(path)
+        else:
+            if store.read_chunk(chunk, columns=["listing_id"]).num_rows != chunk.row_count:
+                raise AuthoringError("research_experiment.outcome_body_incomplete")
+            outcome_refs.append(
+                (history.execution_outcome_artifact_id(chunk.content_hash), chunk.content_hash)
+            )
     paths.extend(
         (
             store._json_path("manifests", outcome.snapshot_hash),
@@ -665,6 +736,8 @@ def _bind_factor_inputs(
         sessions=tuple(sorted(set(sessions))),
         files=files,
         database_snapshot_hash=dict(files)["market-data.duckdb"],
+        binding_version=None if legacy else 2,
+        outcomes=None if legacy else tuple(sorted(outcome_refs)),
     )
     # The explicitly named installed input is the idempotency anchor, not a
     # search for a latest compatible directory. Verify it before reuse.
@@ -673,9 +746,20 @@ def _bind_factor_inputs(
         if prior is not None:
             candidate = read_factor_bundle(workspace, prior.binding_hash)
             prior_source = confined(workspace, f"research-inputs/{prior.binding_hash}/source")
-            if compatible_factor_inputs(bundle, candidate) and _logical_files(
-                prior_source, panel_snapshot_hash
-            ):
+
+            def legacy_rows(name: str) -> Any:
+                return pq.read_table(confined(prior_source, name))
+
+            def catalog_rows(artifact: str) -> Any:
+                digests = dict(bundle.outcomes or candidate.outcomes or ())
+                return history.read_execution_outcome(digests[artifact])
+
+            if compatible_factor_inputs(
+                bundle,
+                candidate,
+                read_legacy=None if legacy else legacy_rows,
+                read_catalog=None if legacy else catalog_rows,
+            ) and _logical_files(prior_source, panel_snapshot_hash):
                 bundle = candidate
     binding = ResearchWorkspaceExperimentInput(input_id=input_id, binding_hash=bundle.binding_hash)
     parent = confined(workspace, "research-inputs")
@@ -764,6 +848,8 @@ def _bind_factor_inputs(
                     sessions=bundle.sessions,
                     files=files_with_logical,
                     database_snapshot_hash=bundle.database_snapshot_hash,
+                    binding_version=bundle.binding_version,
+                    outcomes=bundle.outcomes,
                 )
                 binding = ResearchWorkspaceExperimentInput(
                     input_id=input_id, binding_hash=bundle.binding_hash

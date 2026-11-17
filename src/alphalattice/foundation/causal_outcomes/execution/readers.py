@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Protocol, Self, cast
+from typing import Literal, Protocol, Self, cast
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -22,6 +23,8 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .artifacts import (
@@ -646,7 +649,7 @@ def _rows_for_sessions(
     selected = tuple(value for value in chunks if value.year in years)
     if not selected:
         return pa.table({})
-    table = pa.concat_tables([pq.read_table(store.resolve_chunk(value)) for value in selected])
+    table = pa.concat_tables([store.read_chunk(value) for value in selected])
     mask = pc.is_in(table["formation_session"], value_set=pa.array(sessions, type=pa.date32()))
     return table.filter(mask)
 
@@ -664,9 +667,7 @@ def _matured_sessions(
     method's span.
     """
     tables = [
-        pq.read_table(
-            store.resolve_chunk(chunk), columns=["formation_session", "holding_end_session"]
-        )
+        store.read_chunk(chunk, columns=["formation_session", "holding_end_session"])
         for chunk in chunks
     ]
     if not tables:
@@ -757,10 +758,7 @@ class CausalExecutionOutcomeDevelopmentReader:
             "actual_session_span",
         )
         tables = tuple(
-            pq.read_table(
-                self.artifacts.resolve_chunk(chunk),
-                columns=["listing_id", *schedule_columns],
-            )
+            self.artifacts.read_chunk(chunk, columns=["listing_id", *schedule_columns])
             for chunk in manifest.development_chunks
         )
         if not tables:
@@ -1203,7 +1201,7 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
                 or durable.formation_sessions != self.formation_sessions
             ):
                 raise ValueError("policy holdout execution outcome release authority changed")
-            self.artifacts.resolve_chunk(durable.extension_chunk)
+            self.artifacts.read_chunk(durable.extension_chunk)
             return durable
 
         extension = self._build_extension_chunk(
@@ -1337,7 +1335,7 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         if cached is not None:
             return cached
         table = (
-            pq.read_table(self.artifacts.resolve_chunk(chunk))
+            self.artifacts.read_chunk(chunk)
             .combine_chunks()
             .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
         )
@@ -1438,10 +1436,7 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             self.artifacts.load_json(category="manifests", uri=manifest_ref)
         )
         tables = [
-            pq.read_table(
-                self.artifacts.resolve_chunk(chunk),
-                columns=["formation_session", "holding_end_session"],
-            )
+            self.artifacts.read_chunk(chunk, columns=["formation_session", "holding_end_session"])
             for chunk in self._authorized_chunks(manifest)
         ]
         table = pa.concat_tables(tables)
@@ -1458,8 +1453,110 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         raise PermissionError("GENERIC_SEALED_HOLDOUT_RELEASE_AUTHORITY_UNAVAILABLE")
 
 
+def execution_outcome_upgrade_family() -> Family:
+    """The upgrade runner's one migration, verification and rollback switch for outcomes."""
+
+    def legacy_tables(runner: UpgradeRunner) -> Iterator[tuple[str, pa.Table]]:
+        def json_files(folder: Path) -> list[Path]:
+            try:
+                return sorted(path for path in folder.iterdir() if path.suffix == ".json")
+            except FileNotFoundError:
+                return []
+
+        for workspace in runner.workspaces:
+            workspace = workspace.resolve()
+            roots = [(workspace / "artifacts", False)]
+            inputs = workspace / "research-inputs"
+            if inputs.is_dir():
+                roots.extend(
+                    (path / "source/artifacts", True)
+                    for path in sorted(inputs.iterdir())
+                    if path.is_dir()
+                )
+            for artifact_root, bound in roots:
+                if not artifact_root.resolve().is_relative_to(workspace):
+                    raise ValueError("causal_outcomes.upgrade_path_invalid")
+                store = _ExecutionOutcomeArtifactStore(artifact_root)
+                marker_root = store.root / "markers"
+                published = {
+                    CausalExecutionOutcomeMarker.model_validate_json(
+                        path.read_bytes()
+                    ).snapshot_hash
+                    for path in json_files(marker_root)
+                }
+                diagnostic = {marker.snapshot_hash for marker in store.development_only_markers()}
+                readers = (
+                    (store.manifests(), published, CausalExecutionOutcomeDevelopmentReader),
+                    (
+                        store.development_only_manifests(),
+                        diagnostic,
+                        DevelopmentOnlyExecutionOutcomeReader,
+                    ),
+                )
+                chunks: list[CausalExecutionOutcomeChunk] = []
+                for manifests, markers, reader_type in readers:
+                    reader = reader_type(artifact_root)
+                    for manifest in manifests:
+                        if manifest.snapshot_hash not in markers:
+                            continue  # no marker: the old producer never committed it
+                        reader.marker_for_snapshot(manifest.snapshot_hash)
+                        reader.resolve_method_seal(manifest.snapshot_hash)
+                        chunks.extend(manifest.development_chunks)
+                        if not bound and isinstance(manifest, CausalExecutionOutcomeManifest):
+                            chunks.extend(manifest.sealed_holdout_chunks)
+                if not bound:
+                    indexes = store.root / "policy-holdout-releases" / "by-claim"
+                    for index in json_files(indexes):
+                        release = CausalExecutionOutcomePolicyHoldoutReader.load_release(
+                            artifact_root=artifact_root, claim_hash=index.stem
+                        )
+                        chunks.append(release.extension_chunk)
+                for chunk in chunks:
+                    path = store._parquet_path(chunk.split, chunk.content_hash)
+                    if not path.resolve().is_relative_to(workspace):
+                        raise ValueError("causal_outcomes.upgrade_path_invalid")
+                    table = (
+                        pq.read_table(store.resolve_chunk(chunk))
+                        .combine_chunks()
+                        .sort_by(
+                            [
+                                ("formation_session", "ascending"),
+                                ("listing_id", "ascending"),
+                            ]
+                        )
+                    )
+                    if table.num_rows != chunk.row_count:
+                        raise ValueError("causal_outcomes.upgrade_chunk_invalid")
+                    yield chunk.content_hash, table
+
+    def step(runner: UpgradeRunner) -> None:
+        for digest, table in legacy_tables(runner):
+            actual = history.write_execution_outcome(
+                digest, table, upgrade_owner=(runner.log, runner.root)
+            )
+            artifact = runner.map_id("execution-outcomes", digest, actual)
+            if actual != artifact:
+                raise ValueError("causal_outcomes.upgrade_chunk_invalid")
+
+    def verify(runner: UpgradeRunner) -> bool:
+        for digest, old in legacy_tables(runner):
+            new = history.read_execution_outcome(digest).cast(_schema())
+            if not old.equals(new):
+                return False
+        return True
+
+    def switch(mode: Literal["old", "new"]) -> None:
+        # contract: remove the legacy choice when row U retires file-bound outcome reads.
+        os.environ["ALPHALATTICE_EXECUTION_OUTCOME_STORE"] = (
+            "legacy" if mode == "old" else "catalog"
+        )
+
+    return Family("execution-outcomes", step, verify, switch)
+
+
 __all__ = [
     "CausalExecutionOutcomeDevelopmentReader",
     "CausalExecutionOutcomePolicyHoldoutReader",
     "CausalOutcomeDevelopmentRows",
+    "execution_outcome_upgrade_family",
 ]
