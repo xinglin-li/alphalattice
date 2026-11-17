@@ -241,7 +241,6 @@ def test_a_cached_read_sees_a_write_another_registry_made(tmp_path: Path) -> Non
     assert record == first.task(admitted.task_id) and len(items) == len(plan.work_items)
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Exercises Windows numerical DLL inventory")
 def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
     """requirement (V68, LAWS PA3): the BLAS thread count can move an Alpha metric's last bits,
     so the fit log keeps the numerical libraries' counts beside the run; a record written before
@@ -250,13 +249,19 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
     import numpy  # noqa: F401 -- the Host's numerical libraries are loaded when it fits
 
     from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
-    from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
+    from alphalattice.kernel.shared_kernel.environment import (
+        numerical_thread_counts,
+        numerical_thread_limit,
+    )
 
     # Exercise a fresh process: no prior cached pool view may hide the Windows race.
     probe = """import importlib
 import numpy
 import threadpoolctl
 from alphalattice.kernel.shared_kernel import environment
+# Fit loads its numerical libraries before reading their thread pools.
+with environment.numerical_thread_limit(1):
+    pass
 original = threadpoolctl.ThreadpoolController
 for kind, expected in (("transient", 2), ("persistent", 16), ("other", 1)):
     importlib.reload(environment)
@@ -332,7 +337,8 @@ threadpoolctl.ThreadpoolController = original
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
-    counts = numerical_thread_counts()
+    with numerical_thread_limit(4):
+        counts = numerical_thread_counts()
     assert counts and all(isinstance(api, str) and threads >= 1 for api, threads in counts)
     record = {
         "program_hash": "a" * 64,

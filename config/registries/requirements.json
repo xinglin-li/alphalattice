@@ -1233,8 +1233,9 @@
     "portfolio_strategy_lab.advancement_refuses_an_index_for_another_program": {
       "description": "An advancement receipt index for one program cannot name another program.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
-      "layer": "unit",
-      "seconds": 1
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The real advancement store closes over registered publication backends; this holder opens its artifact index instead of replacing those dependencies with a unit double."
     },
     "portfolio_strategy_lab.finalization_ledger_closes_each_package_once": {
       "description": "If finalization repeated a step, closed a permit twice or released another package's receipt, a protected result could publish without its own ledger.",
