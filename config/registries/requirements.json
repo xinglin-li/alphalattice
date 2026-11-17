@@ -597,6 +597,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.the_schema_meets_its_contract": {
+      "description": "If a schema change broke a declared data-model rule, such as a meaningless key, one upward link or a status's moves, the change would merge unseen until review or production.",
+      "lower_layer": "The DDL is read as SQLite and DuckDB build it, the engines the Host runs, so the contract judges the schema they enforce, not a parse of its text.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.upgrade_stops_before_unverified_readers": {
       "description": "An upgrade does no work without verified backups and switches only an ALL EQUAL family; completed steps are not repeated.",
       "owner": "alphalattice.kernel.data_layer",

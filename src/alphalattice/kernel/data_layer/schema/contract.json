@@ -1,0 +1,1488 @@
+{
+ "schema": "alphalattice.schema-contract.v1",
+ "rules": {
+  "coverage": "Every table in log.sql, catalog.sql and index.sql has one entry here, and every entry has its table.",
+  "key": "An entry's key is its table's key: the DDL's primary key, or for the catalog, whose engine enforces none, its key comment, which every catalog table states.",
+  "id": "Each key part says where its value comes from: a Host-minted UUIDv7, the log's seq, another record's id, or an outside standard value with its reason; a recomputed home may be keyed by a content address. A digest, a caller's value or a packed string is a break.",
+  "up": "A record stores one upward link, and links no table its upward chain already reaches, except by an edge: a declared link, with its reason, to another record of that table.",
+  "home": "Each fact has one home; a second copy is a view, never a table.",
+  "time": "Each time column names its clock: integer microseconds UTC, a log seq, a UTC timestamp, a source's own clock or a market date. A time kept as text on its writer's clock is a break.",
+  "status": "Each status column declares its states, its terminal states and its moves; the DDL checks the states, a terminal state never moves, and a trigger on its table, named here, refuses exactly the changes of it that are not declared moves.",
+  "version": "Each version column is bound to a registered definition version, by a link or by a trigger on its table that refuses exactly the inserts whose definition and version no lineage registers, naming how the insert names its definition; or it is the record's own version with its reason; no version has a default."
+ },
+ "tables": {
+  "catalog.derived.factor_cov": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "factor_i",
+    "factor_j"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "standard: the as-of date",
+    "factor_i": "standard: the first factor's name in its feature set",
+    "factor_j": "standard: the second factor's name in its feature set"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.derived.factor_loading": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id",
+    "factor"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "standard: the as-of date",
+    "listing_id": "link",
+    "factor": "standard: the factor's name in its feature set"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.derived.specific_risk": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "standard: the as-of date",
+    "listing_id": "link"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.derived.training_sample": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "row_no"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "row_no": "standard: the sample's row in its partition"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "session_date": "market_date"
+   }
+  },
+  "catalog.results.alpha_score": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "session_date",
+    "listing_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "session_date": "standard: the scored session",
+    "listing_id": "link"
+   },
+   "up": "artifact_id",
+   "times": {
+    "session_date": "market_date"
+   }
+  },
+  "catalog.results.breakdown": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "metric_id",
+    "metric_version",
+    "dims"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "metric_id": "link",
+    "metric_version": "link",
+    "dims": "packed: an uncanonical 'k=v|k=v' string"
+   },
+   "up": "artifact_id",
+   "links": [
+    "metric_id"
+   ],
+   "versions": {
+    "metric_version": "definition"
+   }
+  },
+  "catalog.results.execution_outcome": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "listing_id",
+    "formation_session"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "listing_id": "link",
+    "formation_session": "standard: the formation session"
+   },
+   "up": "artifact_id",
+   "times": {
+    "formation_session": "market_date",
+    "formation_close_at": "utc_timestamp",
+    "entry_session": "market_date",
+    "entry_open_at": "utc_timestamp",
+    "holding_end_session": "market_date",
+    "holding_end_open_at": "utc_timestamp"
+   }
+  },
+  "catalog.results.holding": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "as_of",
+    "listing_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "as_of": "standard: the as-of date",
+    "listing_id": "link"
+   },
+   "up": "artifact_id",
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.results.series": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "name",
+    "session_date"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "name": "standard: the series' name within its study's artifact",
+    "session_date": "standard: the session"
+   },
+   "up": "artifact_id",
+   "times": {
+    "session_date": "market_date"
+   }
+  },
+  "catalog.world.corporate_action": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "effective_date",
+    "kind",
+    "action_id",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "listing_id": "link",
+    "effective_date": "standard: the action's effective date",
+    "kind": "standard: the action's kind",
+    "action_id": "standard: the provider's own id for the action",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "effective_date": "market_date",
+    "pay_date": "market_date",
+    "published_at": "utc_timestamp",
+    "source_observed_at": "source_clock",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.evidence_doc": {
+   "home": "world",
+   "key": [
+    "doc_digest",
+    "version_id"
+   ],
+   "id": {
+    "doc_digest": "digest: the document's content digest, its blob's address",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "published_at": "utc_timestamp",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   }
+  },
+  "catalog.world.listing": {
+   "home": "world",
+   "key": [
+    "listing_id",
+    "version_id"
+   ],
+   "id": {
+    "listing_id": "uuid7",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "first_session": "market_date",
+    "last_session": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.provider_symbol": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "symbol",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "symbol": "standard: the provider's own code for the listing",
+    "valid_from": "standard: the alias's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.raw_bar": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "session_date",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "listing_id": "link",
+    "session_date": "standard: the market session the bar is for",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "session_date": "market_date",
+    "published_at": "utc_timestamp",
+    "source_observed_at": "source_clock",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.rewritten": {
+   "home": "world",
+   "key": [
+    "table_id",
+    "version_id",
+    "source_observed_at"
+   ],
+   "id": {
+    "table_id": "link",
+    "version_id": "link",
+    "source_observed_at": "standard: each later source write of the version is its own row"
+   },
+   "links": [
+    "table_id",
+    "version_id",
+    "by_admission_id"
+   ],
+   "times": {
+    "source_observed_at": "source_clock"
+   }
+  },
+  "catalog.world.sector": {
+   "home": "world",
+   "key": [
+    "scheme_id",
+    "listing_id",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "scheme_id": "link",
+    "listing_id": "link",
+    "valid_from": "standard: the classification's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "scheme_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.session": {
+   "home": "world",
+   "key": [
+    "market",
+    "session_date",
+    "version_id"
+   ],
+   "id": {
+    "market": "standard: the ISO 10383 MIC of the market's calendar",
+    "session_date": "standard: the session's date",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "session_date": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   }
+  },
+  "catalog.world.superseded": {
+   "home": "world",
+   "key": [
+    "table_id",
+    "version_id"
+   ],
+   "id": {
+    "table_id": "link",
+    "version_id": "link"
+   },
+   "links": [
+    "table_id",
+    "version_id",
+    "by_admission_id"
+   ],
+   "times": {
+    "superseded_asof": "utc_timestamp"
+   }
+  },
+  "catalog.world.universe_member": {
+   "home": "world",
+   "key": [
+    "universe_id",
+    "listing_id",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "universe_id": "link",
+    "listing_id": "link",
+    "valid_from": "standard: the membership's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "universe_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "index.index_meta": {
+   "home": "index",
+   "key": [
+    "key"
+   ],
+   "id": {
+    "key": "standard: a fixed name of an index setting: embedding_model, dims or cursor_seq"
+   }
+  },
+  "index.passage": {
+   "home": "index",
+   "key": [
+    "passage_id"
+   ],
+   "id": {
+    "passage_id": "seq"
+   },
+   "times": {
+    "made_seq": "log_seq"
+   }
+  },
+  "index.passage_fts": {
+   "home": "index",
+   "key": [
+    "rowid"
+   ],
+   "id": {}
+  },
+  "index.passage_vec": {
+   "home": "index",
+   "key": [
+    "passage_id"
+   ],
+   "id": {}
+  },
+  "log.artifact": {
+   "home": "projection",
+   "key": [
+    "artifact_id"
+   ],
+   "id": {
+    "artifact_id": "digest: blake3 of its content, or of its recipe and producing span"
+   },
+   "links": [
+    "type_id",
+    "type_version",
+    "recipe_key",
+    "selection_id",
+    "trial_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "produced_seq": "log_seq",
+    "collected_seq": "log_seq"
+   },
+   "status": {
+    "body_state": {
+     "states": [
+      "never_stored",
+      "present",
+      "collected"
+     ],
+     "terminal": [
+      "never_stored",
+      "collected"
+     ],
+     "moves": {
+      "present": [
+       "collected"
+      ]
+     }
+    }
+   },
+   "versions": {
+    "type_version": "definition"
+   }
+  },
+  "log.artifact_body": {
+   "home": "body",
+   "key": [
+    "artifact_id"
+   ],
+   "id": {
+    "artifact_id": "link"
+   },
+   "up": "artifact_id"
+  },
+  "log.book": {
+   "home": "projection",
+   "key": [
+    "book_id"
+   ],
+   "id": {
+    "book_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "times": {
+    "activated_seq": "log_seq",
+    "retired_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "active",
+      "retired"
+     ],
+     "terminal": [
+      "retired"
+     ],
+     "moves": {
+      "active": [
+       "retired"
+      ]
+     }
+    }
+   }
+  },
+  "log.cache_entry": {
+   "home": "cache",
+   "key": [
+    "recipe_key",
+    "part",
+    "input_digest"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "part": "standard: a year, or an as-of date",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "computed_us": "utc_us",
+    "last_read_us": "utc_us"
+   }
+  },
+  "log.chain_checkpoint": {
+   "home": "log",
+   "key": [
+    "seq",
+    "kind"
+   ],
+   "id": {
+    "seq": "seq",
+    "kind": "standard: what the checkpoint was kept for: month, backup, export or redaction"
+   },
+   "times": {
+    "seq": "log_seq",
+    "at_us": "utc_us"
+   },
+   "versions": {
+    "chain_version": "own: the encoding the events up to seq were folded with"
+   }
+  },
+  "log.chain_head": {
+   "home": "log",
+   "key": [
+    "id"
+   ],
+   "id": {
+    "id": "singleton"
+   },
+   "times": {
+    "seq": "log_seq"
+   },
+   "versions": {
+    "chain_version": "own: the chain's canonical encoding"
+   }
+  },
+  "log.daily_span": {
+   "home": "projection",
+   "key": [
+    "day",
+    "actor_kind",
+    "actor_id",
+    "node_id",
+    "type_id",
+    "outcome"
+   ],
+   "id": {
+    "day": "standard: the UTC date the totals sum",
+    "actor_kind": "standard: person, agent, host or node",
+    "actor_id": "standard: the actor's own id",
+    "node_id": "link",
+    "type_id": "link",
+    "outcome": "standard: the step's outcome"
+   },
+   "links": [
+    "node_id",
+    "type_id"
+   ],
+   "times": {
+    "day": "market_date"
+   }
+  },
+  "log.definition_lineage": {
+   "home": "definition",
+   "key": [
+    "definition_id"
+   ],
+   "id": {
+    "definition_id": "digest: blake3 of the family and the name it was first registered under"
+   },
+   "times": {
+    "registered_seq": "log_seq",
+    "named_seq": "log_seq"
+   }
+  },
+  "log.definition_name": {
+   "home": "definition",
+   "key": [
+    "family",
+    "name"
+   ],
+   "id": {
+    "family": "standard: a definition family, a fixed vocabulary",
+    "name": "standard: a held name: this table maps every name a lineage held to its id, and a name is never reused"
+   },
+   "up": "definition_id",
+   "times": {
+    "named_seq": "log_seq"
+   }
+  },
+  "log.definition_ref": {
+   "home": "definition",
+   "key": [
+    "definition_id",
+    "version",
+    "role",
+    "ref_id"
+   ],
+   "id": {
+    "definition_id": "link",
+    "version": "link",
+    "role": "standard: the spec field that names the other definition",
+    "ref_id": "link"
+   },
+   "up": [
+    "definition_id",
+    "version"
+   ],
+   "links": [
+    "ref_id"
+   ],
+   "versions": {
+    "version": "definition",
+    "ref_version": "trigger definition_ref_registered: definition_id ref_id"
+   },
+   "edges": {
+    "ref_id": "the other definition this one names, not its own lineage"
+   }
+  },
+  "log.definition_version": {
+   "home": "definition",
+   "key": [
+    "definition_id",
+    "version"
+   ],
+   "id": {
+    "definition_id": "link",
+    "version": "standard: the lineage's own version number, counted from 1"
+   },
+   "up": "definition_id",
+   "times": {
+    "registered_seq": "log_seq",
+    "status_seq": "log_seq"
+   },
+   "status": {
+    "status": {
+     "states": [
+      "experimental",
+      "standard",
+      "deprecated",
+      "superseded"
+     ],
+     "terminal": [
+      "superseded"
+     ],
+     "moves": {
+      "experimental": [
+       "standard",
+       "deprecated",
+       "superseded"
+      ],
+      "standard": [
+       "deprecated",
+       "superseded"
+      ],
+      "deprecated": [
+       "superseded"
+      ]
+     }
+    }
+   },
+   "versions": {
+    "version": "own: the lineage's version number"
+   }
+  },
+  "log.deletion_queue": {
+   "home": "working",
+   "key": [
+    "handle"
+   ],
+   "id": {
+    "handle": "standard: the file's own path, which another process holds open"
+   },
+   "times": {
+    "queued_us": "utc_us"
+   }
+  },
+  "log.event": {
+   "home": "log",
+   "key": [
+    "seq"
+   ],
+   "id": {
+    "seq": "seq"
+   },
+   "links": [
+    "cause_seq"
+   ],
+   "times": {
+    "seq": "log_seq",
+    "occurred_us": "utc_us",
+    "started_us": "utc_us",
+    "recorded_us": "utc_us",
+    "cause_seq": "log_seq"
+   },
+   "versions": {
+    "type_version": "trigger event_type_registered: family event_type, name type"
+   }
+  },
+  "log.event_artifact": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "role",
+    "artifact_id"
+   ],
+   "id": {
+    "seq": "link",
+    "role": "standard: used or produced",
+    "artifact_id": "link"
+   },
+   "up": "seq",
+   "links": [
+    "artifact_id"
+   ],
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.event_text": {
+   "home": "log",
+   "key": [
+    "seq"
+   ],
+   "id": {
+    "seq": "link"
+   },
+   "up": "seq",
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.goal": {
+   "home": "projection",
+   "key": [
+    "goal_id"
+   ],
+   "id": {
+    "goal_id": "caller: the caller's goal_id, or a uuid5 over its declaration and opener"
+   },
+   "up": "workspace_id",
+   "times": {
+    "deadline_us": "utc_us",
+    "set_seq": "log_seq",
+    "closed_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "open",
+      "done",
+      "dropped"
+     ],
+     "terminal": [
+      "done",
+      "dropped"
+     ],
+     "moves": {
+      "open": [
+       "done",
+       "dropped"
+      ]
+     }
+    }
+   }
+  },
+  "log.hypothesis": {
+   "home": "projection",
+   "key": [
+    "hypothesis_id"
+   ],
+   "id": {
+    "hypothesis_id": "uuid7"
+   },
+   "up": "goal_id",
+   "links": [
+    "workspace_id"
+   ],
+   "times": {
+    "stated_seq": "log_seq",
+    "standing_seq": "log_seq"
+   },
+   "status": {
+    "standing": {
+     "states": [
+      "open",
+      "supported",
+      "refuted",
+      "inconclusive",
+      "dropped"
+     ],
+     "terminal": [
+      "dropped"
+     ],
+     "moves": {
+      "open": [
+       "supported",
+       "refuted",
+       "inconclusive",
+       "dropped"
+      ],
+      "supported": [
+       "open",
+       "refuted",
+       "inconclusive",
+       "dropped"
+      ],
+      "refuted": [
+       "open",
+       "supported",
+       "inconclusive",
+       "dropped"
+      ],
+      "inconclusive": [
+       "open",
+       "supported",
+       "refuted",
+       "dropped"
+      ]
+     }
+    }
+   }
+  },
+  "log.ledger_entry": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "line"
+   ],
+   "id": {
+    "seq": "link",
+    "line": "standard: the line's place in its posting event"
+   },
+   "up": "book_id",
+   "links": [
+    "seq"
+   ],
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.live_ref": {
+   "home": "projection",
+   "key": [
+    "artifact_id",
+    "root_kind",
+    "root_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "root_kind": "standard: what holds the body: task, book, publication, trial or backup",
+    "root_id": "link"
+   },
+   "up": "artifact_id",
+   "links": [
+    "root_id"
+   ],
+   "times": {
+    "since_seq": "log_seq"
+   }
+  },
+  "log.measure": {
+   "home": "projection",
+   "key": [
+    "artifact_id",
+    "metric_id",
+    "metric_version",
+    "dims"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "metric_id": "link",
+    "metric_version": "link",
+    "dims": "packed: an uncanonical 'k=v|k=v' string"
+   },
+   "up": "artifact_id",
+   "links": [
+    "metric_id",
+    "metric_version"
+   ],
+   "times": {
+    "recorded_seq": "log_seq"
+   },
+   "versions": {
+    "metric_version": "definition"
+   }
+  },
+  "log.prediction": {
+   "home": "projection",
+   "key": [
+    "prediction_id"
+   ],
+   "id": {
+    "prediction_id": "uuid7"
+   },
+   "up": "trial_id",
+   "links": [
+    "workspace_id",
+    "score_metric_id"
+   ],
+   "times": {
+    "horizon_us": "utc_us",
+    "registered_seq": "log_seq",
+    "outcome_seq": "log_seq"
+   },
+   "versions": {
+    "score_metric_version": "definition"
+   }
+  },
+  "log.recipe": {
+   "home": "projection",
+   "key": [
+    "recipe_key"
+   ],
+   "id": {
+    "recipe_key": "digest: blake3 of the canonical method, version, parameters and upstream keys"
+   },
+   "links": [
+    "method_id",
+    "method_version"
+   ],
+   "times": {
+    "defined_seq": "log_seq"
+   },
+   "versions": {
+    "method_version": "definition"
+   }
+  },
+  "log.recipe_upstream": {
+   "home": "projection",
+   "key": [
+    "recipe_key",
+    "position"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "position": "standard: the upstream's place in the order its recipe reads it"
+   },
+   "up": "recipe_key",
+   "links": [
+    "upstream_key"
+   ],
+   "edges": {
+    "upstream_key": "the upstream recipe this recipe reads, not itself"
+   }
+  },
+  "log.selection": {
+   "home": "projection",
+   "key": [
+    "selection_id"
+   ],
+   "id": {
+    "selection_id": "digest: a digest of its window, without its workspace"
+   },
+   "up": "workspace_id",
+   "times": {
+    "cutoff_us": "utc_us",
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "made_seq": "log_seq"
+   }
+  },
+  "log.setting": {
+   "home": "projection",
+   "key": [
+    "scope",
+    "key"
+   ],
+   "id": {
+    "scope": "standard: 'machine' or the workspace the setting belongs to",
+    "key": "standard: the setting's name in the person's settings"
+   },
+   "times": {
+    "changed_seq": "log_seq"
+   }
+  },
+  "log.tag": {
+   "home": "projection",
+   "key": [
+    "subject_kind",
+    "subject_id",
+    "key_id",
+    "tag_version",
+    "value"
+   ],
+   "id": {
+    "subject_kind": "standard: the kind of thing tagged",
+    "subject_id": "link",
+    "key_id": "link",
+    "tag_version": "link",
+    "value": "standard: the vocabulary's value"
+   },
+   "links": [
+    "subject_id",
+    "key_id",
+    "tag_version"
+   ],
+   "times": {
+    "seq": "log_seq"
+   },
+   "versions": {
+    "tag_version": "definition"
+   }
+  },
+  "log.task": {
+   "home": "projection",
+   "key": [
+    "task_id"
+   ],
+   "id": {
+    "task_id": "uuid7"
+   },
+   "up": "goal_id",
+   "links": [
+    "workspace_id",
+    "type_id"
+   ],
+   "times": {
+    "requested_seq": "log_seq",
+    "started_seq": "log_seq",
+    "ended_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "requested",
+      "running",
+      "waiting",
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "terminal": [
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "moves": {
+      "requested": [
+       "running",
+       "failed",
+       "cancelled"
+      ],
+      "running": [
+       "waiting",
+       "completed",
+       "failed",
+       "cancelled"
+      ],
+      "waiting": [
+       "running",
+       "failed",
+       "cancelled"
+      ]
+     }
+    }
+   },
+   "versions": {
+    "product_version": "own: the product release it started under"
+   }
+  },
+  "log.task_step": {
+   "home": "projection",
+   "key": [
+    "task_id",
+    "step"
+   ],
+   "id": {
+    "task_id": "link",
+    "step": "standard: the step's own name within its task: a recovery point"
+   },
+   "up": "task_id",
+   "times": {
+    "completed_seq": "log_seq"
+   }
+  },
+  "log.trial": {
+   "home": "projection",
+   "key": [
+    "trial_id"
+   ],
+   "id": {
+    "trial_id": "uuid7"
+   },
+   "up": "task_id",
+   "links": [
+    "workspace_id",
+    "goal_id",
+    "hypothesis_id",
+    "selection_id",
+    "recipe_key"
+   ],
+   "times": {
+    "registered_seq": "log_seq",
+    "ended_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "registered",
+      "running",
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "terminal": [
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "moves": {
+      "registered": [
+       "running",
+       "failed",
+       "cancelled"
+      ],
+      "running": [
+       "completed",
+       "failed",
+       "cancelled"
+      ]
+     }
+    }
+   },
+   "versions": {
+    "product_version": "own: the product release it ran under"
+   }
+  },
+  "log.wait": {
+   "home": "projection",
+   "key": [
+    "wait_id"
+   ],
+   "id": {
+    "wait_id": "uuid7"
+   },
+   "up": "task_id",
+   "links": [
+    "event_type_id"
+   ],
+   "times": {
+    "fires_us": "utc_us",
+    "started_seq": "log_seq",
+    "resolved_seq": "log_seq",
+    "resolved_by_seq": "log_seq"
+   }
+  },
+  "log.workspace": {
+   "home": "projection",
+   "key": [
+    "workspace_id"
+   ],
+   "id": {
+    "workspace_id": "uuid7"
+   },
+   "times": {
+    "created_seq": "log_seq",
+    "opened_seq": "log_seq"
+   },
+   "status": {
+    "status": {
+     "states": [
+      "active",
+      "archived",
+      "missing",
+      "deleted"
+     ],
+     "terminal": [
+      "deleted"
+     ],
+     "moves": {
+      "active": [
+       "archived",
+       "missing",
+       "deleted"
+      ],
+      "archived": [
+       "active",
+       "missing",
+       "deleted"
+      ],
+      "missing": [
+       "active",
+       "archived",
+       "deleted"
+      ]
+     }
+    }
+   }
+  },
+  "log.workspace_task": {
+   "home": "projection",
+   "key": [
+    "task_id"
+   ],
+   "id": {
+    "task_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "copy_of": "log.task",
+   "times": {
+    "admitted_at": "iso_text",
+    "updated_at": "iso_text"
+   },
+   "status": {
+    "lifecycle": {
+     "states": [],
+     "terminal": [],
+     "moves": {}
+    }
+   }
+  },
+  "log.workspace_task_command": {
+   "home": "projection",
+   "key": [
+    "command_id"
+   ],
+   "id": {
+    "command_id": "uuid7"
+   },
+   "up": "task_id",
+   "copy_of": "log.event",
+   "times": {
+    "accepted_at": "iso_text",
+    "resolved_at": "iso_text"
+   }
+  },
+  "log.workspace_task_event": {
+   "home": "projection",
+   "key": [
+    "event_id"
+   ],
+   "id": {
+    "event_id": "uuid7"
+   },
+   "up": "task_id",
+   "copy_of": "log.event",
+   "times": {
+    "recorded_at": "iso_text"
+   }
+  },
+  "log.workspace_task_execution": {
+   "home": "projection",
+   "key": [
+    "execution_id"
+   ],
+   "id": {
+    "execution_id": "uuid7"
+   },
+   "up": "task_id",
+   "copy_of": "log.task",
+   "times": {
+    "started_at": "iso_text"
+   }
+  },
+  "log.workspace_task_heartbeat_at": {
+   "home": "working",
+   "key": [
+    "execution_id"
+   ],
+   "id": {
+    "execution_id": "link"
+   },
+   "up": "execution_id",
+   "times": {
+    "last_heartbeat_at": "iso_text"
+   }
+  },
+  "log.workspace_task_projection": {
+   "home": "working",
+   "key": [
+    "task_id"
+   ],
+   "id": {
+    "task_id": "link"
+   },
+   "up": "task_id",
+   "copy_of": "log.task",
+   "times": {
+    "updated_at": "iso_text"
+   }
+  },
+  "log.workspace_task_stage_receipt": {
+   "home": "projection",
+   "key": [
+    "receipt_hash"
+   ],
+   "id": {
+    "receipt_hash": "digest: the hash of its sealed receipt"
+   },
+   "up": "task_id",
+   "copy_of": "log.task_step",
+   "times": {
+    "observed_at": "iso_text"
+   }
+  },
+  "log.workspace_task_work_item": {
+   "home": "projection",
+   "key": [
+    "task_id",
+    "stage_id"
+   ],
+   "id": {
+    "task_id": "link",
+    "stage_id": "standard: the stage's id within its task's plan"
+   },
+   "up": "task_id",
+   "copy_of": "log.task_step",
+   "times": {
+    "updated_at": "iso_text"
+   },
+   "status": {
+    "lifecycle": {
+     "states": [],
+     "terminal": [],
+     "moves": {}
+    }
+   }
+  }
+ },
+ "known": {
+  "task-two-homes": {
+   "says": "A task's facts have a second home in the workspace_task tables, which keep their times as text, key a receipt by its hash and check no lifecycle states.",
+   "problems": [
+    "home: log.workspace_task: a second home of log.task's facts, kept as a table",
+    "home: log.workspace_task_command: a second home of log.event's facts, kept as a table",
+    "home: log.workspace_task_event: a second home of log.event's facts, kept as a table",
+    "home: log.workspace_task_execution: a second home of log.task's facts, kept as a table",
+    "home: log.workspace_task_projection: a second home of log.task's facts, kept as a table",
+    "home: log.workspace_task_stage_receipt: a second home of log.task_step's facts, kept as a table",
+    "home: log.workspace_task_work_item: a second home of log.task_step's facts, kept as a table",
+    "id: log.workspace_task_stage_receipt.receipt_hash: a digest id",
+    "status: log.workspace_task.lifecycle: its moves are declared, not enforced",
+    "status: log.workspace_task.lifecycle: the DDL checks no states",
+    "status: log.workspace_task_work_item.lifecycle: its moves are declared, not enforced",
+    "status: log.workspace_task_work_item.lifecycle: the DDL checks no states",
+    "time: log.workspace_task.admitted_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task.updated_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_command.accepted_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_command.resolved_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_event.recorded_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_execution.started_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_heartbeat_at.last_heartbeat_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_projection.updated_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_stage_receipt.observed_at: a time kept as text on its writer's clock",
+    "time: log.workspace_task_work_item.updated_at: a time kept as text on its writer's clock"
+   ]
+  },
+  "goal-id-from-caller": {
+   "says": "A goal's id is the caller's value or a digest of its declaration, not an id the Host mints.",
+   "problems": [
+    "id: log.goal.goal_id: a caller id"
+   ]
+  },
+  "unit-second-upward-link": {
+   "says": "A task, a hypothesis and a trial store a workspace or goal their upward chain already reaches.",
+   "problems": [
+    "up: log.hypothesis.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
+    "up: log.task.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
+    "up: log.trial.goal_id: a second upward link, to goal, which its upward chain already reaches",
+    "up: log.trial.workspace_id: a second upward link, to workspace, which its upward chain already reaches"
+   ]
+  },
+  "research-digest-ids": {
+   "says": "A selection, a recipe and an artifact are named by digests, and a measure's dimensions by a packed string.",
+   "problems": [
+    "id: catalog.results.breakdown.dims: a packed id",
+    "id: log.artifact.artifact_id: a digest id",
+    "id: log.measure.dims: a packed id",
+    "id: log.recipe.recipe_key: a digest id",
+    "id: log.selection.selection_id: a digest id"
+   ]
+  },
+  "tag-version-default": {
+   "says": "A tag's vocabulary version defaults to 1 instead of the version given or current.",
+   "problems": [
+    "version: log.tag.tag_version: a version with a default"
+   ]
+  },
+  "status-moves-unenforced": {
+   "says": "The projected statuses of workspaces, goals, tasks, trials, definition versions and books follow no enforced move table.",
+   "problems": [
+    "status: log.book.state: its moves are declared, not enforced",
+    "status: log.definition_version.status: its moves are declared, not enforced",
+    "status: log.goal.state: its moves are declared, not enforced",
+    "status: log.task.state: its moves are declared, not enforced",
+    "status: log.trial.state: its moves are declared, not enforced",
+    "status: log.workspace.status: its moves are declared, not enforced"
+   ]
+  },
+  "research-status-moves-unenforced": {
+   "says": "A hypothesis's standing and an artifact's body state follow no enforced move table.",
+   "problems": [
+    "status: log.artifact.body_state: its moves are declared, not enforced",
+    "status: log.hypothesis.standing: its moves are declared, not enforced"
+   ]
+  },
+  "definition-id-digest": {
+   "says": "A definition's id is a digest of its family and first name, not an id the Host mints.",
+   "problems": [
+    "id: log.definition_lineage.definition_id: a digest id"
+   ]
+  },
+  "evidence-doc-digest": {
+   "says": "An evidence document is keyed by its content digest, though the world is not recomputed.",
+   "problems": [
+    "id: catalog.world.evidence_doc.doc_digest: a digest id"
+   ]
+  },
+  "prediction-links": {
+   "says": "A prediction stores the workspace its trial already reaches, and its score's metric version has no link to a registered version.",
+   "problems": [
+    "up: log.prediction.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
+    "version: log.prediction.score_metric_version: a definition version with no link to definition_version"
+   ]
+  }
+ }
+}

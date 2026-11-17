@@ -221,6 +221,7 @@ CREATE TABLE world.superseded (
   by_admission_id VARCHAR NOT NULL       -- the admission that replaced it
 );
 
+-- key: (table_id, version_id, source_observed_at)
 -- A later source write of a version's own value, in raw_bar and corporate_action: no new version, since the value is the
 -- same, but its time orders what may supersede it (the source clock above). Append-only; no read of the world sees it.
 CREATE TABLE world.rewritten (

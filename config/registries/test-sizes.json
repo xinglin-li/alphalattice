@@ -2782,6 +2782,16 @@
       "reason": "It parses every command line the guides, skills, agent cards and public documents show through the CLI grammar, about a second; it runs when one of those or the grammar changed, which a skill copy edited alone reached develop past (11-05).",
       "escape_class": "a documented command line the CLI no longer parses, or a skill copy out of step",
       "review_date": "2026-12-07"
+    },
+    {
+      "pattern": "tests/structural/test_schema_contract.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "src/alphalattice/kernel/data_layer/schema/*"
+      ],
+      "reason": "It judges only the DDL and its contract registry beside it, so a change elsewhere cannot move its verdict; the nightly runs it whole.",
+      "escape_class": "a schema change that breaks a declared data-model rule",
+      "review_date": "2026-12-17"
     }
   ],
   "structural_fence": [
