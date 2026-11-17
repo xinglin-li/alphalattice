@@ -657,7 +657,15 @@ class MarketDataRepository(WorkspaceRepository):
             cutoff = world_reads.selected(self.path) if copy else cutoff_us
             if world is not None and cutoff is not None:
                 held = cutoff if copy else None  # a copy sees what world held at its selection
-                yield world, world_reads.relations(min(cutoff, cutoff_us), held, listings)
+                yield (
+                    world,
+                    world_reads.relations(
+                        min(cutoff, cutoff_us),
+                        held,
+                        listings,
+                        workspace_id=world_reads.workspace_id(self.path),
+                    ),
+                )
                 return
         if _connection is not None:
             yield _connection, world_reads.WORKSPACE
@@ -3350,7 +3358,11 @@ class MarketDataRepository(WorkspaceRepository):
         return _quality_admission(row)
 
     def quality_governance_inputs(
-        self, listing_ids: Sequence[str], *, through: date
+        self,
+        listing_ids: Sequence[str],
+        *,
+        through: date,
+        cutoff_us: int = world_reads.LATEST,
     ) -> QualityGovernanceInputs:
         """Read a listing set's quality-governance inputs: its admissions from the workspace, its
         market values through ``market_reads``.
@@ -3379,15 +3391,15 @@ class MarketDataRepository(WorkspaceRepository):
                         ORDER BY evaluated_at DESC, onboarding_id DESC
                     ) AS newest
                     FROM current_universe_quality_admission
-                    WHERE listing_id IN (SELECT unnest(?))
+                    WHERE listing_id IN (SELECT unnest(?)) AND epoch_us(evaluated_at) <= ?
                 )
                 WHERE newest = 1
                 """,
-                [requested],
+                [requested, cutoff_us],
             ).fetchall()
         finally:
             connection.close()
-        with self.market_reads(listings=requested) as (connection, tables):
+        with self.market_reads(cutoff_us=cutoff_us, listings=requested) as (connection, tables):
             series = connection.execute(
                 f"""
                 SELECT listing_id, session_date, close
@@ -4377,11 +4389,12 @@ class MarketDataRepository(WorkspaceRepository):
         listing_id: str,
         provider: str,
         as_of_session: date,
+        tables: Mapping[str, str] = world_reads.WORKSPACE,
     ) -> str:
         rows = connection.execute(
-            """
+            f"""
             SELECT provider_symbol, effective_from, effective_to, lifecycle_state
-            FROM provider_symbol_mapping WHERE listing_id = ? AND provider = ?
+            FROM {tables["mappings"]} WHERE listing_id = ? AND provider = ?
             ORDER BY effective_from
             """,
             [listing_id, provider],
@@ -4534,14 +4547,17 @@ class MarketDataRepository(WorkspaceRepository):
         provider: str,
         history_start: date,
         history_end: date,
+        tables: Mapping[str, str] = world_reads.WORKSPACE,
     ) -> str:
         return self._raw_evidence_hashes(
-            connection, {listing_id: (provider, history_start, history_end)}
+            connection, {listing_id: (provider, history_start, history_end)}, tables
         )[listing_id]
 
     @staticmethod
     def _raw_evidence_hashes(
-        connection: duckdb.DuckDBPyConnection, ranges: Mapping[str, tuple[str, date, date]]
+        connection: duckdb.DuckDBPyConnection,
+        ranges: Mapping[str, tuple[str, date, date]],
+        tables: Mapping[str, str] = world_reads.WORKSPACE,
     ) -> dict[str, str]:
         """Each listing's raw-evidence hash over its own provider and sessions, read once.
 
@@ -4556,8 +4572,8 @@ class MarketDataRepository(WorkspaceRepository):
         high = max(end for _provider, _start, end in ranges.values())
         current: dict[str, list[tuple[object, ...]]] = {listing: [] for listing in scope}
         for listing, provider, *row in connection.execute(
-            """
-            SELECT listing_id, provider, session_date, payload_hash FROM raw_daily_bar_current
+            f"""
+            SELECT listing_id, provider, session_date, payload_hash FROM {tables["bars"]}
             WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND session_date BETWEEN ? AND ?
             ORDER BY listing_id, session_date
             """,
@@ -4568,10 +4584,10 @@ class MarketDataRepository(WorkspaceRepository):
                 current[listing].append(tuple(row))
         revisions: dict[str, list[tuple[object, ...]]] = {listing: [] for listing in scope}
         for listing, provider, *row in connection.execute(
-            """
+            f"""
             SELECT listing_id, provider, session_date, prior_payload_hash, next_payload_hash,
                    observed_at
-            FROM bar_revision
+            FROM {tables["bar_revisions"]}
             WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND session_date BETWEEN ? AND ?
             ORDER BY listing_id, session_date, observed_at
             """,
@@ -4586,20 +4602,25 @@ class MarketDataRepository(WorkspaceRepository):
         }
 
     def _action_evidence_hash(
-        self, connection: duckdb.DuckDBPyConnection, *, listing_id: str, provider: str
+        self,
+        connection: duckdb.DuckDBPyConnection,
+        *,
+        listing_id: str,
+        provider: str,
+        tables: Mapping[str, str] = world_reads.WORKSPACE,
     ) -> str:
         current = connection.execute(
-            """
+            f"""
             SELECT effective_date, action_kind, payload_hash, status
-            FROM corporate_action_current WHERE listing_id = ? AND provider = ?
+            FROM {tables["action_evidence"]} WHERE listing_id = ? AND provider = ?
             ORDER BY effective_date, action_kind
             """,
             [listing_id, provider],
         ).fetchall()
         revisions = connection.execute(
-            """
+            f"""
             SELECT effective_date, action_kind, revision_kind, prior_payload_hash, next_payload_hash
-            FROM corporate_action_revision WHERE listing_id = ? AND provider = ?
+            FROM {tables["action_revisions"]} WHERE listing_id = ? AND provider = ?
             ORDER BY effective_date, action_kind, revision_id
             """,
             [listing_id, provider],
@@ -4796,13 +4817,17 @@ class MarketDataRepository(WorkspaceRepository):
         *,
         through: date,
         start: date | None = None,
+        cutoff_us: int = world_reads.LATEST,
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[ProviderAdjustedClosePoint, ...]:
         """Read provider-adjusted closes for one listing within a date range.
 
         ``_connection`` is the caller's connection: it sees that transaction's own writes.
         """
-        with self.market_reads(_connection, listings=(listing_id,)) as (connection, tables):
+        with self.market_reads(_connection, cutoff_us=cutoff_us, listings=(listing_id,)) as (
+            connection,
+            tables,
+        ):
             rows = connection.execute(
                 _selected_provider_sql(tables["mappings"])
                 + f"""
@@ -5440,42 +5465,49 @@ class MarketDataRepository(WorkspaceRepository):
         connection = _connection or self._connect(read_only=True)
         owns_connection = _connection is None
         try:
-            earliest = connection.execute(
-                """
-                SELECT min(session_date) FROM raw_daily_bar_current
-                WHERE listing_id = ? AND provider = ? AND session_date <= ?
-                """,
-                [listing_id, provider, requested_as_of],
-            ).fetchone()[0]
-            if earliest is None:
+            with self.market_reads(
+                cutoff_us=world_reads.cutoff(now),
+                listings=(listing_id,),
+            ) as (reader, tables):
+                earliest = reader.execute(
+                    f"""
+                    SELECT min(session_date) FROM {tables["bars"]}
+                    WHERE listing_id = ? AND provider = ? AND session_date <= ?
+                    """,
+                    [listing_id, provider, requested_as_of],
+                ).fetchone()[0]
+                if earliest is None:
+                    return None
+                candidates = self._action_audit_candidates(
+                    connection,
+                    listing_id=listing_id,
+                    provider=provider,
+                    requested_as_of=requested_as_of,
+                    manifest_revision=None
+                    if allow_equivalent_manifest
+                    else manifest.revision_sha256,
+                )
+                if not candidates:
+                    return None
+                evidence = self._action_audit_evidence(
+                    reader,
+                    listing_id=listing_id,
+                    provider=provider,
+                    requested_as_of=requested_as_of,
+                    history_start=earliest,
+                    history_end=requested_as_of,
+                    tables=tables,
+                )
+                # Equal observation times do not order revisions. A hash tie-break
+                # may put superseded evidence first, so test candidates against the
+                # current bytes rather than treating that arbitrary first row as
+                # the only possible proof. Every original reuse check still holds.
+                for receipt in candidates:
+                    if receipt.history_start > earliest or receipt.history_end < requested_as_of:
+                        continue
+                    if self._action_audit_receipt_verifies(receipt, evidence, now=now):
+                        return receipt
                 return None
-            candidates = self._action_audit_candidates(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                requested_as_of=requested_as_of,
-                manifest_revision=None if allow_equivalent_manifest else manifest.revision_sha256,
-            )
-            if not candidates:
-                return None
-            evidence = self._action_audit_evidence(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                requested_as_of=requested_as_of,
-                history_start=earliest,
-                history_end=requested_as_of,
-            )
-            # Equal observation times do not order revisions. A hash tie-break
-            # may put superseded evidence first, so test candidates against the
-            # current bytes rather than treating that arbitrary first row as
-            # the only possible proof. Every original reuse check still holds.
-            for receipt in candidates:
-                if receipt.history_start > earliest or receipt.history_end < requested_as_of:
-                    continue
-                if self._action_audit_receipt_verifies(receipt, evidence, now=now):
-                    return receipt
-            return None
         finally:
             if owns_connection:
                 connection.close()
@@ -5566,6 +5598,7 @@ class MarketDataRepository(WorkspaceRepository):
         requested_as_of: date,
         history_start: date,
         history_end: date,
+        tables: Mapping[str, str] = world_reads.WORKSPACE,
     ) -> dict[str, object]:
         """Read the listing's current bytes over one audited range.
 
@@ -5578,16 +5611,16 @@ class MarketDataRepository(WorkspaceRepository):
         raw_sessions = {
             item[0]
             for item in connection.execute(
-                """
-                SELECT session_date FROM raw_daily_bar_current
+                f"""
+                SELECT session_date FROM {tables["bars"]}
                 WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
                 """,
                 [listing_id, provider, history_start, history_end],
             ).fetchall()
         }
         adjusted_rows = connection.execute(
-            """
-            SELECT session_date, adjusted_close FROM provider_adjusted_close_current
+            f"""
+            SELECT session_date, adjusted_close FROM {tables["adjusted"]}
             WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
             ORDER BY session_date
             """,
@@ -5608,6 +5641,7 @@ class MarketDataRepository(WorkspaceRepository):
                 listing_id=listing_id,
                 provider=provider,
                 as_of_session=requested_as_of,
+                tables=tables,
             ),
             "raw_evidence_hash": self._raw_evidence_hash(
                 connection,
@@ -5615,12 +5649,13 @@ class MarketDataRepository(WorkspaceRepository):
                 provider=provider,
                 history_start=history_start,
                 history_end=history_end,
+                tables=tables,
             ),
             "action_set_hash": action_set_hash(
-                self._current_actions(connection, listing_id, provider)
+                self._current_actions(connection, listing_id, provider, tables)
             ),
             "action_evidence_hash": self._action_evidence_hash(
-                connection, listing_id=listing_id, provider=provider
+                connection, listing_id=listing_id, provider=provider, tables=tables
             ),
             "provider_adjusted_close_evidence_hash": adjusted_digest,
         }
@@ -5738,36 +5773,41 @@ class MarketDataRepository(WorkspaceRepository):
             manifest_revision=manifest_revision,
         )
         evidence_by_range: dict[tuple[date, date], dict[str, object]] = {}
-        for receipt in candidates:
-            if receipt_hash is not None and receipt.receipt_hash != receipt_hash:
-                continue
-            if candidate_hashes is not None and receipt.receipt_hash not in candidate_hashes:
-                continue
-            if receipt.history_end < requested_as_of:
-                continue
-            if not self._action_audit_receipt_current(
-                receipt, now=now, allow_historical=allow_historical
-            ):
-                continue
-            if receipt.receipt_hash in verified:
-                yield receipt
-                continue
-            audited = (receipt.history_start, receipt.history_end)
-            evidence = evidence_by_range.get(audited)
-            if evidence is None:
-                evidence = self._action_audit_evidence(
-                    connection,
-                    listing_id=listing_id,
-                    provider=provider,
-                    requested_as_of=requested_as_of,
-                    history_start=receipt.history_start,
-                    history_end=receipt.history_end,
-                )
-                evidence_by_range[audited] = evidence
-            if self._action_audit_receipt_verifies(
-                receipt, evidence, now=now, allow_historical=allow_historical
-            ):
-                yield receipt
+        with self.market_reads(
+            cutoff_us=world_reads.cutoff(now),
+            listings=(listing_id,),
+        ) as (reader, tables):
+            for receipt in candidates:
+                if receipt_hash is not None and receipt.receipt_hash != receipt_hash:
+                    continue
+                if candidate_hashes is not None and receipt.receipt_hash not in candidate_hashes:
+                    continue
+                if receipt.history_end < requested_as_of:
+                    continue
+                if not self._action_audit_receipt_current(
+                    receipt, now=now, allow_historical=allow_historical
+                ):
+                    continue
+                if receipt.receipt_hash in verified:
+                    yield receipt
+                    continue
+                audited = (receipt.history_start, receipt.history_end)
+                evidence = evidence_by_range.get(audited)
+                if evidence is None:
+                    evidence = self._action_audit_evidence(
+                        reader,
+                        listing_id=listing_id,
+                        provider=provider,
+                        requested_as_of=requested_as_of,
+                        history_start=receipt.history_start,
+                        history_end=receipt.history_end,
+                        tables=tables,
+                    )
+                    evidence_by_range[audited] = evidence
+                if self._action_audit_receipt_verifies(
+                    receipt, evidence, now=now, allow_historical=allow_historical
+                ):
+                    yield receipt
 
     @staticmethod
     def _rebound_receipt(receipt: ActionAuditReceipt, manifest_revision: str) -> ActionAuditReceipt:
@@ -6224,6 +6264,7 @@ class MarketDataRepository(WorkspaceRepository):
         *,
         start: date | None = None,
         through: date | None = None,
+        cutoff_us: int = world_reads.LATEST,
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[RawDailyBar, ...]:
         """Read raw daily bars for one listing and optional session bounds.
@@ -6232,13 +6273,17 @@ class MarketDataRepository(WorkspaceRepository):
             listing_id: Durable listing identity.
             start: First included session, if bounded.
             through: Last included session, if bounded.
+            cutoff_us: The reader's knowledge cutoff, also bounded by a research selection.
             _connection: Existing read connection for a larger transaction.
 
         Returns:
             Bars in session order.
 
         """
-        with self.market_reads(_connection, listings=(listing_id,)) as (connection, tables):
+        with self.market_reads(_connection, cutoff_us=cutoff_us, listings=(listing_id,)) as (
+            connection,
+            tables,
+        ):
             rows = connection.execute(
                 *_raw_bar_query(listing_id, start=start, through=through, bars=tables["bars"])
             ).fetchall()
@@ -6640,6 +6685,7 @@ class MarketDataRepository(WorkspaceRepository):
         self,
         listing_id: str,
         *,
+        cutoff_us: int = world_reads.LATEST,
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[CorporateActionEvent, ...]:
         """Read the current corporate-action observations for one listing.
@@ -6652,7 +6698,10 @@ class MarketDataRepository(WorkspaceRepository):
             Active action observations in effective-date order.
 
         """
-        with self.market_reads(_connection, listings=(listing_id,)) as (connection, tables):
+        with self.market_reads(_connection, cutoff_us=cutoff_us, listings=(listing_id,)) as (
+            connection,
+            tables,
+        ):
             return self._provider_actions(connection, (listing_id,), tables)[listing_id][1]
 
     def actions_by_listing(

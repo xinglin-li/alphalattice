@@ -21,7 +21,7 @@ ACTION += (WRITTEN,)
 ROW = {"listing_id": world_listing(AAPL), "effective_date": "2024-02-09", "kind": "dividend"}
 ROW |= {"action_id": "CASH_DIVIDEND", "ratio": None, "amount": 0.24, "currency": "USD"}
 ROW |= {"provisional": False, "provenance": "provider", "retracted": False}
-ROW |= {"source_observed_at": WRITTEN}
+ROW |= {"source_observed_at": WRITTEN, "source_payload_digest": "original-payload-hash"}
 CASES: dict[str, tuple[dict[int, Any], dict[str, Any] | str]] = {
     "dividend": ({}, ROW),
     "split": (
@@ -45,11 +45,18 @@ def test_a_0_2_7_action_is_one_world_row_or_refused_by_name(
     action = tuple(change.get(i, value) for i, value in enumerate(ACTION))
     if isinstance(expected, str):
         with pytest.raises(DataError) as refused:
-            world_action(action, world_listing(AAPL), "USD")
+            world_action(
+                action, world_listing(AAPL), "USD", source_payload_digest="original-payload-hash"
+            )
         assert refused.value.failure.code == expected
         return
     assert world_listing(AAPL).replace("-", "") == "32e379d73d7c53f7ad63982fd6dade63"  # pinned
-    assert world_action(action, world_listing(AAPL), "USD") == expected
+    assert (
+        world_action(
+            action, world_listing(AAPL), "USD", source_payload_digest="original-payload-hash"
+        )
+        == expected
+    )
 
 
 @pytest.mark.proves("market_data_ops.bars_are_admitted_in_whole_years_under_a_bound")

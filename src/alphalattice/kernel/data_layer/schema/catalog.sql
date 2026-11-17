@@ -138,6 +138,7 @@ CREATE TABLE world.raw_bar (
   adjusted_close DOUBLE,          -- the provider's adjusted close, when it gives one
   published_at TIMESTAMPTZ,       -- the provider's own publication time, when it gives one
   source_observed_at TIMESTAMPTZ, -- the source's own last write of the value (above)
+  source_payload_digest VARCHAR, -- the 0.2.7 payload_hash; source metadata, never part of a version's identity
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
   lag_rule VARCHAR,               -- a legacy row's lag rule, by name
@@ -168,6 +169,7 @@ CREATE TABLE world.corporate_action (
   provenance VARCHAR NOT NULL,    -- how it was learned, such as provider-observation
   published_at TIMESTAMPTZ,
   source_observed_at TIMESTAMPTZ, -- the source's own last write of the value (above)
+  source_payload_digest VARCHAR, -- the 0.2.7 payload_hash; source metadata, never part of a version's identity
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
   lag_rule VARCHAR,               -- a legacy row's lag rule, by name

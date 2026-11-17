@@ -12,6 +12,8 @@ tables, in order:
    (DISPLAY_ALIAS);
 3. the raw bars with the provider's adjusted close, then the corporate actions, each with its
    source's own last write (`source_observed_at`);
+4. each workspace's original bar/action revision as its registered log fact, retaining its
+   original key, fields and observation time for that workspace's audit cutoff read;
 
 all but the sessions as legacy batches under the market lag rule (MARKET_CLOSE). Only the bars and
 actions whose values differ from world's newest version of their key become rows; StorePort admits
@@ -67,6 +69,37 @@ gain, a cash distribution, stays apart from a dividend on its day."""
 FULL_DAY: Final = timedelta(hours=6, minutes=30)
 CALENDAR_REACH: Final = timedelta(days=10)
 """Sessions read past the last valid date, so a date after the last session still finds its next."""
+REVISIONS: Final = {
+    "bar_revision": (
+        "market.bar_revision",
+        (
+            "revision_id",
+            "listing_id",
+            "provider",
+            "session_date",
+            "prior_payload_hash",
+            "next_payload_hash",
+            "observed_at",
+            "reason",
+        ),
+    ),
+    "corporate_action_revision": (
+        "market.action_revision",
+        (
+            "revision_id",
+            "listing_id",
+            "provider",
+            "effective_date",
+            "action_kind",
+            "revision_kind",
+            "prior_payload_hash",
+            "next_payload_hash",
+            "observed_at",
+        ),
+    ),
+}
+"""The original revision facts, by source table: their registered event type and exact columns.
+Earlier values kept only as digests remain digests; no numerical history is inferred."""
 TABLES: Final = (
     "listing",
     "provider_symbol_mapping",
@@ -74,6 +107,7 @@ TABLES: Final = (
     "raw_daily_bar_current",
     "provider_adjusted_close_current",
     "corporate_action_current",
+    *REVISIONS,
 )
 """The 0.2.7 tables the admission reads. Each one's mark is its row count and the exclusive-or of
 its rows' hashes: a content fingerprint, which no write time can leave unchanged."""
@@ -141,6 +175,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         started = port.log.clock()
         providers = _register(run)
         admitted = _admit(port, providers)
+        _revisions(port, workspace_id)
         history.record(
             "admission",
             ("workspace", workspace_id),
@@ -149,6 +184,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
             started_us=started,
             node="market_data_ops",
         )
+        history.flush()
         return admitted
     finally:
         for drop in DROPS:
@@ -408,6 +444,50 @@ def sector_transitions(listings: Sequence[str], *, cutoff_us: int, cursor: Any) 
     return tuple(SectorReclassification(*row) for row in rows)
 
 
+def _revisions(port: Any, workspace_id: str) -> None:
+    """Retain each workspace's original journal row once, at its own observation time."""
+    run = port.lake.execute
+    for table, (type_, columns) in REVISIONS.items():
+        history.define(
+            "event_type",
+            type_,
+            f"One original {table} fact, with its original key and fields.",
+            {
+                "work": False,
+                "subject": table,
+                "required": list(columns),
+                "text": "none",
+                "durable": False,
+            },
+        )
+        held = port.log.read(
+            "SELECT subject_id FROM event WHERE type = ? AND workspace_id = ?",
+            (type_, workspace_id),
+        )
+        rows = run(
+            f"SELECT {', '.join('r.' + name for name in columns)}, epoch_us(r.observed_at)"
+            f" FROM {WORKSPACE}.{table} r WHERE r.revision_id NOT IN"
+            " (SELECT unnest(?::VARCHAR[]))"
+            " ORDER BY r.observed_at, r.revision_id",
+            [[row[0] for row in held]],
+        ).fetchall()
+        for row in rows:
+            attrs = {
+                name: value.isoformat() if isinstance(value, date) else value
+                for name, value in zip(columns, row[:-1], strict=True)
+            }
+            history.record_new(
+                "SELECT 1 FROM event WHERE type = ? AND subject_id = ? AND workspace_id = ?",
+                (type_, attrs["revision_id"], workspace_id),
+                type_,
+                (table, attrs["revision_id"]),
+                attrs,
+                occurred_us=row[-1],
+                workspace=workspace_id,
+                node="market_data_ops",
+            )
+
+
 def _register(run: Any) -> set[str]:
     """Register each provider the tables name, the aliases' and the calendar's, and the lag rule;
     returns the tables' providers."""
@@ -598,6 +678,7 @@ def _bars(lake: Any) -> Iterator[tuple[str, Any]]:
         "CREATE OR REPLACE TEMP TABLE market_bars AS SELECT r.provider,"
         " CAST(i.new AS VARCHAR) AS listing_id, r.session_date, r.open, r.high, r.low, r.close,"
         " CAST(r.volume AS DOUBLE) AS volume, a.adjusted_close,"
+        " r.payload_hash AS source_payload_digest,"
         f" {_WRITTEN.format('greatest(r.observed_at, a.updated_at)')} AS source_observed_at"
         f" FROM {w}.raw_daily_bar_current r LEFT JOIN {w}.provider_adjusted_close_current a"
         " USING (listing_id, provider, session_date)"
@@ -647,7 +728,7 @@ def _actions(run: Any, dated: list[tuple[Any, ...]]) -> Iterator[tuple[str, dict
     for action in run(
         "SELECT c.listing_id, c.provider, strftime(c.effective_date, '%Y-%m-%d'), c.action_kind,"
         " c.new_shares_per_old_share, c.cash_amount, c.provisional, c.provenance, c.status,"
-        f" {_WRITTEN.format('c.observed_at')}, CAST(i.new AS VARCHAR)"
+        f" {_WRITTEN.format('c.observed_at')}, c.payload_hash, CAST(i.new AS VARCHAR)"
         f" FROM {WORKSPACE}.corporate_action_current c"
         " JOIN temp.market_ids i ON i.old = c.listing_id"
         " JOIN temp.market_providers v ON v.name = c.provider"
@@ -659,10 +740,17 @@ def _actions(run: Any, dated: list[tuple[Any, ...]]) -> Iterator[tuple[str, dict
         " c.provisional, c.provenance, c.status = 'RETRACTED') OR c.observed_at > x.ordered_at"
         " ORDER BY ALL"
     ).fetchall():
-        yield action[1], world_action(action[:10], action[10], currency[action[0]])
+        yield (
+            action[1],
+            world_action(
+                action[:10], action[11], currency[action[0]], source_payload_digest=action[10]
+            ),
+        )
 
 
-def world_action(action: Sequence[Any], listing_id: str, currency: str | None) -> dict[str, Any]:
+def world_action(
+    action: Sequence[Any], listing_id: str, currency: str | None, *, source_payload_digest: str
+) -> dict[str, Any]:
     """One 0.2.7 action, as (listing, provider, date, kind, ratio, amount, provisional,
     provenance, status, its last write), as the world row of `listing_id`: its amount in the
     profile's `currency`, and a retracted one withdrawing its key. Refused by name: a kind world
@@ -686,4 +774,5 @@ def world_action(action: Sequence[Any], listing_id: str, currency: str | None) -
         "provenance": provenance,
         "retracted": status == "RETRACTED",
         "source_observed_at": written,
+        "source_payload_digest": source_payload_digest,
     }

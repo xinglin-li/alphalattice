@@ -40,13 +40,13 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     CurrentUniverseBootstrap,
     candidate_manifest_document,
 )
+from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     CurrentUniverseOnboardingListing,
     HydrationDeferred,
     MarketDataRepository,
-    market_update,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
@@ -210,8 +210,8 @@ def _listing_calendar(bootstrap: CurrentUniverseBootstrap) -> dict[str, str]:
 class _RunnerHold:
     """One retained store instance between the runner's network edges.
 
-    The maintenance runner's pattern: a unit's store reads and short
-    transactions share one instance, taken for them and released before the
+    The maintenance runner's pattern: a unit's short transactions share one
+    instance, released for committed market reads and before the
     Provider is awaited -- on the hydration path and on the audit's evidence
     fallback alike -- so nothing is held while the process waits on the
     outside world. Each transaction still begins and ends on its own.
@@ -447,7 +447,6 @@ class CurrentUniverseOnboarding:
                 )
             )
 
-    @market_update(lambda runner: runner.store)
     def run(
         self,
         *,
@@ -496,10 +495,10 @@ class CurrentUniverseOnboarding:
     def _retained(self) -> Iterator[None]:
         """One database instance for a bounded unit of this runner's work.
 
-        The maintenance runner's contract: every read and short transaction
-        of the unit costs a cursor rather than an instance open, a metadata
-        read and a checkpoint; each transaction still begins and ends on its
-        own. A unit ends before the Provider is awaited and starts again on
+        The unit's mutations share one instance; each transaction still begins
+        and ends on its own. Committed market reads release it so the Host can
+        admit the completed write before checking world. A unit ends before
+        the Provider is awaited and starts again on
         the first hydration that is back, so nothing is held across a fetch;
         the audit's evidence fallback to the Provider releases the hold for
         its own fetch (``_RunnerHold.released``).
@@ -780,12 +779,13 @@ class CurrentUniverseOnboarding:
             {"listing_count": 1, "row_count": len(batch.bars)},
         )
         persistence_started = time.perf_counter()
-        self.store.apply_validated_batch(
-            self.acquisition_manifest,
-            batch,
-            ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
-            observed_at=observed_at,
-        )
+        with self.store.writing():
+            self.store.apply_validated_batch(
+                self.acquisition_manifest,
+                batch,
+                ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
+                observed_at=observed_at,
+            )
         self._record_timing(
             "raw_persistence",
             persistence_started,
@@ -937,12 +937,13 @@ class CurrentUniverseOnboarding:
                         state="RAW_FAILED",
                     )
                     return "FAILED"
-                self.store.apply_validated_batch(
-                    self.acquisition_manifest,
-                    batch,
-                    ingestion_id=f"{self.onboarding_id}:retained-tail:{listing.listing_id}",
-                    observed_at=observed_at,
-                )
+                with self.store.writing():
+                    self.store.apply_validated_batch(
+                        self.acquisition_manifest,
+                        batch,
+                        ingestion_id=f"{self.onboarding_id}:retained-tail:{listing.listing_id}",
+                        observed_at=observed_at,
+                    )
                 if not self._complete_retained_action_audit(
                     item, evidence=evidence, observed_at=observed_at
                 ):
@@ -967,38 +968,48 @@ class CurrentUniverseOnboarding:
         observed_at: datetime,
     ) -> bool:
         """Splice bounded fresh evidence onto durable history before publication."""
-        bars = self.store.raw_bars(item.listing_id, through=self.as_of_session)
-        action_by_key = {
-            (value.effective_date, value.action_kind): value
-            for value in self.store.actions(item.listing_id)
-        }
-        action_by_key.update(
-            {(value.effective_date, value.action_kind): value for value in evidence.actions}
-        )
-        adjusted_by_session = {
-            value.session_date: value
-            for value in self.store.provider_adjusted_closes(
-                item.listing_id, through=self.as_of_session
+        with self._hold.released():
+            bars = self.store.raw_bars(
+                item.listing_id,
+                through=self.as_of_session,
+                cutoff_us=world_reads.cutoff(observed_at),
             )
-        }
-        adjusted_by_session.update(
-            {value.session_date: value for value in evidence.adjusted_closes}
-        )
+            action_by_key = {
+                (value.effective_date, value.action_kind): value
+                for value in self.store.actions(
+                    item.listing_id, cutoff_us=world_reads.cutoff(observed_at)
+                )
+            }
+            action_by_key.update(
+                {(value.effective_date, value.action_kind): value for value in evidence.actions}
+            )
+            adjusted_by_session = {
+                value.session_date: value
+                for value in self.store.provider_adjusted_closes(
+                    item.listing_id,
+                    through=self.as_of_session,
+                    cutoff_us=world_reads.cutoff(observed_at),
+                )
+            }
+            adjusted_by_session.update(
+                {value.session_date: value for value in evidence.adjusted_closes}
+            )
         try:
-            self.store.complete_action_audit(
-                self.acquisition_manifest,
-                ActionAuditObservation(
-                    listing_id=item.listing_id,
-                    provider=self.provider.name,
-                    actions=tuple(action_by_key[key] for key in sorted(action_by_key)),
-                    adjusted_closes=tuple(
-                        adjusted_by_session[key] for key in sorted(adjusted_by_session)
+            with self.store.writing():
+                self.store.complete_action_audit(
+                    self.acquisition_manifest,
+                    ActionAuditObservation(
+                        listing_id=item.listing_id,
+                        provider=self.provider.name,
+                        actions=tuple(action_by_key[key] for key in sorted(action_by_key)),
+                        adjusted_closes=tuple(
+                            adjusted_by_session[key] for key in sorted(adjusted_by_session)
+                        ),
+                        history_start=bars[0].session_date,
+                        history_end=self.as_of_session,
+                        observed_at=observed_at,
                     ),
-                    history_start=bars[0].session_date,
-                    history_end=self.as_of_session,
-                    observed_at=observed_at,
-                ),
-            )[0]
+                )[0]
         except ValueError:
             self._record_listing_failure(
                 item,
@@ -1125,12 +1136,13 @@ class CurrentUniverseOnboarding:
             # A write or store failure is an owner failure, not a corrupt
             # provider payload. Propagate it instead of silently excluding a
             # listing under a misleading sanitizer code.
-            self.store.apply_validated_batch(
-                self.acquisition_manifest,
-                batch,
-                ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
-                observed_at=observed_at,
-            )
+            with self.store.writing():
+                self.store.apply_validated_batch(
+                    self.acquisition_manifest,
+                    batch,
+                    ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
+                    observed_at=observed_at,
+                )
             self._mark_listing(
                 item,
                 state="RAW_READY",
@@ -1156,11 +1168,16 @@ class CurrentUniverseOnboarding:
             self._calendar_cache[item.calendar_id] = (schedule, schedule_rows)
         else:
             schedule, schedule_rows = cached
-        bars = tuple(
-            bar
-            for bar in self.store.raw_bars(item.listing_id, through=self.as_of_session)
-            if bar.session_date >= self.history_start
-        )
+        with self._hold.released():
+            bars = tuple(
+                bar
+                for bar in self.store.raw_bars(
+                    item.listing_id,
+                    through=self.as_of_session,
+                    cutoff_us=world_reads.cutoff(observed_at),
+                )
+                if bar.session_date >= self.history_start
+            )
         expected_dates = {
             row["session_date"] for row in schedule_rows if row["calendar_id"] == item.calendar_id
         }
@@ -1232,19 +1249,25 @@ class CurrentUniverseOnboarding:
         evidence: HydrationEvidence | None = None,
     ) -> str | ProviderFetchError:
         listing = self._listing(item.listing_id)
-        bars = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+        with self._hold.released():
+            bars = self.store.raw_bars(
+                item.listing_id,
+                through=self.as_of_session,
+                cutoff_us=world_reads.cutoff(observed_at),
+            )
         if not bars:
             self._record_listing_failure(
                 item, code="data.no_raw_history", observed_at=observed_at, state="AUDIT_FAILED"
             )
             return "FAILED"
-        receipt = self.store.reusable_action_audit_receipt(
-            self.acquisition_manifest,
-            listing_id=item.listing_id,
-            provider=self.provider.name,
-            requested_as_of=self.as_of_session,
-            now=observed_at,
-        )
+        with self._hold.released():
+            receipt = self.store.reusable_action_audit_receipt(
+                self.acquisition_manifest,
+                listing_id=item.listing_id,
+                provider=self.provider.name,
+                requested_as_of=self.as_of_session,
+                now=observed_at,
+            )
         if receipt is None and item.listing_id in set(self.retained_listing_ids):
             receipt = self._retained_audit_chain(item, observed_at=observed_at)
         if receipt is None and item.listing_id in set(self.retained_listing_ids):
@@ -1280,9 +1303,13 @@ class CurrentUniverseOnboarding:
             )
             return "FAILED"
         assert receipt is not None
-        adjusted = self.store.provider_adjusted_closes(
-            item.listing_id, through=self.as_of_session, start=bars[0].session_date
-        )
+        with self._hold.released():
+            adjusted = self.store.provider_adjusted_closes(
+                item.listing_id,
+                through=self.as_of_session,
+                start=bars[0].session_date,
+                cutoff_us=world_reads.cutoff(observed_at),
+            )
         if {point.session_date for point in adjusted} != {bar.session_date for bar in bars}:
             self._record_listing_failure(
                 item,
@@ -1357,18 +1384,19 @@ class CurrentUniverseOnboarding:
         history_start = bars[0].session_date
 
         def complete(actions, adjusted_closes):
-            return self.store.complete_action_audit(
-                self.acquisition_manifest,
-                ActionAuditObservation(
-                    listing_id=item.listing_id,
-                    provider=self.provider.name,
-                    actions=actions,
-                    adjusted_closes=adjusted_closes,
-                    history_start=history_start,
-                    history_end=self.as_of_session,
-                    observed_at=observed_at,
-                ),
-            )[0][0]
+            with self.store.writing():
+                return self.store.complete_action_audit(
+                    self.acquisition_manifest,
+                    ActionAuditObservation(
+                        listing_id=item.listing_id,
+                        provider=self.provider.name,
+                        actions=actions,
+                        adjusted_closes=adjusted_closes,
+                        history_start=history_start,
+                        history_end=self.as_of_session,
+                        observed_at=observed_at,
+                    ),
+                )[0][0]
 
         if evidence is not None:
             try:

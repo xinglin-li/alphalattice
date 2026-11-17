@@ -38,8 +38,10 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     bootstrap_from_candidate_manifest_document,
     candidate_manifest_document,
 )
+from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.data_layer import history
 from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
@@ -311,8 +313,9 @@ def _bootstrap(
     )
 
 
+@pytest.mark.parametrize("read_mode", ("workspace", "world"))
 def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, request, read_mode
 ) -> None:
     schedule = materialize_calendar_schedule(
         ("XNAS",),
@@ -330,14 +333,38 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         provider=provider,
         as_of_session=AS_OF,
     )
+    monkeypatch.setenv(world_reads.SETTING, read_mode)
+    world_calls = []
+    quality_reads = []
+    original_relations = world_reads.relations
+
+    def counted(*args, **kwargs):
+        world_calls.append(True)
+        return original_relations(*args, **kwargs)
+
+    monkeypatch.setattr(world_reads, "relations", counted)
+    if read_mode == "world":
+        store.bootstrap(onboarding.acquisition_manifest)
+        history.open_history(
+            "onboarding-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
+        )
+        request.addfinalizer(history.release_history)
     # The optional observer is told each unit transition after the store recorded it:
     # one announcement per transition, in order, never for a unit that was not advanced.
     announced: list[ListingUnitObservation] = []
-    onboarding.listing_observer = announced.append
+
+    def observe(item):
+        announced.append(item)
+        if item.state in {"RAW_READY", "QUALITY_ELIGIBLE", "QUALITY_INELIGIBLE"}:
+            quality_reads.append((item.state, len(world_calls)))
+
+    onboarding.listing_observer = observe
 
     first = onboarding.run(observed_at=OBSERVED_AT, work_budget=1)
 
     assert first.status is CurrentUniverseOnboardingStatus.RUNNING
+    if read_mode == "world":
+        assert quality_reads[1][1] > quality_reads[0][1]
     assert provider.daily_calls == {"AAPL": 1}
     assert [(v.symbol, v.state, v.origin) for v in announced] == [
         ("AAPL", "RAW_READY", "ACQUIRED"),

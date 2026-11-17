@@ -352,7 +352,7 @@
       "seconds": 10
     },
     "data_layer.a_source_time_is_not_content": {
-      "description": "A row's value digest leaves out its source's write time, and a legacy closed interval carries the digest of its open version.",
+      "description": "A row's value digest leaves out its source's write time and original payload digest, and a legacy closed interval carries the digest of its open version.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1,
@@ -1138,7 +1138,7 @@
       "seconds": 10
     },
     "market_data_ops.an_action_is_one_world_row": {
-      "description": "A 0.2.7 corporate action becomes one world row keeping its kind as its id, or is refused by name.",
+      "description": "A 0.2.7 corporate action becomes one world row keeping its kind as its id and its original payload digest as source metadata, or is refused by name.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "unit",
       "seconds": 1

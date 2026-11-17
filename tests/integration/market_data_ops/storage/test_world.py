@@ -3,9 +3,10 @@ marks alone while unchanged, and a later correction known only from its admissio
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Iterator, Sequence
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -40,16 +41,19 @@ FIXTURE, OLD_ID, DISPLAY = (
 )
 SAME = {  # each world read beside the 0.2.7 rows it must equal, by 0.2.7 listing id
     "raw_bar": (
-        f"SELECT i.old, r.session_date, r.open, r.close, r.volume, r.adjusted_close"
+        "SELECT i.old, r.session_date, r.open, r.close, r.volume, r.adjusted_close,"
+        " r.source_payload_digest"
         f" FROM {CURRENT.format('raw_bar')} r JOIN ids i ON i.new = r.listing_id",
         "SELECT r.listing_id, r.session_date, r.open, r.close, CAST(r.volume AS DOUBLE),"
-        " a.adjusted_close FROM old.raw_daily_bar_current r LEFT JOIN"
+        " a.adjusted_close, r.payload_hash FROM old.raw_daily_bar_current r LEFT JOIN"
         " old.provider_adjusted_close_current a USING (listing_id, provider, session_date)",
     ),
     "corporate_action": (
-        f"SELECT i.old, c.effective_date, c.action_id, c.amount, c.provisional, c.provenance"
+        "SELECT i.old, c.effective_date, c.action_id, c.amount, c.provisional, c.provenance,"
+        " c.source_payload_digest"
         f" FROM {CURRENT.format('corporate_action')} c JOIN ids i ON i.new = c.listing_id",
-        "SELECT listing_id, effective_date, action_kind, cash_amount, provisional, provenance"
+        "SELECT listing_id, effective_date, action_kind, cash_amount, provisional, provenance,"
+        " payload_hash"
         " FROM old.corporate_action_current WHERE status = 'ACTIVE'",
     ),
     "listing": (
@@ -123,7 +127,7 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
 
 
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
-@pytest.mark.parametrize("focus", ("identity", "workspace"))
+@pytest.mark.parametrize("focus", ("identity", "workspace", "lineage"))
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -135,6 +139,83 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     first = world.admit(database, "w1")
     again = world.admit(database, "w1")
     lake = history.store().lake
+    if focus == "lineage":
+        # The same correction has the same original key in two workspaces, even when
+        # each workspace observed it on a different day. Its log lineage must survive.
+        second = database.parent.parent / "second"
+        second.mkdir()
+        shutil.copy2(database, second / database.name)
+        other = MarketDataRepository(second)
+        history.workspace_on_log(second, "second", workspace_id="w2", root=history.store().root)
+        originals = {}
+        for workspace_id, repository, offset in (("w1", store, 1), ("w2", other, 2)):
+            audit_one(
+                repository,
+                manifest,
+                listing_id="listing-aapl",
+                provider="fixture",
+                actions=(
+                    CorporateActionEvent(
+                        "listing-aapl", "fixture", DAYS[2], "CASH_DIVIDEND", None, 0.75
+                    ),
+                ),
+                adjusted_closes=tuple(
+                    ProviderAdjustedClosePoint("listing-aapl", "fixture", day, 100.5)
+                    for day in DAYS
+                ),
+                history_start=DAYS[0],
+                history_end=DAYS[-1],
+                observed_at=NOW + timedelta(days=offset),
+            )
+            world.admit(repository.path, workspace_id)
+            with repository._connect(read_only=True) as connection:
+                originals[workspace_id] = connection.execute(
+                    "SELECT revision_id, epoch_us(observed_at) FROM corporate_action_revision"
+                    " ORDER BY revision_id"
+                ).fetchall()
+        assert [row[0] for row in originals["w1"]] == [row[0] for row in originals["w2"]]
+        logged = history.store().log.read(
+            "SELECT workspace_id, subject_id, occurred_us FROM event"
+            " WHERE type = 'market.action_revision' ORDER BY workspace_id, subject_id"
+        )
+        assert [tuple(row) for row in logged] == [
+            (workspace_id, key, observed)
+            for workspace_id, rows in originals.items()
+            for key, observed in rows
+        ]
+        for repository in (store, other):
+            for instant in (NOW + timedelta(days=1, hours=12), NOW + timedelta(days=2)):
+                cutoff = world_reads.cutoff(instant)
+                with repository._connect(read_only=True) as connection:
+                    expected = connection.execute(
+                        "SELECT revision_id, epoch_us(observed_at) FROM corporate_action_revision"
+                        " WHERE epoch_us(observed_at) <= ? ORDER BY revision_id",
+                        [cutoff],
+                    ).fetchall()
+                with repository.market_reads(cutoff_us=cutoff) as (cursor, tables):
+                    assert tables != world_reads.WORKSPACE
+                    assert (
+                        cursor.execute(
+                            "SELECT revision_id, epoch_us(observed_at)"
+                            f" FROM {tables['action_revisions']} ORDER BY revision_id"
+                        ).fetchall()
+                        == expected
+                    )
+            # Once both observations are known, each current audit uses its own journal.
+            # A past world read must not be compared with a future corrected current row.
+            with repository._connect(read_only=True) as connection:
+                expected_hash = repository._action_evidence_hash(
+                    connection, listing_id="listing-aapl", provider="fixture"
+                )
+            with repository.market_reads() as (cursor, tables):
+                assert (
+                    repository._action_evidence_hash(
+                        cursor, listing_id="listing-aapl", provider="fixture", tables=tables
+                    )
+                    == expected_hash
+                )
+        assert world.admit(other.path, "w2") is None
+        return
     lake.execute(f"ATTACH '{database.as_posix()}' AS old (READ_ONLY)")
     lake.execute("CREATE TEMP TABLE ids (old VARCHAR, new UUID)")
     for old in ("listing-aapl", "listing-msft"):
@@ -166,6 +247,35 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     }
     assert corrected == {"rows": {"raw_bar": 4}}
     assert seen == [[101.0] * 4 + [103.0], [101.0] * 3 + [103.0] * 2]
+    lake.execute(f"ATTACH '{database.as_posix()}' AS old (READ_ONLY)")
+    revisions = lake.sql("SELECT * FROM old.bar_revision ORDER BY revision_id").to_arrow_table()
+    cutoff = lake.execute("SELECT min(epoch_us(observed_at)) FROM old.bar_revision").fetchone()[0]
+    lake.execute("DETACH old")
+    original = {
+        row["revision_id"]: {
+            name: value.isoformat() if isinstance(value, date) else value
+            for name, value in row.items()
+        }
+        for row in revisions.to_pylist()
+    }
+    logged = history.store().log.read(
+        "SELECT subject_id, attrs, occurred_us FROM event WHERE type = 'market.bar_revision'"
+    )
+    assert {key: json.loads(attrs) for key, attrs, _at in logged} == original
+    assert [at for _key, _attrs, at in logged] == [cutoff, cutoff]
+    history.flush()
+    before = world_reads.revisions("bar_revision", cutoff - 1, workspace_id="w1")
+    at = world_reads.revisions("bar_revision", cutoff, workspace_id="w1")
+    with store.market_reads(cutoff_us=cutoff) as (cursor, _tables):
+        assert cursor.execute(f"SELECT count(*) FROM {before}").fetchone()[0] == 0
+        assert cursor.execute(f"SELECT count(*) FROM {at}").fetchone()[0] == 2
+    assert world.admit(database, "w1") is None
+    assert (
+        history.store().log.read("SELECT count(*) FROM event WHERE type = 'market.bar_revision'")[
+            0
+        ][0]
+        == 2
+    )
 
     # Legacy sector classifications use the same listing ids and lag rule. A changed
     # classification is visible only after its own admission, and a repeat adds nothing.
@@ -400,9 +510,11 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         cutoff_us: int = world_reads.LATEST,
         held_us: int | None = None,
         listings: Sequence[str] | None = None,
+        *,
+        workspace_id: str | None = None,
     ) -> dict[str, str]:
         uses["world"] += 1
-        return relations(cutoff_us, held_us, listings)
+        return relations(cutoff_us, held_us, listings, workspace_id=workspace_id)
 
     def read(setting: str) -> tuple[object, ...]:
         monkeypatch.setenv(world_reads.SETTING, setting)
@@ -423,6 +535,29 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
 
     monkeypatch.setattr(world_reads, "relations", counted)
     host = [read("workspace"), read("world")]  # the Host admits the unadmitted tables first
+    assert store.raw_bars("listing-aapl", cutoff_us=0) == ()
+    receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
+    checked = []
+    for setting in ("workspace", "world", "workspace"):
+        monkeypatch.setenv(world_reads.SETTING, setting)
+        before = uses["world"]
+        checked.append(
+            (
+                store.verified_action_audit_receipt(
+                    manifest,
+                    receipt_hash=receipt.receipt_hash,
+                    listing_id="listing-aapl",
+                    provider="fixture",
+                    requested_as_of=DAYS[-1],
+                    now=datetime(1970, 1, 1) + timedelta(microseconds=history.store().log.clock()),
+                    allow_historical=True,
+                ),
+                uses["world"] - before,
+            )
+        )
+    assert [value for value, _calls in checked] == [receipt] * 3
+    assert [calls for _value, calls in checked][::2] == [0, 0]
+    assert checked[1][1] > 0
     bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)
     written = [read("workspace"), read("world")]
     before = admissions()
@@ -491,9 +626,11 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
         cutoff_us: int = world_reads.LATEST,
         held_us: int | None = None,
         listings: Sequence[str] | None = None,
+        *,
+        workspace_id: str | None = None,
     ) -> dict[str, str]:
         uses["world"] += 1
-        return relations(cutoff_us, held_us, listings)
+        return relations(cutoff_us, held_us, listings, workspace_id=workspace_id)
 
     def read(copy: MarketDataRepository, setting: str) -> tuple[object, ...]:
         monkeypatch.setenv(world_reads.SETTING, setting)

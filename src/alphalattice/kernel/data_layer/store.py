@@ -616,7 +616,8 @@ class StorePort:
         part = f"CAST(year(CAST({column} AS DATE)) AS VARCHAR)" if column else "'all'"
         found = self.lake.execute(
             f"SELECT {part} AS part, min(epoch_us(known_asof)), max(epoch_us(known_asof)),"
-            f" count(known_asof), count(*) FROM ({rows}) GROUP BY ALL ORDER BY part"
+            f" count(known_asof), count(*) FROM ({rows})"
+            " GROUP BY ALL HAVING count(*) > 0 ORDER BY part"
         ).fetchall()
         count = sum(row[4] for row in found)
         unknown = count - sum(row[3] for row in found)

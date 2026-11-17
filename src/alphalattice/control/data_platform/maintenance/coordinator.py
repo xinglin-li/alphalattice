@@ -119,6 +119,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     TradingSessionAuthority,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
+from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     MarketDataRepository,
@@ -2574,7 +2575,9 @@ class WorkspaceMaintenanceCoordinator:
         # listing, without a connection request per read or a full-width bar
         # object per session.
         inputs = self.market_data.quality_governance_inputs(
-            listing_ids, through=request.target_market_session
+            listing_ids,
+            through=request.target_market_session,
+            cutoff_us=world_reads.cutoff(observed_at),
         )
         raw_closes = _raw_close_points(inputs.raw_close_series)
         anchors = self.market_data.latest_action_audit_receipts(

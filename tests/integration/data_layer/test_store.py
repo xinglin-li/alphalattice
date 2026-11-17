@@ -657,6 +657,15 @@ LATER = {"source_observed_at": "2024-02-02 00:00:00+00"}
 UNTIMED = {name: value for name, value in HELD.items() if name not in WRITTEN}
 FUTURE = HELD | {"session_date": "2099-01-02"}  # known from a close still to come
 SYMBOL = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
+ACTION = {
+    "listing_id": LISTING,
+    "effective_date": "2024-01-05",
+    "kind": "dividend",
+    "action_id": "cash",
+    "amount": 0.5,
+    "provisional": False,
+    "provenance": "provider-observation",
+} | WRITTEN
 RULE, MOVED_RULE = ("yf-close", 1), ("yf-close", 2)
 SAME = (None, 0, 0, {}, 1, 0)
 
@@ -716,6 +725,14 @@ SAME = (None, 0, 0, {}, 1, 0)
             None,
             (None, 0, 1, {}, 1, 0),
             id="a rewrite of the held value",
+        ),
+        pytest.param(
+            "corporate_action",
+            ([ACTION], None),
+            ([ACTION | LATER], None),
+            None,
+            (None, 0, 0, {}, 1, 0),
+            id="a rewrite touches no new part",
         ),
         pytest.param(
             "raw_bar",
@@ -798,7 +815,7 @@ def test_one_fact_is_one_version_however_it_is_staged(
         try:
             with stage(root, table, YF, arrow(staged[0]), lag=staged[1]) as second:
                 admission = second.admission_id
-                if expected[3]:  # its commit fails after the record, and is retried
+                if expected[3] or table == "corporate_action":  # retry after its owed event
 
                     def failing(log, lake):
                         monkeypatch.setattr(storeport, "repair", repair)
@@ -821,6 +838,13 @@ def test_one_fact_is_one_version_however_it_is_staged(
             " WHERE type = 'admission.committed' AND subject_id = ?",
             (admission,),
         )
+        if table == "corporate_action":
+            parts = log.read(
+                "SELECT json_extract(attrs, '$.parts'), json_extract(attrs, '$.rewritten')"
+                " FROM event WHERE type = 'admission.committed' AND subject_id = ?",
+                (admission,),
+            )
+            assert [(json.loads(row[0]), row[1]) for row in parts] == [([], 1)]
         known = {int(at) for _, at in events}
         unknown = read(
             f"SELECT count(*) FROM lake.world.{table} WHERE admission_id = ?"
@@ -832,7 +856,7 @@ def test_one_fact_is_one_version_however_it_is_staged(
     assert (refused, *got, versions, replaced) == expected
     assert most <= 1
     assert [json.loads(dropped or "{}") for dropped, _ in events] == (
-        [expected[3]] if any(expected[1:4]) else []
+        [expected[3]] if any(expected[1:4]) or table == "corporate_action" else []
     )
     assert unknown == 0
 
@@ -844,15 +868,19 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
     value's last write, a later write of the same value moving that time without a version."""
     symbol = {"listing_id": LISTING, "symbol": "AAA", "valid_from": "2024-01-05"}
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "close": 1.0}
-    bar |= {"source_observed_at": "2024-02-01 00:00:00+00"}
+    bar |= {"source_observed_at": "2024-02-01 00:00:00+00", "source_payload_digest": "original"}
     bars = [
         bar,
         bar | {"close": 0.5, "source_observed_at": "2024-01-31 00:00:00+00"},  # older
         bar | {"close": 0.7},  # the same write time, another value
         bar | {"close": 2.0, "source_observed_at": "2024-02-02 00:00:00+00"},  # later
-        bar | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"},  # rewritten
+        bar
+        | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"}
+        | {"source_payload_digest": "next"},  # metadata still leaves this a rewrite, not a version
         bar | {"close": 3.0, "source_observed_at": "2024-02-15 00:00:00+00"},  # before the rewrite
-        bar | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"},  # the same again
+        bar
+        | {"close": 2.0, "source_observed_at": "2024-03-01 00:00:00+00"}
+        | {"source_payload_digest": "next"},  # the same again
     ]
     rule = ("yf-close", 1)
     with HostLog.open(root) as log:

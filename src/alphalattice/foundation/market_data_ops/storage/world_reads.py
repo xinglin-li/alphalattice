@@ -26,6 +26,7 @@ import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import closing, contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
@@ -57,7 +58,10 @@ WORKSPACE: Final = {
     "bars": "raw_daily_bar_current",
     "adjusted": "provider_adjusted_close_current",
     "actions": "corporate_action_current",
+    "action_evidence": "corporate_action_current",
     "mappings": "provider_symbol_mapping",
+    "bar_revisions": "bar_revision",
+    "action_revisions": "corporate_action_revision",
 }
 """The workspace's own market tables, by the name a value read gives each relation."""
 _held: dict[Path, Any] = {}
@@ -66,6 +70,13 @@ _served: dict[tuple[str, str, str, str], tuple[bool, int]] = {}
 the catalog snapshot it was reached at."""
 _writing: dict[str, int] = {}
 _lock = threading.Lock()
+
+
+def cutoff(at: datetime) -> int:
+    """A reader's UTC instant in integer microseconds; legacy naive instants are UTC."""
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    return (at.astimezone(UTC) - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
 
 
 def chosen() -> str:
@@ -140,13 +151,13 @@ def reading(
         if verdict is None:
             current = marks()
             host = history.opened_log()
-            served = _admitted(current, dataset)
+            served = _admitted(current, dataset, workspace_id(database))
             ours = host is not None and _folder(host[1]) == database.parent
             # an admission attaches the file, which an instance this process holds open refuses
             held = ours and live_workspace_connections(database) is not None
             if not served and ours and not held:
                 admit(database, host[1])
-                served = _admitted(current, dataset)
+                served = _admitted(current, dataset, workspace_id(database))
             verdict = (served, _snapshot(cursor))
             if served or not held:  # a held file's admission is owed to the next read
                 _served[key] = verdict
@@ -258,7 +269,7 @@ def holds(database: Path, cutoff_us: int) -> bool:
     exactly as the workspace database `database` does: every relation's rows equal, both ways.
     A copy is bound to world only then; marks alone show a past admission, and world may hold
     another workspace's later value of a key since."""
-    named = relations(cutoff_us, cutoff_us)
+    named = relations(cutoff_us, cutoff_us, workspace_id=workspace_id(database))
     with session() as cursor:
         if cursor is None:
             return False
@@ -285,13 +296,16 @@ def _snapshot(cursor: Any) -> int:
     return int(cursor.execute("SELECT * FROM lake.current_snapshot()").fetchall()[0][0])
 
 
-def _admitted(marks: dict[str, Any], dataset: str = DATASET) -> bool:
+def _admitted(
+    marks: dict[str, Any], dataset: str = DATASET, workspace_id: str | None = None
+) -> bool:
     """Whether one of world's market admissions that took every row it marks (`taken`) recorded
-    these marks, as the log holds them (`_log_rows`)."""
+    this workspace's marks, as the log holds them (`_log_rows`)."""
     admitted = _log_rows(
         "SELECT json_extract(attrs, '$.marks'), json_extract(attrs, '$.dropped.equal_time')"
-        " FROM event WHERE type = 'admission' AND json_extract(attrs, '$.dataset') = ?",
-        (dataset,),
+        " FROM event WHERE type = 'admission' AND json_extract(attrs, '$.dataset') = ?"
+        " AND (? <> 'market' OR subject_id = ?)",
+        (dataset, dataset, workspace_id),
     )
     return bool(marks) and marks in taken(admitted)
 
@@ -310,6 +324,15 @@ def _folder(workspace_id: str) -> Path | None:
     return None if not found or found[0][0] is None else Path(found[0][0]).resolve()
 
 
+def workspace_id(database: Path) -> str | None:
+    """The log's source workspace identity, including a bound research copy's owner."""
+    folder = database.parents[3] if binding(database) is not None else database.parent
+    rows = _log_rows(
+        "SELECT workspace_id FROM workspace WHERE folder = ?", (str(folder.resolve()),)
+    )
+    return str(rows[0][0]) if rows else None
+
+
 _LOG_TABLES: Final = (
     (
         "definition_lineage",
@@ -320,6 +343,20 @@ _LOG_TABLES: Final = (
         "admission",
         "SELECT admission_id, known_us FROM admission",
         pa.schema([("admission_id", pa.string()), ("known_us", pa.int64())]),
+    ),
+    (
+        "market_revisions",
+        "SELECT type, workspace_id, occurred_us, recorded_us, attrs FROM event"
+        " WHERE type IN ('market.bar_revision', 'market.action_revision')",
+        pa.schema(
+            [
+                ("type", pa.string()),
+                ("workspace_id", pa.string()),
+                ("occurred_us", pa.int64()),
+                ("recorded_us", pa.int64()),
+                ("attrs", pa.string()),
+            ]
+        ),
     ),
 )
 """The log's tables a world session's relations join, each with the read that fills it and the
@@ -351,18 +388,31 @@ def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
 
 
 def relations(
-    cutoff_us: int = LATEST, held_us: int | None = None, listings: Sequence[str] | None = None
+    cutoff_us: int = LATEST,
+    held_us: int | None = None,
+    listings: Sequence[str] | None = None,
+    *,
+    workspace_id: str | None = None,
 ) -> dict[str, str]:
     """WORKSPACE's relations as world knew them at `cutoff_us`, by the same names; with
     `held_us`, a selection's cutoff, only the rows world held by then: a 0.2.7 row's knowledge
     time is derived from its valid date, so a row admitted later can be known earlier. Of
-    `listings` only when the read names them (`scope`), else of every listing world holds."""
+    `listings` only when the read names them (`scope`), else of every listing world holds.
+    Revision observations and payload references belong to `workspace_id`; no identity gives
+    no journal observations."""
     named = scope(listings)
     return {
-        "bars": bars(cutoff_us, held_us, named),
-        "adjusted": adjusted(cutoff_us, held_us, named),
-        "actions": actions(cutoff_us, held_us, named),
+        "bars": bars(cutoff_us, held_us, named, workspace_id=workspace_id),
+        "adjusted": adjusted(cutoff_us, held_us, named, workspace_id=workspace_id),
+        "actions": actions(cutoff_us, held_us, named, workspace_id=workspace_id),
+        "action_evidence": actions(
+            cutoff_us, held_us, named, evidence=True, workspace_id=workspace_id
+        ),
         "mappings": mappings(cutoff_us, held_us, named),
+        "bar_revisions": revisions("bar_revision", cutoff_us, held_us, workspace_id=workspace_id),
+        "action_revisions": revisions(
+            "corporate_action_revision", cutoff_us, held_us, workspace_id=workspace_id
+        ),
     }
 
 
@@ -414,41 +464,109 @@ def _named(row: str, cutoff_us: int, held_us: int | None, named: tuple[str, str]
     return f" JOIN {ids} alias ON alias.world = {row}.listing_id{provider}{where}"
 
 
+def revisions(
+    table: str,
+    cutoff_us: int = LATEST,
+    held_us: int | None = None,
+    *,
+    workspace_id: str | None = None,
+) -> str:
+    """This workspace's original journal observations at the cutoff; none without its identity."""
+    type_, columns = world.REVISIONS[table]
+    fields = []
+    for name in columns:
+        type_sql = (
+            "TIMESTAMP"
+            if name == "observed_at"
+            else ("DATE" if name in {"session_date", "effective_date"} else "VARCHAR")
+        )
+        fields.append(f"CAST(json_extract_string(attrs, '$.{name}') AS {type_sql}) AS {name}")
+    held = "" if held_us is None else f" AND recorded_us <= {held_us}"
+    workspace = "NULL" if workspace_id is None else "'" + workspace_id.replace("'", "''") + "'"
+    return (
+        f"(SELECT {', '.join(fields)} FROM market_revisions WHERE type = '{type_}'"
+        f" AND workspace_id = {workspace} AND occurred_us <= {cutoff_us}{held})"
+    )
+
+
+def _payload(
+    table: str, row: str, dated: str, cutoff_us: int, held_us: int | None, workspace_id: str | None
+) -> str:
+    """A current payload reference, including an equal-value rewrite's original revision fact."""
+    kind = f" AND e.action_kind = {row}.action_id" if table == "corporate_action_revision" else ""
+    rows = revisions(table, cutoff_us, held_us, workspace_id=workspace_id)
+    return (
+        f"coalesce((SELECT e.next_payload_hash FROM {rows} e"
+        " WHERE e.listing_id = alias.listing_id AND e.provider = named.name"
+        f" AND e.{dated} = {row}.{dated}{kind}"
+        f" ORDER BY e.observed_at DESC, e.revision_id DESC LIMIT 1), {row}.source_payload_digest)"
+    )
+
+
 def bars(
-    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+    cutoff_us: int = LATEST,
+    held_us: int | None = None,
+    named: tuple[str, str] | None = None,
+    *,
+    workspace_id: str | None = None,
 ) -> str:
     """0.2.7's raw_daily_bar_current with its provider's adjusted close, as world knew it at
     `cutoff_us`: listing_id, provider, session_date, open, high, low, close, volume and
-    adjusted_close."""
+    adjusted_close and the original payload reference for audit evidence."""
+    payload = _payload("bar_revision", "r", "session_date", cutoff_us, held_us, workspace_id)
     return (
         "(SELECT alias.listing_id, named.name AS provider, r.session_date, r.open,"
-        " r.high, r.low, r.close, CAST(r.volume AS BIGINT) AS volume, r.adjusted_close"
+        " r.high, r.low, r.close, CAST(r.volume AS BIGINT) AS volume, r.adjusted_close,"
+        f" {payload} AS payload_hash"
         f" FROM raw_bar_asof({cutoff_us}) r{_named('r', cutoff_us, held_us, named)})"
     )
 
 
 def adjusted(
-    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+    cutoff_us: int = LATEST,
+    held_us: int | None = None,
+    named: tuple[str, str] | None = None,
+    *,
+    workspace_id: str | None = None,
 ) -> str:
     """0.2.7's provider_adjusted_close_current, as world knew it at `cutoff_us`: listing_id,
     provider, session_date and adjusted_close, where the bar's provider gave one."""
+    source = bars(cutoff_us, held_us, named, workspace_id=workspace_id)
     return (
         "(SELECT listing_id, provider, session_date, adjusted_close"
-        f" FROM {bars(cutoff_us, held_us, named)} WHERE adjusted_close IS NOT NULL)"
+        f" FROM {source} WHERE adjusted_close IS NOT NULL)"
     )
 
 
 def actions(
-    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+    cutoff_us: int = LATEST,
+    held_us: int | None = None,
+    named: tuple[str, str] | None = None,
+    *,
+    evidence: bool = False,
+    workspace_id: str | None = None,
 ) -> str:
     """0.2.7's active rows of corporate_action_current, as world knew them at `cutoff_us`:
     listing_id, provider, effective_date, action_kind, new_shares_per_old_share, cash_amount,
-    provisional, provenance and status. A retracted action is world's withdrawal, so no row."""
+    provisional, provenance, status and payload reference. Normal reads hide withdrawals;
+    audit evidence keeps the cutoff-visible withdrawal, as the original receipt's hash does."""
+    source = "corporate_action_versions" if evidence else f"corporate_action_asof({cutoff_us})"
+    payload = _payload(
+        "corporate_action_revision", "c", "effective_date", cutoff_us, held_us, workspace_id
+    )
+    visible = (
+        f" AND c.known_asof <= make_timestamptz({cutoff_us})"
+        f" AND (c.visible_to IS NULL OR c.visible_to > make_timestamptz({cutoff_us}))"
+        if evidence
+        else ""
+    )
     return (
         "(SELECT alias.listing_id, named.name AS provider, c.effective_date,"
         " c.action_id AS action_kind, c.ratio AS new_shares_per_old_share,"
-        " c.amount AS cash_amount, c.provisional, c.provenance, 'ACTIVE' AS status"
-        f" FROM corporate_action_asof({cutoff_us}) c{_named('c', cutoff_us, held_us, named)})"
+        " c.amount AS cash_amount, c.provisional, c.provenance,"
+        " CASE WHEN c.retracted THEN 'RETRACTED' ELSE 'ACTIVE' END AS status,"
+        f" {payload} AS payload_hash"
+        f" FROM {source} c{_named('c', cutoff_us, held_us, named)}{visible})"
     )
 
 
@@ -456,10 +574,11 @@ def mappings(
     cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
 ) -> str:
     """0.2.7's provider_symbol_mapping, as world knew it at `cutoff_us`: listing_id, provider,
-    provider_symbol, effective_from and effective_to; world's own aliases are not mappings."""
+    provider_symbol, effective_from and effective_to; world's own aliases are not mappings.
+    0.2.7's current-only bootstrap writes ACTIVE as its mapping lifecycle."""
     return (
         "(SELECT alias.listing_id, named.name AS provider, m.symbol AS provider_symbol,"
-        " m.valid_from AS effective_from, m.valid_to AS effective_to"
+        " m.valid_from AS effective_from, m.valid_to AS effective_to, 'ACTIVE' AS lifecycle_state"
         f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us, held_us, named)}"
         f" AND m.provider_id NOT IN {_ALIASES})"
     )

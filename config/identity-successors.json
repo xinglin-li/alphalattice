@@ -15590,6 +15590,41 @@
    "successor": "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476",
    "change": "Evidence documents are read through world at their selection's cutoff",
    "reason": "evidence bodies are read through the shared world at each caller's cutoff, with the workspace kept as rollback; a copied workspace replays every reference, set and document read equal through world, workspace and rollback, a legacy document's later version keeps its own availability, and a reference reads its exact bytes, so the two bindings move by their read path, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c5bb15af3f479000939ad6d92030c89338f4f93687cb8d5c39f028f501611eaf",
+   "successor": "5f128dde1b726b9d381c7ce20fcaa8bab50f302a0b79b87c78184cf61d680fa9",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1a75bc25db16b0fb42f7647b229085440718b7cdcc99af42315a1538e9fdb43b",
+   "successor": "a571b471ffc235a90fd74fc27ef8090d0d22a57418aa8cb124bea741eb91d600",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "9c70825ac95d687ae10c28f450f2b80ee6463c579d36241d280fed2a03f2fe1e",
+   "successor": "cee7aa9264d3e8a17094f57033318dca0dcdeba0f71674cb5fc4ebfb03bf6b73",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "35fa9ce6106b29a861e6b49d4c971c186a82fb0aaea79ef2d6e3672c41e11461",
+   "successor": "6bb104feb302b015f3686246c76dbbab76d2c1b03f6e5cb0139bb90d5ddf09e3",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "29df854e25855251ee68dbde961eb5c9a17034d7987fca4f3fce76dffd12339c",
+   "successor": "a645e59d654e938aced1fb697699b18b5318f943d3dab6de9900b64b39c839a6",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
   }
  ]
 }

@@ -1,5 +1,10 @@
 {
 "entries": {
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::cutoff::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The Unix epoch's fixed UTC year; cutoff converts the reader's instant to the log's integer microseconds without floating-point rounding."
+},
 "src/alphalattice/foundation/market_data_ops/storage/world_reads.py::binding::64": {
 "class": "LIMIT",
 "count": 1,
