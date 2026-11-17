@@ -151,5 +151,5 @@ def test_a_span_below_w3c_headers_is_their_child_and_works_for_their_baggage():
         "a1",
         "Read it.",
     )
-    assert json.loads(inside["attrs"]) == {"k": 1}
+    assert json.loads(inside["attrs"]) == {"k": 1, "trial_id": "t7"}  # its baggage stamped
     assert (outside["span_id"], outside["occurred_us"], outside_text) == (None, 5, None)

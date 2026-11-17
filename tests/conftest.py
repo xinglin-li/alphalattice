@@ -25,7 +25,10 @@ from typing import Any
 
 import pytest
 
-from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
+from alphalattice.interface.local_application.cli_contract import (
+    AGENT_SESSION_VARIABLES,
+    TRACE_VARIABLES,
+)
 from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
@@ -192,11 +195,13 @@ def host_local_clock(monkeypatch):
     return HostDatetime(2026, 10, 18, 2, 44, tzinfo=UTC)
 
 
-# Every test runs outside an agent session: a vendor's session variable would otherwise ride
-# into each request the tests send, and into its activity (LAWS OP13). A test that needs one
-# sets it itself. Popped at import, so each worker and the commands it starts inherit none.
+# Every test runs outside an agent session and outside its caller's trace: a vendor's session
+# variable, or the W3C TRACEPARENT and BAGGAGE of the process that started the run, would
+# otherwise ride into each request the tests send, and into its activity and its call spans
+# (LAWS OP13). A test that needs one sets it itself. Popped at import, so each worker and the
+# commands it starts inherit none.
 _MAINTAINER_THREAD = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CLAUDE_CODE_SESSION_ID")
-for _vendor, _variable in AGENT_SESSION_VARIABLES:
+for _variable in (*(name for _vendor, name in AGENT_SESSION_VARIABLES), *TRACE_VARIABLES):
     os.environ.pop(_variable, None)
 
 

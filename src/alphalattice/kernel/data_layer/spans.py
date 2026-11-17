@@ -9,8 +9,9 @@ The log exporter stays local; a separately configured exporter may receive scrub
 
 A trace crosses processes as W3C trace context: `carrier` writes the current context as the two
 headers `traceparent` and `baggage`, and `context_of` reads them back. Baggage names the workspace,
-trial and selection a step works for (`BAGGAGE_KEYS`); every span started under it carries them as
-attributes, so a worker's span is attributed with no argument of ours. A Host worker records its
+trial, selection and goal a step works for and the caller it acts for (`BAGGAGE_KEYS`);
+OpenTelemetry's baggage processors stamp them on every span and log record under it, so a worker's
+span is attributed with no argument of ours. A Host worker records its
 spans into a `RowsExporter` and hands the rows back with its answer, for the Host to append.
 
 The SDK is imported here and nowhere on the CLI's start path; only a caller that records spans
@@ -31,6 +32,7 @@ from typing import Any, Final, cast
 from opentelemetry import baggage
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import Context
+from opentelemetry.processor.baggage import BaggageLogProcessor, BaggageSpanProcessor
 from opentelemetry.sdk._logs import LoggerProvider, ReadableLogRecord
 from opentelemetry.sdk._logs.export import (
     LogRecordExporter,
@@ -38,7 +40,7 @@ from opentelemetry.sdk._logs.export import (
     SimpleLogRecordProcessor,
 )
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace import Event, ReadableSpan, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
@@ -55,8 +57,17 @@ from alphalattice.kernel.data_layer.log import HostLog, envelope
 from alphalattice.kernel.shared_kernel.environment import offline
 
 PREFIX: Final = "alphalattice."
-BAGGAGE_KEYS: Final = ("workspace_id", "trial_id", "selection_id")
-"""What a step works for, carried as baggage under PREFIX into every span below it."""
+BAGGAGE_KEYS: Final = (
+    "workspace_id",
+    "trial_id",
+    "selection_id",
+    "goal_id",
+    "actor_kind",
+    "actor_id",
+)
+"""What a step works for and who it acts for, carried as baggage under PREFIX into every span and
+log record below it."""
+_STAMPED: Final = frozenset(PREFIX + key for key in BAGGAGE_KEYS)
 _ENVELOPE: Final = frozenset(
     {"subject_kind", "subject_id", "workspace_id", "actor_kind", "actor_id", "node"}
 )
@@ -219,17 +230,6 @@ class RowsExporter(SpanExporter):
         """Keep each span's step event."""
         self.rows.extend(step_event(span) for span in spans)
         return SpanExportResult.SUCCESS
-
-
-class BaggageAttributes(SpanProcessor):
-    """Gives a starting span the workspace, trial and selection its context's baggage names."""
-
-    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
-        """Copy each of BAGGAGE_KEYS the baggage holds into the span's attributes."""
-        for key in BAGGAGE_KEYS:
-            value = baggage.get_baggage(PREFIX + key, parent_context)
-            if value is not None:
-                span.set_attribute(PREFIX + key, str(value))
 
 
 def _scrub(
@@ -399,7 +399,7 @@ def tracer_provider(
 ) -> TracerProvider:
     """Record locally and, only when supplied, send scrubbed spans to a remote exporter."""
     provider = TracerProvider()
-    provider.add_span_processor(BaggageAttributes())
+    provider.add_span_processor(BaggageSpanProcessor(_STAMPED.__contains__))
     provider.add_span_processor(
         SimpleSpanProcessor(exporter) if remote is None else RecordedSpanProcessor(exporter, remote)
     )
@@ -410,6 +410,7 @@ def logger_provider(exporter: LogRecordExporter) -> LoggerProvider:
     """A logger provider whose one exporter is `exporter`: each record a fact in the Host's log as
     it is emitted. Nothing leaves the machine."""
     provider = LoggerProvider()
+    provider.add_log_record_processor(BaggageLogProcessor(_STAMPED.__contains__))
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     return provider
 
@@ -424,12 +425,15 @@ def carrier(context: Context | None = None) -> dict[str, str]:
 
 def context_of(headers: Mapping[str, str], **works_for: str | None) -> Context:
     """The context W3C headers carry, with `works_for` (any of BAGGAGE_KEYS) bound over what their
-    baggage names: the caller's own identity, never a client's claim."""
+    baggage names: the caller's own identity, never a client's claim; a key bound to None is
+    removed, so a client cannot claim it either."""
     context: Context | None = None
     for propagator in _PROPAGATORS:
         context = propagator.extract(headers, context=context)
     assert context is not None
     for key, value in works_for.items():
-        if value is not None:
+        if value is None:
+            context = baggage.remove_baggage(PREFIX + key, context)
+        else:
             context = baggage.set_baggage(PREFIX + key, value, context)
     return context

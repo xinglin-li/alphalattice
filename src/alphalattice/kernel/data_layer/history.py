@@ -39,6 +39,7 @@ from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
+from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import experience, goal_notes, reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
@@ -61,6 +62,11 @@ STEPS: Final = {
         ["operation", "caller"],
         "optional",
         "One product operation the Host served; a record past the attributes' bound is the text.",
+    ),
+    "cli.call": (
+        ["command"],
+        "none",
+        "One CLI invocation: the command an agent or the person ran.",
     ),
 }
 """The Host's own step types, by required attributes and text: each span `step`, `begin` and a
@@ -103,6 +109,10 @@ emits is one of these events."""
 
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _lock = threading.RLock()
+CALLS_KEPT: Final = 1024
+"""The live CLI calls, and the conversations' last calls, the Host keeps for links."""
+_calls: dict[str, list[str]] = {}
+_conversations: dict[str, str] = {}
 _once = threading.Lock()
 _open: dict[str, Any] = {}
 
@@ -353,8 +363,12 @@ def release_history() -> None:
 
 
 def close_history() -> None:
-    """Commit the open batch, close the reading session and release the data root."""
+    """Commit the open batch, close the reading session and release the data root; the live
+    calls and the conversations' last calls go with it, so a history opened again links nothing
+    to a call of the one before."""
     with _lock:
+        _calls.clear()
+        _conversations.clear()
         _open.pop("hosts", None)
         _open.pop("remote", None)
         reading = _open.pop("reading", None)
@@ -514,9 +528,17 @@ def definition_id(family: str, name: str) -> str | None:
 
 
 @contextmanager
-def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[None]:
+def step(
+    name: str,
+    headers: Mapping[str, str],
+    *,
+    caller: tuple[str, str] | None = None,
+    goal: str | None = None,
+    **attributes: str,
+) -> Iterator[None]:
     """One span for one step the Host serves, in the trace `headers` (W3C) name, working for the
-    Host's workspace whatever the baggage names. Nothing while the history is deferred."""
+    Host's workspace and `goal` and acting for `caller` (an agent's session), whatever the baggage
+    names; every span and record under it carries them. Nothing while the history is deferred."""
     provider = _open.get("tracer")
     if provider is None:
         yield
@@ -526,7 +548,15 @@ def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[N
     from alphalattice.kernel.data_layer.spans import context_of  # lazy: the SDK, once open
 
     # attached, not only the parent: the step's baggage is what its worker calls carry on
-    token = context.attach(context_of(headers, workspace_id=_open["workspace"]))
+    actor = caller or (None, None)
+    bound = context_of(
+        headers,
+        workspace_id=_open["workspace"],
+        goal_id=goal,
+        actor_kind=actor[0],
+        actor_id=actor[1],
+    )
+    token = context.attach(bound)
     try:
         with provider.get_tracer("host").start_as_current_span(
             name, attributes=attributes, record_exception=False
@@ -534,6 +564,63 @@ def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[N
             yield
     finally:
         context.detach(token)
+
+
+def call(
+    ids: tuple[str, str, str | None],
+    started_us: int,
+    attributes: Mapping[str, Any],
+    *,
+    caller: tuple[str, str] | None,
+    conversation: str | None = None,
+    ended: tuple[int, int] | None = None,
+) -> None:
+    """Record one CLI invocation's span, `ids` its (trace, span, parent): `started` the first time
+    the Host sees it, so a reader sees it live, and completed with `ended` (its end and exit code).
+    A conversation's consecutive calls are linked, each to the one before. The caller is the
+    actor; a call naming none stays the Host's, marked unattributed. Nothing outside a Host."""
+    exporter = _open.get("exporter")
+    if exporter is None:
+        return
+    trace, span, parent = ids
+    with _lock:
+        links = _calls.pop(span, None) if ended is not None else None
+        if ended is None and span in _calls:
+            return
+        if links is None:
+            previous = _conversations.pop(conversation, None) if conversation else None
+            links = [] if previous is None else [previous]
+            if conversation:
+                _conversations[conversation] = f"{trace}-{span}"
+                _bound(_conversations)
+        if ended is None:
+            _calls[span] = links
+            _bound(_calls)
+    attrs = _attributes(attributes) | ({"links": links} if links else {})
+    attrs |= {} if caller else {"unattributed": True}
+    if ended is not None:
+        attrs["exit_code"] = ended[1]
+    exporter.append(
+        envelope(
+            "cli.call",
+            attrs=attrs,
+            phase="started" if ended is None else "completed",
+            workspace=_open["workspace"],
+            actor=caller or ("host", "host"),
+            node="cli",
+            trace=trace,
+            span=span,
+            parent_span=parent,
+            started_us=started_us,
+            occurred_us=started_us if ended is None else ended[0],
+        )
+    )
+
+
+def _bound(kept: dict[str, Any]) -> None:
+    """Keep the newest CALLS_KEPT entries: a call whose end never comes is forgotten in time."""
+    while len(kept) > CALLS_KEPT:
+        kept.pop(next(iter(kept)))
 
 
 def begin(
@@ -629,6 +716,64 @@ def fact(
     )
     if (refused := _open["facts"].refusal()) is not None:
         raise refused
+
+
+def _attributes(values: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
+    """OpenTelemetry attributes of `values`: a nested map flattened to dotted keys, None dropped,
+    a list kept when it holds only strings, numbers or booleans."""
+    out: dict[str, Any] = {}
+    for key, value in values.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, Mapping):
+            out |= _attributes(value, f"{name}.")
+        elif isinstance(value, list | tuple):
+            if all(isinstance(item, str | int | float | bool) for item in value):
+                out[name] = list(value)
+        elif value is not None:
+            out[name] = value
+    return out
+
+
+def goal_trace(
+    goal_id: str, sessions: Iterable[str] = (), *, workspace: str | None = None
+) -> dict[str, Any] | None:
+    """A goal's waterfall and time breakdown, read from the log: each CLI call `workspace` (else
+    the Host's) recorded naming the goal or made by one of `sessions` (those that worked for it),
+    and the steps under each call (`breakdown.goal_trace`). A session working in another workspace
+    on the same log adds nothing. None outside a Host."""
+    log = _open.get("log")
+    if log is None:
+        return None
+    where = workspace or _open["workspace"]
+    named = sorted(set(sessions)) or [""]  # a session id is never empty
+    columns = (
+        "type, phase, span_id, trace_id, parent_span_id, actor_id, occurred_us, started_us, attrs"
+    )
+    calls = [
+        dict(row)
+        for row in log.read(
+            f"SELECT {columns} FROM event WHERE type = 'cli.call' AND workspace_id = ?"
+            " AND (json_extract(attrs, '$.goal_id') = ?"
+            " OR json_extract(attrs, '$.goal_id') IS NULL"  # its sessions' calls naming no goal
+            " AND json_extract(attrs, '$.\"gen_ai.conversation.id\"') IN"
+            f" ({', '.join('?' * len(named))})) ORDER BY seq",
+            (where, goal_id, *named),
+        )
+    ]
+    traces = sorted({row["trace_id"] for row in calls})
+    steps: list[dict[str, Any]] = []
+    for at in range(0, len(traces), 500):
+        chunk = traces[at : at + 500]
+        marks = ", ".join("?" * len(chunk))
+        steps += map(
+            dict,
+            log.read(
+                f"SELECT {columns} FROM event WHERE workspace_id = ? AND trace_id IN ({marks})"
+                " AND phase IS NOT NULL AND type <> 'cli.call' ORDER BY seq",
+                (where, *chunk),
+            ),
+        )
+    return traced_goal(calls, steps)
 
 
 def traced(rows: Iterable[Mapping[str, Any]] | None) -> None:

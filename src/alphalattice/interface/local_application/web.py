@@ -57,6 +57,14 @@ from pathlib import Path
 from typing import Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from alphalattice.interface.local_application.call_span import (
+    CALL_PATH,
+    REQUEST_CALL,
+    CallSpan,
+    ended,
+    record,
+    request_call,
+)
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
     CLIENT_HEADER,
@@ -165,6 +173,8 @@ class Route:
     external_client: bool = False
     session: bool = False
     """A read that answers only the browser holding the session cookie."""
+    traced: bool = True
+    """Whether a client's call opens a step span; a call's own end opens none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +223,8 @@ class AdmittedRequest:
     provenance: RequestProvenance | None = None
     trace: tuple[tuple[str, str], ...] = ()
     """The W3C `traceparent` and `baggage` headers the client sent, for its step's span."""
+    call: CallSpan | None = None
+    """The CLI invocation an external request comes from, whose span its step is under."""
 
 
 TRACE_HEADERS: Final = ("traceparent", "baggage")
@@ -220,17 +232,30 @@ TRACE_HEADERS: Final = ("traceparent", "baggage")
 
 @contextmanager
 def _step(
-    route: Route, operation: object, trace: tuple[tuple[str, str], ...], *, traced: bool
+    route: Route,
+    operation: object,
+    admitted: AdmittedRequest,
+    *,
+    traced: bool,
 ) -> Iterator[None]:
-    """One span for a client's step or a write, in the trace its headers name; a polling read
-    opens none. The history, and with it the SDK, is imported only for a traced step."""
+    """One span for a client's step or a write, in the trace its headers name, acting for the
+    agent session and goal it names; a polling read opens none. The history, and with it the SDK,
+    is imported only for a traced step."""
     if not traced:
         yield
         return
     from alphalattice.kernel.data_layer.history import step  # lazy: the Host's, never the CLI's
 
     named = operation if isinstance(operation, str) else route.path
-    with step("host.request", dict(trace), operation=named, route=f"{route.method} {route.path}"):
+    who = admitted.provenance or RequestProvenance()
+    with step(
+        "host.request",
+        dict(admitted.trace),
+        caller=None if who.session is None else ("agent", who.session),
+        goal=who.goal_id,
+        operation=named,
+        route=f"{route.method} {route.path}",
+    ):
         yield
 
 
@@ -269,7 +294,12 @@ class LocalWebApplication:
     external_workspace_id: str | None = None
     workspace: Path | None = field(default=None, repr=False)
     cookie_name: str = field(default=SESSION_COOKIE, init=False, repr=False)
-    routes: dict[tuple[str, str], Route] = field(default_factory=dict)
+    routes: dict[tuple[str, str], Route] = field(
+        default_factory=lambda: {
+            ("POST", CALL_PATH): Route("POST", CALL_PATH, ended, external_client=True, traced=False)
+        }
+    )
+    """Each method and path's handler; a CLI call's end is the Host's own, before any other."""
     assets: dict[str, tuple[bytes, str, str | None]] = field(default_factory=dict)
     allowed_hosts: frozenset[str] = frozenset()
     refusals: int = 0
@@ -286,6 +316,7 @@ class LocalWebApplication:
         mutates: bool = False,
         external_client: bool = False,
         session: bool = False,
+        traced: bool = True,
     ) -> Callable[
         [Callable[[Mapping[str, list[str]], dict[str, Any]], object]],
         Callable[[Mapping[str, list[str]], dict[str, Any]], object],
@@ -299,6 +330,7 @@ class LocalWebApplication:
             external_client: Whether the external client may call it.
             session: Whether a read answers only the browser holding the session
                 cookie (the session read, which hands that browser its token).
+            traced: Whether a client's call opens a step span (a call's own end does not).
 
         Returns:
             A decorator that records the handler without changing it.
@@ -314,6 +346,7 @@ class LocalWebApplication:
                 mutates=mutates,
                 external_client=external_client,
                 session=session,
+                traced=traced,
             )
             return handler
 
@@ -467,9 +500,9 @@ class LocalWebApplication:
             )
         try:
             # An external client may name its agent session and a goal (OP13).
-            provenance = (
-                request_provenance(headers) if route is not None and route.external_client else None
-            )
+            external = route is not None and route.external_client
+            provenance = request_provenance(headers) if external else None
+            call = request_call(headers) if external else None
         except ValueError as error:
             self.refusals += 1
             return self._refuse(HTTPStatus.BAD_REQUEST, str(error))
@@ -481,6 +514,7 @@ class LocalWebApplication:
             # The session cookie is issued at the launch URL alone (`_launch`).
             issues_session=False,
             provenance=provenance,
+            call=call,
             trace=tuple(  # header names are case-insensitive; a client may send `Traceparent`
                 (name.lower(), value)
                 for name, value in headers.items()
@@ -594,6 +628,7 @@ class LocalWebApplication:
                 return self._refuse(HTTPStatus.BAD_REQUEST, "local_web.body_not_an_object")
             payload = decoded
         scope = REQUEST_PROVENANCE.set(admitted.provenance)
+        called = REQUEST_CALL.set(admitted.call)
         notice = BINDING_NOTICE.set(None)
         try:
             action = partial(route.handler, admitted.query, payload)
@@ -603,7 +638,10 @@ class LocalWebApplication:
             )
             if self.admission is not None:
                 action = partial(self.admission, action, writes)
-            with _step(route, operation, admitted.trace, traced=route.external_client or writes):
+            if admitted.call is not None and route.traced:
+                record(admitted.call, admitted.provenance)
+            traced = route.traced and (route.external_client or writes)
+            with _step(route, operation, admitted, traced=traced):
                 answer = self._offer_workbench(
                     with_binding_notice(action()), admitted.provenance, operation=operation
                 )
@@ -633,6 +671,7 @@ class LocalWebApplication:
             )
         finally:
             REQUEST_PROVENANCE.reset(scope)
+            REQUEST_CALL.reset(called)
             BINDING_NOTICE.reset(notice)
         self.served += 1
         if isinstance(answer, LocalWebResponse):

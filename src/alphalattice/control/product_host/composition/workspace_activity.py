@@ -79,6 +79,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
     PortfolioResearchOperations,
     task_status_body,
 )
+from alphalattice.control.product_host.publication.goals import sessions_of
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.timing import read_stage_spans, stage_spans_path
@@ -991,6 +992,17 @@ class WorkspaceActivity:
                 gaps.append({"code": "CLOCK_WINDOW_UNOBSERVED"})
         return start.isoformat(), end.isoformat(), source
 
+    def _goal_trace(self, goal: Goal) -> dict[str, Any] | None:
+        """The goal's calls from the log: those naming it, and those of each session that worked
+        for it (its record names them) without naming it."""
+        operations = self._operations
+        attributed = () if operations is None else operations.goals.store.attributed(goal.goal_id)
+        sessions = [session["session_id"] for session in sessions_of(attributed)]
+        trace: dict[str, Any] | None = history.goal_trace(
+            str(goal.goal_id), sessions, workspace=self.workspace_id
+        )
+        return trace
+
     def goal_profile(self, goal: Goal, runtime_paths: tuple[Path, ...]) -> dict[str, Any]:
         """Read each scoped owner input once; the history's head fixes the answer's window."""
         rows, gaps, head, clocks = self._profile_rows(goal)
@@ -1040,6 +1052,7 @@ class WorkspaceActivity:
                 diagnostics=gaps,
             ),
             "status": "GOAL_PROFILE",
+            "trace": self._goal_trace(goal),
             "goal_id": str(goal.goal_id),
             "goal_hash": goal.goal_hash,
             "goal_kind": goal.declaration.kind,

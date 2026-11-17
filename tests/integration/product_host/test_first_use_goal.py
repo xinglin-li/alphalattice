@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import sqlite3
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -52,6 +55,7 @@ from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     target_sessions,
 )
+from alphalattice.kernel.data_layer import history
 from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
@@ -62,6 +66,9 @@ PortfolioResearchRequestDocument = research_requests.PortfolioResearchRequestDoc
 decision_hash = research_requests.decision_hash
 SESSION = "00000000-0000-4000-8000-0000000000f1"
 OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
+ELSEWHERE = ("1" * 32, "2" * 16)  # a call the same session made in another workspace
+PASSED = ("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331")
+"""A caller's own trace and span, passed as its TRACEPARENT."""
 RELAY = ("--person-said", "Yes, go ahead.", "--asked", "May I widen the SEC budget?")
 INSTALL = "--setup=--acquire-sec --entities AAPL --network-consent --install"
 FIRST_USE = {
@@ -72,8 +79,11 @@ FIRST_USE = {
 }
 
 
-def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[str, Any]]:
-    """One agent session's command, as its CLI sends it."""
+def _cli(
+    live: Any, *arguments: str, session: str = SESSION, traced: bool = False
+) -> tuple[int, dict[str, Any]]:
+    """One agent session's command, as its CLI sends it; `traced`, under the caller's PASSED."""
+    passed = {"TRACEPARENT": f"00-{PASSED[0]}-{PASSED[1]}-01"} if traced else {}
     result = subprocess.run(
         [
             sys.executable,
@@ -87,7 +97,7 @@ def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[
         capture_output=True,
         text=True,
         timeout=60,
-        env={**os.environ, "CLAUDE_CODE_SESSION_ID": session},
+        env={**os.environ, "CLAUDE_CODE_SESSION_ID": session, **passed},
     )
     return result.returncode, json.loads(result.stdout)["data"]
 
@@ -148,11 +158,17 @@ def test_a_reopened_first_use_only_asks_while_the_daily_answer_is_missing(tmp_pa
     assert all("delegation" not in text for text in notices)
 
 
+@pytest.mark.proves("local_application.each_command_is_one_call_span")
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
     live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A first use goal lets its agent take the first steps and ends with them."""
+    """A first use goal lets its agent take the first steps and ends with them; each command is
+    one call span, the root of its own trace, live before it ends, over its Host steps, acting
+    for its session and linked to that session's call before it; a call naming none is marked."""
     command = _session_commands(live, monkeypatch, capsys)  # each agent command in process
+    log = history.data_root() / "machine" / "log.sqlite"
+    with closing(sqlite3.connect(log)) as con:
+        (before,) = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()
 
     cursor = _json(live, "/api/activity")["cursor"]
     plan = "a" * 64
@@ -204,7 +220,9 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
     code, second = command("goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
-    code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
+    code, reused = _cli(
+        live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION, traced=True
+    )
     assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
     code, ended = command("goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
@@ -248,6 +266,68 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         for q in (row["payload"] or {}).get("subject", {}).get("person_questions", []):
             assert set(q) == {"code", "catalog_hash", "state", "references"}
             assert q["references"]["operation_ref"] == row["payload"]["operation_ref"]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    from alphalattice.interface.local_application import cli
+
+    assert cli.main(["--workspace", str(live.workspace), "network", "show"], serve=print) == 0
+    capsys.readouterr()
+    elsewhere = history.workspace_on_log(tmp_path / "elsewhere", "elsewhere")
+    with monkeypatch.context() as scoped:  # the same session, at work in another workspace
+        scoped.setitem(history._open, "workspace", elsewhere)
+        now = time.time_ns() // 1000
+        history.call(
+            (ELSEWHERE[0], ELSEWHERE[1], None),
+            now,
+            {"command": "goal list", "gen_ai.conversation.id": SESSION},
+            caller=("agent", SESSION),
+            conversation=SESSION,
+            ended=(now + 1, 0),
+        )
+    goal = history.goal_trace(opened["goal_id"], [SESSION])  # the session that worked for it
+    assert ELSEWHERE[1] not in {call["span_id"] for call in goal["calls"]}
+    _assert_each_command_is_one_call(log, before, goal)
+
+
+def _assert_each_command_is_one_call(log: Path, before: int, goal: Any) -> None:
+    """Each CLI call the log holds after `before`: live then ended, its own trace's root unless its
+    caller passed a TRACEPARENT, over its Host steps, acting for its session, linked to its
+    previous call and in its goal's trace."""
+    here = history.opened_log()[1]  # this Host's workspace; the log is the machine's
+    history.close_history()  # commits the Host's batch
+    with closing(sqlite3.connect(log)) as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM event WHERE seq > ? AND type IN ('cli.call', 'host.request')"
+            " AND workspace_id = ? ORDER BY seq",
+            (before, here),
+        ).fetchall()
+    calls = [row for row in rows if row["type"] == "cli.call"]
+    ended = {row["span_id"]: row for row in calls if row["phase"] == "completed"}
+    assert [row["span_id"] for row in calls if row["phase"] == "started"] == list(ended)
+    passed = [row for row in ended.values() if row["parent_span_id"] is not None]
+    assert [(row["trace_id"], row["parent_span_id"]) for row in passed] == [PASSED]
+    assert json.loads(passed[0]["attrs"])["gen_ai.conversation.id"] == OTHER_SESSION
+    assert len({row["trace_id"] for row in ended.values()}) == len(ended)
+    steps = [row for row in rows if row["type"] == "host.request"]
+    assert steps and all(
+        ended[step["parent_span_id"]]["trace_id"] == step["trace_id"] for step in steps
+    )
+    assert all(step["actor_id"] == ended[step["parent_span_id"]]["actor_id"] for step in steps)
+    attrs = {span: json.loads(row["attrs"]) for span, row in ended.items()}
+    sessions = [attrs[span].get("gen_ai.conversation.id") for span in ended]
+    assert set(sessions) == {SESSION, OTHER_SESSION, None} and sessions[-1] is None
+    mine = [span for span in ended if attrs[span].get("gen_ai.conversation.id") == SESSION]
+    links = [[f"{ended[span]['trace_id']}-{span}"] for span in mine[:-1]]
+    assert [attrs[span].get("links") for span in mine] == [None, *links]
+    assert {ended[span]["actor_id"] for span in mine} == {SESSION}
+    assert attrs[mine[0]]["gen_ai.provider.name"] == "anthropic"
+    traced = {call["span_id"] for call in goal["calls"]}
+    assert set(mine) <= traced and not traced & (set(ended) - set(mine))
+    assert goal["breakdown"]["agent_seconds"] > 0 and goal["agent"][0]["inferred"]
+    assert (ended[list(ended)[-1]]["actor_kind"], attrs[list(ended)[-1]]["unattributed"]) == (
+        "host",
+        True,
+    )
 
 
 def test_the_first_use_deadline_names_the_hosts_local_moment(live, monkeypatch, host_local_clock):

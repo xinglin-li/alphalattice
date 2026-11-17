@@ -18961,6 +18961,18 @@
 "owner": "devtools.testing",
 "category": "INVALID_ARGUMENT"
 },
+"local_web.call_context_invalid": {
+"owner": "local_web",
+"category": "INVALID_ARGUMENT"
+},
+"local_web.call_context_missing": {
+"owner": "local_web",
+"category": "FAILED_PRECONDITION"
+},
+"local_web.call_end_invalid": {
+"owner": "local_web",
+"category": "INVALID_ARGUMENT"
+},
 "local_web.child_ownership_unavailable": {
 "owner": "alphalattice.control.product_host.composition",
 "category": "FAILED_PRECONDITION",

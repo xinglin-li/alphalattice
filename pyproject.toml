@@ -26,6 +26,7 @@ dependencies = [
     "opentelemetry-sdk>=1.45.2,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
     "opentelemetry-instrumentation-system-metrics>=0.66b2,<1",
+    "opentelemetry-processor-baggage>=0.66b2,<1",  # stamps our baggage ids on spans and records
     "sqlite-vec>=0.1.9,<0.2",
     # Already locked; process telemetry is runtime, not only a test dependency.
     "psutil>=7,<8",

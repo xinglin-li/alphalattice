@@ -362,6 +362,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.goal_trace_breaks_down_a_goals_time": {
+      "description": "A goal's calls read apart by session, with the agent's time between calls inferred, untraced call time flagged, unattributed calls counted and each stage summed.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.heavy_work_runs_beside_the_writer": {
       "description": "An append and its flush made while a large admission is digested and staged wait as an ordinary one does, since staging runs in the process that has the rows and never under the writer.",
       "lower_layer": "The wait is measured on a real log's commits against a second real process.",
@@ -820,6 +826,13 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 5
+    },
+    "local_application.each_command_is_one_call_span": {
+      "description": "Each CLI command is one call span, its own trace's root, live before it ends, over its Host steps, acting for its session and linked to that session's previous call.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The span crosses the real CLI, a live Host and its history's SQLite log."
     },
     "local_application.first_use_offers_delegated_network": {
       "description": "A first-use plan offers its delegated network action immediately without waiting for the separate coded daily-consent answer.",

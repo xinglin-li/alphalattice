@@ -53,7 +53,7 @@ from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     FactorSection,
 )
-from alphalattice.interface.local_application import client
+from alphalattice.interface.local_application import call_span, client
 from alphalattice.interface.local_application.answers import ANSWERS, outline
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
@@ -1393,6 +1393,28 @@ def main(
     restore: Callable[..., dict[str, Any]] | None = None,
     sandbox: Callable[..., dict[str, Any]] | None = None,
 ) -> int:
+    """Run one command line and print its envelope; the invocation is one span, ended at the
+    Host its requests reached with its exit code (`_command_line` runs the line)."""
+    scope = call_span.CALL.set(None)
+    code = 1  # what Python exits with when the line raises
+    try:
+        code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox)
+        return code
+    except SystemExit as stopped:  # a refusal raised as the process's exit carries its code
+        code = stopped.code if isinstance(stopped.code, int) else code
+        raise
+    finally:
+        call_span.end(os.environ, code, reached=code != EXIT_CODES["NO_HOST"])
+        call_span.CALL.reset(scope)
+
+
+def _command_line(
+    argv: list[str] | None,
+    *,
+    serve: Callable[[list[str]], int],
+    restore: Callable[..., dict[str, Any]] | None,
+    sandbox: Callable[..., dict[str, Any]] | None,
+) -> int:
     """Run one command line and print its envelope.
 
     Args:
@@ -1423,6 +1445,8 @@ def main(
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
+        if args.noun != "serve":  # the Host itself is no call of its own
+            call_span.begin(os.environ, form)
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
         if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
@@ -1440,6 +1464,8 @@ def main(
             )
         except client.LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
+        if args.workspace is not None:
+            call_span.at(Path(args.workspace))  # where the call's span ends
         bound_token = BOUND_WORKSPACE.set(bound)
         args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)

@@ -17,7 +17,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     OPERATION_ROUTES,
 )
 from alphalattice.control.research_program.authoring import document as authoring_document
-from alphalattice.interface.local_application import native_setup
+from alphalattice.interface.local_application import call_span, native_setup
 from alphalattice.interface.local_application.activity import (
     ACTIVITY_MAXIMUM_LIMIT,
     ActivityReadQuery,
@@ -179,6 +179,10 @@ REQUIRED_SEED_FIELDS = frozenset(
         "window_limit",
     }
 )
+CALL_BAGGAGE = (
+    "alphalattice.call_started_us=1,alphalattice.call_parent=-,alphalattice.command=task%20list"
+)
+"""A CLI call's own baggage, as `call_span.begin` writes it."""
 PUBLIC_SEAMS = frozenset(
     {
         "execute",
@@ -188,6 +192,7 @@ PUBLIC_SEAMS = frozenset(
         "read",
         "read_external",
         "admitted_session_project",
+        "record",
     }
 )
 ACTIVATION_OPERATIONS = frozenset({"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"})
@@ -334,6 +339,7 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
                 "admitted_session_project",
                 None,
             ),
+            ("POST", call_span.CALL_PATH): ({"ended_us": 2, "exit_code": 0}, "record", None),
         }
     )
     assert seeded_fields == REQUIRED_SEED_FIELDS, {
@@ -355,6 +361,8 @@ def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
         return authoring_document, seam, None
     if seam == "admitted_session_project":
         return native_setup, seam, None
+    if seam == "record":  # a CLI call's end, recorded in the Host's history
+        return call_span, seam, None
     if seam in {"execute", "session_projection"}:
         owner = live.operations
     elif seam == "open_html":
@@ -399,6 +407,8 @@ def loopback_request(
         )
         if probe.seam == "admitted_session_project":
             headers.update({AGENT_VENDOR_HEADER: "codex", AGENT_SESSION_HEADER: TASK})
+        if probe.seam == "record":  # the call the end names: its span, started at 1 us
+            headers |= {"traceparent": f"00-{'a' * 32}-{'b' * 16}-01", "baggage": CALL_BAGGAGE}
     else:
         headers.update(
             {
