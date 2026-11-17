@@ -45,7 +45,7 @@ def person_question(code: str, *, operation: str | None = None) -> dict[str, Any
 NETWORK_QUESTION = "network.workspace_access"
 """The person's question for network access outside a delegation: put by every network stop and by
 an update plan whose provider work the workspace's network does not admit."""
-CODED_ONLY = {"COMMITTEE_DAILY_SET": "committee.daily"}
+CODED_ONLY = {"COMMITTEE_DAILY_SET": "committee.daily", "ANALYST_READS_SET": "review.analyst_reads"}
 """Operations whose one question is a registered one: an uncoded relay of it can only be a
 retyped question, so it is refused with the code that carries the words."""
 

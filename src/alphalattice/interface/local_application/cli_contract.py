@@ -1755,6 +1755,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "NETWORK_ACCESS",
         "EVIDENCE_CONSENT",
         "USAGE_READING",
+        "ANALYST_READS",
         "PENDING_DECISIONS",
         "WORKSPACE_PREPARE_READBACK",
         "ACTIVITY_REFUSALS",

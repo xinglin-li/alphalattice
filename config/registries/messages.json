@@ -97,6 +97,35 @@
         "zh-CN": "每次每日更新是否也召开投资委员会（约多花十分钟）？如果不召开，PM 会给出对已审核持仓的意见。"
       }
     },
+    "analyst_reads.label.setting": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "Analyst reads setting", "zh-CN": "分析师阅读设置"}
+    },
+    "analyst_reads.label.set": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "Set the Analyst reads", "zh-CN": "设置分析师阅读方式"}
+    },
+    "evidence_review.analyst_reads_human_only": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "How a review's Analyst bundles are read is the person's decision: ask them the review's question and relay their answer with --person-said and --question-code review.analyst_reads. Nothing was changed.", "zh-CN": "审核中分析师材料如何阅读由本人决定：请向本人提出该审核的问题，并用 --person-said 和 --question-code review.analyst_reads 转达其答复。没有做任何更改。"}
+    },
+    "review.analyst_reads": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "PERSON_QUESTION",
+      "reason": {"en": "Parallel Analyst reads spend the person's usage at once; how they run is theirs to decide.", "zh-CN": "并行的分析师阅读会同时消耗本人的用量；如何运行由本人决定。"},
+      "scope": {"en": "This workspace's reviews that hand out no more Analyst bundles than the answered count.", "zh-CN": "本工作区中分发的分析师材料不多于所答复数量的审核。"},
+      "way_on": {"en": "Relay the person's words with analyst-reads set.", "zh-CN": "通过 analyst-reads set 逐字转达本人的答复。"},
+      "operations": ["ANALYST_READS_SET"],
+      "ask_operations": ["ANALYST_READS"],
+      "choices": {
+        "SUBAGENTS": {"en": "Subagents: start one Analyst subagent per bundle, in parallel.", "zh-CN": "子代理：每份材料启动一个分析师子代理，并行阅读。"},
+        "IN_SESSION": {"en": "In this session: the lead reads each bundle itself, one after another.", "zh-CN": "本会话：由主会话逐份亲自阅读每份材料。"}
+      },
+      "words": {
+        "en": "This review hands out several Evidence Analyst bundles. Should each be read by its own subagent, in parallel, sooner and with more usage at once, or should I read them one after another in this session? Your answer stands for later reviews with no more bundles than this one.",
+        "zh-CN": "本次审核分发了多份证据分析师材料。是让每份由各自的子代理并行阅读（更快，但同时消耗更多用量），还是由我在本会话中逐份阅读？你的答复将适用于之后材料数量不多于本次的审核。"
+      }
+    },
     "goal.delivery.default_slot": {
       "owner": "alphalattice.control.product_host.composition",
       "kind": "MESSAGE",

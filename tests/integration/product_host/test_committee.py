@@ -1276,6 +1276,35 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     assert record["relayed_by"] == "claude-code:s-1"
     answered = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"  # asked, so the road ends
+    # The review's Analyst reads are the same kind of standing answer: more than one bundle
+    # asks the coded question until a relayed answer covers that many.
+    from alphalattice.control.product_host.composition import evidence_review_bundles as reads
+    from alphalattice.interface.local_application.questions import person_question
+
+    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 1)  # one: nothing to choose
+    asked = reads.analyst_reads_answer(tmp_path, 14)
+    question = person_question("review.analyst_reads")
+    assert (asked["analyst_reads"], asked["next_requests"]) == ("UNANSWERED", {})  # no default
+    assert asked["person_questions"] == [question] and question["words"] in asked["ask_now"]
+    assert set(question["choices"]) == {"SUBAGENTS", "IN_SESSION"}
+    assert "--bundles 14 " in asked["ask_now"][-1]
+    assert asked["ask_now"][-1].endswith("--question-code review.analyst_reads")
+    choice = {"operation": "ANALYST_READS_SET", "analyst_reads_mode": "IN_SESSION"}
+    choice["analyst_reads_bundles"] = 14
+    code, decided = "review.analyst_reads", decision_hash(choice)
+    coded = confirmation.model_copy(
+        update={"question": question["words"], "question_code": code, "decision_hash": decided}
+    )
+    assert relayed_decision(choice, coded) == coded.decision_hash
+    with pytest.raises(ValueError, match=r"question_code_required:review\.analyst_reads"):
+        relayed_decision(choice, coded.model_copy(update={"question_code": None}))
+    kept = reads.set_analyst_reads(tmp_path, mode="IN_SESSION", bundles=14, relayed_by="c:s-1")
+    assert (kept["analyst_reads"], kept["answered_for"]) == ("IN_SESSION", 14)
+    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 14)  # kept within its count
+    again = reads.analyst_reads_answer(tmp_path, 15)  # a larger cost never rides on an old answer
+    assert again["analyst_reads"] == "IN_SESSION" and "--bundles 15 " in again["ask_now"][-1]
+    (tmp_path / reads.ANALYST_READS_PATH).write_text('{"mode": "SUBAGENTS"}', "utf-8")
+    assert reads.analyst_reads_answer(tmp_path, 2)["analyst_reads"] == "UNANSWERED"  # not its own
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(

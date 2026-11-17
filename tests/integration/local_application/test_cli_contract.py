@@ -969,6 +969,8 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         "evidence_setup": "--acquire-sec --entities AAPL --network-consent --install",
         "usage_reading_enabled": "false",
         "committee_daily_enabled": "true",
+        "analyst_reads_mode": "SUBAGENTS",
+        "analyst_reads_bundles": "3",
         "input_pinned": "true",
         "task_id": str(uuid4()),
         "automation_enabled": "true",

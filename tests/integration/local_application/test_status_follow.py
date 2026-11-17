@@ -22,6 +22,10 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    analyst_reads_answer,
+    set_analyst_reads,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
@@ -42,6 +46,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.interface.local_application.review_evidence import REVIEW_DETAIL
 from alphalattice.kernel.shared_kernel import waits
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
@@ -1070,6 +1075,8 @@ class _ScriptedHost:
                 return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
             case "WAKE_REGISTER":
                 return {"status": "WAKE_REGISTERED", "task_id": document["task_id"]}
+            case "ANALYST_READS":
+                return analyst_reads_answer(self.workspace, document["analyst_reads_bundles"])
             case "AGENT_BUNDLE_PREPARE":
                 return {
                     "status": "AGENT_BUNDLE_READY",
@@ -1116,7 +1123,11 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
     assert answer["evidence"].get("failed_units") == [host.failure]
 
-    assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
+    # regression (a daily asked in its own words): two bundles ask the coded question first.
+    assert (answer["status"], answer["next_action"]) == ("BOOK_REVIEW_READY", "ASK_THE_PERSON_ONCE")
+    assert answer["person_questions"][0]["code"] == "review.analyst_reads"
+    assert "--bundles 2 " in answer["ask_now"][-1]
+    assert answer["detail"] == REVIEW_DETAIL["ASK_THE_PERSON_ONCE"]  # no Analyst starts yet
     assert [step["step"] for step in answer["steps"]] == [
         "controls",
         "book",
@@ -1129,6 +1140,7 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
         "evidence_prepared",
         "analyst_bundle",
         "analyst_bundle",
+        "analyst_reads",
     ]
     # Its bundles are the prepared run's own; a later preview would pack other units.
     assert host.previews == 1
@@ -1148,10 +1160,17 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert answer["next_requests"] == {
         "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
     }
-    for _ in range(2):
+    set_analyst_reads(host.workspace, mode="SUBAGENTS", bundles=2, relayed_by=None)
+    for _ in range(2):  # the person's answer stands for later reviews within its count
         repeated = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+        assert "ask_now" not in repeated and repeated["analyst_reads"] == "SUBAGENTS"
+        assert repeated["next_action"] == "DISPATCH_ANALYSTS"
         assert repeated["evidence"]["prepared_task_id"] == "t-evidence"
         assert host.prepares == 1
+    set_analyst_reads(host.workspace, mode="IN_SESSION", bundles=2, relayed_by=None)
+    here = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+    assert here["detail"] == REVIEW_DETAIL[here["next_action"]]
+    assert here["next_action"] == "READ_EACH_BUNDLE_HERE"
     request, seen = host.request, []
 
     def moved(document, timeout=None):

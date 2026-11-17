@@ -293,6 +293,8 @@ type PortfolioResearchOperation = Literal[
     "SESSION_USAGE_READ",
     "USAGE_READING",
     "USAGE_READING_SET",
+    "ANALYST_READS",
+    "ANALYST_READS_SET",
     "CPU_BUDGET_SHOW",
     "CPU_BUDGET_SET",
     "HOST_STOP",
@@ -348,6 +350,7 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "ANALYST_READS_SET",
         "COMMITTEE_DAILY_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
@@ -569,6 +572,8 @@ class PortfolioResearchOperationRequest:
     evidence_setup: str | None = None
     usage_reading_enabled: bool | None = None
     committee_daily_enabled: bool | None = None
+    analyst_reads_mode: Literal["SUBAGENTS", "IN_SESSION"] | None = None
+    analyst_reads_bundles: int | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
     """The installed identity set an upgrade overview showed, when acknowledging it."""
@@ -1093,6 +1098,10 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     nothing."""
     committee_daily_enabled: bool | None = Field(default=None, strict=True)
     """true: each daily update's review convenes the committee; false: the PM's view."""
+    analyst_reads_mode: Literal["SUBAGENTS", "IN_SESSION"] | None = None
+    """How the lead reads a review's Analyst bundles: each by its own subagent, or itself."""
+    analyst_reads_bundles: int | None = Field(default=None, ge=1, le=10_000, strict=True)
+    """The Analyst bundles a review hands out, or the count the person's answer covers."""
     automation_package_ids: tuple[str, ...] | None = None
     """The strategy packages the automatic research update covers."""
     upgrade_set_hash: str | None = None

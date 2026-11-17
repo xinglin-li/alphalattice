@@ -770,6 +770,213 @@
         "type": "string"
       }
     },
+    "answer:ANALYST_READS.analyst_reads": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS.answered_for": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:ANALYST_READS.ask_now": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
+    "answer:ANALYST_READS.detail": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:ANALYST_READS.next_requests": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "answer:ANALYST_READS.person_questions": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "items": {},
+        "type": "array"
+      }
+    },
+    "answer:ANALYST_READS.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET.analyst_reads": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET.answered_for": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:ANALYST_READS_SET.attributed_goal_id": {
+      "required": false,
+      "schema": {
+        "default": null,
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET.detail": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:ANALYST_READS_SET.next_requests": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "answer:ANALYST_READS_SET.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:ANALYST_READS_SET/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:CANCEL.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -26483,6 +26690,17 @@
       ]
     },
     "command:activity wait": {},
+    "command:analyst-reads": {},
+    "command:analyst-reads set": {
+      "operations": [
+        "ANALYST_READS_SET"
+      ]
+    },
+    "command:analyst-reads show": {
+      "operations": [
+        "ANALYST_READS"
+      ]
+    },
     "command:answer": {},
     "command:answer show": {},
     "command:automation": {},
@@ -27629,6 +27847,12 @@
       ],
       "owner": "alphalattice.interface.local_application"
     },
+    "message:PERSON_QUESTION/review.analyst_reads": {
+      "operations": [
+        "ANALYST_READS_SET"
+      ],
+      "owner": "alphalattice.interface.local_application"
+    },
     "message:RULES/CHALLENGE": "(ROLES[1:], frozenset({'DEBATE'}), None)",
     "message:RULES/PASS": "(ROLES[1:], frozenset({'DEBATE'}), None)",
     "message:RULES/PERSON_ANSWER": "(ROLES[:1], frozenset({'DEBATE', 'CLOSED'}), 'FOR_THE_PERSON')",
@@ -27693,6 +27917,23 @@
       "required": [
         "agent_role",
         "bundle_directory"
+      ]
+    },
+    "operation:ANALYST_READS": {
+      "allowed": [
+        "analyst_reads_bundles"
+      ],
+      "required": []
+    },
+    "operation:ANALYST_READS_SET": {
+      "allowed": [
+        "analyst_reads_bundles",
+        "analyst_reads_mode",
+        "person_confirmation"
+      ],
+      "required": [
+        "analyst_reads_bundles",
+        "analyst_reads_mode"
       ]
     },
     "operation:CANCEL": {
@@ -29929,6 +30170,311 @@
       "type": "Path"
     },
     "option:activity/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--asked": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--bundles": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads set/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads set/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:analyst-reads set/--mode": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:analyst-reads set/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads set/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--question-code": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--repeat": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:analyst-reads set/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads set/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads set/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--bundles": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads show/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads show/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:analyst-reads show/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:analyst-reads show/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads show/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:analyst-reads show/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads show/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads show/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:analyst-reads/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:analyst-reads/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:analyst-reads/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -56148,6 +56694,7 @@
     "refusal:evidence_review.accession_scope_invalid": {},
     "refusal:evidence_review.accession_scope_requires_one_entity": {},
     "refusal:evidence_review.acquisition_window_invalid": {},
+    "refusal:evidence_review.analyst_reads_human_only": {},
     "refusal:evidence_review.artifact_escapes_workspace": {},
     "refusal:evidence_review.artifact_unreadable": {},
     "refusal:evidence_review.authority_identity_invalid": {},
@@ -59229,6 +59776,40 @@
         "anyOf": [
           {
             "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.analyst_reads_bundles": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.analyst_reads_mode": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "enum": [
+              "SUBAGENTS",
+              "IN_SESSION"
+            ],
             "type": "string"
           },
           {

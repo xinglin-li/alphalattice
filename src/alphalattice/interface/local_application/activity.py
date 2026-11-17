@@ -44,7 +44,7 @@ from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.web import LocalWebError
 
 OBSERVED_READ_OPERATIONS: frozenset[str] = frozenset(
-    {"EXPERIMENT_DELIVERY_EXPORT", "EXPERIENCE_READ"}
+    {"EXPERIMENT_DELIVERY_EXPORT", "EXPERIENCE_READ", "ANALYST_READS"}
 )
 """Reads whose successful delivery must be recorded without changing their read semantics."""
 
@@ -120,6 +120,7 @@ OBSERVED_OPERATIONS: frozenset[str] = OBSERVED_READ_OPERATIONS | frozenset(
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
         "COMMITTEE_DAILY_SET",
+        "ANALYST_READS_SET",
         "CPU_BUDGET_SET",
         "HOST_STOP",
         "WORKSPACE_BACKUP",

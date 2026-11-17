@@ -386,7 +386,8 @@ as it stands; the Host takes nothing else for it.
   change issuers or scope.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
-- Daily research automation, the daily committee setting and the usage-reading switch.
+- Daily research automation, the daily committee setting, how a review's Analyst bundles
+  are read, and the usage-reading switch.
 - Storage cleanup and pins; data-decision grants and their revocation.
 - Preparation, data issues and membership changes outside the first use's
   delegation, and a new research-input version: keep the current input and tell

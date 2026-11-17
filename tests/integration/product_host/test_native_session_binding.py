@@ -722,6 +722,12 @@ def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
     refused = client.request({"operation": "USAGE_READING_SET", "usage_reading_enabled": False})
     assert refused["failure_code"] == "native_bridge.usage_reading_human_only"
     assert client.request({"operation": "USAGE_READING"})["usage_reading"] == "READ"
+    # The review's Analyst reads are the person's setting too: an agent asks, never answers.
+    asked = client.request({"operation": "ANALYST_READS", "analyst_reads_bundles": 3})
+    assert asked["person_questions"][0]["code"] == "review.analyst_reads"
+    choice = {"analyst_reads_mode": "SUBAGENTS", "analyst_reads_bundles": 3}
+    refused = client.request({"operation": "ANALYST_READS_SET", **choice})
+    assert refused["failure_code"] == "evidence_review.analyst_reads_human_only"
 
     def person(enabled: bool) -> dict:
         return live.operations.execute(

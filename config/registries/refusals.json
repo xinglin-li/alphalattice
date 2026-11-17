@@ -197,6 +197,11 @@
 "category": "PERMISSION_DENIED",
 "classification_note": "An agent caller attempted to change the person's daily-committee setting without the admitted HUMAN route."
 },
+"evidence_review.analyst_reads_human_only": {
+"owner": "evidence_review",
+"category": "PERMISSION_DENIED",
+"classification_note": "An agent caller attempted to set how a review's Analyst bundles are read without the person's relayed answer."
+},
 "data.maintenance_stale_payload": {
 "owner": "data",
 "category": "FAILED_PRECONDITION",

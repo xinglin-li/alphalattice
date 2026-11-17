@@ -240,6 +240,18 @@ GRAMMAR: Final[dict[str, Command]] = {
         "set",
         "Turns reading the bound agent Sessions' usage on or off for this workspace.",
     ),
+    "ANALYST_READS": Command(
+        "analyst-reads",
+        "show",
+        "Shows how the lead reads a review's Analyst bundles, the person's standing answer, and "
+        "the bundle count it covers.",
+    ),
+    "ANALYST_READS_SET": Command(
+        "analyst-reads",
+        "set",
+        "Sets, on the person's relayed answer, whether a review's Analyst bundles are read by "
+        "subagents or in the lead session, for reviews of up to the given bundle count.",
+    ),
     "EVIDENCE_ANALYSIS_SUBMIT": Command(
         "evidence",
         "submit",
@@ -1027,6 +1039,8 @@ FLAGS: Final[dict[str, str]] = {
     "agent_session": "session-id",
     "analysis_context_hash": "context",
     "analysis_publication_hash": "analysis",
+    "analyst_reads_bundles": "bundles",
+    "analyst_reads_mode": "mode",
     "automation_enabled": "enabled",
     "automation_package_ids": "packages",
     "backup_generations_kept": "keep",
@@ -1312,6 +1326,10 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("evidence-consent", "The consent to official SEC acquisition and its budget."),
             ("review", "A CRO review of a book: request, dossier, findings, answer."),
             ("bundle", "A specialist's prepared bundle and the answer to it."),
+            (
+                "analyst-reads",
+                "How the lead reads a review's Analyst bundles: the person's answer.",
+            ),
             ("committee", "The investment committee on a date's published positions."),
         ),
     ),

@@ -691,7 +691,7 @@ def test_every_operation_in_the_vocabulary_is_classified_once() -> None:
     assert (
         READ_OPERATIONS & OBSERVED_OPERATIONS
         == OBSERVED_READ_OPERATIONS
-        == {"EXPERIMENT_DELIVERY_EXPORT", "EXPERIENCE_READ"}
+        == {"EXPERIMENT_DELIVERY_EXPORT", "EXPERIENCE_READ", "ANALYST_READS"}
     )
     assert not opens_goal(
         "EXPERIMENT_DELIVERY_EXPORT", RequestProvenance(vendor="codex", session="session")

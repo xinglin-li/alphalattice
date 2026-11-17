@@ -1777,7 +1777,7 @@ const CODE_WORDS = {
 
   PM:'Main PM', CRO:'CRO',
   STANCES:'Blind stances', DEBATE:'Debate', CLOSED:'Closed', NOT_YET:'Not yet received', TURN_OPEN:'Turn not taken', ADOPTED:'Adopted', ADOPT:'Adopt', REJECT:'Rejected', FOR_THE_PERSON:'For you', PROCEED:'Proceed', PROCEED_WITH_NOTES:'Proceed with notes', DECLINE:'Decline endorsement',
-  RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', COMMITTEE_DAILY:'Daily committee setting', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
+  RESEARCH_DELIVERY_EXPORTED:'Delivery exported', COMMITTEE_FLOOR:'Committee floor', COMMITTEE_DAILY:'Daily committee setting', ANALYST_READS:'analyst_reads.label.setting', CONDITIONAL_ESTIMATE:'Conditional estimated weights',
   UNRECOVERABLE: 'Unrecoverable execution',
   SETTLE_EVIDENCE_CONTINUATION: 'Settle evidence continuation',
   SELECT_ANALYSIS: 'Choose the analysis',
@@ -1906,6 +1906,8 @@ const CODE_WORDS = {
   ACTIVITY_REFUSALS: "Activity refusals",
   AGENT_ANSWER_SUBMIT: "Submit bundle answer",
   AGENT_BUNDLE_PREPARE: "Prepare agent bundle",
+  ANALYST_READS: "analyst_reads.label.setting",
+  ANALYST_READS_SET: "analyst_reads.label.set",
   COMPARE: "Compare installed results",
   COMMITTEE_DAILY_SET: "Set the daily committee",
   COMMITTEE_OPEN: "Open the committee",

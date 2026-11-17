@@ -52,6 +52,8 @@ from alphalattice.control.product_host.composition.evidence_review_bundles impor
     PACKET_SELECTOR_CODES,
     EvidenceReviewBundles,
     agent_bundle_refusal,
+    analyst_reads_answer,
+    set_analyst_reads,
 )
 from alphalattice.control.product_host.composition.evidence_review_delivery import (
     EvidenceReviewDelivery,
@@ -5972,6 +5974,25 @@ class PortfolioResearchOperations:
             assert request.usage_reading_enabled is not None
             return set_usage_reading(
                 self.workspace_session.workspace, enabled=request.usage_reading_enabled
+            )
+        if operation == "ANALYST_READS":
+            return analyst_reads_answer(
+                self.workspace_session.workspace, request.analyst_reads_bundles
+            )
+        if operation == "ANALYST_READS_SET":
+            # The person's answer, relayed: an Agent sets it only with their words.
+            if caller != "HUMAN":
+                return refused("evidence_review.analyst_reads_human_only")
+            assert request.analyst_reads_mode and request.analyst_reads_bundles
+            provenance = REQUEST_PROVENANCE.get()
+            relayed = provenance is not None and provenance.relayed
+            return set_analyst_reads(
+                self.workspace_session.workspace,
+                mode=request.analyst_reads_mode,
+                bundles=request.analyst_reads_bundles,
+                relayed_by=f"{provenance.vendor}:{provenance.session}"
+                if relayed and provenance
+                else None,
             )
         if operation == "SESSION_USAGE_READ":
             # Optional reading: a missing reader or a failed read never refuses research.

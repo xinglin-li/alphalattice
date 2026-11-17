@@ -3167,7 +3167,7 @@
       ]
     },
     "person-settings": {
-      "summary": "the person's settings: network access, the committee's daily run, the Task queue, the storage cap, the usage reading and evidence source consent",
+      "summary": "the person's settings: network access, the committee's daily run, the Task queue, the storage cap, the usage reading, how a review's Analysts are read and evidence source consent",
       "class": "authority-setting",
       "tier": 3,
       "home": "log setting",
@@ -3178,6 +3178,7 @@
         "local_application.native_bridge:_reading",
         "local_application.native_bridge:set_usage_reading",
         "product_host.composition.committee:set_daily",
+        "product_host.composition.evidence_review_bundles:set_analyst_reads",
         "task_control.queue:write_queue_setting",
         "workspace_runtime.network_access:set_network_access",
         "workspace_runtime.storage.capacity:StorageCapStore"

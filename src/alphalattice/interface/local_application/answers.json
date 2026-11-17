@@ -10896,6 +10896,92 @@
    }
   ]
  },
+ "ANALYST_READS": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `ANALYST_READS`."
+   },
+   {
+    "name": "analyst_reads",
+    "kind": "string",
+    "required": true,
+    "meaning": "`SUBAGENTS` when each Analyst bundle is read by its own subagent; `IN_SESSION` when the lead session reads each itself; `UNANSWERED` when the person never answered. A record the product did not write reads as `UNANSWERED`."
+   },
+   {
+    "name": "answered_for",
+    "kind": "integer|null",
+    "required": true,
+    "meaning": "The most Analyst bundles the person's answer covers; a review that hands out more asks again. Null while unanswered."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What the standing answer means for a review, in words."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "Once answered, the request that turns the answer the other way for the same count, as `set`; only a person's relayed answer sends it. Empty while unanswered: no answer is offered for them."
+   },
+   {
+    "name": "ask_now",
+    "kind": "array",
+    "required": false,
+    "meaning": "When the request names more than one bundle and no answer covers that many: how to ask, the one question in its registered words, and the command that relays the person's answer for that count."
+   },
+   {
+    "name": "person_questions",
+    "kind": "array",
+    "required": false,
+    "meaning": "With `ask_now`: the registered question `review.analyst_reads`, its words and its two choices."
+   }
+  ]
+ },
+ "ANALYST_READS_SET": {
+  "fields": [
+   {
+    "name": "status",
+    "kind": "string",
+    "required": true,
+    "meaning": "The answer's status: `ANALYST_READS`, after the setting."
+   },
+   {
+    "name": "analyst_reads",
+    "kind": "string",
+    "required": true,
+    "meaning": "`SUBAGENTS` when each Analyst bundle is read by its own subagent; `IN_SESSION` when the lead session reads each itself; `UNANSWERED` when the person never answered. A record the product did not write reads as `UNANSWERED`."
+   },
+   {
+    "name": "answered_for",
+    "kind": "integer|null",
+    "required": true,
+    "meaning": "The most Analyst bundles the person's answer covers; a review that hands out more asks again. Null while unanswered."
+   },
+   {
+    "name": "detail",
+    "kind": "string",
+    "required": true,
+    "meaning": "What the standing answer means for a review, in words."
+   },
+   {
+    "name": "next_requests",
+    "kind": "object",
+    "required": true,
+    "meaning": "Once answered, the request that turns the answer the other way for the same count, as `set`; only a person's relayed answer sends it. Empty while unanswered: no answer is offered for them."
+   },
+   {
+    "name": "attributed_goal_id",
+    "kind": "string",
+    "required": false,
+    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
+   }
+  ]
+ },
  "CPU_BUDGET_SHOW": {
   "fields": [
    {

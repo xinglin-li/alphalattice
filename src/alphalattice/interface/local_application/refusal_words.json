@@ -1704,6 +1704,10 @@
   "detail": "Whether each daily update convenes the investment committee is the person's decision: ask the person in one line and, on their answer, send this again with --person-said and --asked. Nothing was changed.",
   "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
+ "evidence_review.analyst_reads_human_only": {
+  "detail": "How a review's Analyst bundles are read is the person's decision: ask them the review's question and relay their answer with --person-said and --question-code review.analyst_reads. Nothing was changed.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_ANSWER"
+ },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
   "next_action": "OPEN_THE_COMMITTEE"
