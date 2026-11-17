@@ -15268,6 +15268,13 @@
    "successor": "23d6178105ef9f658e67f345036e5c0661f1231e710f772a403c744249af7ad1",
    "change": "Waits that could hang now end at a bound, with a named error",
    "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "23d6178105ef9f658e67f345036e5c0661f1231e710f772a403c744249af7ad1",
+   "successor": "e2900bfeb526b3fa61a3da8e68e6605f64b8a899593653bdc34f443f7d9a114f",
+   "change": "Keep each workspace's Tasks in the log of its data root",
+   "reason": "lawful change: a workspace's Task Control registry is built with the workspace id its manifest names (composition/workspace.py _task_registry), so its Tasks are keyed on the data root's log under that id; no preparation input, parameter, data decision rule (rule_hash unchanged), binding, receipt or result changes; successor recorded in config/identity-successors.json as TL"
   }
  ]
 }

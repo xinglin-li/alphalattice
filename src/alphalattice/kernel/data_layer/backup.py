@@ -25,7 +25,7 @@ from blake3 import blake3
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
-from alphalattice.kernel.data_layer.root import FOLDERS, load_extensions
+from alphalattice.kernel.data_layer.root import FOLDERS, catalog, load_extensions
 from alphalattice.kernel.data_layer.store import StorePort
 
 DATABASES: Final = ("index.sqlite", "log.sqlite", "catalog.sqlite")
@@ -345,6 +345,7 @@ def backup_data_root(root: Path, repository: Path) -> Path:
             "backup_overlaps_root",
             f"{repository} is inside {root}; choose an external backup repository",
         )
+    catalog(root)  # a backup is a use of the catalog, which a root makes at its first use
     generations, pool = repository / "generations", repository / "files"
     name = uuid.uuid4().hex
     partial, generation = generations / ("." + name + ".partial"), generations / name

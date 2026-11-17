@@ -12,7 +12,7 @@ import pytest
 
 from alphalattice.control.product_host.composition import saved_object_readback
 from alphalattice.control.product_host.composition.evidence_source_ways import SETUP_OPTIONS
-from alphalattice.control.task_control.registry import TASK_CONTROL_DATABASE_FILENAME
+from alphalattice.control.task_control.upgrade import TASK_CONTROL_DATABASE_FILENAME
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.panels.semantic_index import (
     FeaturePanelSemanticIndexService,
@@ -1219,7 +1219,7 @@ def test_no_production_site_spells_the_task_database_as_a_literal() -> None:
     """Seventeen agreeing strings were what allowed one of them to disagree."""
 
     owner = (
-        PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "task_control" / "registry.py"
+        PLAYPEN_ROOT / "src" / "alphalattice" / "control" / "task_control" / "upgrade.py"
     ).resolve()
     offenders = [
         path.relative_to(PLAYPEN_ROOT).as_posix()

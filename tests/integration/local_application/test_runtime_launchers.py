@@ -366,7 +366,7 @@ IDLE_CLOCK = ReplayClock(IDLE_TIME.wall, ticks=lambda: IDLE_TIME.ticks, wall=lam
 
 @pytest.mark.parametrize("held", [False, True])
 @pytest.mark.parametrize("language", ["en", "zh"])
-@pytest.mark.parametrize("live", [IDLE_CLOCK], indirect=True)
+@pytest.mark.parametrize("live", [IDLE_CLOCK], indirect=True, ids=["idle-clock"])
 def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
     live, monkeypatch, capsys, held, language
 ):
@@ -398,7 +398,8 @@ def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
             self.turn += 1
             assert self.turn <= (3 if held else 1), "idle.expiry_not_observed"
             IDLE_TIME.ticks += 7 * 3600 if held and self.turn == 2 else 901
-            assert _json(live, "/api/session")["workspace_id"] == "qa-local-web"
+            session = _json(live, "/api/session")
+            assert session["workspace_id"] == live.workspace_manifest.workspace_id
             if held and self.turn == 2:
                 owner.held_host.run_once()
                 assert ran == [1]

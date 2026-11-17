@@ -154,8 +154,9 @@ def _aftermath(root, log, artifacts):
     log.record("tag.added", ("trial", "t3"), {"key": "theme", "value": "reversal"}, **AGENT)
     log.record("tag.removed", ("trial", "t3"), {"key": "instrument", "value": "MSFT"}, **AGENT)
     log.record("artifact.collected", ("artifact", artifacts["t3"]))
-    requested = {"type": "evidence.prepare", "product_version": "0.2.8"}
-    log.record("task.requested", ("task", "k1"), requested, **AGENT)
+    requested = {"type": "evidence.prepare", "product_version": "0.2.8", "input_hash": "i"}
+    requested |= {"plan_hash": "p", "workflow_definition_hash": "f", "admitted_at": "2026-11-14"}
+    log.record("task.requested", ("task", "k1"), requested, text='{"asked": "evidence"}', **AGENT)
     span = uuid.uuid4().hex[:16]
     log.record("task", ("task", "k1"), phase="started", span=span, **AGENT)
     step = {"step": "download", "output": {"docs": 12}, "used": [artifacts["t1"]]}
@@ -190,6 +191,30 @@ def _aftermath(root, log, artifacts):
     seq, head = log.read("SELECT seq, head FROM chain_head")[0]
     mark = {"kind": "backup", "seq": seq, "head": head, "chain_version": CHAIN_VERSION}
     log.record("chain.checkpointed", attrs=mark)
+
+
+def _task_control(log):
+    """One Task as Task Control writes it: each event carries its sealed record as its text."""
+    task, at = ("task", "k2"), "2026-11-14 00:00:01.000000"
+    admitted = {"type": "evidence.prepare", "product_version": "0.2.8", "input_hash": "i2"}
+    admitted |= {"plan_hash": "p2", "workflow_definition_hash": "f2", "admitted_at": at}
+    log.record("task.requested", task, admitted | {"admission_sequence": 1}, text="{}", **AGENT)
+    saved = {"lifecycle": "RUNNING", "updated_at": at}
+    log.record("task.saved", task, saved, text='{"version": 2}', **AGENT)
+    item = {"stage_id": "verify", "ordinal": 0, "lifecycle": "PENDING", "updated_at": at}
+    log.record("work_item.saved", task, item, text='{"version": 1}', **AGENT)
+    started = {"execution_id": "x1", "graph_thread_id": "g1", "worker_instance_id": "w1"}
+    started |= {"compatibility_hash": "c1", "started_at": at}
+    log.record("execution.started", task, started, text='{"execution_id": "x1"}', **AGENT)
+    noted = {"event_id": "n1", "execution_id": "x1", "sequence": 1, "kind": "task.started"}
+    log.record("task.noted", task, noted | {"recorded_at": at}, text="{}", **AGENT)
+    verified = {"receipt_hash": "r1", "execution_id": "x1", "stage_id": "verify"}
+    log.record("stage.verified", task, verified | {"observed_at": at}, text="{}", **AGENT)
+    accepted = {"command_id": "c1", "command_hash": "h1", "accepted_at": at}
+    log.record("command.accepted", task, accepted, text='{"kind": "CANCEL_REQUESTED"}', **AGENT)
+    resolved = {"command_id": "c1", "resolved_at": at, "resolution": "CANCELLED"}
+    log.record("command.resolved", task, resolved, **AGENT)
+    log.record("task.saved", task, {"lifecycle": "CANCELLED", "updated_at": at}, text="{}", **AGENT)
 
 
 def _renames(root, log):
@@ -239,6 +264,7 @@ def history(tmp_path_factory):
     with HostLog.open(root, now_us=T0) as log:
         artifacts = _research(log)
         _aftermath(root, log, artifacts)
+        _task_control(log)
     return root, artifacts
 
 

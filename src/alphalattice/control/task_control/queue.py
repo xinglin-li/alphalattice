@@ -55,20 +55,21 @@ class TaskQueueSetting(BaseModel):  # type: ignore[misc]
 
 def active_same_work(  # type: ignore[no-untyped-def]
     connection,
+    workspace_id: str,
     verified: Callable[[str, str], TaskRecord],
     input_envelope: TaskInputEnvelope,
     plan: ResearchPlan,
     same_work: Callable[[TaskRecord], bool] | None,
 ) -> TaskRecord | None:
-    """The unfinished Task an admission would repeat, read inside its transaction."""
+    """The unfinished Task of this workspace an admission would repeat, read inside its unit."""
     rows = connection.execute(
         """
         SELECT task_id, record_json FROM workspace_task
-        WHERE input_hash = ? AND plan_hash = ?
+        WHERE workspace_id = ? AND input_hash = ? AND plan_hash = ?
           AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
         ORDER BY admitted_at DESC
         """,
-        [input_envelope.input_hash, plan.plan_hash],
+        [workspace_id, input_envelope.input_hash, plan.plan_hash],
     ).fetchall()
     if rows:
         return verified(str(rows[0][0]), rows[0][1])
@@ -77,10 +78,11 @@ def active_same_work(  # type: ignore[no-untyped-def]
     rows = connection.execute(
         """
         SELECT task_id, record_json FROM workspace_task
-        WHERE task_kind = ? AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
+        WHERE workspace_id = ? AND task_kind = ?
+          AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
         ORDER BY admitted_at DESC
         """,
-        [input_envelope.task_kind],
+        [workspace_id, input_envelope.task_kind],
     ).fetchall()
     active = (verified(str(row[0]), row[1]) for row in rows)
     return next((task for task in active if same_work(task)), None)

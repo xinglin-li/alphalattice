@@ -49,6 +49,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,
 )
+from tests.portfolio_strategy_lab.process_death import crash
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
     _drain_trial,
@@ -65,6 +66,7 @@ from tests.researcher_methodology_surface.session_workspace import (
     keep_seed_links,
     session_workspace,
 )
+from tests.workspace_task_runner.task_control_support import task_log
 
 
 def _wait_for_boundary(process: subprocess.Popen[bytes], marker: Path, timeout: float) -> bool:
@@ -995,8 +997,6 @@ def test_experiment_collection_keeps_readable_tasks_beside_an_invalid_saved_plan
 def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, published):
     """unreadable peers do not hide curation owned by a readable Factor study."""
 
-    import duckdb
-
     factor_task, _report, _export = published
     with _session(inputs) as live:
         before = _json(live, "/api/decisions")
@@ -1018,9 +1018,9 @@ def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, 
             expected_task_hash=peer.record_hash,
             observed_at=datetime.now(UTC),
         )
-        with duckdb.connect(str(registry.database_path)) as connection:
+        with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
+                "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
         answer = _json(live, "/api/decisions")
@@ -1045,8 +1045,6 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
     sampled_alpha_case,
 ):
     """a real completed exploration and runnable preview need complete Task authority."""
-
-    import duckdb
 
     alpha_case, sampled = sampled_alpha_case
     root, _binding, factor_task, _decision, _draft = alpha_case
@@ -1084,9 +1082,9 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
             expected_task_hash=peer.record_hash,
             observed_at=datetime.now(UTC),
         )
-        with duckdb.connect(str(registry.database_path)) as connection:
+        with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
+                "UPDATE workspace_task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
             stored_before = connection.execute(
@@ -1112,7 +1110,7 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
         assert {factor_task, sent["task_id"]}.issubset(
             row["task_id"] for row in studies["experiments"]
         )
-        with duckdb.connect(str(registry.database_path), read_only=True) as connection:
+        with task_log() as connection:
             assert (
                 connection.execute(
                     "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
@@ -1561,8 +1559,7 @@ def _stop_alpha(root: Path, tmp_path: Path, request: dict, boundary: str, rule: 
             process.terminate()
             pytest.fail(f"Alpha did not reach {boundary}: {process.communicate(timeout=15)!r}")
         task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        process.kill()
-        process.communicate(timeout=15)
+        crash(process)
     finally:
         if process.poll() is None:
             process.kill()
@@ -2383,8 +2380,7 @@ with LocalPortfolioWebSession(workspace=root,
             out, error = process.communicate(timeout=15)
             pytest.fail(f"worker did not reach the committed evidence boundary: {out!r} {error!r}")
         task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        process.kill()
-        process.communicate(timeout=15)
+        crash(process)
     finally:
         if process.poll() is None:
             process.kill()

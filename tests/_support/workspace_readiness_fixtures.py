@@ -10,6 +10,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
 from alphalattice.control.product_host.research_authoring.factor_inputs import bind_factor_inputs
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests.portfolio_strategy_lab.local_web_support import _json
@@ -135,6 +136,8 @@ def fresh_prepared(tmp_path_factory):
         assert len(session.task_control_registry.tasks()) >= 1
         assert app.plan()["status"] == "ALREADY_PREPARED"
         view = app.readback()
+    # Its Tasks go with the workspace past the machine that made them, as a carried store.
+    carry_tasks(root, root)
     return root, task_id, view
 
 

@@ -39,7 +39,13 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.project import definition_id
-from alphalattice.kernel.data_layer.root import load_extensions, schema_text, sql_path, statements
+from alphalattice.kernel.data_layer.root import (
+    catalog,
+    load_extensions,
+    schema_text,
+    sql_path,
+    statements,
+)
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -114,6 +120,7 @@ class StorePort:
             config={"autoinstall_known_extensions": False, "autoload_known_extensions": False},
         )
         load_extensions(lake)
+        catalog(root)  # made at the store's first open, not with the root
         machine, data = sql_path(root / "machine"), sql_path(root / "data")
         for sql in (
             f"ATTACH 'ducklake:sqlite:{machine}/catalog.sqlite' AS lake"

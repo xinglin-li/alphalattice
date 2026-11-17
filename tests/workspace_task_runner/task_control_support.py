@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
+
+import duckdb
+import pytest
 
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -13,13 +20,19 @@ from alphalattice.control.task_control.contracts import (
     TaskExecution,
     TaskInputEnvelope,
     TaskRecord,
+    TaskStageReceipt,
     WorkItemDefinition,
 )
 from alphalattice.control.task_control.contracts import (
     TaskExecutionCompatibility as Compatibility,
 )
+from alphalattice.control.task_control.ledger import REQUESTS_DIRECTORY
 from alphalattice.control.task_control.queue import write_queue_setting
+from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+from alphalattice.control.task_control.upgrade import carry_tasks
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
@@ -149,3 +162,96 @@ class FixtureTaskAdapter:
     def verify_stage(self, *, task, execution, work_item, evidence):
         del task, execution, work_item
         return evidence
+
+
+@contextmanager
+def task_log() -> Iterator[sqlite3.Connection]:
+    """The held log's connection in one unit: a test damages a Task's rows on it as a broken
+    write would, the one writer's guard held."""
+    with history.held().unit() as connection:
+        yield connection
+
+
+def lose_the_log_keeping_frozen_requests(
+    registry: DuckDbTaskControlRegistry,
+    gate: WorkspaceMutationGate,
+    monkeypatch: pytest.MonkeyPatch,
+    root: Path,
+) -> DuckDbTaskControlRegistry:
+    """A 0.2.7 workspace whose Task store was lost but whose frozen requests stayed: its requests
+    written out as 0.2.7 kept them, and the process moved to the empty data root `root`, where
+    opening the registry again lists each Task again from its request (`ledger_rebuilt`)."""
+    with history.held().reading() as connection:
+        rows = connection.execute(
+            "SELECT t.text FROM event e JOIN event_text t ON t.seq = e.seq"
+            " WHERE e.type = 'task.requested' AND e.workspace_id = ?",
+            [registry.workspace_id],
+        ).fetchall()
+    requests = registry.database_path.parent / REQUESTS_DIRECTORY
+    requests.mkdir(parents=True, exist_ok=True)
+    for (text,) in rows:
+        (requests / f"{canonical_hash(json.loads(text))}.json").write_text(text, encoding="utf-8")
+    history.close_history()
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
+    folder = registry.database_path.parent.parent
+    history.workspace_on_log(folder, folder.name, registry.workspace_id)
+    return DuckDbTaskControlRegistry(registry.database_path, gate=gate)
+
+
+def write_0_2_7_store(registry: DuckDbTaskControlRegistry, *, ordered: bool = True) -> None:
+    """Write a workspace's Tasks out as the store a 0.2.7 workspace kept; `ordered=False` is a
+    store from before admissions were ordered."""
+    folder = registry.database_path.parent.parent
+    carry_tasks(folder, folder)
+    if not ordered:
+        with duckdb.connect(str(registry.database_path)) as store:
+            store.execute("ALTER TABLE workspace_task DROP COLUMN admission_sequence")
+
+
+def complete_stage(
+    registry: DuckDbTaskControlRegistry,
+    *,
+    task_id,
+    execution_id,
+    stage_id: str,
+    evidence_kind: str,
+    now: datetime,
+):
+    """Begin, ready and verify one stage of a running Task with one piece of evidence."""
+    item = registry.begin_work_item(
+        task_id=task_id,
+        execution_id=execution_id,
+        stage_id=stage_id,
+        observed_at=now,
+    )
+    evidence = (
+        TaskEvidence(
+            evidence_kind=evidence_kind,
+            reference=f"playpen://task-evidence/{stage_id}",
+            content_hash=digest(stage_id),
+        ),
+    )
+    registry.mark_ready(
+        task_id=task_id,
+        execution_id=execution_id,
+        stage_id=stage_id,
+        evidence=evidence,
+        observed_at=now + timedelta(seconds=1),
+    )
+    definition = next(
+        value for value in registry.task(task_id).plan.work_items if value.stage_id == stage_id
+    )
+    return registry.verify_work_item(
+        TaskStageReceipt.from_identity(
+            receipt_id=uuid4(),
+            task_id=task_id,
+            execution_id=execution_id,
+            stage_id=stage_id,
+            work_item_definition_hash=item.definition_hash,
+            verifier_id=definition.verifier_id,
+            evidence=evidence,
+            status="VERIFIED",
+            failure_code=None,
+            observed_at=now + timedelta(seconds=2),
+        )
+    )

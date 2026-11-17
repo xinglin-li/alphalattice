@@ -15,6 +15,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.project import definition_id, register
 from alphalattice.kernel.data_layer.reading import reading_session
+from alphalattice.kernel.data_layer.root import catalog
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 N = 10**9
@@ -224,7 +225,7 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
     measures = {
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
-    assert (len(rows), {row[2:5] for row in rows}) == (94, {(1, 1, 1)})
+    assert (len(rows), {row[2:5] for row in rows}) == (101, {(1, 1, 1)})
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
     assert "registry.seeded" in named["event_type"]
@@ -364,9 +365,11 @@ def _files(root: Path) -> dict[str, str]:
 
 @pytest.mark.proves("data_layer.root_created_twice_is_all_equal")
 def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_path):
-    """The second creation makes and changes nothing; another schema version is refused by name."""
+    """The second creation makes and changes nothing; another schema version is refused by name.
+    The catalog is made at its first use, not with the root."""
     first = create_data_root(tmp_path)
-    assert "machine/catalog.sqlite" in first.created
+    assert not (tmp_path / "machine" / "catalog.sqlite").exists()
+    assert (catalog(tmp_path), catalog(tmp_path)) == (True, False)
     reading = reading_session(tmp_path)  # the Host's views over the log, the lake attached
     assert reading is not None
     with closing(reading):
@@ -376,7 +379,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")
-    made += ("machine/log.sqlite", "machine/index.sqlite", "machine/catalog.sqlite")
+    made += ("machine/log.sqlite", "machine/index.sqlite")
     assert (first.created, second.created, _files(tmp_path)) == (made, (), files)
     assert second.deferred == ()
     assert _tables(tmp_path / "machine" / "index.sqlite") >= {

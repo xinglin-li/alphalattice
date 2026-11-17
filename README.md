@@ -255,7 +255,9 @@ historical source availability alongside the performance.
 The [guide index](docs/public-source/README.md) links the other reference pages.
 
 Use [backup and restore](docs/public-source/data-and-care.md) into a new directory
-to preserve the saved records and their integrity checks. [Privacy](docs/public-source/privacy.md)
+to preserve the saved records and their integrity checks. One Host runs per data
+root; a second is refused by name, and [Storage](docs/public-source/data-and-care.md#storage)
+gives the way on. [Privacy](docs/public-source/privacy.md)
 explains recorded usage and its switch.
 
 ## This release and where it is going

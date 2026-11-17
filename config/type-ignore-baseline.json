@@ -134,7 +134,7 @@
     "src/alphalattice/control/task_control/ledger.py::type-ignore[misc]": 2,
     "src/alphalattice/control/task_control/queue.py::type-ignore[misc]": 1,
     "src/alphalattice/control/task_control/queue.py::type-ignore[no-untyped-def]": 1,
-    "src/alphalattice/control/task_control/registry.py::type-ignore[no-untyped-def]": 15,
+    "src/alphalattice/control/task_control/registry.py::type-ignore[no-untyped-def]": 13,
     "src/alphalattice/control/workspace_runtime/storage/capacity.py::type-ignore[misc]": 2,
     "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::type-ignore[misc]": 5,
     "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::type-ignore[untyped-decorator]": 14,

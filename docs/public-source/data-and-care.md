@@ -25,7 +25,7 @@ Backups hold market revisions and history, audits, Tasks, research programs and 
 
 On Windows, the default root is `%LOCALAPPDATA%/AlphaLattice/backups/<workspace-id>`; `ALPHALATTICE_BACKUP_ROOT` changes it. Seven generations are retained by default; `backup run --keep <count>` selects another count. Protect this root alongside the workspace.
 
-Restore targets a new or empty directory and can run without a Host. It uses the newest generation unless `--generation <hash>` selects a whole or unique hash from `backup list`. If the original manifest is lost, name its recorded identity with `--workspace-id <id>` and backup root with `--root <path>`.
+Restore targets a new or empty directory and can run without a Host. The restored workspace's Tasks move onto the log when a Host first opens it. It uses the newest generation unless `--generation <hash>` selects a whole or unique hash from `backup list`. If the original manifest is lost, name its recorded identity with `--workspace-id <id>` and backup root with `--root <path>`.
 
 The restore receipt identifies the generation and limitations: market tables are staged as Parquet for rebuild, and listed inputs or packages may need recapture or installation. A restored workspace may still lack derived values or readable reports.
 
@@ -66,6 +66,8 @@ catalog to the new root. An unverifiable chain, missing file or existing destina
 refused by name; choose an intact generation and a fresh destination.
 
 ## Storage
+
+Tasks are written to the machine's log in the data root: `ALPHALATTICE_DATA_ROOT` when set, otherwise `%LOCALAPPDATA%/AlphaLattice` on Windows and `$XDG_DATA_HOME/alphalattice` elsewhere. One Host holds a data root at a time. A second Host on the same data root is refused with `data_layer.host_running`: close the other Host, or start this one with `ALPHALATTICE_DATA_ROOT` set to a folder of its own. A Host whose log does not open does not start (`data_layer.log_unavailable`); restore the data root from its last backup. A 0.2.7 workspace's Tasks move onto the log at its first open, and its old Task store and frozen requests are set aside under `runtime/retired-0.2.7/`, never deleted. A model sandbox and a saved-object readback open their copies on a data root of their own, so the copies' Tasks stay out of the machine's history.
 
 The data dependencies include engine-matched DuckLake and SQLite scanner binaries. The data-root catalog loads these installed packages without downloading extensions. Workspace connections refuse runtime extension installation or loading. If an installed binary cannot load, restore the locked data dependencies with `uv sync --locked --extra data`.
 

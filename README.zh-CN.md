@@ -177,7 +177,7 @@
 
 [指南索引](docs/public-source/README.md)链接了其他参考页面。
 
-通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
+通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。每个数据根只运行一个 Host；第二个会按名称被拒绝，[存储（英文）](docs/public-source/data-and-care.md#storage)说明接下来怎么做。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
 
 <a id="this-release-and-where-it-is-going"></a>
 

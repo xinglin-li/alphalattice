@@ -3,8 +3,9 @@
 machine/log.sqlite      the event log and every table projected from it (schema/log.sql), with
                         the seed registry
 machine/index.sqlite    the search index (schema/index.sql), its vector table through sqlite-vec
-machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), using the installed extension
-                        wheels when the data extra is present; nothing is ever fetched
+machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), made at its first use by the
+                        store (`catalog`), using the installed extension wheels when the data
+                        extra is present; nothing is ever fetched
 data, blobs, staging    DuckLake's Parquet files, content-addressed blobs, compute staging
 
 The DDL in schema/ is the 0.2.8 reference schemas' text, unchanged. Nothing reads a data root
@@ -30,8 +31,9 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 2
-"""`PRAGMA user_version` of the databases this code creates; it refuses any other."""
+SCHEMA_VERSION: Final = 3
+"""`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
+any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
 INDEX_DEFERRED: Final = "index: vector table deferred (extension loading unavailable)"
@@ -187,12 +189,15 @@ def duckdb_session(root: Path) -> Any | None:
     return connection
 
 
-def _catalog(root: Path) -> bool | None:
-    """Create the SQLite-backed DuckLake catalog from installed wheels; defer without data."""
+def catalog(root: Path) -> bool | None:
+    """Create the SQLite-backed DuckLake catalog from installed wheels at its first use: True when
+    made, False when present, None (CATALOG_DEFERRED) without the data extra. A root is made
+    without it, since making it takes most of a root's creation and a root that never stores a
+    world table never needs it."""
     if importlib.util.find_spec("duckdb") is None:
         return None
-    catalog = root / "machine" / "catalog.sqlite"
-    if catalog.exists():
+    path = root / "machine" / "catalog.sqlite"
+    if path.exists():
         return False
     connection = duckdb_session(root)  # in memory: the catalog lives in the attached SQLite file
     if connection is None:
@@ -200,7 +205,7 @@ def _catalog(root: Path) -> bool | None:
     try:
         data = sql_path(root / "data")
         connection.execute(
-            f"ATTACH 'ducklake:sqlite:{sql_path(catalog)}' AS lake (DATA_PATH '{data}/')"
+            f"ATTACH 'ducklake:sqlite:{sql_path(path)}' AS lake (DATA_PATH '{data}/')"
         ).complete()
         connection.execute("USE lake").complete()
         for statement in statements(schema_text("catalog.sql")):
@@ -222,12 +227,8 @@ def create_data_root(path: Path) -> DataRoot:
         made, tables = _database(path / "machine" / name, build)
         if made:
             created.append(f"machine/{name}")
-    catalog = _catalog(path)
-    if catalog:
-        created.append("machine/catalog.sqlite")
     return DataRoot(
         path=path,
         created=tuple(created),
-        deferred=(CATALOG_DEFERRED,) * (catalog is None)
-        + (INDEX_DEFERRED,) * ("passage_vec" not in tables),  # the index's, read last
+        deferred=(INDEX_DEFERRED,) * ("passage_vec" not in tables),
     )

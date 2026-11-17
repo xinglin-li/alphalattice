@@ -9,6 +9,7 @@ import getpass
 import os
 import sys
 import tempfile
+import time
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -131,6 +132,45 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
     # The Host's research history: one data root per test process, never the machine's own.
     DATA_ROOT = Path(tempfile.mkdtemp(prefix="alphalattice-test-data-", dir=backup_parent))
     os.environ["ALPHALATTICE_DATA_ROOT"] = str(DATA_ROOT)
+
+
+def served_root(workspace: Path) -> Path:
+    """The data root of a Host served from `workspace` in another process: its own, beside the
+    workspace, since a process holds one data root and this one may hold its own."""
+    return workspace.parent / f"{workspace.name}.data-root"
+
+
+def serve_apart(workspace: Path) -> Path:
+    """Make `workspace` ready for a Host served in another process, and that Host's data root:
+    the Tasks this process's log holds for the workspace are carried into it, so that Host finds
+    them."""
+    from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a served Host's only
+
+    workspace.mkdir(parents=True, exist_ok=True)
+    carry_tasks(workspace, workspace)
+    return served_root(workspace)
+
+
+def released(root: Path) -> None:
+    """Return once a killed Host's hold on the data root `root` is gone: Windows frees a dead
+    process's file locks a moment after the process ends (about 16 ms idle, more under load)."""
+    from alphalattice.kernel.data_layer.log import LOCK_NAME, hold  # lazy: a killed Host's only
+
+    lock, deadline = root / "machine" / LOCK_NAME, time.monotonic() + 30
+    if not lock.is_file():
+        return  # it never held this root
+    while (handle := hold(lock)) is None:
+        assert time.monotonic() < deadline, f"a dead Host still holds {root}"
+        time.sleep(0.01)
+    handle.close()
+
+
+def with_its_tasks(workspace: Path) -> Path:
+    """`workspace`, its served Host's Tasks carried into it, so they are sealed with it."""
+    from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a golden seal's only
+
+    carry_tasks(workspace, workspace, root=served_root(workspace))
+    return workspace
 
 
 @contextmanager

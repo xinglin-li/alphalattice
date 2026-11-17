@@ -161,8 +161,8 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
     }
     now = datetime(2026, 11, 16, tzinfo=UTC)
     set_network_access(tmp_path, enabled=True, now=now)
-    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "data"))
-    assert WorkspaceApplicationSession.open_history("w1", tmp_path, lambda: now) is None
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(tmp_path / "data"))  # the Host's data root
+    WorkspaceApplicationSession.open_history("w1", tmp_path, lambda: now)
     secret = "sk-" + "A" * 24
     with history.step("host.request", {}, operation="probe", note=secret, prompt="private prompt"):
         pass

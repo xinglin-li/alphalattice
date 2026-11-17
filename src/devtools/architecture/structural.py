@@ -37,8 +37,8 @@ class GenerationModel(StrEnum):
 class StorageAuthorityGroup(_Contract):
     tables: tuple[str, ...] = Field(min_length=1)
     database: str = Field(min_length=1)
-    """The file the tables live in: `workspace` (the market-data DuckDB), `task-control`,
-    `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
+    """The file the tables live in: `workspace` (the market-data DuckDB), `log` (the data root's
+    log.sqlite), `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
     semantic_role: str = Field(min_length=1)
     generation_model: GenerationModel
     authority_owner: str = Field(min_length=1)

@@ -9,8 +9,9 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
+from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
@@ -129,17 +130,13 @@ class WorkspaceApplicationSession:
     processor: str
 
     @staticmethod
-    def open_history(
-        workspace_id: str, workspace: Path, clock: Callable[[], datetime]
-    ) -> str | None:
+    def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
         """Open Host history with the workspace's network control at the export boundary."""
-        return cast(
-            str | None,
-            open_history(
-                workspace_id,
-                workspace.name,
-                can_export=lambda: network_access(workspace, now=clock()).allowed,
-            ),
+        open_history(
+            workspace_id,
+            workspace.name,
+            workspace,
+            can_export=lambda: network_access(workspace, now=clock()).allowed,
         )
 
     def execute_admitted(
@@ -272,13 +269,12 @@ class WorkspaceApplicationSession:
                 resolve_task_control_database(root),
                 gate=gate,
                 submitted_by=_submitting_agent,
+                workspace_id=named_workspace_id(root),
             )
             # This process just acquired the exclusive workspace lease: an old
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
             registry.reconcile_after_writer_acquisition(observed_at=datetime.now(UTC))
-            # A Task whose row the store lost reads again from its frozen request.
-            registry.rebuild_from_requests(observed_at=datetime.now(UTC))
             return cls(
                 workspace=root,
                 writer_lease=lease,

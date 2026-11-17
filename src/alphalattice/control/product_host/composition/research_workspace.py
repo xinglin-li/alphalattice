@@ -601,6 +601,13 @@ def initialize_research_workspace(workspace: Path) -> None:
         lease.close()
 
 
+def named_workspace_id(workspace: Path) -> str | None:
+    """The id the workspace's manifest names it by; None for a folder that has no manifest."""
+    if not (workspace.resolve() / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file():
+        return None
+    return read_research_workspace_manifest(workspace).workspace_id
+
+
 def read_research_workspace_manifest(workspace: Path) -> ResearchWorkspaceManifest:
     """Open and recursively verify the manifest at the workspace boundary.
 

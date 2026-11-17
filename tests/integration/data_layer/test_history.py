@@ -1,4 +1,4 @@
-"""The Host's research history: the data root opened at start, or deferred by name."""
+"""The log a process holds, and the Host's history in it: opened at start, or refused by name."""
 
 from __future__ import annotations
 
@@ -13,29 +13,34 @@ import pytest
 
 from alphalattice.control.product_host.composition.experience_read import read_experience
 from alphalattice.interface.local_application.answers import ExperienceAnswer
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import HostLog
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
 
 
-@pytest.mark.proves("data_layer.host_history_records_or_defers")
-def test_a_host_records_its_workspace_and_a_second_host_defers_by_name(
+@pytest.mark.proves("data_layer.host_history_records_or_refuses")
+def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The first Host records its workspace and the evidence type, and a row its workers record at
-    once is recorded once; while another Host holds the data root, or its log or views do not
-    open, a Host's history is deferred by name, records nothing and holds no lock."""
+    """requirement: a Host records its workspace once by its folder, its history closes with
+    the last Host of its process, and a Host that cannot hold or open its log is refused by
+    name, recording nothing and holding no lock."""
+    history.close_history()  # the process's own root, if a test before this one took it
     root = tmp_path / "o'brien" / "data"  # a quote in the path is text in DuckDB's ATTACH
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the data root this process names
     monkeypatch.delenv("ALPHALATTICE_OTLP_ENDPOINT", raising=False)
+    folder = tmp_path / "workspace"
     with monkeypatch.context() as no_network:
 
         def no_socket(*args, **kwargs):
             raise AssertionError("an unconfigured Host opened a socket")
 
         no_network.setattr(socket, "socket", no_socket)
-        assert history.open_history("w1", "one", root) is None
+        history.open_history("w1", "one", folder, root)
         try:
+            assert history.workspace_on_log(folder, "one") == "w1"
             # Goal conclusions need no trial; filters use the note's own fields.
             history.record("conclusion.drawn", ("goal", "no-trial"), text="Goal conclusion")
             history.record(
@@ -91,29 +96,40 @@ def test_a_host_records_its_workspace_and_a_second_host_defers_by_name(
                     history.hypothesis_goal(hypothesis, expected_goal=expected)
             with history.step("host.request", {}, operation="read"):
                 pass
+            history.open_history("w2", "two", tmp_path / "second", root)  # a second Host
+            history.release_history()
+            assert history.recording()  # the first Host still records
+            history.release_history()
+            assert not history.recording() and history.holding() is None
         finally:
             history.close_history()
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"
         ).fetchone() == (5,)
-        assert con.execute(
-            "SELECT workspace_id, name FROM workspace ORDER BY workspace_id"
-        ).fetchall() == [("w1", "one"), ("w2", "two")]
+        rows = con.execute("SELECT workspace_id, name, folder FROM workspace").fetchall()
+        second = str((tmp_path / "second").resolve())
+        assert rows == [("w1", "one", str(folder.resolve())), ("w2", "two", second)]
         owned = (
             "SELECT name, owner FROM definition WHERE family = 'artifact_type' AND owner = 'host'"
         )
         assert con.execute(owned).fetchall() == [(history.EVIDENCE_TYPE, "host")]
-    with HostLog.open(root):
-        assert history.open_history("w1", "one", root) == history.HISTORY_DEFERRED
-        assert history.record("goal.set", ("goal", "g2"), {"title": "t"}) is None
-    damaged = tmp_path / "damaged"  # a log that is not a database: the Host serves on without it
+    with HostLog.open(root), pytest.raises(DataError) as held:
+        history.open_history("w1", "one", folder, root)
+    assert held.value.failure.code == "data_layer.host_running"
+    assert history.DATA_ROOT_ENV in str(held.value)  # the way on: a root of its own
+    assert history.record("goal.set", ("goal", "g2"), {"title": "t"}) is None
+    damaged = tmp_path / "damaged"  # a log that is not a database
     (damaged / "machine").mkdir(parents=True)
     (damaged / "machine" / "log.sqlite").write_bytes(b"not a database" * 100)
-    assert history.open_history("w1", "one", damaged) == history.HISTORY_UNAVAILABLE
+    with pytest.raises(DataError) as unopened:
+        history.open_history("w1", "one", folder, damaged)
+    assert unopened.value.failure.code == "data_layer.log_unavailable"
     assert not history.recording()
     assert history.read_experience(limit=1) is None
     monkeypatch.setattr(history, "reading_session", lambda where: 1 / 0)  # views that fail
-    assert history.open_history("w1", "one", root) == history.HISTORY_UNAVAILABLE
+    with pytest.raises(DataError) as views:
+        history.open_history("w1", "one", folder, root)
+    assert views.value.failure.code == "data_layer.history_unavailable"
     assert not history.recording()
-    HostLog.open(root).close()  # the deferral released the data root's lock
+    HostLog.open(root).close()  # the refusal released the data root's lock

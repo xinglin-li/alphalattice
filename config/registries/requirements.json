@@ -381,6 +381,14 @@
       "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
+      "seconds": 5,
+      "retired": "2026-11-15: the history is no longer deferred; a Host whose log does not open does not start, which data_layer.host_history_records_or_refuses proves."
+    },
+    "data_layer.host_history_records_or_refuses": {
+      "description": "A Host's history records its workspace and definitions and closes with its process's last Host; a Host whose data root another holds, or whose log or views do not open, is refused by name and keeps no lock.",
+      "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
       "seconds": 5
     },
     "data_layer.kill_inside_append_leaves_the_log_whole": {
@@ -1307,8 +1315,30 @@
       "layer": "integration",
       "seconds": 5
     },
+    "task_control.a_0_2_7_store_moves_in_admission_order": {
+      "description": "If Tasks admitted at one clock, or a 0.2.7 store from before admissions were ordered, lost their order on the log, the queue would start them out of turn.",
+      "lower_layer": "The order is the registry's admission transaction and the import of a real DuckDB 0.2.7 store onto a real SQLite log.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "task_control.a_duplicated_cancel_never_reaches_a_newer_version": {
+      "description": "If a cancel sent again reached the Task version after the one its caller confirmed, a retry or a stale page could stop work nobody asked to stop.",
+      "lower_layer": "The cancel's version check and its one command are the registry's transaction on a real SQLite log.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "task_control.a_killed_import_resumes_with_nothing_lost": {
+      "description": "If a kill between a 0.2.7 workspace's move onto the log and the retirement of its store lost or repeated a Task, its history would be wrong the next time it opened.",
+      "lower_layer": "It reads a real DuckDB 0.2.7 store and a real SQLite log across a process's end, which no single function holds.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 5
+    },
     "task_control.a_lost_ledger_rebuilds_only_admitted_work": {
       "description": "If recovery rebuilt the Task ledger from anything but frozen requests and orphan facts, a writer could invent, drop or repeat admitted Tasks.",
+      "lower_layer": "It reads real frozen request files and a real SQLite log across a reopened registry, which no single function holds.",
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
@@ -1328,6 +1358,12 @@
     },
     "task_control.a_worker_ends_with_its_parent": {
       "description": "If a kept worker watched its parent by polling, or not at all, a Host that died would leave workers running or end them late.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "task_control.an_older_spelling_is_the_same_sealed_state": {
+      "description": "If the import compared a 0.2.7 store's documents as text, a store spelled before a field was added would refuse to move onto the log, though its sealed states are equal.",
       "owner": "alphalattice.control.task_control",
       "layer": "unit",
       "seconds": 1

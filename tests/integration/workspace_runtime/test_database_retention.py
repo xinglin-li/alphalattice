@@ -237,14 +237,14 @@ def test_read_only_retention_refuses_a_write_instead_of_upgrading(tmp_path: Path
 def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it(
     tmp_path: Path,
 ) -> None:
-    """Session read boundary holds each store once and writers queue behind it."""
+    """Session read boundary holds each store once and writers queue behind it; the Task
+    writer queues at the gate too, its Tasks on the log."""
 
     from alphalattice.control.product_host.composition.application_session import (
         WorkspaceApplicationSession,
     )
 
     database = _prepared(tmp_path)
-    task_store = tmp_path / "runtime" / "research-task-control.duckdb"
     done: list[str] = []
     errors: list[BaseException] = []
 
@@ -273,7 +273,6 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
         writers = [threading.Thread(target=market_writer), threading.Thread(target=task_writer)]
         with session.reads():
             assert live_workspace_connections(database.path) == (True, 1, 0)
-            assert live_workspace_connections(task_store) == (True, 1, 0)
             for thread in writers:
                 thread.start()
             # The writers are queued at the gate, not at the engine: neither
@@ -287,12 +286,9 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
                 assert live_workspace_connections(database.path) == (True, 1, 0)
             finally:
                 connection.close()
-            assert session.task_control_registry.tasks() == ()
-            assert live_workspace_connections(task_store) == (True, 1, 0)
+            assert session.task_control_registry.tasks() == ()  # the log's read is not gated
             with pytest.raises(RuntimeError, match="read_only_retention_cannot_write"):
                 open_workspace_database(database.path, read_only=False)
-            with pytest.raises(RuntimeError, match="access_mode_conflict_on_this_thread"):
-                open_workspace_database(task_store, read_only=False)
             assert done == []
         for thread in writers:
             thread.join(timeout=20)

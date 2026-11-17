@@ -30,6 +30,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     EvidenceReviewAuthority,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
+    named_workspace_id,
     publish_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.task_recovery import stop_detail
@@ -71,6 +72,7 @@ from tests.alternative_evidence_desk.planted_corpus import (
 )
 from tests.alternative_evidence_desk.review_dossiers import CitingReviewActor, ControlledRisk
 from tests.alternative_evidence_desk.review_http_support import (
+    SERVICE_ID,
     _Service,
     _workspace_manifest,
     build_workspace,
@@ -168,7 +170,9 @@ def test_evidence_indexes_are_accounted_protected_evicted_and_rebuilt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace, report = build_workspace(tmp_path)
-    publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
+    publish_research_workspace_manifest(
+        workspace, _workspace_manifest(named_workspace_id(workspace) or SERVICE_ID)
+    )
     now = [_NOW]
     authority = _authority(workspace, report)
     service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
@@ -592,7 +596,9 @@ def test_evidence_writes_are_admitted_by_the_workspace_budget(
     """Evidence writes are admitted by the workspace budget."""
 
     workspace, report = build_workspace(tmp_path)
-    publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
+    publish_research_workspace_manifest(
+        workspace, _workspace_manifest(named_workspace_id(workspace) or SERVICE_ID)
+    )
     now = [_NOW]
     authority = _authority(workspace, report)
     service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
@@ -826,7 +832,9 @@ def test_open_readers_and_unsealed_builds_hold_their_generation(
     """Open readers and unsealed builds hold their generation."""
 
     workspace, report = build_workspace(tmp_path)
-    publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
+    publish_research_workspace_manifest(
+        workspace, _workspace_manifest(named_workspace_id(workspace) or SERVICE_ID)
+    )
     now = [_NOW]
     authority = _authority(workspace, report)
     service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
@@ -994,7 +1002,9 @@ def test_an_unprovable_vector_reference_graph_refuses_vector_cleanup(
     from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
 
     workspace, report = build_workspace(tmp_path)
-    publish_research_workspace_manifest(workspace, _workspace_manifest("qa-gate-9c5-http"))
+    publish_research_workspace_manifest(
+        workspace, _workspace_manifest(named_workspace_id(workspace) or SERVICE_ID)
+    )
     now = [_NOW]
     authority = _authority(workspace, report)
     service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])

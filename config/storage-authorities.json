@@ -386,16 +386,30 @@
         "workspace_task_command",
         "workspace_task_event",
         "workspace_task_execution",
-        "workspace_task_projection",
         "workspace_task_stage_receipt",
         "workspace_task_work_item"
       ],
-      "database": "task-control",
-      "semantic_role": "Task Control's research Tasks: their records, work items, executions, events, commands, stage receipts and the projection a read lists",
+      "database": "log",
+      "semantic_role": "Task Control's research Tasks as the log projects them from Task Control's events: records, work items, executions, events, commands and stage receipts; Task Control writes the same tables as a 0.2.7 store for a restore to move onto the log",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "data_layer.project",
+      "schema_writers": [
+        "task_control"
+      ],
+      "retention_owner": "task_control",
+      "rebuildability": "REPLAYED_FROM_THE_LOG",
+      "artifact_relationship": "NONE"
+    },
+    {
+      "tables": [
+        "workspace_task_projection"
+      ],
+      "database": "log",
+      "semantic_role": "the projection a read lists for each Task, recomputed from its record at each save",
       "generation_model": "OPERATIONAL_PROJECTION",
       "authority_owner": "task_control.registry.DuckDbTaskControlRegistry",
       "retention_owner": "task_control",
-      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
       "artifact_relationship": "NONE"
     },
     {

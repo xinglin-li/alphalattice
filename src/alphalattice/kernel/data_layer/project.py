@@ -28,6 +28,12 @@ PROJECTED: Final = (
     "task",
     "task_step",
     "wait",
+    "workspace_task",
+    "workspace_task_work_item",
+    "workspace_task_execution",
+    "workspace_task_event",
+    "workspace_task_command",
+    "workspace_task_stage_receipt",
     "recipe",
     "recipe_upstream",
     "selection",
@@ -47,8 +53,30 @@ PROJECTED: Final = (
     "daily_span",
 )
 """Every table replay rebuilds from the events alone."""
-MACHINE_TEXT: Final = frozenset({"definition.registered"})
-"""The types whose text a projection reads, so it is never forgotten."""
+MACHINE_TEXT: Final = frozenset(
+    {
+        "definition.registered",
+        "task.requested",
+        "task.saved",
+        "work_item.saved",
+        "task.noted",
+        "execution.started",
+        "stage.verified",
+        "command.accepted",
+    }
+)
+"""The types whose text is never forgotten: a definition's, which replay rebuilds the registry
+from; a Task's frozen request, what it was admitted to do; and the sealed record each Task
+Control event carries, which its projection keeps."""
+TASK_STATE: Final = {
+    "QUEUED": "requested",
+    "RUNNING": "running",
+    "SUCCEEDED": "completed",
+    "BLOCKED": "failed",
+    "CANCELLED": "cancelled",
+}
+"""A Task Control lifecycle's state in `task`; every other lifecycle waits (a review, a deferral,
+a cancel asked for, a recovery owed)."""
 REFS: Final = {
     "feature_set": (("method", "method", "method_version"),),
     "artifact_type": (("measures", "metric", None),),
@@ -279,6 +307,7 @@ def _definition_renamed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("workspace.created")
 def _workspace(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    _folder_moves(con, e["subject_id"], a.get("folder"))
     con.execute(
         "INSERT INTO workspace VALUES (?, ?, ?, 'active', ?, NULL)",
         (e["subject_id"], a["name"], a.get("folder"), e["seq"]),
@@ -287,9 +316,20 @@ def _workspace(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("workspace.opened")
 def _workspace_opened(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    _folder_moves(con, e["subject_id"], a.get("folder"))
     con.execute(
-        "UPDATE workspace SET opened_seq = ? WHERE workspace_id = ?", (e["seq"], e["subject_id"])
+        "UPDATE workspace SET opened_seq = ?, folder = coalesce(?, folder) WHERE workspace_id = ?",
+        (e["seq"], a.get("folder"), e["subject_id"]),
     )
+
+
+def _folder_moves(con: Con, workspace: str, folder: str | None) -> None:
+    """A folder is the last seen of one workspace: another that held it holds no folder now."""
+    if folder is not None:
+        con.execute(
+            "UPDATE workspace SET folder = NULL WHERE folder = ? AND workspace_id <> ?",
+            (folder, workspace),
+        )
 
 
 @on("workspace.status_changed")
@@ -325,12 +365,13 @@ def _goal_closed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("task.requested")
 def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    task = e["subject_id"]
     con.execute(
         "INSERT INTO task (task_id, workspace_id, goal_id, type_id, state, trace_id,"
         " product_version,"
         " requested_seq) VALUES (?, ?, ?, ?, 'requested', ?, ?, ?)",
         (
-            e["subject_id"],
+            task,
             e["workspace_id"],
             a.get("goal_id"),
             _first_sight(con, "event_type", a["type"], e["seq"]),
@@ -338,6 +379,126 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a["product_version"],
             e["seq"],
         ),
+    )
+    con.execute(  # its record follows in the same unit (`task.saved`)
+        "INSERT INTO workspace_task VALUES (?, ?, ?, ?, ?, 'QUEUED', NULL, ?, ?, ?, ?)",
+        (
+            task,
+            e["workspace_id"],
+            a["type"],
+            a["input_hash"],
+            a["plan_hash"],
+            a["admitted_at"],
+            a["admitted_at"],
+            a.get("admission_sequence"),
+            _json(a.get("submitted_by")),
+        ),
+    )
+
+
+@on("task.saved")
+def _task_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    _one(
+        con.execute(
+            "UPDATE workspace_task SET lifecycle = ?, record_json = ?, updated_at = ?"
+            " WHERE task_id = ?",
+            (a["lifecycle"], text, a["updated_at"], e["subject_id"]),
+        ),
+        "task_unknown",
+        "a saved record names a Task the log was never asked for",
+    )
+    state = TASK_STATE.get(a["lifecycle"], "waiting")
+    con.execute(  # a Task is attempted each time it enters running; it ends at a final state
+        "UPDATE task SET attempts = attempts + (? = 'running' AND state <> 'running'),"
+        " started_seq = CASE WHEN ? = 'running' THEN coalesce(started_seq, ?) ELSE started_seq END,"
+        " ended_seq = CASE WHEN ? IN ('completed', 'failed', 'cancelled') THEN ? END, state = ?"
+        " WHERE task_id = ?",
+        (state, state, e["seq"], state, e["seq"], state, e["subject_id"]),
+    )
+
+
+@on("work_item.saved")
+def _work_item_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    if "ordinal" in a:  # its first save, at the Task's admission, names its place
+        con.execute(
+            "INSERT INTO workspace_task_work_item VALUES (?, ?, ?, ?, ?, ?)",
+            (e["subject_id"], a["stage_id"], a["ordinal"], a["lifecycle"], text, a["updated_at"]),
+        )
+        return
+    _one(
+        con.execute(
+            "UPDATE workspace_task_work_item SET lifecycle = ?, state_json = ?, updated_at = ?"
+            " WHERE task_id = ? AND stage_id = ?",
+            (a["lifecycle"], text, a["updated_at"], e["subject_id"], a["stage_id"]),
+        ),
+        "work_item_unknown",
+        "a saved work item names a stage its Task was not admitted with",
+    )
+
+
+@on("task.noted")
+def _task_noted(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    con.execute(
+        "INSERT INTO workspace_task_event VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            a["event_id"],
+            e["subject_id"],
+            a.get("execution_id"),
+            a["sequence"],
+            a["kind"],
+            text,
+            a["recorded_at"],
+        ),
+    )
+
+
+@on("execution.started")
+def _execution(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    con.execute(
+        "INSERT INTO workspace_task_execution VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            a["execution_id"],
+            e["subject_id"],
+            a["graph_thread_id"],
+            a["worker_instance_id"],
+            a["compatibility_hash"],
+            text,
+            a["started_at"],
+        ),
+    )
+
+
+@on("stage.verified")
+def _stage_verified(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    receipt = a["receipt_hash"]
+    con.execute(
+        "INSERT INTO workspace_task_stage_receipt VALUES (?, ?, ?, ?, ?, ?)",
+        (receipt, e["subject_id"], a["execution_id"], a["stage_id"], text, a["observed_at"]),
+    )
+    con.execute(  # the verified stage is the Task's completed step
+        "INSERT OR REPLACE INTO task_step VALUES (?, ?, ?, ?)",
+        (e["subject_id"], a["stage_id"], _json({"receipt": receipt}), e["seq"]),
+    )
+
+
+@on("command.accepted")
+def _command_accepted(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    con.execute(
+        "INSERT INTO workspace_task_command VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+        (a["command_id"], e["subject_id"], a["command_hash"], text, a["accepted_at"]),
+    )
+
+
+@on("command.resolved")
+def _command_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    _one(
+        con.execute(
+            "UPDATE workspace_task_command SET resolved_at = ?, resolution = ?"
+            " WHERE command_id = ? AND task_id = ?",
+            (a["resolved_at"], a["resolution"], a["command_id"], e["subject_id"]),
+        ),
+        "command_unknown",
+        "a resolution names a command the Task never accepted",
     )
 
 
@@ -751,7 +912,7 @@ def _forgotten(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     if target is None or target[0] in MACHINE_TEXT:
         raise _refuse(
             "record_unforgettable",
-            "a definition's text is what replay rebuilds the registry from",
+            "a definition's text rebuilds the registry, and a Task's records are their texts",
         )
     con.execute("DELETE FROM event_text WHERE seq = ?", (a["seq"],))  # the event and digest stay
 

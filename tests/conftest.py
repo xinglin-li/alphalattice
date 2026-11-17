@@ -11,8 +11,10 @@ test's seconds, and an xdist run starts its longest modules first (TT).
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -34,6 +36,7 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
+from devtools.testing.collection import CONTRACT as LAYER_CONTRACT
 from tests import pytest_environment as environment
 
 pytest_plugins = [
@@ -66,6 +69,48 @@ def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
                 verify(request.node.nodeid)
         finally:
             environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
+
+
+_machines = itertools.count()
+
+
+@pytest.fixture(autouse=True)
+def _one_machine_per_test(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Each test is one machine: its data root is made the first time it opens a workspace, a
+    Host or the log, copied from this process's empty root; a test that opens none pays nothing.
+    A Host a wider fixture serves keeps its own root for the tests that share it; a unit test
+    has no machine and imports no data layer."""
+    contract = request.node.stash.get(LAYER_CONTRACT, None)
+    if contract is not None and contract.layer == "unit":
+        yield
+        return
+    from alphalattice.kernel.data_layer import history
+
+    if history.recording():
+        yield
+        return
+    history.close_history()
+    assert environment.DATA_ROOT is not None
+    root, empty = environment.DATA_ROOT / f"t{next(_machines)}", environment.DATA_ROOT / "empty"
+    make = history.create_data_root
+
+    def from_empty(path: Path) -> Any:
+        if not (path / "machine" / "log.sqlite").is_file():
+            if not (empty / "machine" / "log.sqlite").is_file():
+                make(empty)
+            shutil.copytree(empty, path, dirs_exist_ok=True)
+        return make(path)
+
+    # Its own patch, not the test's `monkeypatch`: a test that undoes its patches keeps its root.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(history, "create_data_root", from_empty)
+        patch.setenv(history.DATA_ROOT_ENV, str(root))
+        try:
+            yield
+        finally:
+            if not history.recording():
+                history.close_history()
+                shutil.rmtree(root, ignore_errors=True)
 
 
 def _verify_session_seeds() -> None:

@@ -139,11 +139,15 @@
       "subject": "task",
       "required": [
         "type",
-        "product_version"
+        "product_version",
+        "input_hash",
+        "plan_hash",
+        "workflow_definition_hash",
+        "admitted_at"
       ],
-      "text": "none",
-      "durable": false,
-      "description": "A task was asked for."
+      "text": "optional",
+      "durable": true,
+      "description": "A Task was admitted; its text is the frozen request it was admitted to do, and its record follows (`task.saved`)."
     },
     {
       "name": "task",
@@ -186,6 +190,100 @@
       "text": "none",
       "durable": false,
       "description": "The wait ended."
+    },
+    {
+      "name": "task.saved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "lifecycle",
+        "updated_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's record, its text, was sealed at its next version."
+    },
+    {
+      "name": "work_item.saved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "stage_id",
+        "lifecycle",
+        "updated_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's work item, its text, was sealed at its next version; its first save names its place."
+    },
+    {
+      "name": "task.noted",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "event_id",
+        "sequence",
+        "kind",
+        "recorded_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "Task Control noted what happened to a Task, its details the text: a transition, a wake, a recovery link, an admission subject."
+    },
+    {
+      "name": "execution.started",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "execution_id",
+        "graph_thread_id",
+        "worker_instance_id",
+        "compatibility_hash",
+        "started_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "An execution of a Task, its text, began on a bound worker."
+    },
+    {
+      "name": "stage.verified",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "receipt_hash",
+        "execution_id",
+        "stage_id",
+        "observed_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's stage was verified by its receipt, the text."
+    },
+    {
+      "name": "command.accepted",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "command_id",
+        "command_hash",
+        "accepted_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A command on a Task, its text, was accepted against the version it confirmed."
+    },
+    {
+      "name": "command.resolved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "command_id",
+        "resolved_at",
+        "resolution"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "An accepted command was resolved."
     },
     {
       "name": "admission",

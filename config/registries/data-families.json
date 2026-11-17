@@ -1120,7 +1120,8 @@
       "location": "workspace-runtime",
       "bytes": 2621440,
       "covers": [
-        "table:workspace_task"
+        "table:workspace_task",
+        "table:workspace_task_projection"
       ],
       "authority_owners": [
         "task_control.registry.DuckDbTaskControlRegistry"
@@ -3166,18 +3167,18 @@
       ]
     },
     "task-requests": {
-      "summary": "each Task's frozen request, named by its digest",
+      "summary": "a 0.2.7 workspace's frozen Task requests, named by their digests: read once as the workspace moves onto the log, which holds each as its admission's text, then set aside with the 0.2.7 store under runtime/retired-0.2.7",
       "class": "event-log",
       "tier": 1,
-      "home": "log task",
+      "home": "log task (task.requested's text)",
       "location": "workspace-runtime",
       "bytes": 1106792,
       "writers": [
-        "task_control.ledger:write_request"
+        "task_control.upgrade:carry_tasks",
+        "task_control.upgrade:import_ledgers"
       ],
       "readers": [
-        "product_host.composition.application_session",
-        "task_control.registry"
+        "task_control.upgrade"
       ]
     },
     "task-telemetry": {
@@ -3294,6 +3295,7 @@
         "product_host.storage.backup:WorkspaceBackups",
         "product_host.storage.backup:_Objects",
         "product_host.storage.backup:_copy_file",
+        "product_host.storage.backup:_export_rows",
         "product_host.storage.backup:_export_table",
         "product_host.storage.backup:_record_attempt",
         "data_layer.backup:backup_data_root",
@@ -3575,7 +3577,7 @@
         "product_host.composition.model_sandbox:_copy",
         "product_host.composition.model_sandbox:_probe",
         "product_host.composition.saved_object_readback:_copy",
-        "product_host.composition.saved_object_readback:probe"
+        "product_host.composition.saved_object_readback:_write_receipt"
       ],
       "readers": [
         "product_host.composition.entry"
@@ -3722,7 +3724,7 @@
     "alternative_evidence.runtime.task_adapter:AlternativeEvidenceDocumentTaskAdapter": "applies a planned preparation's session width in memory (PREPARATIONS.open)",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
-    "data_layer.history:open_history": "opens the data root through HostLog.open, whose class is the data-root family's writer",
+    "data_layer.history:held": "opens the data root through HostLog.open, whose class is the data-root family's writer",
     "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes"
   }
 }

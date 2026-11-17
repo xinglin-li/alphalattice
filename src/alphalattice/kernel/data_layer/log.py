@@ -32,8 +32,10 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
+from threading import RLock
 from typing import IO, Any, Final
 
 from alphalattice.kernel.data.errors import DataError
@@ -56,6 +58,8 @@ FULL costs a tenth of that against NORMAL (14.6k against 16.6k at 64 on the work
 BATCH_SECONDS: Final = 0.2
 """The longest an ordinary event waits for its batch's commit."""
 
+COMMIT_TIMER: Final = "host-log-commit"
+"""The name of the thread that commits an open batch once it is `BATCH_SECONDS` old."""
 LOCK_NAME: Final = "host.lock"
 LOCK_AT: Final = 1 << 30
 """The byte a Windows Host locks: past any name the lock file holds."""
@@ -119,8 +123,10 @@ class HostLog:
         """Hold `con` and the data root's `lock`; `open` is the way to make one."""
         self._con, self._lock_file = con, lock
         self._batch, self._seconds = batch, seconds
-        self._guard = threading.RLock()
+        self._guard = RLock()
         self._pending = 0
+        self._units = 0  # how many `unit`s hold the transaction open; none commits inside one
+        self._owed = False  # a durable event was appended inside a unit: commit when it ends
         self._timer: threading.Timer | None = None
         last = con.execute("SELECT recorded_us FROM event ORDER BY seq DESC LIMIT 1").fetchone()
         self._last_us = -1 if last is None else int(last[0])
@@ -205,7 +211,7 @@ class HostLog:
             spec = _spec(con, row)
             admit(row, text, spec, _superseded(con), live=live, body=body)
             durable = bool(spec.get("durable"))
-            if self._pending == 0:
+            if not con.in_transaction:
                 con.execute("BEGIN IMMEDIATE")
                 self._arm()
             con.execute("SAVEPOINT event")
@@ -214,14 +220,59 @@ class HostLog:
             except BaseException:
                 con.execute("ROLLBACK TO event")
                 con.execute("RELEASE event")
-                if self._pending == 0:
+                if self._pending == 0 and not self._units:
                     self._end("ROLLBACK")
                 raise
             con.execute("RELEASE event")
             self._pending += 1
-            if durable or self._pending >= self._batch:
+            if self._units:
+                self._owed = self._owed or durable
+            elif durable or self._pending >= self._batch:
                 self._commit()
             return seq
+
+    @contextmanager
+    def unit(self) -> Iterator[sqlite3.Connection]:
+        """Reads and the events they decide, as one unit: all of it or none of it.
+
+        The log's guard is held throughout, so no other writer appends between a read and the
+        event it decided; the connection yielded sees the open batch. An exception rolls back
+        every event appended inside, and a durable one among them commits when the unit ends.
+        The Host's working tables (no event writes them) may be written inside it too.
+        """
+        with self._guard:
+            con = self._con
+            if not con.in_transaction:
+                con.execute("BEGIN IMMEDIATE")
+                self._arm()
+            pending = self._pending
+            con.execute("SAVEPOINT unit")
+            self._units += 1
+            try:
+                yield con
+            except BaseException:
+                con.execute("ROLLBACK TO unit")
+                con.execute("RELEASE unit")
+                self._pending = pending
+                self._units -= 1
+                if not self._units:
+                    self._owed = False
+                    if self._pending == 0:
+                        self._end("ROLLBACK")
+                raise
+            con.execute("RELEASE unit")
+            self._units -= 1
+            if not self._units and (self._owed or self._pending >= self._batch):
+                self._owed = False
+                self._end("COMMIT")
+            elif not self._units and self._pending == 0:
+                self._end("COMMIT")  # the working tables it wrote, with no event to batch
+
+    @contextmanager
+    def reading(self) -> Iterator[sqlite3.Connection]:
+        """The Host's connection for several reads that must see one state, open batch included."""
+        with self._guard:
+            yield self._con
 
     def clock(self, at_least: int = 0) -> int:
         """The log's next moment, in microseconds: the larger of the wall clock, the last moment
@@ -287,11 +338,13 @@ class HostLog:
 
     def _arm(self) -> None:
         self._timer = threading.Timer(self._seconds, self.flush)
-        self._timer.daemon = True
+        self._timer.daemon, self._timer.name = True, COMMIT_TIMER
         self._timer.start()
 
     def _commit(self) -> None:
-        if self._pending:
+        if self._units:  # a flush inside a unit commits when the unit ends, never before it
+            self._owed = True
+        elif self._pending:
             self._end("COMMIT")
 
     def _end(self, statement: str) -> None:

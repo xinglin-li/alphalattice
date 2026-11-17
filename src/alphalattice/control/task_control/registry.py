@@ -1,26 +1,26 @@
-"""DuckDB business authority for durable workspace research tasks."""
+"""The durable authority of a workspace's research Tasks, on the machine's log."""
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Lock, RLock, local
 from typing import Any, Literal
 from uuid import UUID, uuid4
-from weakref import WeakValueDictionary
 
 import duckdb
 
 from alphalattice.control.workspace_runtime.database import (
     WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
     open_workspace_database,
-    retain_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.data_layer.history import held, workspace_on_log
+from alphalattice.kernel.shared_kernel.environment import package_versions
 
 from .contracts import (
     ResearchGoal,
@@ -40,26 +40,17 @@ from .contracts import (
     WorkItemLifecycle,
     WorkItemState,
 )
-from .ledger import SubmittingAgent, TaskAdmissionRequest, read_requests, write_request
+from .ledger import SubmittingAgent, TaskAdmissionRequest
 from .queue import active_same_work, read_queue_setting, running_places, waiting_places
-
-TASK_CONTROL_DATABASE_FILENAME = "research-task-control.duckdb"
-"""The sole durable Task Control store name inside a workspace."""
-TASK_CONTROL_DIRECTORY = "runtime"
-"""Where under a workspace's root its Task Control store lives, beside the Host's own state."""
-
-LEDGER_REBUILT_DETAIL = (
-    "The ledger rebuild could not recover this Task's execution or verified progress."
+from .upgrade import LEDGER_REBUILT_DETAIL as LEDGER_REBUILT_DETAIL  # a rebuilt Task's words
+from .upgrade import LEDGER_REBUILT_NEXT as LEDGER_REBUILT_NEXT
+from .upgrade import (
+    TASK_CONTROL_DATABASE_FILENAME,
+    TASK_CONTROL_DIRECTORY,
+    import_ledgers,
+    log_of,
+    stored_records,
 )
-"""What rebuilding a missing Task row preserves and cannot recover."""
-LEDGER_REBUILT_NEXT = (
-    "Re-PLAN keeps the request for a new plan or Task; its owner chooses reusable sealed "
-    "evidence and work to redo."
-)
-"""The offered new admission, distinct from resuming the rebuilt Task."""
-
-_CONNECTION_LOCKS: WeakValueDictionary[Path, RLock] = WeakValueDictionary()
-_CONNECTION_LOCK_GUARD = Lock()
 
 _TERMINAL_TASKS = frozenset(
     {TaskLifecycle.SUCCEEDED, TaskLifecycle.BLOCKED, TaskLifecycle.CANCELLED}
@@ -102,7 +93,7 @@ holds a place only when each may run beside others (`overlapping`)."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
 
 _QUEUE_HEAD = """
-    SELECT task_id, record_json FROM workspace_task WHERE lifecycle = 'QUEUED'
+    SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ? AND lifecycle = 'QUEUED'
     ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id LIMIT 1
 """
 
@@ -290,7 +281,15 @@ def _task_state_row_count(database_path: Path) -> int:
 
 
 class DuckDbTaskControlRegistry:
-    """One-workspace task authority; checkpoints never create business state."""
+    """One workspace's Task authority on the machine's log (LAWS DA2).
+
+    Each write is an event carrying the sealed record it makes (`task.requested`, `task.saved`,
+    `work_item.saved`, `task.noted`, `execution.started`, `stage.verified`, `command.accepted`,
+    `command.resolved`); every read takes their log.sqlite projections, scoped to this workspace.
+    An operation reads, decides and appends in one unit of the log's one writer, so no write
+    lands between a read and the event it decided, and a failed one leaves no event. An
+    execution's latest heartbeat and each Task's safe projection are working state beside them.
+    """
 
     def __init__(
         self,
@@ -298,17 +297,21 @@ class DuckDbTaskControlRegistry:
         *,
         gate: WorkspaceMutationGate,
         submitted_by: Callable[[], SubmittingAgent | None] | None = None,
+        workspace_id: str | None = None,
     ) -> None:
-        """Open the canonical gated Task Control authority and initialize its durable schema.
+        """Bind the workspace's Task Control to the log its process holds.
 
         Args:
-            database_path: Canonical Task Control DuckDB path.
+            database_path: The workspace's canonical Task Control place: its 0.2.7 store, if one
+                is still there, is imported onto the log here, and the queue setting is read
+                beside it.
             gate: Workspace mutation owner governing durable writes.
             submitted_by: Optional Host provenance callback, separate from admission authority.
+            workspace_id: The id its manifest names the workspace by; else its folder's.
 
         Raises:
-            TaskControlDatabaseAuthorityError: The database filename is not the canonical Task
-                Control store.
+            TaskControlDatabaseAuthorityError: The path is not the canonical Task Control place.
+            DataError: Another process holds the data root (`data_layer.host_running`).
         """
         self.database_path = database_path.resolve()
         # Who submits a Task, as the Host's boundary read its request: provenance only.
@@ -319,27 +322,17 @@ class DuckDbTaskControlRegistry:
         self.overlapping: Callable[[TaskRecord], bool] = lambda _task: False
         self.started: Callable[[], None] = lambda: None
         if self.database_path.name != TASK_CONTROL_DATABASE_FILENAME:
-            # `_bootstrap` creates its schema on connect, so pointing this at the
-            # market-data store does not fail -- it silently opens a second,
-            # empty task authority beside the real one. Measured on the live
-            # workspace: thirteen task-shaped tables there at zero rows, against
-            # 74 tasks and 1,317 events in the store every other caller uses.
-            # Refusing by name is the cutover; no database is read or written.
+            # A Task authority beside the real one is refused by name: none is read or written.
             raise TaskControlDatabaseAuthorityError("task_control.registry_database_not_canonical")
         self.gate = gate
-        with _CONNECTION_LOCK_GUARD:
-            lock = _CONNECTION_LOCKS.get(self.database_path)
-            if lock is None:
-                lock = RLock()
-                _CONNECTION_LOCKS[self.database_path] = lock
-            self._connection_lock = lock
-        # A read scope on the calling thread: the readers nested inside one
-        # hold of the connection lock share one read-only connection instead
-        # of opening an instance each (a status projection is five reads).
-        self._read_scopes = local()
         self._answers: dict[object, tuple[tuple[object, ...], object]] = {}
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._bootstrap()
+        root = self.database_path.parent.parent
+        self.workspace_id = workspace_on_log(root, root.name, workspace_id)
+        unequal = import_ledgers(self)
+        if unequal:  # the 0.2.7 files stay, for the next open to retry
+            raise TaskControlDatabaseAuthorityError(
+                "task_control.import_unequal:" + ",".join(unequal[:5])
+            )
 
     @staticmethod
     def _json(value: object) -> str:
@@ -352,257 +345,85 @@ class DuckDbTaskControlRegistry:
         return model_type.model_validate_json(value)
 
     @staticmethod
-    def _db_time(value: datetime) -> datetime:
+    def _db_time(value: datetime) -> str:
+        """A registry clock as its rows keep it: UTC, ISO text to the microsecond, so it sorts."""
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("task-control clock must be timezone-aware")
-        return value.astimezone(UTC).replace(tzinfo=None)
+        naive = value.astimezone(UTC).replace(tzinfo=None)
+        return naive.isoformat(sep=" ", timespec="microseconds")
 
-    def _bootstrap(self) -> None:
-        def operation() -> None:
-            connection = open_workspace_database(self.database_path, read_only=False)
-            try:
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task (
-                        task_id VARCHAR PRIMARY KEY,
-                        task_kind VARCHAR NOT NULL,
-                        input_hash VARCHAR NOT NULL,
-                        plan_hash VARCHAR NOT NULL,
-                        lifecycle VARCHAR NOT NULL,
-                        record_json VARCHAR NOT NULL,
-                        admitted_at TIMESTAMP NOT NULL,
-                        updated_at TIMESTAMP NOT NULL
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_work_item (
-                        task_id VARCHAR NOT NULL,
-                        stage_id VARCHAR NOT NULL,
-                        ordinal INTEGER NOT NULL,
-                        lifecycle VARCHAR NOT NULL,
-                        state_json VARCHAR NOT NULL,
-                        updated_at TIMESTAMP NOT NULL,
-                        PRIMARY KEY (task_id, stage_id)
-                    )
-                    """
-                )
-                # Operational admission order is independent of a wall clock.
-                # Legacy records keep NULL and their original timestamp/UUID
-                # ordering; no historical Task JSON or identity is rewritten.
-                connection.execute(
-                    "ALTER TABLE workspace_task ADD COLUMN IF NOT EXISTS admission_sequence BIGINT"
-                )
-                # The agent session that submitted a Task; never part of its record hash.
-                connection.execute(
-                    "ALTER TABLE workspace_task ADD COLUMN IF NOT EXISTS submitted_by_json VARCHAR"
-                )
-                connection.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS workspace_task_admission_order "
-                    "ON workspace_task(admission_sequence)"
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_execution (
-                        execution_id VARCHAR PRIMARY KEY,
-                        task_id VARCHAR NOT NULL,
-                        graph_thread_id VARCHAR NOT NULL UNIQUE,
-                        worker_instance_id VARCHAR NOT NULL,
-                        compatibility_hash VARCHAR NOT NULL,
-                        execution_json VARCHAR NOT NULL,
-                        checkpoint_seen BOOLEAN NOT NULL DEFAULT FALSE,
-                        started_at TIMESTAMP NOT NULL,
-                        last_heartbeat_at TIMESTAMP NOT NULL
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_event (
-                        event_id VARCHAR PRIMARY KEY,
-                        task_id VARCHAR NOT NULL,
-                        execution_id VARCHAR,
-                        sequence BIGINT NOT NULL,
-                        kind VARCHAR NOT NULL,
-                        details_json VARCHAR NOT NULL,
-                        recorded_at TIMESTAMP NOT NULL,
-                        UNIQUE(task_id, sequence)
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_command (
-                        command_id VARCHAR PRIMARY KEY,
-                        task_id VARCHAR NOT NULL,
-                        command_hash VARCHAR NOT NULL UNIQUE,
-                        command_json VARCHAR NOT NULL,
-                        accepted_at TIMESTAMP NOT NULL,
-                        resolved_at TIMESTAMP,
-                        resolution VARCHAR
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_stage_receipt (
-                        receipt_hash VARCHAR PRIMARY KEY,
-                        task_id VARCHAR NOT NULL,
-                        execution_id VARCHAR NOT NULL,
-                        stage_id VARCHAR NOT NULL,
-                        receipt_json VARCHAR NOT NULL,
-                        observed_at TIMESTAMP NOT NULL,
-                        UNIQUE(task_id, stage_id)
-                    )
-                    """
-                )
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS workspace_task_projection (
-                        task_id VARCHAR PRIMARY KEY,
-                        task_record_hash VARCHAR NOT NULL,
-                        projection_json VARCHAR NOT NULL,
-                        updated_at TIMESTAMP NOT NULL
-                    )
-                    """
-                )
-            finally:
-                connection.close()
-
-        self.gate.run(self._with_connection_lock, operation)
-
-    def _with_connection_lock(self, operation):
-        with self._connection_lock:
-            return operation()
+    def _record(self, type_: str, task_id: UUID, attrs: dict[str, Any], **more: Any) -> None:
+        """Append one Task Control event about `task_id`, in this workspace; its text, when it
+        has one, is the sealed record it carries."""
+        held().record(
+            type_,
+            ("task", str(task_id)),
+            attrs,
+            workspace=self.workspace_id,
+            node="task_control",
+            **more,
+        )
 
     def _write(self, operation, *, control_only: bool = False):
-        def gated():
-            connection = open_workspace_database(self.database_path, read_only=False)
-            try:
-                connection.execute("BEGIN TRANSACTION")
-                result = operation(connection)
-                connection.execute("COMMIT")
-                return result
-            except Exception:
-                connection.execute("ROLLBACK")
-                raise
-            finally:
-                connection.close()
+        def unit():
+            with held().unit() as connection:
+                return operation(connection)
 
         # Admission, execution and artifact-reference mutations retain the
         # workspace fence. Cancellation requests and derived projections add
         # no Data reference/work and may proceed while the Data writer is busy.
         if control_only:
-            return self._with_connection_lock(gated)
-        return self.gate.run(self._with_connection_lock, gated)
+            return unit()
+        return self.gate.run(unit)
 
-    def _files_stamp(self) -> tuple[object, ...] | None:
-        """The database file's and its log's size and time: their own record of a write."""
-        found: list[object] = []
-        for path in (
-            self.database_path,
-            self.database_path.with_name(f"{self.database_path.name}.wal"),
-        ):
-            try:
-                status = path.stat()
-            except FileNotFoundError:
-                found.append(None)
-                continue
-            except OSError:
-                return None
-            found.append((status.st_mtime_ns, status.st_size))
-        return tuple(found)
+    def _stamp(self) -> tuple[object, ...]:
+        """The log connection's count of changes: any write since a read changes it."""
+        with held().reading() as connection:
+            return (connection.total_changes,)
 
     def _answered(self, key: object, read):  # type: ignore[no-untyped-def]
-        """A read answered again while the database files show no write since it was taken.
+        """A read answered again while the log shows no write since it was taken.
 
-        Every committed write changes the database file or its log, whichever registry or
-        process made it, so their stamp taken before a read tells whether the answer still
-        holds; a read taken before a write commits stays the answer to that moment. Under a
-        light read's load every read queued on the connection lock (W10, measured: STATUS p50
-        1.8 s at twenty requests a second on a nine-Task workspace, with no Task running).
+        Every write, this registry's or another's, changes the held log's count of changes, so
+        the count taken before a read tells whether its answer still holds (W10, measured: STATUS
+        p50 1.8 s at twenty requests a second on a nine-Task workspace when each read was taken
+        again).
         """
-        stamp = self._files_stamp()
-        held = self._answers.get(key)
-        if stamp is not None and held is not None and held[0] == stamp:
-            return held[1]
+        stamp = self._stamp()
+        held_answer = self._answers.get(key)
+        if held_answer is not None and held_answer[0] == stamp:
+            return held_answer[1]
         value = read()
-        if stamp is not None:
-            self._answers[key] = (stamp, value)
+        self._answers[key] = (stamp, value)
         return value
 
     def _read(self, operation):
-        # DuckDB rejects mixing read_only and read-write configurations for the
-        # same file in one process. Serialize connections for this Task database,
-        # not behind a long transaction in the separate market/Feature database.
-        def gated():
-            shared = getattr(self._read_scopes, "connection", None)
-            if shared is not None:
-                return operation(shared)
-            connection = open_workspace_database(self.database_path, read_only=True)
-            try:
-                return operation(connection)
-            finally:
-                connection.close()
-
-        return self._with_connection_lock(gated)
+        with held().reading() as connection:
+            return operation(connection)
 
     @contextmanager
     def retain(self, *, read_only: bool = False):
-        """Retain the registry database instance for one bounded unit of work.
+        """One bounded unit of work on the calling thread.
 
-        Keep this registry's database instance open for one bounded unit of work
-        on the calling thread.
-
-        Every read and write inside still takes the connection lock and runs
-        in its own transaction; what changes is that none of them reopens the
-        file (a metadata read per open) and the engine checkpoints once, when
-        the unit ends, instead of after each one. Measured on a fifty-issuer
-        coverage run: 672 opens and closes per run, thirteen seconds of a
-        twenty-six second repeat. The runner holds it for one task's
-        execution; readers on other threads attach to the same instance,
-        guarded read-only, as `open_workspace_database` describes.
-
-        A read-only unit is the read scope: this registry's connection lock
-        first, then one read-only connection, in the order every writer takes
-        them. Held the other way round -- the read-only instance retained, then
-        the lock asked for at the unit's first read -- it deadlocked with a
-        writer that held the lock while it waited for that instance to close:
-        a status read beside a starting Task left the Task queued until the
-        writer's wait expired.
+        The log stays open for the process's life, so a unit reopens nothing; a read-only unit is
+        the read scope, and a writing one (a Task's whole execution) holds nothing, so the log's
+        other writers never wait behind it.
         """
-        if read_only:
-            with self.read_scope():
-                yield
+        if not read_only:
+            yield
             return
-        with retain_workspace_database(self.database_path, read_only=False):
+        with self.read_scope():
             yield
 
     @contextmanager
     def read_scope(self):
-        """One read-only connection for every ``_read`` nested inside, on this thread.
+        """Every read nested inside sees one state of the log: no write lands between them.
 
-        Held under the connection lock like any read; the connection is
-        closed when the scope ends, before any write the caller makes next,
-        so the instance's mode never has to change under a reader. A write
-        on this thread inside the scope is refused by the database owner
-        (the thread's own read-only instance), never upgraded. The board and
-        the status projection hold it; so does the application session's
-        read boundary (``WorkspaceApplicationSession.reads``) for a
-        projection that joins several readers.
+        The board and the status projection hold it; so does the application session's read
+        boundary (``WorkspaceApplicationSession.reads``) for a projection that joins readers.
         """
-        with self._connection_lock:
-            if getattr(self._read_scopes, "connection", None) is not None:
-                yield
-                return
-            connection = open_workspace_database(self.database_path, read_only=True)
-            self._read_scopes.connection = connection
-            try:
-                yield
-            finally:
-                self._read_scopes.connection = None
-                connection.close()
+        with held().reading():
+            yield
 
     @staticmethod
     def _verified_record(stored_id: str, document: str) -> TaskRecord:
@@ -691,35 +512,18 @@ class DuckDbTaskControlRegistry:
         return WorkItemState.from_identity(**identity)
 
     def _save_task(self, connection, task: TaskRecord) -> None:
-        connection.execute(
-            """
-            UPDATE workspace_task
-            SET lifecycle = ?, record_json = ?, updated_at = ?
-            WHERE task_id = ?
-            """,
-            [
-                task.lifecycle.value,
-                self._json(task),
-                self._db_time(task.updated_at),
-                str(task.task_id),
-            ],
-        )
+        attrs = {"lifecycle": task.lifecycle.value, "updated_at": self._db_time(task.updated_at)}
+        self._record("task.saved", task.task_id, attrs, text=self._json(task))
 
-    def _save_work_item(self, connection, item: WorkItemState) -> None:
-        connection.execute(
-            """
-            UPDATE workspace_task_work_item
-            SET lifecycle = ?, state_json = ?, updated_at = ?
-            WHERE task_id = ? AND stage_id = ?
-            """,
-            [
-                item.lifecycle.value,
-                self._json(item),
-                self._db_time(item.updated_at),
-                str(item.task_id),
-                item.stage_id,
-            ],
-        )
+    def _save_work_item(self, connection, item: WorkItemState, ordinal: int | None = None) -> None:
+        attrs = {
+            "stage_id": item.stage_id,
+            "lifecycle": item.lifecycle.value,
+            "updated_at": self._db_time(item.updated_at),
+        }
+        if ordinal is not None:
+            attrs["ordinal"] = ordinal
+        self._record("work_item.saved", item.task_id, attrs, text=self._json(item))
 
     def _event(
         self,
@@ -735,18 +539,79 @@ class DuckDbTaskControlRegistry:
             "SELECT COALESCE(MAX(sequence), 0) + 1 FROM workspace_task_event WHERE task_id = ?",
             [str(task_id)],
         ).fetchone()[0]
-        connection.execute(
-            "INSERT INTO workspace_task_event VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                str(uuid4()),
-                str(task_id),
-                str(execution_id) if execution_id else None,
-                sequence,
-                kind,
-                self._json(details),
-                self._db_time(observed_at),
-            ],
-        )
+        attrs = {
+            "event_id": str(uuid4()),
+            "execution_id": str(execution_id) if execution_id else None,
+            "sequence": sequence,
+            "kind": kind,
+            "recorded_at": self._db_time(observed_at),
+        }
+        self._record("task.noted", task_id, attrs, text=self._json(details))
+
+    def _admitted(
+        self,
+        record: TaskRecord,
+        items: Iterable[WorkItemState],
+        *,
+        admission_sequence: int | None,
+        submitted_by: SubmittingAgent | None,
+        frozen: str | None,
+    ) -> None:
+        """Record a Task's admission: its sealed record and work items, and as its text the
+        frozen request it was admitted to do."""
+        ((_, version),) = package_versions(("alphalattice",))
+        attrs = {
+            "type": record.task_kind,
+            "product_version": str(version),
+            "input_hash": record.input.input_hash,
+            "plan_hash": record.plan.plan_hash,
+            "workflow_definition_hash": record.plan.workflow_definition_hash,
+            "admitted_at": self._db_time(record.admitted_at),
+            "admission_sequence": admission_sequence,
+            "submitted_by": None if submitted_by is None else submitted_by.model_dump(mode="json"),
+        }
+        self._record("task.requested", record.task_id, attrs, text=frozen)
+        self._save_task(None, record)
+        for ordinal, item in enumerate(items):
+            self._save_work_item(None, item, ordinal)
+
+    def _started(self, execution: TaskExecution) -> None:
+        attrs = {
+            "execution_id": str(execution.execution_id),
+            "graph_thread_id": execution.graph_thread_id,
+            "worker_instance_id": str(execution.worker_instance_id),
+            "compatibility_hash": execution.compatibility.compatibility_hash,
+            "started_at": self._db_time(execution.started_at),
+        }
+        self._record("execution.started", execution.task_id, attrs, text=self._json(execution))
+
+    def _resolved(self, task_id: UUID, command_id: object, at: str | None, resolution: str) -> None:
+        attrs = {"command_id": str(command_id), "resolved_at": at, "resolution": resolution}
+        self._record("command.resolved", task_id, attrs)
+
+    @staticmethod
+    def _beat(execution: TaskExecution, at: datetime) -> TaskExecution:
+        identity = execution.model_dump(mode="python", exclude={"execution_hash"})
+        identity["last_heartbeat_at"] = at
+        return TaskExecution.from_identity(**identity)
+
+    @classmethod
+    def _execution_row(
+        cls, connection: sqlite3.Connection, execution_id: object
+    ) -> TaskExecution | None:
+        """An execution as sealed at its start, resealed with its latest heartbeat if it beat."""
+        row = connection.execute(
+            "SELECT e.execution_json, h.last_heartbeat_at FROM workspace_task_execution e"
+            " LEFT JOIN workspace_task_heartbeat_at h ON h.execution_id = e.execution_id"
+            " WHERE e.execution_id = ?",
+            [str(execution_id)],
+        ).fetchone()
+        if row is None:
+            return None
+        execution = TaskExecution.model_validate_json(row[0])
+        if row[1] is None:
+            return execution
+        return cls._beat(execution, datetime.fromisoformat(row[1]).replace(tzinfo=UTC))
 
     def admit(
         self,
@@ -779,12 +644,19 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection):
             active = active_same_work(
-                connection, self._verified_record, input_envelope, plan, same_work
+                connection,
+                self.workspace_id,
+                self._verified_record,
+                input_envelope,
+                plan,
+                same_work,
             )
             if active is not None:
                 return TaskAdmission(record=active, duplicate_active=True)
             queued_count = connection.execute(
-                "SELECT COUNT(*) FROM workspace_task WHERE lifecycle = 'QUEUED'"
+                "SELECT COUNT(*) FROM workspace_task"
+                " WHERE workspace_id = ? AND lifecycle = 'QUEUED'",
+                [self.workspace_id],
             ).fetchone()[0]
             places, reason = waiting_places(read_queue_setting(self.database_path.parent))
             if queued_count >= places:
@@ -808,68 +680,43 @@ class DuckDbTaskControlRegistry:
             record = TaskRecord.from_identity(**identity)
             admission_sequence = connection.execute(
                 "SELECT COALESCE(MAX(admission_sequence), 0) + 1 FROM workspace_task"
+                " WHERE workspace_id = ?",
+                [self.workspace_id],
             ).fetchone()[0]
             submitted_by = self._submitted_by()
-            # The frozen request is written before its row, so the rows can be listed again from
-            # the requests if the store is lost (DA2).
-            written.append(
-                write_request(
-                    self.database_path.parent,
-                    TaskAdmissionRequest(
-                        task_id=task_id,
-                        task_kind=input_envelope.task_kind,
-                        input=input_envelope,
-                        goal=goal,
-                        plan=plan,
-                        admitted_at=observed_at,
-                        admission_sequence=admission_sequence,
-                        submitted_by=submitted_by,
-                    ),
+            items = [
+                WorkItemState.from_identity(
+                    task_id=task_id,
+                    stage_id=definition.stage_id,
+                    definition_hash=definition.definition_hash,
+                    lifecycle=WorkItemLifecycle.PENDING,
+                    attempt_count=0,
+                    evidence=(),
+                    failure_code=None,
+                    started_at=None,
+                    updated_at=observed_at,
+                    version=1,
                 )
+                for definition in plan.work_items
+            ]
+            # What the Task was admitted to do is its admission's text, frozen (DA2).
+            frozen = TaskAdmissionRequest(
+                task_id=task_id,
+                task_kind=input_envelope.task_kind,
+                input=input_envelope,
+                goal=goal,
+                plan=plan,
+                admitted_at=observed_at,
+                admission_sequence=admission_sequence,
+                submitted_by=submitted_by,
+            ).model_dump_json()
+            self._admitted(
+                record,
+                items,
+                admission_sequence=admission_sequence,
+                submitted_by=submitted_by,
+                frozen=frozen,
             )
-            connection.execute(
-                """INSERT INTO workspace_task
-                (task_id, task_kind, input_hash, plan_hash, lifecycle, record_json,
-                 admitted_at, updated_at, admission_sequence, submitted_by_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [
-                    str(task_id),
-                    input_envelope.task_kind,
-                    input_envelope.input_hash,
-                    plan.plan_hash,
-                    record.lifecycle.value,
-                    self._json(record),
-                    self._db_time(observed_at),
-                    self._db_time(observed_at),
-                    admission_sequence,
-                    None if submitted_by is None else submitted_by.model_dump_json(),
-                ],
-            )
-            for ordinal, definition in enumerate(plan.work_items):
-                item_identity = {
-                    "task_id": task_id,
-                    "stage_id": definition.stage_id,
-                    "definition_hash": definition.definition_hash,
-                    "lifecycle": WorkItemLifecycle.PENDING,
-                    "attempt_count": 0,
-                    "evidence": (),
-                    "failure_code": None,
-                    "started_at": None,
-                    "updated_at": observed_at,
-                    "version": 1,
-                }
-                item = WorkItemState.from_identity(**item_identity)
-                connection.execute(
-                    "INSERT INTO workspace_task_work_item VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        str(task_id),
-                        definition.stage_id,
-                        ordinal,
-                        item.lifecycle.value,
-                        self._json(item),
-                        self._db_time(observed_at),
-                    ],
-                )
             self._event(
                 connection,
                 task_id=task_id,
@@ -884,14 +731,7 @@ class DuckDbTaskControlRegistry:
             )
             return TaskAdmission(record=record, duplicate_active=False)
 
-        written: list[Path] = []
-        try:
-            return self._write(operation)
-        except BaseException:
-            # The admission did not happen, so neither did its frozen request.
-            for path in written:
-                path.unlink(missing_ok=True)
-            raise
+        return self._write(operation)
 
     def check_capacity(self) -> None:
         """Refuse as admission would when every waiting place is taken.
@@ -901,7 +741,9 @@ class DuckDbTaskControlRegistry:
         """
         queued = self._read(
             lambda connection: connection.execute(
-                "SELECT COUNT(*) FROM workspace_task WHERE lifecycle = 'QUEUED'"
+                "SELECT COUNT(*) FROM workspace_task"
+                " WHERE workspace_id = ? AND lifecycle = 'QUEUED'",
+                [self.workspace_id],
             ).fetchone()[0]
         )
         places, reason = waiting_places(read_queue_setting(self.database_path.parent))
@@ -938,7 +780,7 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection):
             # The queue's head in admission order, the order the dispatcher runs them in.
-            row = connection.execute(_QUEUE_HEAD).fetchone()
+            row = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
             if row is None:
                 return None
             current = self._verified_record(str(row[0]), row[1])
@@ -970,20 +812,7 @@ class DuckDbTaskControlRegistry:
                 failure_code=None,
             )
             self._save_task(connection, task)
-            connection.execute(
-                "INSERT INTO workspace_task_execution VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    str(execution.execution_id),
-                    str(execution.task_id),
-                    execution.graph_thread_id,
-                    str(execution.worker_instance_id),
-                    compatibility.compatibility_hash,
-                    self._json(execution),
-                    False,
-                    self._db_time(observed_at),
-                    self._db_time(observed_at),
-                ],
-            )
+            self._started(execution)
             self._event(
                 connection,
                 task_id=task.task_id,
@@ -1009,7 +838,7 @@ class DuckDbTaskControlRegistry:
         def operation(connection) -> bool:  # type: ignore[no-untyped-def]
             current = self._task_row(connection, task_id)
             if current.lifecycle is TaskLifecycle.QUEUED:
-                head = connection.execute(_QUEUE_HEAD).fetchone()
+                head = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
                 if head is None or str(head[0]) != str(task_id):
                     return False
             elif current.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
@@ -1026,11 +855,12 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection) -> tuple[str, ...]:  # type: ignore[no-untyped-def]
             holders = connection.execute(
-                "SELECT task_id FROM workspace_task WHERE lifecycle IN ("
+                "SELECT task_id FROM workspace_task WHERE workspace_id = ? AND lifecycle IN ("
                 + _RUNNING_PLACE_SQL
-                + ") ORDER BY task_id"
+                + ") ORDER BY task_id",
+                [self.workspace_id],
             ).fetchall()
-            head = connection.execute(_QUEUE_HEAD).fetchone()
+            head = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
             return (*(str(row[0]) for row in holders), "|", "" if head is None else str(head[0]))
 
         return tuple(self._read(operation))
@@ -1039,10 +869,9 @@ class DuckDbTaskControlRegistry:
         """Whether no other Task holds a running place, or a place is free and every holder and
         this Task may run beside others (`tasks_running`)."""
         rows = connection.execute(
-            "SELECT task_id, record_json FROM workspace_task WHERE task_id <> ? AND lifecycle IN ("
-            + _RUNNING_PLACE_SQL
-            + ")",
-            [str(task.task_id)],
+            "SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ?"
+            " AND task_id <> ? AND lifecycle IN (" + _RUNNING_PLACE_SQL + ")",
+            [self.workspace_id, str(task.task_id)],
         ).fetchall()
         if not rows:
             return True
@@ -1085,12 +914,9 @@ class DuckDbTaskControlRegistry:
                 raise TaskTransitionRejected("task workflow compatibility changed before recovery")
             if current.latest_execution_id is None:
                 raise TaskTransitionRejected("recovery task has no prior execution")
-            prior = TaskExecution.model_validate_json(
-                connection.execute(
-                    "SELECT execution_json FROM workspace_task_execution WHERE execution_id = ?",
-                    [str(current.latest_execution_id)],
-                ).fetchone()[0]
-            )
+            prior = self._execution_row(connection, current.latest_execution_id)
+            if prior is None:
+                raise KeyError(current.latest_execution_id)
             if prior.compatibility != compatibility:
                 raise TaskTransitionRejected("task execution compatibility changed before recovery")
             rows = connection.execute(
@@ -1132,20 +958,7 @@ class DuckDbTaskControlRegistry:
                 failure_code=None,
             )
             self._save_task(connection, task)
-            connection.execute(
-                "INSERT INTO workspace_task_execution VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    str(execution.execution_id),
-                    str(execution.task_id),
-                    execution.graph_thread_id,
-                    str(execution.worker_instance_id),
-                    compatibility.compatibility_hash,
-                    self._json(execution),
-                    False,
-                    self._db_time(observed_at),
-                    self._db_time(observed_at),
-                ],
-            )
+            self._started(execution)
             self._event(
                 connection,
                 task_id=task_id,
@@ -1349,17 +1162,13 @@ class DuckDbTaskControlRegistry:
                 )
             if receipt.status != "VERIFIED":
                 raise TaskTransitionRejected("only a verified receipt can complete work")
-            connection.execute(
-                "INSERT INTO workspace_task_stage_receipt VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    receipt.receipt_hash,
-                    str(receipt.task_id),
-                    str(receipt.execution_id),
-                    receipt.stage_id,
-                    self._json(receipt),
-                    self._db_time(receipt.observed_at),
-                ],
-            )
+            verified = {
+                "receipt_hash": receipt.receipt_hash,
+                "execution_id": str(receipt.execution_id),
+                "stage_id": receipt.stage_id,
+                "observed_at": self._db_time(receipt.observed_at),
+            }
+            self._record("stage.verified", receipt.task_id, verified, text=self._json(receipt))
             item = self._replace_work_item(
                 current,
                 observed_at=receipt.observed_at,
@@ -1512,7 +1321,7 @@ class DuckDbTaskControlRegistry:
                 """
                 SELECT command_json FROM workspace_task_command
                 WHERE task_id = ?
-                  AND json_extract_string(command_json, '$.kind') = 'CANCEL_REQUESTED'
+                  AND json_extract(command_json, '$.kind') = 'CANCEL_REQUESTED'
                 ORDER BY accepted_at DESC LIMIT 1
                 """,
                 [str(task_id)],
@@ -1556,18 +1365,14 @@ class DuckDbTaskControlRegistry:
                 resolution = None
                 resolved_at = None
             self._save_task(connection, task)
-            connection.execute(
-                "INSERT INTO workspace_task_command VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    str(command.command_id),
-                    str(task_id),
-                    command.command_hash,
-                    self._json(command),
-                    self._db_time(observed_at),
-                    resolved_at,
-                    resolution,
-                ],
-            )
+            accepted = {
+                "command_id": str(command.command_id),
+                "command_hash": command.command_hash,
+                "accepted_at": self._db_time(observed_at),
+            }
+            self._record("command.accepted", task_id, accepted, text=self._json(command))
+            if resolution is not None:
+                self._resolved(task_id, command.command_id, resolved_at, resolution)
             self._event(
                 connection,
                 task_id=task_id,
@@ -1598,7 +1403,7 @@ class DuckDbTaskControlRegistry:
                 raise TaskTransitionRejected("task has no pending cancellation")
             accepted = connection.execute(
                 """SELECT 1 FROM workspace_task_command WHERE task_id = ?
-                   AND json_extract_string(command_json, '$.kind') = 'CANCEL_REQUESTED'
+                   AND json_extract(command_json, '$.kind') = 'CANCEL_REQUESTED'
                    AND resolution IS NULL LIMIT 1""",
                 [str(task_id)],
             ).fetchone()
@@ -1670,14 +1475,12 @@ class DuckDbTaskControlRegistry:
             failure_code=failure_code,
         )
         self._save_task(connection, task)
-        connection.execute(
-            """
-                UPDATE workspace_task_command
-                SET resolved_at = ?, resolution = 'CANCELLED'
-                WHERE task_id = ? AND resolution IS NULL
-                """,
-            [self._db_time(observed_at), str(task_id)],
-        )
+        for (command_id,) in connection.execute(
+            "SELECT command_id FROM workspace_task_command WHERE task_id = ? AND resolution IS NULL"
+            " ORDER BY accepted_at, command_id",
+            [str(task_id)],
+        ).fetchall():
+            self._resolved(task_id, command_id, self._db_time(observed_at), "CANCELLED")
         self._event(
             connection,
             task_id=task_id,
@@ -1704,26 +1507,19 @@ class DuckDbTaskControlRegistry:
             rows = connection.execute(
                 "SELECT t.task_id, t.record_json FROM workspace_task t "
                 "LEFT JOIN workspace_task_projection p ON p.task_id = t.task_id "
-                "WHERE t.lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED') "
-                "OR p.task_id IS NULL "
-                "OR NOT json_valid(t.record_json) "
-                "OR p.task_record_hash IS DISTINCT FROM json_extract_string("
-                "CASE WHEN json_valid(t.record_json) THEN t.record_json ELSE '{}' END, "
-                "'$.record_hash')"
+                "WHERE t.workspace_id = ? AND (t.lifecycle NOT IN ('SUCCEEDED', 'BLOCKED',"
+                " 'CANCELLED') OR p.task_id IS NULL"
+                " OR p.task_record_hash IS NOT json_extract(t.record_json, '$.record_hash'))",
+                [self.workspace_id],
             ).fetchall()
             for row in rows:
                 task = self._verified_record(str(row[0]), row[1])
                 if task.lifecycle in _TERMINAL_TASKS:
                     continue
                 if task.lifecycle in {TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED}:
-                    prior_row = connection.execute(
-                        "SELECT execution_json FROM workspace_task_execution "
-                        "WHERE execution_id = ?",
-                        [str(task.latest_execution_id)],
-                    ).fetchone()
-                    if prior_row is None:
+                    prior = self._execution_row(connection, task.latest_execution_id)
+                    if prior is None:
                         raise TaskTransitionRejected("task_control.orphan_execution_absent")
-                    prior = TaskExecution.model_validate_json(prior_row[0])
                     if (
                         prior.task_id != task.task_id
                         or prior.execution_id != task.latest_execution_id
@@ -1798,27 +1594,17 @@ class DuckDbTaskControlRegistry:
         """
 
         def operation(connection):
-            row = connection.execute(
-                "SELECT execution_json FROM workspace_task_execution WHERE execution_id = ?",
-                [str(execution_id)],
-            ).fetchone()
-            if row is None:
+            current = self._execution_row(connection, execution_id)
+            if current is None:
                 raise KeyError(execution_id)
-            current = TaskExecution.model_validate_json(row[0])
             if current.worker_instance_id != worker_instance_id:
                 raise TaskTransitionRejected("heartbeat worker identity is stale")
-            identity = current.model_dump(mode="python", exclude={"execution_hash"})
-            identity["last_heartbeat_at"] = observed_at
-            execution = TaskExecution.from_identity(**identity)
-            connection.execute(
-                """
-                UPDATE workspace_task_execution
-                SET execution_json = ?, last_heartbeat_at = ?
-                WHERE execution_id = ?
-                """,
-                [self._json(execution), self._db_time(observed_at), str(execution_id)],
+            connection.execute(  # working state: a beat is not history (no event)
+                "INSERT INTO workspace_task_heartbeat_at VALUES (?, ?) ON CONFLICT (execution_id)"
+                " DO UPDATE SET last_heartbeat_at = excluded.last_heartbeat_at",
+                [str(execution_id), self._db_time(observed_at)],
             )
-            return execution
+            return self._beat(current, observed_at)
 
         return self._write(operation)
 
@@ -1891,15 +1677,17 @@ class DuckDbTaskControlRegistry:
             ("task", task_id), lambda: self._read(lambda c: self._task_row(c, task_id))
         )
 
-    @staticmethod
-    def _wakes_from(connection, task_id: UUID | None = None) -> tuple[dict[str, Any], ...]:  # type: ignore[no-untyped-def]
+    def _wakes_from(
+        self, connection: sqlite3.Connection, task_id: UUID | None = None
+    ) -> tuple[dict[str, Any], ...]:
         """Fold each Codex wake's journal events into its current receipt (WAKE)."""
         rows = connection.execute(
-            "SELECT task_id, kind, details_json, recorded_at FROM workspace_task_event "
-            f"WHERE kind IN ({', '.join('?' * len(_WAKE_STATES))})"
-            + (" AND task_id = ?" if task_id is not None else "")
-            + " ORDER BY task_id, sequence",
-            [*_WAKE_STATES, *([str(task_id)] if task_id is not None else [])],
+            "SELECT e.task_id, e.kind, e.details_json, e.recorded_at FROM workspace_task_event e"
+            " JOIN workspace_task t ON t.task_id = e.task_id"
+            f" WHERE t.workspace_id = ? AND e.kind IN ({', '.join('?' * len(_WAKE_STATES))})"
+            + (" AND e.task_id = ?" if task_id is not None else "")
+            + " ORDER BY e.task_id, e.sequence",
+            [self.workspace_id, *_WAKE_STATES, *([str(task_id)] if task_id is not None else [])],
         ).fetchall()
         wakes: dict[str, dict[str, Any]] = {}
         for stored_task, kind, details_json, recorded_at in rows:
@@ -1912,7 +1700,7 @@ class DuckDbTaskControlRegistry:
             held.update(
                 details,
                 state=_WAKE_STATES[kind],
-                recorded_at=recorded_at.replace(tzinfo=UTC).isoformat(),
+                recorded_at=datetime.fromisoformat(recorded_at).replace(tzinfo=UTC).isoformat(),
             )
         return tuple(wakes.values())
 
@@ -1997,7 +1785,11 @@ class DuckDbTaskControlRegistry:
                 or self._task_row(connection, task_id).lifecycle.value != lifecycle
             ):
                 return None
-            attempt = {"registration_id": registration_id, "event": event, "lifecycle": lifecycle}
+            attempt: dict[str, object] = {
+                "registration_id": registration_id,
+                "event": event,
+                "lifecycle": lifecycle,
+            }
             self._event(
                 connection,
                 task_id=task_id,
@@ -2042,24 +1834,26 @@ class DuckDbTaskControlRegistry:
         """Close each send a stopped Host left attempted as uncertain, without sending again."""
         result = {"channel": "codex-queue", "delivered": False, "failure": WAKE_UNCERTAIN}
         interrupted = [w for w in self.wake_registrations() if w["state"] == "ATTEMPTED"]
-        for held in interrupted:
+        for wake in interrupted:
             self.finish_wake(
-                held["registration_id"], UUID(held["task_id"]), result, observed_at=observed_at
+                wake["registration_id"], UUID(wake["task_id"]), result, observed_at=observed_at
             )
         return tuple({**held, "state": "UNDELIVERED", "result": result} for held in interrupted)
 
     @staticmethod
     def _recovery_links_from(
-        connection, task_id: UUID | None = None
-    ) -> tuple[TaskRecoveryLink, ...]:  # type: ignore[no-untyped-def]
+        connection: sqlite3.Connection, workspace_id: str, task_id: UUID | None = None
+    ) -> tuple[TaskRecoveryLink, ...]:
         """Read and verify links in one journal query, optionally by source Task."""
         if task_id is None:
             rows = connection.execute(
                 """
-                SELECT task_id, details_json, recorded_at FROM workspace_task_event
-                WHERE kind = ? ORDER BY recorded_at, task_id, sequence
+                SELECT e.task_id, e.details_json, e.recorded_at FROM workspace_task_event e
+                JOIN workspace_task t ON t.task_id = e.task_id
+                WHERE t.workspace_id = ? AND e.kind = ?
+                ORDER BY e.recorded_at, e.task_id, e.sequence
                 """,
-                [_RECOVERY_LINK_EVENT],
+                [workspace_id, _RECOVERY_LINK_EVENT],
             ).fetchall()
         else:
             rows = connection.execute(
@@ -2076,7 +1870,7 @@ class DuckDbTaskControlRegistry:
                 if str(link.source_task_id) != str(stored_task_id):
                     raise ValueError("task recovery link source differs from its journal row")
                 if (
-                    not isinstance(event_time, datetime)
+                    not isinstance(event_time, str)
                     or DuckDbTaskControlRegistry._db_time(link.recorded_at) != event_time
                 ):
                     raise ValueError("task recovery link clock differs from its journal row")
@@ -2150,7 +1944,9 @@ class DuckDbTaskControlRegistry:
         """
         links = self._answered(
             ("recovery_links", task_id),
-            lambda: self._read(lambda connection: self._recovery_links_from(connection, task_id)),
+            lambda: self._read(
+                lambda connection: self._recovery_links_from(connection, self.workspace_id, task_id)
+            ),
         )
         # A frozen contract can still carry a mutable request dictionary. Never expose
         # the owner's cached seal to a caller that may edit its returned request.
@@ -2186,7 +1982,7 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection):  # type: ignore[no-untyped-def]
             source = self._task_row(connection, source_task_id)
-            links = self._recovery_links_from(connection, source_task_id)
+            links = self._recovery_links_from(connection, self.workspace_id, source_task_id)
             existing = next(
                 (
                     current
@@ -2255,10 +2051,10 @@ class DuckDbTaskControlRegistry:
         def read() -> tuple[tuple[UUID, SubmittingAgent], ...]:
             rows = self._read(
                 lambda connection: connection.execute(
-                    "SELECT task_id, submitted_by_json FROM workspace_task "
-                    "WHERE json_extract_string(submitted_by_json, '$.session') = ? "
-                    "ORDER BY admission_sequence DESC NULLS LAST, admitted_at DESC, task_id DESC",
-                    [session],
+                    "SELECT task_id, submitted_by_json FROM workspace_task WHERE workspace_id = ?"
+                    " AND json_extract(submitted_by_json, '$.session') = ?"
+                    " ORDER BY admission_sequence DESC NULLS LAST, admitted_at DESC, task_id DESC",
+                    [self.workspace_id, session],
                 ).fetchall()
             )
             return tuple(
@@ -2266,105 +2062,6 @@ class DuckDbTaskControlRegistry:
             )
 
         return self._answered(("submitted_by_session", session), read)
-
-    def rebuild_from_requests(self, *, observed_at: datetime) -> tuple[TaskRecord, ...]:
-        """List again, from their frozen requests, the Tasks this store no longer holds.
-
-        A Task whose row was lost is written `BLOCKED` with `task_control.ledger_rebuilt`: what
-        it was admitted to do reads again, its progress is not claimed, and the same request
-        admits it anew, each owner reusing what it sealed.
-        """
-        self._db_time(observed_at)
-        requests = read_requests(self.database_path.parent)
-        if not requests:
-            return ()
-
-        def operation(connection):
-            rows = connection.execute(
-                "SELECT task_id, admission_sequence FROM workspace_task"
-            ).fetchall()
-            held = {str(row[0]) for row in rows}
-            # A place another Task took since is left to the admission time's order.
-            taken = {row[1] for row in rows if row[1] is not None}
-            rebuilt: list[TaskRecord] = []
-            for request in requests:
-                if str(request.task_id) in held:
-                    continue
-                record = TaskRecord.from_identity(
-                    task_id=request.task_id,
-                    task_kind=request.task_kind,
-                    input=request.input,
-                    goal=request.goal,
-                    plan=request.plan,
-                    lifecycle=TaskLifecycle.BLOCKED,
-                    active_work_item_id=None,
-                    latest_execution_id=None,
-                    admitted_at=request.admitted_at,
-                    started_at=None,
-                    updated_at=observed_at,
-                    failure_code="task_control.ledger_rebuilt",
-                    version=1,
-                )
-                connection.execute(
-                    """INSERT INTO workspace_task
-                    (task_id, task_kind, input_hash, plan_hash, lifecycle, record_json,
-                     admitted_at, updated_at, admission_sequence, submitted_by_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    [
-                        str(record.task_id),
-                        record.task_kind,
-                        record.input.input_hash,
-                        record.plan.plan_hash,
-                        record.lifecycle.value,
-                        self._json(record),
-                        self._db_time(request.admitted_at),
-                        self._db_time(observed_at),
-                        None if request.admission_sequence in taken else request.admission_sequence,
-                        None
-                        if request.submitted_by is None
-                        else request.submitted_by.model_dump_json(),
-                    ],
-                )
-                for ordinal, definition in enumerate(record.plan.work_items):
-                    item = WorkItemState.from_identity(
-                        task_id=record.task_id,
-                        stage_id=definition.stage_id,
-                        definition_hash=definition.definition_hash,
-                        lifecycle=WorkItemLifecycle.PENDING,
-                        attempt_count=0,
-                        evidence=(),
-                        failure_code=None,
-                        started_at=None,
-                        updated_at=observed_at,
-                        version=1,
-                    )
-                    connection.execute(
-                        "INSERT INTO workspace_task_work_item VALUES (?, ?, ?, ?, ?, ?)",
-                        [
-                            str(record.task_id),
-                            definition.stage_id,
-                            ordinal,
-                            item.lifecycle.value,
-                            self._json(item),
-                            self._db_time(observed_at),
-                        ],
-                    )
-                self._event(
-                    connection,
-                    task_id=record.task_id,
-                    execution_id=None,
-                    kind="task.rebuilt_from_request",
-                    details={
-                        "admission_sequence": request.admission_sequence,
-                        "detail": LEDGER_REBUILT_DETAIL,
-                        "next_detail": LEDGER_REBUILT_NEXT,
-                    },
-                    observed_at=observed_at,
-                )
-                rebuilt.append(record)
-            return tuple(rebuilt)
-
-        return self._write(operation)
 
     def work_items(self, task_id: UUID) -> tuple[WorkItemState, ...]:
         """Read the task's work-item states from the durable authority.
@@ -2448,13 +2145,10 @@ class DuckDbTaskControlRegistry:
         """
 
         def operation(connection):
-            row = connection.execute(
-                "SELECT execution_json FROM workspace_task_execution WHERE execution_id = ?",
-                [str(execution_id)],
-            ).fetchone()
-            if row is None:
+            execution = self._execution_row(connection, execution_id)
+            if execution is None:
                 raise KeyError(execution_id)
-            return TaskExecution.model_validate_json(row[0])
+            return execution
 
         return self._read(operation)
 
@@ -2464,44 +2158,46 @@ class DuckDbTaskControlRegistry:
         Returns:
             The recorded task sequence.
         """
-        return self._answered("tasks", lambda: self._read(self._tasks_from))
+        return self._answered(
+            "tasks", lambda: self._read(lambda c: self._tasks_from(c, self.workspace_id))
+        )
 
     def record_collection(self) -> TaskRecordBatch:
         """Read every canonical row, retaining peers beside named unreadable records."""
-        return self._answered("record_collection", lambda: self._read(self._record_collection_from))
+        return self._answered(
+            "record_collection",
+            lambda: self._read(lambda c: self._record_collection_from(c, self.workspace_id)),
+        )
 
     def has_tasks(self, task_kind: str) -> bool:
         """Whether any Task of this kind is recorded: one count, no record validated."""
 
         def count(connection) -> bool:  # type: ignore[no-untyped-def]
             row = connection.execute(
-                "SELECT count(*) FROM workspace_task WHERE task_kind = ?", [task_kind]
+                "SELECT count(*) FROM workspace_task WHERE workspace_id = ? AND task_kind = ?",
+                [self.workspace_id, task_kind],
             ).fetchone()
             return bool(row[0])
 
         return bool(self._answered(("has_tasks", task_kind), lambda: self._read(count)))
 
     @staticmethod
-    def _tasks_from(connection) -> tuple[TaskRecord, ...]:
-        batch = DuckDbTaskControlRegistry._record_collection_from(connection)
+    def _tasks_from(connection: sqlite3.Connection, workspace_id: str) -> tuple[TaskRecord, ...]:
+        batch = DuckDbTaskControlRegistry._record_collection_from(connection, workspace_id)
         if batch.refused_task_ids:
             raise TaskRecordAuthorityError(batch.refused_task_ids)
         return batch.records
 
     @staticmethod
-    def _record_collection_from(connection) -> TaskRecordBatch:
-        columns = {
-            row[1] for row in connection.execute("PRAGMA table_info('workspace_task')").fetchall()
-        }
-        order = (
-            "admission_sequence NULLS FIRST, admitted_at, task_id"
-            if "admission_sequence" in columns
-            else "admitted_at, task_id"
-        )
+    def _record_collection_from(
+        connection: sqlite3.Connection, workspace_id: str
+    ) -> TaskRecordBatch:
         records: list[TaskRecord] = []
         refused_task_ids: list[str] = []
         for stored_id, document in connection.execute(
-            "SELECT task_id, record_json FROM workspace_task ORDER BY " + order
+            "SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ?"
+            " ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id",
+            [workspace_id],
         ).fetchall():
             try:
                 record = DuckDbTaskControlRegistry._verified_record(str(stored_id), document)
@@ -2513,11 +2209,12 @@ class DuckDbTaskControlRegistry:
 
     @classmethod
     def read_existing_tasks(cls, database_path: Path) -> tuple[TaskRecord, ...]:
-        """Admission/setup readback without bootstrapping a Task database."""
-        if not database_path.is_file():
-            return ()
-        with open_workspace_database(database_path, read_only=True) as connection:
-            return cls._tasks_from(connection)
+        """A workspace's Tasks, read without taking its data root: a 0.2.7 store's not yet moved
+        onto the log, else the log's for its folder (none when it knows no such workspace)."""
+        if (stored := stored_records(database_path)) is not None:
+            return stored
+        with log_of(database_path) as (connection, workspace_id):
+            return () if workspace_id is None else cls._tasks_from(connection, workspace_id)
 
     def active_task(self) -> TaskRecord | None:
         """The first Task holding a running place, else the first one waiting for its recovery."""
@@ -2537,20 +2234,7 @@ class DuckDbTaskControlRegistry:
         """The queue's head: the first Task waiting, in admission order."""
 
         def head(connection) -> TaskRecord | None:  # type: ignore[no-untyped-def]
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info('workspace_task')").fetchall()
-            }
-            order = (
-                "admission_sequence NULLS FIRST, admitted_at, task_id"
-                if "admission_sequence" in columns
-                else "admitted_at, task_id"
-            )
-            row = connection.execute(
-                "SELECT task_id, record_json FROM workspace_task "
-                "WHERE lifecycle = ? ORDER BY " + order + " LIMIT 1",
-                [TaskLifecycle.QUEUED.value],
-            ).fetchone()
+            row = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
             if row is None:
                 return None
             stored_task_id = str(row[0])
@@ -2597,37 +2281,23 @@ class DuckDbTaskControlRegistry:
         Returns:
             The projection bound to the same task-record version as its read inputs.
         """
-        if getattr(self._read_scopes, "connection", None) is not None:
-            # An application read boundary already owns a read-only connection. Rebuild from
-            # the canonical records for this answer, but leave cache publication to a later
-            # lawful read outside that scope.
-            return self._project(task_id)[0]
-        return self._answered(
-            ("projection", task_id),
-            lambda: self._with_connection_lock(lambda: self._safe_projection(task_id)),
-        )
+        return self._answered(("projection", task_id), lambda: self._safe_projection(task_id))
 
     def board(self, task_id: UUID) -> TaskBoardSnapshot:
-        """Read the task board and projection under one connection lock.
+        """Read the task board and projection as one state of the log.
 
-        The record, work board, latest execution and projection of one Task
-        under the same lock `safe_projection` holds, so a reader that explains
-        the Task never combines parts of different versions.
+        The record, work board, latest execution and projection of one Task in one read scope,
+        so a reader that explains the Task never combines parts of different versions.
         """
 
-        def read() -> TaskBoardSnapshot:
-            # The board's own reads share one read-only connection; the scope is
-            # closed before the projection read, whose own scope closes before
-            # the publication it may write. The lock, held throughout, is what
-            # keeps every part at one record version.
-            with self.read_scope():
-                task = self.task(task_id)
-                work_items = self.work_items(task_id)
-                execution = (
-                    self.execution(task.latest_execution_id)
-                    if task.latest_execution_id is not None
-                    else None
-                )
+        with self.read_scope():
+            task = self.task(task_id)
+            work_items = self.work_items(task_id)
+            execution = (
+                self.execution(task.latest_execution_id)
+                if task.latest_execution_id is not None
+                else None
+            )
             return TaskBoardSnapshot(
                 task=task,
                 work_items=work_items,
@@ -2635,17 +2305,12 @@ class DuckDbTaskControlRegistry:
                 projection=self._safe_projection(task_id),
             )
 
-        return self._with_connection_lock(read)
-
     def _safe_projection(self, task_id: UUID) -> TaskSafeProjection:
         with self.read_scope():
             projection, published_json = self._project(task_id)
         # A status read publishes its projection only when the projection
         # moved; an unchanged one (a poll between heartbeats) writes nothing.
-        if (
-            published_json != self._json(projection)
-            and getattr(self._read_scopes, "connection", None) is None
-        ):
+        if published_json != self._json(projection):
             self._publish_projection(projection)
         return projection
 
@@ -2746,9 +2411,11 @@ class DuckDbTaskControlRegistry:
                 TaskSafeProjection.model_validate_json(row[0])
                 for row in connection.execute(
                     """
-                    SELECT projection_json FROM workspace_task_projection
-                    ORDER BY updated_at DESC, task_id
-                    """
+                    SELECT p.projection_json FROM workspace_task_projection p
+                    JOIN workspace_task t ON t.task_id = p.task_id WHERE t.workspace_id = ?
+                    ORDER BY p.updated_at DESC, p.task_id
+                    """,
+                    [self.workspace_id],
                 ).fetchall()
             )
         )

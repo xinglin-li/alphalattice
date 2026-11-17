@@ -25,7 +25,7 @@ TEST_SOURCE = "src/alphalattice/interface/local_application/trial_history.py"
 
 @pytest.mark.proves("local_application.research_runs_are_recorded_as_trials")
 def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
-    real_risk_workspace: RealRiskWorkspace, tmp_path: Path
+    real_risk_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The first run's evidence is its trial's artifact; a rerun reusing it is a second trial
     with no artifact of its own; the history replays ALL EQUAL."""
@@ -38,7 +38,8 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     attributed = replace(sealed, hypothesis_id="h1")
     assert canonical_hash(sealed.document) == canonical_hash(attributed.document)
     assert sealed.program.program_hash == attributed.program.program_hash
-    assert history.open_history("w-risk", "risk", root) is None
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the Host's data root
+    history.open_history("w-risk", "risk", real_risk_workspace.workspace)
     try:
         history.record("goal.set", ("goal", "g1"), {"title": "A goal"})
         history.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="A claim")

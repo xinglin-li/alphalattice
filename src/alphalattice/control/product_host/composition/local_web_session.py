@@ -238,7 +238,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
-from alphalattice.kernel.data_layer.history import close_history
+from alphalattice.kernel.data_layer.history import release_history
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
@@ -580,6 +580,7 @@ class LocalPortfolioWebSession:
     native_usage_reader: NativeUsageReader | None = field(default=None, init=False)
     web: LocalWebService | None = field(default=None, init=False)
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
+    _history: bool = field(default=False, init=False, repr=False)
     review: EvidenceReviewApplication | None = field(default=None, init=False)
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
     stop_requested: Callable[[], bool] = field(default=bool, init=False)
@@ -630,19 +631,14 @@ class LocalPortfolioWebSession:
         return value
 
     def start(self) -> str:
-        """Acquire, compose, bind -- or leave nothing behind.
-
-        Half of this is a lease and a worker thread, and the other half is a
-        socket. A failure part-way through used to leave the first half live
-        with no URL to stop it through, which is a held workspace and a
-        non-daemon thread the process cannot exit past. So the whole thing is
-        one transaction: anything already started is torn down, in the order a
-        healthy stop uses, before the failure is re-raised.
-        """
+        """Acquire, compose, bind -- or leave nothing behind: a failure part-way tears down what
+        already started (the history, a lease, a non-daemon worker) in a healthy stop's order,
+        and is re-raised, so no held workspace is left with no URL to stop it through."""
         try:
             WorkspaceApplicationSession.open_history(
                 self.workspace_manifest.workspace_id, self.workspace, self.clock
             )
+            self._history = True
             return self._start()
         except BaseException:
             self._teardown(timeout=None)
@@ -1036,7 +1032,9 @@ class LocalPortfolioWebSession:
             self.review_authority = None
         if self.review is not None:
             self.review.close_source()
-        close_history()
+        if self._history:
+            self._history = False
+            release_history()
         if self.session is not None:
             if self.client_connection is not None:
                 remove_client_connection(self.client_connection)

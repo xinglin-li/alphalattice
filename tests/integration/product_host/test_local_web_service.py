@@ -67,7 +67,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 )
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.data_layer.log import COMMIT_TIMER, HostLog
 from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
@@ -79,6 +79,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _Resolver,
     _run_to_completion,
 )
+from tests.workspace_task_runner.task_control_support import task_log
 
 
 def test_every_response_carries_the_local_only_headers(
@@ -492,7 +493,7 @@ def test_read_routes_and_registered_read_requests_do_not_refresh_activity(live, 
     before = live.dispatcher._last_needed
     ticks = [before + 100]
     monkeypatch.setattr(dispatcher, "monotonic", lambda: ticks[0])
-    assert _json(live, "/api/session")["workspace_id"] == "qa-local-web"
+    assert _json(live, "/api/session")["workspace_id"] == live.workspace_manifest.workspace_id
     client.LocalResearchClient(live.workspace).request({"operation": "OPERATION_LIST"})
     assert live.dispatcher._last_needed == before
     live.web.application.route("POST", "/api/qa-write", mutates=True)(lambda *_: {"written": True})
@@ -712,7 +713,8 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
         assert session.session is None
         assert session.dispatcher is None
         assert session.web is None
-        assert {thread.name for thread in threading.enumerate()} - before == set()
+        # A Host a wider fixture serves may share this process's log, whose batch timer is its own.
+        assert {thread.name for thread in threading.enumerate()} - before <= {COMMIT_TIMER}
         assert steps == ([] if failure == "upgrade-backup" else ["step"])
         assert modes == (
             []
@@ -1076,7 +1078,7 @@ def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str
     if phase == "WORK":  # a stop during start resumes nothing, and its stop removes the connection
         early = LocalPortfolioWebSession(
             workspace=workspace,
-            workspace_manifest=_manifest("qa-hard-stop"),
+            workspace_manifest=_hard_stop(workspace),
             resolver=_Resolver(_resolved()),
         )
         early.stop_requested = lambda: True
@@ -1088,7 +1090,7 @@ def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str
         assert not published.path(Path(published.workspace)).exists()
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
-        workspace=workspace, workspace_manifest=_manifest("qa-hard-stop"), resolver=resolver
+        workspace=workspace, workspace_manifest=_hard_stop(workspace), resolver=resolver
     )
     service.start()
     try:
@@ -1133,7 +1135,7 @@ def test_export_round_trips_from_workspace_id_and_a_spec_path(
     "The manifest is enough to ask the same question again, and nothing more."
     result_hash = _run_to_completion(completed_host)
     manifest = _json(completed_host, f"/api/export?result_hash={result_hash}")
-    assert manifest["workspace_id"] == "qa-local-web"
+    assert manifest["workspace_id"] == completed_host.workspace_manifest.workspace_id
     assert manifest["result_hash"] == result_hash
     assert (
         manifest["command"] == "alphalattice --workspace <dir> strategy-book run --file <spec.json>"
@@ -1350,10 +1352,15 @@ def test_the_control_catalog_projection_matches_the_installed_catalog(
     ]
 
 
+def _hard_stop(workspace: Path) -> Any:
+    """The killed Host's manifest, by an id of its own: a wider Host may share this machine."""
+    return _manifest(f"qa-hard-stop-{workspace.parent.name}")
+
+
 def _crash_child(workspace: str, phase: str) -> None:
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
-        workspace=Path(workspace), workspace_manifest=_manifest("qa-hard-stop"), resolver=resolver
+        workspace=Path(workspace), workspace_manifest=_hard_stop(Path(workspace)), resolver=resolver
     )
     resolve = resolver.resolve
     verify = PortfolioResearchTaskAdapter.verify_stage
@@ -1951,7 +1958,6 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
 
 def test_unreadable_task_authority_refuses_recovery_and_writes(unreadable_task_records) -> None:
     "Unreadable canonical authority refuses recovery and writes without changing stored records."
-    import duckdb
 
     from alphalattice.control.task_control.registry import TaskRecordAuthorityError
     from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
@@ -1991,7 +1997,7 @@ def test_unreadable_task_authority_refuses_recovery_and_writes(unreadable_task_r
         registry.tasks()
     with pytest.raises(TaskRecordAuthorityError):
         live.operations.supervisor.supervise_once()
-    with duckdb.connect(str(registry.database_path), read_only=True) as connection:
+    with task_log() as connection:
         assert (
             connection.execute(
                 "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
@@ -2010,7 +2016,6 @@ def test_unreadable_task_authority_refuses_recovery_and_writes(unreadable_task_r
 def unreadable_task_records(live: LocalPortfolioWebSession, request):
     """Build separate canonical corruption and readable peers for each collection requirement."""
     damage = request.param
-    import duckdb
 
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,
@@ -2099,8 +2104,8 @@ def unreadable_task_records(live: LocalPortfolioWebSession, request):
     alien = TaskRecord.from_identity(
         **{**damaged.model_dump(exclude={"record_hash"}), "task_id": uuid4()}
     )
-    replacement = "{" if damage == "bad-json" else alien.model_dump_json()
-    with duckdb.connect(str(registry.database_path)) as connection:
+    replacement = '"damaged"' if damage == "bad-json" else alien.model_dump_json()
+    with task_log() as connection:
         connection.execute(
             "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],

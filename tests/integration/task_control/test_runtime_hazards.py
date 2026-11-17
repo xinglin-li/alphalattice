@@ -33,8 +33,8 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime import database
-from alphalattice.control.workspace_runtime.database import retain_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
@@ -52,36 +52,13 @@ def test_the_recorder_names_a_pair_taken_in_both_orders(
 ) -> None:
     with record_lock_order(monkeypatch) as recorder:
         gate = WorkspaceMutationGate()
-        registry = DuckDbTaskControlRegistry(resolve_task_control_database(tmp_path), gate=gate)
-        with gate.hold(), registry._connection_lock:
+        guard = history.held()._guard  # the registry's lock: the held log's one writer
+        with gate.hold(), guard:
             pass
         assert recorder.inversions() == []
-        with registry._connection_lock, gate.hold():
+        with guard, gate.hold():
             pass
     assert recorder.inversions() == [("gate", "registry")]
-
-
-def test_the_recorder_names_the_order_that_stalled_the_workbench(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Before `31c49cf3` a status read retained the registry read-only and then asked for its
-    connection lock, while a writer takes the lock and then the file read-write. The recorder
-    names that pair even when the two never meet on two threads."""
-
-    with record_lock_order(monkeypatch) as recorder:
-        registry = DuckDbTaskControlRegistry(
-            resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
-        )
-        first = task_contract()
-        now = datetime.now(UTC)
-        registry.admit(input_envelope=first[0], goal=first[1], plan=first[2], observed_at=now)
-        assert recorder.inversions() == []
-        with (
-            retain_workspace_database(registry.database_path, read_only=True),
-            registry._connection_lock,
-        ):
-            pass
-    assert recorder.inversions() == [("instance:research-task-control.duckdb", "registry")]
 
 
 def test_a_status_read_beside_a_starting_task_takes_no_pair_in_both_orders(

@@ -33,6 +33,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _json,
     serve_conflict,
 )
+from tests.pytest_environment import served_root
 
 
 def test_a_controls_template_is_saved_as_its_declaration(tmp_path, monkeypatch, capsys):
@@ -230,6 +231,8 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
     workspace = tmp_path / "served-workspace"
     environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
+    # Its Host is another process: a data root of its own, never one a module Host here holds.
+    environment["ALPHALATTICE_DATA_ROOT"] = str(served_root(workspace))
     interpreter = interpreter_path()
     output = (tmp_path / "startup.log").open("wb")
     child = subprocess.Popen(

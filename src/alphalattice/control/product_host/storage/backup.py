@@ -1,9 +1,11 @@
 """A workspace's held state, backed up outside it and restored onto a new directory (ST).
 
 The held set is what the storage map says nothing else rebuilds. The market store's revision
-journals, universe history, provider attempts, audit receipts and admission table, and the Task
-Control store, are exported table by table as Parquet through the owners' shared database
-instances; the Evidence and CRO records, the research programs and evidence, the Host's cases
+journals, universe history, provider attempts, audit receipts and admission table, and the
+workspace's Tasks, are exported table by table as Parquet: the market tables through the owner's
+shared database instance, the Tasks from the machine's log in the shape a 0.2.7 Task Control store
+held them, which a restore writes back as such a store for the workspace's first open to move onto
+the log it holds; the Evidence and CRO records, the research programs and evidence, the Host's cases
 and records and the manifest are copied as they are; the research inputs and the installed
 authority packages are listed by digest only, the first being the size of the store and the
 second rebuilt by its installation. Everything else (the Feature values, the Panels, the
@@ -39,10 +41,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     read_research_workspace_manifest,
 )
-from alphalattice.control.task_control.registry import (
-    TASK_CONTROL_DATABASE_FILENAME,
-    DuckDbTaskControlRegistry,
-)
+from alphalattice.control.task_control.registry import TASK_CONTROL_DATABASE_FILENAME
+from alphalattice.control.task_control.upgrade import create_0_2_7_store, task_rows
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
@@ -336,6 +336,13 @@ def _export_table(database: Path, table: str, staging: Path) -> tuple[Path, int]
     return target, arrow.num_rows
 
 
+def _export_rows(rows: list[dict[str, object]], table: str, staging: Path) -> tuple[Path, int]:
+    """Rows already read in a stable order, as Parquet."""
+    target = staging / f"{table}.parquet"
+    pq.write_table(pa.Table.from_pylist(rows), target, compression="zstd", write_statistics=False)
+    return target, len(rows)
+
+
 class WorkspaceBackups:
     """Back up one workspace's held state, and restore a generation onto a new directory."""
 
@@ -421,18 +428,30 @@ class WorkspaceBackups:
         absent: list[str] = []
         with staging_directory(self.root, ".export-") as staging_name:
             staging = Path(staging_name)
+            # A 0.2.7 store not yet moved onto the log is still its Tasks' authority: it is
+            # exported as it is; otherwise the log holds them.
+            legacy = self.workspace / TASK_CONTROL_DATABASE
+            unmoved = legacy if legacy.is_file() else None
+            tasks = {} if unmoved is not None else task_rows(legacy)
             for store, database, tables in (
                 ("market", self.workspace / MARKET_DATABASE, MARKET_TABLES),
-                ("task-control", self.workspace / TASK_CONTROL_DATABASE, TASK_CONTROL_TABLES),
+                ("task-control", unmoved, TASK_CONTROL_TABLES),
             ):
-                present = _existing_tables(database) if database.is_file() else set()
+                if database is None:
+                    present = set(tables)
+                else:
+                    present = _existing_tables(database) if database.is_file() else set()
                 for table in tables:
                     if stop():
                         raise _Stopped
                     if table not in present:
                         absent.append(f"{store}/{table}")
                         continue
-                    exported, rows = _export_table(database, table, staging)
+                    exported, rows = (
+                        _export_rows(tasks[table], table, staging)
+                        if database is None
+                        else _export_table(database, table, staging)
+                    )
                     digest, size = read_file(exported)
                     entries.append(
                         BackupEntry(
@@ -756,15 +775,18 @@ class WorkspaceBackups:
         }
 
     def _restore_task_control(self, target: Path, entries: list[BackupEntry]) -> None:
-        """Create the Task Control store by its owner, then fill each table by name."""
+        """Write the Tasks back as a 0.2.7 Task Control store, each table filled by name; the
+        restored workspace's first open moves them onto the log its process holds."""
         database = target / TASK_CONTROL_DATABASE
-        DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
+        create_0_2_7_store(database)
         connection = open_workspace_database(database, read_only=False)
         try:
             for entry in entries:
                 table = entry.path.split("/", 1)[1]
                 if table not in TASK_CONTROL_TABLES:
                     raise WorkspaceBackupError("workspace_backup.table_not_held")
+                if not entry.rows:
+                    continue  # an empty table's file names no columns to insert by
                 source = self.objects.path(entry.digest).as_posix().replace("'", "''")
                 connection.execute(
                     f"INSERT INTO \"{table}\" BY NAME SELECT * FROM read_parquet('{source}')"

@@ -25,6 +25,8 @@ from typing import Any
 import portalocker
 import pytest
 
+from alphalattice.control.task_control.upgrade import carry_tasks
+from alphalattice.kernel.data_layer.history import own_root
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,
@@ -37,6 +39,7 @@ from devtools.evaluation.golden_workspaces import (
     seal_payload,
     verified_payload,
 )
+from tests import pytest_environment as environment
 from tests.pytest_environment import RUNNING_TEST, golden_runtime
 
 
@@ -275,10 +278,19 @@ def session_workspace(
             target.mkdir()
             running = dict(RUNNING_TEST)
             RUNNING_TEST.update(id=None, private=False)  # a builder writes what it copies
+            # A seed is a machine of its own: every copy of one source is one workspace on a log,
+            # so a seed built on a shared root would carry its sibling seeds' Tasks too. Its root
+            # sits with the test machines', a plain path a log attaches by URI.
+            assert environment.DATA_ROOT is not None
+            machine = environment.DATA_ROOT / f"seed-{target.name}"
             try:
-                metadata = build(target / "workspace")
+                with own_root(machine):
+                    metadata = build(target / "workspace")
+                    # A seed outlives the data root it was built on: it carries its Tasks.
+                    carry_tasks(target / "workspace", target / "workspace")
             finally:
                 RUNNING_TEST.update(running)
+                shutil.rmtree(machine, ignore_errors=True)
             if not isinstance(metadata, dict) or not (target / "workspace").is_dir():
                 raise RuntimeError(
                     f"session workspace builder produced no workspace or metadata: {name}"
@@ -430,6 +442,7 @@ def copy_workspace(
         return dst
 
     shutil.copytree(source, target, copy_function=copy_file)
+    carry_tasks(Path(source), target)  # the copy opens with its source's Tasks
     return target
 
 

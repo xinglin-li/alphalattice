@@ -2,7 +2,8 @@
 -- Shape tiers (plan 0.2.8): [1] strict core  [2] versioned definitions  [3] contract content  [4] opaque bodies.
 -- Rule: `event` is the only truth. Every other table here is a projection the Host updates in the event's own
 -- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Two tables are the Host's private
--- working state and are not projections: cache_entry, deletion_queue.
+-- working state and are not projections: cache_entry, deletion_queue, workspace_task_heartbeat_at and
+-- workspace_task_projection.
 -- Times are integer microseconds since the Unix epoch, UTC (`*_us`). Every `*_seq` is a position in event.seq.
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;  -- FULL for the commits that cannot be obtained again (an answer, a paid call, a download)
@@ -262,6 +263,78 @@ CREATE TABLE wait (
   CHECK ((kind = 'event' AND event_type_id IS NOT NULL) OR (kind = 'time' AND fires_us IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX wait_open ON wait(kind, fires_us) WHERE resolved_seq IS NULL;
+
+-- Task Control's records (task_control.registry), each row the projection of the event that carries its sealed
+-- record. They keep the registry's own model: a Task's version, its work items, executions, notes, commands bound
+-- to the version they confirmed, and stage receipts; the same events project task and task_step above. Their times
+-- are the registry's own clock, UTC ISO text, as each record holds them.
+CREATE TABLE workspace_task (
+  task_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
+  task_kind TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  plan_hash TEXT NOT NULL,
+  lifecycle TEXT NOT NULL,
+  record_json TEXT CHECK (record_json IS NULL OR json_valid(record_json)),  -- set by its first save
+  admitted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  admission_sequence INTEGER,  -- NULL for a record admitted before admissions were ordered
+  submitted_by_json TEXT CHECK (submitted_by_json IS NULL OR json_valid(submitted_by_json))
+) STRICT, WITHOUT ROWID;
+CREATE UNIQUE INDEX workspace_task_admission_order ON workspace_task(workspace_id, admission_sequence);
+CREATE INDEX workspace_task_lifecycle ON workspace_task(workspace_id, lifecycle);
+
+CREATE TABLE workspace_task_work_item (
+  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  stage_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL,
+  lifecycle TEXT NOT NULL,
+  state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (task_id, stage_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE workspace_task_execution (
+  execution_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  graph_thread_id TEXT NOT NULL UNIQUE,
+  worker_instance_id TEXT NOT NULL,
+  compatibility_hash TEXT NOT NULL,
+  execution_json TEXT NOT NULL CHECK (json_valid(execution_json)),  -- as sealed at its start
+  started_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE workspace_task_event (
+  event_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  execution_id TEXT,
+  sequence INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  details_json TEXT NOT NULL CHECK (json_valid(details_json)),
+  recorded_at TEXT NOT NULL,
+  UNIQUE (task_id, sequence)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX workspace_task_event_kind ON workspace_task_event(kind, recorded_at);
+
+CREATE TABLE workspace_task_command (
+  command_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  command_hash TEXT NOT NULL UNIQUE,
+  command_json TEXT NOT NULL CHECK (json_valid(command_json)),
+  accepted_at TEXT NOT NULL,
+  resolved_at TEXT,
+  resolution TEXT
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE workspace_task_stage_receipt (
+  receipt_hash TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES workspace_task(task_id),
+  execution_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
+  observed_at TEXT NOT NULL,
+  UNIQUE (task_id, stage_id)
+) STRICT, WITHOUT ROWID;
 
 -- ===== [1] Research: state, action, effect, new state =====
 -- The action's definition. Its identity holds the method's lineage, its version, the parameters and the upstream
@@ -549,6 +622,21 @@ CREATE TABLE cache_entry (
   computed_us INTEGER NOT NULL,
   last_read_us INTEGER NOT NULL,  -- eviction reads it
   PRIMARY KEY (recipe_key, part, input_digest)
+) STRICT, WITHOUT ROWID;
+
+-- A running execution's latest business heartbeat, beside its sealed record; reading the execution reseals it with
+-- this time. A Task's lease is not yet a wait on the log.
+CREATE TABLE workspace_task_heartbeat_at (
+  execution_id TEXT PRIMARY KEY REFERENCES workspace_task_execution(execution_id),
+  last_heartbeat_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+-- Each Task's latest safe projection, derived from its records for a fast listing.
+CREATE TABLE workspace_task_projection (
+  task_id TEXT PRIMARY KEY REFERENCES workspace_task(task_id),
+  task_record_hash TEXT NOT NULL,
+  projection_json TEXT NOT NULL CHECK (json_valid(projection_json)),
+  updated_at TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
 
 -- Files to delete that another process still holds open; retried, never blocking.
