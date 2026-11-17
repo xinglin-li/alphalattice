@@ -980,6 +980,19 @@
         "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
     },
+    "market_data_ops.a_research_copy_is_named_by_its_place": {
+      "description": "Only a database in a research-input binding's source folder is a copy that reads world through its selection; every other database reads as before.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "market_data_ops.a_research_copy_reads_world_at_its_selection": {
+      "description": "A research-input copy bound in a Host reads world's market values as of its selection, equal to its own tables and unmoved by a later correction, and reads its own tables without one.",
+      "lower_layer": "The selection is a log row, and world's as-of reads, the copy's marks and the Host's admission need a real catalog, log and workspace database.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 10
+    },
     "market_data_ops.an_action_is_one_world_row": {
       "description": "A 0.2.7 corporate action becomes one world row keeping its kind as its id, or is refused by name.",
       "owner": "alphalattice.foundation.market_data_ops",

@@ -3,12 +3,18 @@ marks alone while unchanged, and a later correction known only from its admissio
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterator
 from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    FactorInputBundle,
+    file_digest,
+    select_research_inputs,
+)
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -172,9 +178,9 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
     uses = {"world": 0}
     relations = world_reads.relations
 
-    def counted(cutoff_us: int = world_reads.LATEST) -> dict[str, str]:
+    def counted(cutoff_us: int = world_reads.LATEST, held_us: int | None = None) -> dict[str, str]:
         uses["world"] += 1
-        return relations(cutoff_us)
+        return relations(cutoff_us, held_us)
 
     def read(setting: str) -> tuple[object, ...]:
         monkeypatch.setenv(world_reads.SETTING, setting)
@@ -221,3 +227,62 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
     assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (0, 105.0, 0)
     assert (updated[0], updated[1][0][0]["listing-aapl"][-1].close, updated[1][1]) == (1, 105.0, 4)
     assert (unseen[0][0] == unseen[1][0], unseen[1][1]) == (True, 0)
+
+
+@pytest.mark.proves("market_data_ops.a_research_copy_reads_world_at_its_selection")
+def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_without_one(
+    workspace: tuple[MarketDataRepository, UniverseManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy bound in the Host reads world as of its selection, equal to its own tables and
+    unmoved by a later correction; a copy bound once world holds another value of one of its keys
+    gets no selection, and it and every copy under the workspace setting read their own tables."""
+    store, manifest, database = workspace
+    root = database.parent
+    digest = file_digest(database)
+    bundles = [
+        FactorInputBundle.create(
+            panel_snapshot_hash=panel * 64,
+            outcome_snapshot_hash="d" * 64,
+            sessions=DAYS,
+            files=(("market-data.duckdb", digest),),
+            database_snapshot_hash=digest,
+        )
+        for panel in ("c", "e")
+    ]
+    copies = []
+    for bundle in bundles:  # both copied before the correction
+        copy = root / "research-inputs" / bundle.binding_hash / "source" / "market-data.duckdb"
+        copy.parent.mkdir(parents=True)
+        shutil.copy2(database, copy)
+        copies.append(MarketDataRepository(copy.parent))
+    select_research_inputs(copies[0].path.parents[1], root, bundles[0], "manifest")
+    select_research_inputs(copies[0].path.parents[1], root, bundles[0], "manifest")  # once
+    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # a correction world admits later
+    world.admit(database, "w1")
+    # bound after it: its marks are an admission's, but world now holds 103 for its 07-30 bar
+    select_research_inputs(copies[1].path.parents[1], root, bundles[1], "manifest")
+    uses = {"world": 0}
+    relations = world_reads.relations
+
+    def counted(cutoff_us: int = world_reads.LATEST, held_us: int | None = None) -> dict[str, str]:
+        uses["world"] += 1
+        return relations(cutoff_us, held_us)
+
+    def read(copy: MarketDataRepository, setting: str) -> tuple[object, ...]:
+        monkeypatch.setenv(world_reads.SETTING, setting)
+        before = uses["world"]
+        values = (
+            copy.raw_bars_by_listing(["listing-aapl", "listing-msft"]),
+            copy.actions_by_listing(["listing-aapl"]),
+            copy.provider_adjusted_closes("listing-aapl", through=NEW),
+        )
+        return values, uses["world"] - before
+
+    monkeypatch.setattr(world_reads, "relations", counted)
+    selected, unselected = (read(copy, "world") for copy in copies)
+    own = read(copies[0], "workspace")
+    made = history.store().log.read("SELECT count(*) FROM selection")[0][0]
+    assert (made, selected[1], unselected[1], own[1]) == (1, 3, 0, 0)
+    assert selected[0] == own[0] == unselected[0]
+    assert [bar.close for bar in selected[0][0]["listing-aapl"]] == [101.0] * 4

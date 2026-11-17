@@ -74,7 +74,10 @@ from alphalattice.foundation.feature_engine.panels.observation_clock_authority i
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -779,6 +782,9 @@ def _bind_factor_inputs(
                 read_factor_bundle(workspace, bundle.binding_hash)
             else:
                 staged.rename(destination)
+    select_research_inputs(
+        destination, source, bundle, str(panel["safe_summary"]["lineage"]["manifest_revision"])
+    )
     if not bind_configuration:
         return binding
 
@@ -792,6 +798,39 @@ def _bind_factor_inputs(
 
     update_research_workspace_manifest(workspace, bind, gate=gate)
     return binding
+
+
+def select_research_inputs(
+    destination: Path, source: Path, bundle: FactorInputBundle, universe: str
+) -> None:
+    """Fix what the bundle's research may see, once per binding: a selection at a moment world
+    holds exactly the copy's market values, which the copy then reads through. None outside a
+    Host, or while world does not hold them as of now (the source's tables, which the Host admits
+    at their market read here, are not the copy's, or world holds another value of one of their
+    keys, another workspace's later one), and the copy reads its own tables."""
+    host = history.opened_log()
+    copy = MarketDataRepository(destination / "source")
+    if host is None or world_reads.selected(copy.path) is not None:
+        return
+    with MarketDataRepository(source).market_reads():  # in the Host, admits the source's tables
+        pass
+    cutoff = host[0].clock()
+    if not world_reads.holds(copy.path, cutoff):
+        return
+    sessions = (bundle.sessions[0].isoformat(), bundle.sessions[-1].isoformat())
+    recipes = {"feature_panel": bundle.panel_snapshot_hash}
+    recipes["execution_outcome"] = bundle.outcome_snapshot_hash
+    history.record(
+        "selection.made",
+        ("selection", uuid7()),
+        {
+            "cutoff_us": cutoff,
+            "universe": universe,
+            "valid_from": sessions[0],
+            "valid_to": sessions[1],
+            "spec": {"binding_hash": bundle.binding_hash, "recipes": recipes},
+        },
+    )
 
 
 def _record_input_publication(

@@ -15352,6 +15352,48 @@
    "successor": "3df0e687b1ae0171e7bd420f919fb91801c18bbb740e8f002458be235daf7bc1",
    "change": "Keep task heartbeats and progress in the machine's history log",
    "reason": "equal-value change: workspace preparation's heartbeats renew a wait on the data root's log and its phase and progress telemetry become spans; the preparation's results, its stale threshold and its task lifecycle are unchanged, and every available QA heartbeat signal and wait replays ALL EQUAL"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c045d6856ec9e2437c301045261a7c31bab583ceb41a5606e33851a7a5038e91",
+   "successor": "78ef054274ab19317635a99c515ae6bfdc3512964a0f9bdeea786dc9dfa43bbb",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "aad624cbd6f20fa0020cfef16e5e1ae4050e82e76cf831a03bee133a48c895df",
+   "successor": "75f98ea0463d1ecef8ec065b966a16ee7dc654eefa379e222b29422b97b340a9",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "448af902a9973d38fdd15fd868d39d2e6946c79f020c3f5d51385a5f626e2f07",
+   "successor": "bcdf9367bf05f42bf2786252a4f24ad66fcc74e79404748c0b3ff18b7dc07347",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "7c55b011c9a500bf7c2eb560c9248a0abf1a513ba7ead4bd396ec9f7384e1e78",
+   "successor": "dff37b2a71dee54021b56fe4620ce527d938d598a2ed6c76817b7d0ea9b38e1d",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c9415e283437a330b0a75c234d36c3660bd138f6005ab8a38043a9f3c2e1ea3e",
+   "successor": "42a8daef63fe3cfebe7612799c19536d774ff58339f028bf0f3eb61719430300",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3df0e687b1ae0171e7bd420f919fb91801c18bbb740e8f002458be235daf7bc1",
+   "successor": "d50f91fb489eaa7cfabd0f91d60932efaa60c133ece8fa389f6cb40d703c95b5",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
   }
  ]
 }

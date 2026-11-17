@@ -1,5 +1,10 @@
 {
 "entries": {
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::binding::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A research-input binding's folder name is its binding hash, 64 lowercase hex digits, so only a database in such a folder's source is a copy read through its selection."
+},
 "src/alphalattice/foundation/market_data_ops/storage/world_reads.py::LATEST::253402300799999999": {
 "class": "LIMIT",
 "count": 1,

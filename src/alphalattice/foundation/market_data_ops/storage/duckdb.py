@@ -643,14 +643,22 @@ class MarketDataRepository(WorkspaceRepository):
         adjusted, actions, mappings), its statements seeing one snapshot: world's as of
         `cutoff_us`, a selection's or the read's own moment, while world serves this workspace
         (``world_reads.reading``), else the workspace's own tables. A caller's connection is its
-        own transaction, so it reads the workspace's tables."""
-        if _connection is not None:
+        own transaction, so it reads the workspace's tables. A research-input copy reads world
+        only through its selection: what world held at the selection's cutoff, as of no later
+        than it, whatever connection its caller holds; and its own tables without a selection."""
+        copy = world_reads.binding(self.path) is not None
+        if _connection is not None and not copy:
             yield _connection, world_reads.WORKSPACE
             return
         with world_reads.reading(self.path, self._market_marks) as world:
-            if world is not None:
-                yield world, world_reads.relations(cutoff_us)
+            cutoff = world_reads.selected(self.path) if copy else cutoff_us
+            if world is not None and cutoff is not None:
+                held = cutoff if copy else None  # a copy sees what world held at its selection
+                yield world, world_reads.relations(min(cutoff, cutoff_us), held)
                 return
+        if _connection is not None:
+            yield _connection, world_reads.WORKSPACE
+            return
         connection = self._connect(read_only=True)
         try:
             with cast(WorkspaceConnection, connection).snapshot():
