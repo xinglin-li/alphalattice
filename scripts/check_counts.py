@@ -25,10 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from scripts.release.public_manifest import classify  # noqa: E402
 
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 from devtools.architecture import type_ignores, waits  # noqa: E402
 from devtools.architecture.git_inputs import read_blobs, staged_changes, staged_moves  # noqa: E402
 
@@ -75,7 +77,7 @@ RATCHETS = (WAITS, TYPE_IGNORES)
 
 
 def _git(*words: str) -> str:
-    done = subprocess.run(
+    done = spawn.run(
         ["git", *words],
         cwd=ROOT,
         capture_output=True,

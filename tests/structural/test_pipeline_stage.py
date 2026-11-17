@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
 from devtools.testing import sizes
@@ -64,30 +65,29 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
                 assert kwargs["stdin"] == subprocess.DEVNULL and kwargs["timeout"] > 0
                 raise subprocess.TimeoutExpired("git", kwargs["timeout"])
 
-            patch.setattr(stage.subprocess, "run", stalled_git)
+            patch.setattr(stage.spawn, "run", stalled_git)
             with pytest.raises(DefinitionError, match=r"pipeline\.workspace_unreadable"):
                 stage._workspace(tmp_path, "develop")
         with monkeypatch.context() as patch:
+            patch.setenv("ALPHALATTICE_DATA_ROOT", "person-root")
+            environments = []
 
-            def still_running(*, timeout):
-                raise subprocess.TimeoutExpired("child", timeout)
+            def still_running(*args, **kwargs):
+                environments.append(kwargs["env"])
+                raise stage.spawn.TreeNotStopped("spawn.tree_not_stopped: child")
 
-            patch.setattr(
-                stage.subprocess,
-                "Popen",
-                lambda *a, **k: SimpleNamespace(pid=123, wait=still_running),
-            )
-            patch.setattr(
-                stage.psutil,
-                "Process",
-                lambda pid: (_ for _ in ()).throw(stage.psutil.NoSuchProcess(pid)),
-            )
+            patch.setattr(stage.spawn, "run", still_running)
             context = SimpleNamespace(
                 root=tmp_path, stage="commit", deadline=stage.time.monotonic() + 1
             )
             result = stage._call(["fake"], tmp_path / "timed.log", context, {})
             assert result["status"] == "ERROR" and result["stopped"] == "reap"
             assert "pipeline.child_reap_timeout" in (tmp_path / "timed.log").read_text()
+            stage._call(
+                ["fake"], tmp_path / "timed.log", context, {"ALPHALATTICE_DATA_ROOT": "test"}
+            )
+            assert "ALPHALATTICE_DATA_ROOT" not in environments[0]
+            assert environments[1]["ALPHALATTICE_DATA_ROOT"] == "test"
     if case == "size-required":
         assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
         census_path = "scripts/fake_census.py"
@@ -365,18 +365,18 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         )
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
     for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
-        subprocess.run([*git, *words], check=True)
+        spawn.run([*git, *words], check=True)
     if case == "size-required":
-        before = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        before = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         skill = tmp_path / ".agents/skills/example/references/handoff.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("owner", encoding="utf-8")
         deadline = tmp_path / "src/alphalattice/control/product_host/new_owner.py"
         deadline.parent.mkdir(parents=True)
         deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-        subprocess.run([*git, "add", "-A"], check=True)
-        subprocess.run([*git, "commit", "-qm", "derived owners"], check=True)
-        after = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        spawn.run([*git, "add", "-A"], check=True)
+        spawn.run([*git, "commit", "-qm", "derived owners"], check=True)
+        after = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         original_test = test.read_text(encoding="utf-8")
         test.write_text("def test_host(): pass\n", encoding="utf-8")
         selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
@@ -410,30 +410,30 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
                 reader_node,
             }
             deadline.unlink()
-            subprocess.run([*git, "add", "-u"], check=True)
+            spawn.run([*git, "add", "-u"], check=True)
             assert set(impact_runner._declared_holders((changed[1],), base=None, staged=True)) == {
                 host_holder,
                 reader_node,
             }
             deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-            subprocess.run([*git, "add", changed[1]], check=True)
+            spawn.run([*git, "add", changed[1]], check=True)
             outside = tmp_path / "docs/moved-handoff.md"
             outside.parent.mkdir(exist_ok=True)
-            subprocess.run(
+            spawn.run(
                 [*git, "mv", changed[0], outside.relative_to(tmp_path).as_posix()], check=True
             )
             assert impact_runner._declared_holders(
                 (outside.relative_to(tmp_path).as_posix(),), base=None, staged=True
             ) == (materializer,)
-            subprocess.run(
+            spawn.run(
                 [*git, "mv", outside.relative_to(tmp_path).as_posix(), changed[0]], check=True
             )
         unrelated = tmp_path / "docs/unrelated.md"
         unrelated.parent.mkdir(exist_ok=True)
         unrelated.write_text("not an owner", encoding="utf-8")
-        subprocess.run([*git, "add", "-A"], check=True)
-        subprocess.run([*git, "commit", "-qm", "unrelated"], check=True)
-        next_head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        spawn.run([*git, "add", "-A"], check=True)
+        spawn.run([*git, "commit", "-qm", "unrelated"], check=True)
+        next_head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         selected, _ = stage._size_selection(
             "commit", {"base": after, "head": next_head}, (), tmp_path
         )
@@ -556,11 +556,11 @@ def test_control():
             ["add", "config/pipeline.toml", "scripts/pipeline.py", relative, "pytest.ini"],
             ["commit", "-qm", "cost fixture", "-m", "Change-Kind: cost"],
         ):
-            subprocess.run([*git, *words], check=True)
-        tracked = subprocess.check_output([*git, "ls-files", "-z"]).split(b"\0")
+            spawn.run([*git, *words], check=True)
+        tracked = spawn.check_output([*git, "ls-files", "-z"]).split(b"\0")
         assert not any(name.endswith(b".pyc") for name in tracked)
         cost = tmp_path / "cost"
-        done = subprocess.run(
+        done = spawn.run(
             [*argv, "--out", str(cost), "--required-tests", family],
             env=env,
             capture_output=True,
@@ -568,7 +568,7 @@ def test_control():
             creationflags=flags,
         )
         assert done.returncode == 0, done.stderr
-        head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         assert (
             receipt.verify(
                 cost / "receipt.jsonl",
@@ -579,7 +579,7 @@ def test_control():
             )["result"]
             == "PASS"
         )
-        slow = subprocess.run(
+        slow = spawn.run(
             [
                 *argv,
                 "--out",
@@ -596,7 +596,7 @@ def test_control():
         for ran, absent in ((tmp_path / "slow", family), (cost, family + "[missing]")):
             with pytest.raises(receipt.ReceiptError, match="missing required tests"):
                 receipt.verify(ran / "receipt.jsonl", required_tests=[absent], within_limits=True)
-        outside = subprocess.run(
+        outside = spawn.run(
             [*argv, "--out", str(tmp_path / "outside"), "--required-tests", "../test_x.py::test_x"],
             env=env,
             capture_output=True,
@@ -604,8 +604,8 @@ def test_control():
             creationflags=flags,
         )
         assert outside.returncode != 0
-        subprocess.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
-        refused = subprocess.run(
+        spawn.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
+        refused = spawn.run(
             [*argv, "--out", str(tmp_path / "not-cost"), "--required-tests", family],
             env=env,
             capture_output=True,

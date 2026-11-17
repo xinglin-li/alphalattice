@@ -102,6 +102,17 @@ def test_the_commit_refuses_a_new_case_and_a_raised_baseline(tmp_path, monkeypat
     assert check_counts.main(["--staged"]) == 1
     assert "rose above its base's count" in capsys.readouterr().err
 
+    calls = []
+    monkeypatch.setattr(
+        check_counts.spawn,
+        "run",
+        lambda *a, **kw: (
+            calls.append((a, kw)) or subprocess.CompletedProcess(a[0], 0, "answer", "")
+        ),
+    )
+    assert check_counts._git("status") == "answer"
+    assert calls[0][0][0] == ["git", "status"] and calls[0][1]["timeout"] == 60
+
 
 def _counted(monkeypatch, root, kind=None):
     """Point the count ratchets at ``root``, with the manifest's answers ``kind`` (else public)."""

@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 
 
 def main() -> int:
     hook = PLAYPEN_ROOT / ".githooks" / "pre-commit"
     if not hook.is_file():
         raise FileNotFoundError(hook)
-    subprocess.run(
+    spawn.run(
         ("git", "config", "--local", "core.hooksPath", ".githooks"),
         cwd=PLAYPEN_ROOT,
         check=True,
     )
-    configured = subprocess.run(
+    configured = spawn.run(
         ("git", "config", "--local", "--get", "core.hooksPath"),
         cwd=PLAYPEN_ROOT,
         check=True,

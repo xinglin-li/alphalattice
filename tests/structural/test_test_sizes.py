@@ -855,6 +855,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                     check=True,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.strip()
 

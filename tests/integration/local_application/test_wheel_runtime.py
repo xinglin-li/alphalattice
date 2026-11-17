@@ -128,15 +128,31 @@ def test_runtime_setup_owners_expose_the_checkout_flags(owner, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
-def test_the_console_entry_and_runtime_exceptions_are_explicit() -> None:
+@pytest.mark.parametrize("case", ["metadata", "build-child"])
+def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch) -> None:
     """requirement: one packaged console entry, existing backend, named development exceptions."""
+    if case == "build-child":
+        from scripts.release import wheel_build
+
+        calls = []
+        monkeypatch.setattr(
+            wheel_build.spawn,
+            "run",
+            lambda *a, **kw: (
+                calls.append((a, kw)) or SimpleNamespace(stdout="locked requirements\n")
+            ),
+        )
+        assert runtime_requirements() == "locked requirements\n"
+        assert calls[0][0][0][:2] == ["uv", "export"]
+        assert calls[0][1]["check"] and calls[0][1]["text"]
+        return
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["tool"]["uv"]["package"] is True
     assert project["project"]["scripts"] == {
         "alphalattice": "alphalattice.control.product_host.composition.entry:main"
     }
     assert project["build-system"] == {
-        "requires": ["setuptools==83.0.0"],
+        "requires": ["setuptools==83.0.0", "psutil==7.2.2"],
         "build-backend": "setuptools.build_meta",
     }
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -481,3 +497,60 @@ def test_the_bash_smoke_starts_the_git_bash_that_path_names(
     monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: launcher)
     with pytest.raises(SystemExit, match="no Git Bash on PATH"):
         wheel_smoke.shell_command(["alphalattice", "--help"], "bash")
+
+    # The smoke supplies a private data root and uses one bounded Host session.
+    import io
+    from contextlib import nullcontext
+
+    calls, sessions = [], []
+
+    class Session:
+        def __init__(self, *, timeout, stop_scope):
+            assert (timeout, stop_scope) == (300, "tree")
+            self.sent = []
+            sessions.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def start(self, command, **options):
+            calls.append((command, options))
+            return SimpleNamespace(
+                stdin=io.StringIO(), stdout=io.StringIO(), wait=lambda timeout: 0
+            )
+
+        def send(self, data):
+            self.sent.append(data)
+
+        def close_input(self):
+            pass
+
+    def run(command, **options):
+        calls.append((command, options))
+        if "--help" in command:
+            return SimpleNamespace(returncode=0, stdout="workspace serve")
+        if len(calls) == 2:
+            refusal = {
+                "failure_code": "local_client.service_not_running",
+                "detail": "d",
+                "next_action": "n",
+            }
+            return SimpleNamespace(returncode=4, stdout=json.dumps(refusal))
+        return SimpleNamespace(returncode=0, stdout='{"outcome":"OK"}')
+
+    response = SimpleNamespace(status=200, read=lambda: b'{"session":"fixture"}')
+    opener = SimpleNamespace(open=lambda *args, **kwargs: nullcontext(response))
+    monkeypatch.setattr(wheel_smoke.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(wheel_smoke.spawn, "run", run)
+    monkeypatch.setattr(wheel_smoke.spawn, "InteractiveSession", Session)
+    monkeypatch.setattr(wheel_smoke, "read_launch", lambda lines: "http://127.0.0.1:1234/launch")
+    monkeypatch.setattr(wheel_smoke.urllib.request, "build_opener", lambda *args: opener)
+    answer = wheel_smoke.smoke(["fixture"], cwd=tmp_path)
+    assert answer["host_stop_exit"] == 0 and sessions[0].sent == ["stop\n"]
+    assert all(
+        Path(options["env"]["ALPHALATTICE_DATA_ROOT"]).is_relative_to(tmp_path)
+        for _, options in calls
+    )

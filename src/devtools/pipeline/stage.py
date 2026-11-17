@@ -26,8 +26,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-import psutil  # type: ignore[import-untyped]
-
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import (
     CostIdentity,
     read_blobs,
@@ -626,7 +625,7 @@ def _cost_configuration(root: Path, name: str, host: str) -> dict[str, str]:
 def _helper_sources(root: Path, head: str) -> dict[str, str]:
     """Read the helper graph from the exact head, never the checkout's loose files."""
     names = [path for path in CostIdentity._files(root, head) if path.endswith(".py")]
-    script_tree = subprocess.run(
+    script_tree = spawn.run(
         ["git", "ls-tree", "-r", "-z", "--full-tree", head, "--", "scripts/"],
         cwd=root,
         stdin=subprocess.DEVNULL,
@@ -920,28 +919,29 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
     """Run one row's process within the stage's deadline; its output goes to the row's log."""
     began = time.monotonic()
     stopped = None
+    environment = {**os.environ, **env, "ALPHALATTICE_PIPELINE_STAGE": context.stage}
+    if "ALPHALATTICE_DATA_ROOT" not in env:
+        environment.pop("ALPHALATTICE_DATA_ROOT", None)
     with log.open("w", encoding="utf-8") as stream:
         try:
-            process = subprocess.Popen(
+            process = spawn.run(
                 argv,
                 cwd=context.root,
-                env={**os.environ, **env, "ALPHALATTICE_PIPELINE_STAGE": context.stage},
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
+                timeout=max(1.0, context.deadline - began),
             )
-            code: int | None = process.wait(timeout=max(1.0, context.deadline - began))
+            code: int | None = process.returncode
             status = "PASS" if code == 0 else "FAIL"
-        except subprocess.TimeoutExpired:  # past the stage's bound: the row's whole tree goes
-            _kill(process.pid)
-            try:
-                process.wait(timeout=15)
-                stopped = "bound"
-            except subprocess.TimeoutExpired:
-                stream.write("pipeline.child_reap_timeout: killed child did not exit within 15 s\n")
-                stopped = "reap"
+        except subprocess.TimeoutExpired:
+            stopped = "bound"
             stream.write(f"stopped at the stage's bound, {context.deadline - began:.0f} s on\n")
             status, code = "ERROR", None
+        except spawn.TreeNotStopped as error:
+            stream.write(f"pipeline.child_reap_timeout: {error}\n")
+            status, code, stopped = "ERROR", None, "reap"
         except OSError as error:
             stream.write(f"{argv[0]}: {error}\n")
             status, code, stopped = "ERROR", None, "launch"
@@ -952,21 +952,12 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
     return step | ({"stopped": stopped} if stopped else {})
 
 
-def _kill(pid: int) -> None:
-    """A row's process and everything it started, children first."""
-    with contextlib.suppress(psutil.NoSuchProcess):
-        parent = psutil.Process(pid)
-        for process in [*parent.children(recursive=True), parent]:
-            with contextlib.suppress(psutil.NoSuchProcess):
-                process.kill()
-
-
 def _workspace(root: Path, base: str, required_tests: Sequence[str] = ()) -> dict[str, Any]:
     """The checkout's head, the merge base with ``base``, and whether its tree is clean."""
 
     def git(*words: str) -> str:
         try:
-            done = subprocess.run(
+            done = spawn.run(
                 ["git", *words],
                 cwd=root,
                 stdin=subprocess.DEVNULL,

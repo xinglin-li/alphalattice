@@ -793,7 +793,7 @@ def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch, c
         assert store["facts"]["applicable"] is False
 
 
-@pytest.mark.parametrize("missing", (None, *READINESS_KEYS))
+@pytest.mark.parametrize("missing", (None, *READINESS_KEYS), ids=lambda value: value or "none")
 def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeypatch, missing):
     """Each missing dependency has a way to fill it and Host facts override the caller's PATH."""
     python = tmp_path / "bin/python"
@@ -830,7 +830,9 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     def run(argv, **_):
         return subprocess.CompletedProcess(argv, 0, stdout="")
 
-    monkeypatch.setattr(subprocess, "run", run)
+    from alphalattice.kernel.shared_kernel import spawn
+
+    monkeypatch.setattr(spawn, "run", run)
     user = tmp_path / ".alphalattice/user"
     user.mkdir(parents=True)
     if missing != "user_backup":
@@ -971,7 +973,9 @@ def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch,
             raise OSError("private launch detail")
         return subprocess.CompletedProcess(argv, 1 if outcome == "failed" else 0)
 
-    monkeypatch.setattr(subprocess, "run", run)
+    from alphalattice.kernel.shared_kernel import spawn
+
+    monkeypatch.setattr(spawn, "run", run)
     result = setup.codex_queue_readiness()
     assert (result["present"], result["reason"]) == (outcome == "ready", reason)
     assert len(calls) == (0 if outcome == "missing" else 1)

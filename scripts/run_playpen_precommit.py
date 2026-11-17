@@ -18,6 +18,9 @@ from typing import cast
 
 HOOK_STARTED = perf_counter()
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+
 GITLEAKS_SHA256 = {
     "darwin-arm64": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",
     "darwin-x64": "cee01fea7173f1b779dff188e1c26ecbcb4027d394acc573b23aaf0be260e291",
@@ -67,7 +70,7 @@ def run_gitleaks(arguments: list[str]) -> int:
     )
     try:
         binary = verified_gitleaks(PLAYPEN_ROOT, f"{sys.platform}-{architecture}")
-        return subprocess.run(
+        return spawn.run(
             [str(binary), *arguments],
             check=False,
             stdin=subprocess.DEVNULL,
@@ -167,7 +170,7 @@ def _format_staged() -> None:
             "--",
         )
         for batch in _batched(tuple(path for _, _, path in staged), prefix=prefix):
-            subprocess.run(
+            spawn.run(
                 (*prefix, *batch),
                 cwd=after,
                 check=True,
@@ -213,7 +216,7 @@ def _format_staged() -> None:
             )
             # Git apply reads working-tree attributes; staged attributes alone are insufficient.
             for cached in (True, False):
-                attrs = subprocess.run(
+                attrs = spawn.run(
                     (
                         "git",
                         "check-attr",
@@ -252,7 +255,7 @@ def _format_staged() -> None:
                             f"has {os.fsdecode(name)}; "
                             "format and stage it manually"
                         )
-            patch = subprocess.run(
+            patch = spawn.run(
                 ("git", "diff", "--no-index", "--no-prefix", "--binary", "--", "before", "after"),
                 cwd=mirror,
                 stdin=subprocess.DEVNULL,
@@ -264,7 +267,7 @@ def _format_staged() -> None:
                 raise ValueError(
                     "playpen.format_patch_unreadable: inspect the staged files and retry"
                 )
-            subprocess.run(
+            spawn.run(
                 ("git", "apply", "--index", "-p1", "--whitespace=nowarn", "-"),
                 input=patch.stdout,
                 cwd=PLAYPEN_ROOT,

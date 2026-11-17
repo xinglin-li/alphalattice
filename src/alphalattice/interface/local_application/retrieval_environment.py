@@ -33,6 +33,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
@@ -187,7 +188,7 @@ def _run_uv(
         )
         log.flush()
         try:
-            result = subprocess.run(
+            result = spawn.run(
                 command,
                 check=True,
                 stdout=subprocess.PIPE,

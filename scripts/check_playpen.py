@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
-import importlib
 import json
 import os
 import re
@@ -20,6 +19,8 @@ from datetime import date
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
+
+from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
@@ -61,29 +62,6 @@ STEP_SECONDS = 1200.0
 """One guard step's bound: well above the slowest step's measured 30 s, and below a stage's."""
 REAP_SECONDS = 30.0
 """How long a step's ended process tree is given to go, before its end is named unproved."""
-
-
-def _end_tree(pid: int) -> None:
-    """End a step and every process it started, deepest first: a pytest a step started keeps
-    the step's output open, and only its whole tree's end releases the gate."""
-    psutil = importlib.import_module("psutil")  # the workspace environment's; untyped, read as Any
-    try:
-        root = psutil.Process(pid)
-        tree = [*root.children(recursive=True), root]
-    except psutil.NoSuchProcess:
-        return
-    for process in reversed(tree):
-        _kill(psutil, process)
-    _, alive = psutil.wait_procs(tree, timeout=REAP_SECONDS)
-    if alive:
-        raise ChildProcessError(f"processes {[p.pid for p in alive]} outlived their step's end")
-
-
-def _kill(psutil: Any, process: Any) -> None:
-    try:
-        process.kill()
-    except psutil.NoSuchProcess:
-        return  # it ended on its own: its end is what was asked
 
 
 STRUCTURAL_TESTS = (
@@ -131,9 +109,8 @@ _COMMAND_LINE_UNITS = 32_766 - _LAUNCHER_RESERVE
 
 def _quiet_run(*args: Any, **options: Any) -> subprocess.CompletedProcess[Any]:
     """Launch each gate child without opening a console on Windows."""
-    return subprocess.run(
-        *args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **options
-    )
+    options.setdefault("timeout", STEP_SECONDS)
+    return spawn.run(*args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **options)
 
 
 def _ensure_workspace_environment() -> None:
@@ -328,22 +305,19 @@ def concurrent_refusals(
     def one(label: str) -> tuple[int | None, str]:
         with tempfile.TemporaryFile() as log:  # a file, not a pipe: no child holds the gate open
             try:
-                step = subprocess.Popen(
+                done = spawn.run(
                     tuple(commands[label]),
                     cwd=ROOT,
                     stdin=subprocess.DEVNULL,
                     stdout=log,
                     stderr=subprocess.STDOUT,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    timeout=bound,
                 )
+                code: int | None = done.returncode
+                stopped = ""
             except OSError as error:
                 return None, f"PLAYPEN_GATE_UNMEASURED {label}: {type(error).__name__}: {error}\n"
-            try:
-                code: int | None = step.wait(timeout=bound)
-                stopped = ""
             except subprocess.TimeoutExpired:
-                _end_tree(step.pid)
-                step.wait(timeout=REAP_SECONDS)
                 code, stopped = None, f"PLAYPEN_GATE_UNMEASURED {label}: past its {bound:.0f} s\n"
             log.seek(0)
             return code, log.read().decode("utf-8", errors="replace") + stopped

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.interface.local_application.message_catalog import english_message_ids
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
@@ -1210,7 +1211,7 @@ def _description_census(
     bootstrap = dimension not in base
     basis = "HEAD:"
     if inputs.pending or len(inputs.parents) > 2:
-        ancestor = subprocess.run(
+        ancestor = spawn.run(
             ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
             cwd=root,
             capture_output=True,

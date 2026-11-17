@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     available_work_memory_bytes,

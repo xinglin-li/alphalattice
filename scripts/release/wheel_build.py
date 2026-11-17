@@ -5,18 +5,21 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 
 from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+
 MANIFEST = ROOT / "config/release/runtime-resources.json"
 
 
 def runtime_requirements(root: Path = ROOT) -> str:
     """Export the accepted runtime lock for installing either command leg."""
-    result = subprocess.run(
+    result = spawn.run(
         [
             "uv",
             "export",

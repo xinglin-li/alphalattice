@@ -173,6 +173,7 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=20,
             env=os.environ | {"PYTHONDONTWRITEBYTECODE": "1"},
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),

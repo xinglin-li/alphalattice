@@ -18,6 +18,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from alphalattice.kernel.shared_kernel import spawn
+
 
 def shell_command(command: list[str], shell: str | None) -> list[str]:
     """Start a new unprofiled host shell with no prior variables or activation."""
@@ -74,9 +76,13 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
     environment = {**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1", "PYTHONPATH": ""}
     environment.pop("VIRTUAL_ENV", None)
     environment.pop("CONDA_PREFIX", None)
-    with tempfile.TemporaryDirectory(prefix="alphalattice-wheel-smoke-") as temporary:
+    with (
+        tempfile.TemporaryDirectory(prefix="alphalattice-wheel-smoke-") as temporary,
+        spawn.InteractiveSession(timeout=300, stop_scope="tree") as session,
+    ):
         workspace = Path(temporary) / "workspace"
-        help_run = subprocess.run(
+        environment["ALPHALATTICE_DATA_ROOT"] = str(Path(temporary) / "data-root")
+        help_run = spawn.run(
             shell_command([*command, "--help"], fresh_shell),
             cwd=cwd,
             env=environment,
@@ -89,7 +95,7 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
         )
         assert "workspace" in help_run.stdout and "serve" in help_run.stdout
         prefix = [*command, "--workspace", str(workspace)]
-        before = subprocess.run(
+        before = spawn.run(
             shell_command([*prefix, "workspace", "show"], fresh_shell),
             cwd=cwd,
             env=environment,
@@ -107,12 +113,11 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
             and response["failure_code"] == "local_client.service_not_running"
         )
         assert response["detail"] and response["next_action"]
-        process = subprocess.Popen(
+        process = session.start(
             [*prefix, "serve", "--no-browser", "--stop-on-stdin"],
             cwd=cwd,
             env=environment,
             text=True,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -136,11 +141,11 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
                 assert opened.status == 200
             address = urllib.parse.urlsplit(launch)
             base = f"{address.scheme}://{address.netloc}"
-            with opener.open(base + "/api/session", timeout=20) as session:
-                assert session.status == 200
-                payload = json.loads(session.read())
+            with opener.open(base + "/api/session", timeout=20) as session_response:
+                assert session_response.status == 200
+                payload = json.loads(session_response.read())
                 assert isinstance(payload, dict) and payload
-            shown = subprocess.run(
+            shown = spawn.run(
                 shell_command([*prefix, "workspace", "show"], fresh_shell),
                 cwd=cwd,
                 env=environment,
@@ -156,19 +161,12 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
         finally:
             assert process.stdin is not None
             with contextlib.suppress(BrokenPipeError):
-                process.stdin.write("stop\n")
-                process.stdin.flush()
-                process.stdin.close()
+                session.send("stop\n")
+                session.close_input()
             try:
                 exit_code = process.wait(timeout=60)
             except subprocess.TimeoutExpired:
-                process.kill()
-                try:
-                    process.wait(timeout=15)
-                except subprocess.TimeoutExpired:
-                    raise ValueError(
-                        "wheel_smoke.child_reap_timeout: killed Host did not exit"
-                    ) from None
+                session.stop()
                 raise
             reader.join(timeout=10)
         assert exit_code == 0

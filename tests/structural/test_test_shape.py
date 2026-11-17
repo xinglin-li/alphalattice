@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 import check_test_shape as shape
+from alphalattice.kernel.shared_kernel import spawn
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
 from devtools.testing import os_marks
@@ -267,6 +268,87 @@ SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused r
         None,
         None,
     ),
+    "a-piped-child-waited-without-reading-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
+        "stdout=subprocess.PIPE,"
+        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+        "    child.wait(timeout=9)\n",
+        UNBOUNDED_KEY,
+        None,
+    ),
+    "a-piped-child-read-with-a-bound-is-accepted": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
+        "stdout=subprocess.PIPE,"
+        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+        "    child.communicate(timeout=9)\n",
+        None,
+        None,
+    ),
+    "an-unfed-input-pipe-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
+        "stdin=subprocess.PIPE,"
+        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+        "    child.communicate(timeout=9)\n",
+        UNBOUNDED_KEY,
+        None,
+    ),
+    "a-fed-input-pipe-is-accepted": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
+        "stdin=subprocess.PIPE,"
+        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
+        "    child.communicate(input=b'x', timeout=9)\n",
+        None,
+        None,
+    ),
+    "a-bare-python-child-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n"
+        "    subprocess.run(['python', '-c', 'pass'], timeout=5, stdin=subprocess.DEVNULL)\n",
+        PATH + "::test-child-bare-python::test_a",
+        None,
+    ),
+    "the-current-python-child-is-accepted": (
+        PATH,
+        None,
+        "import subprocess, sys\ndef test_a():\n"
+        "    subprocess.run([sys.executable, '-c', 'pass'], timeout=5, stdin=subprocess.DEVNULL)\n",
+        None,
+        None,
+    ),
+    "implicit-child-text-encoding-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n"
+        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, text=True)\n",
+        PATH + "::test-child-text-encoding::test_a",
+        None,
+    ),
+    "utf8-child-text-encoding-is-accepted": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n"
+        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, "
+        "text=True, encoding='utf-8')\n",
+        None,
+        None,
+    ),
+    "non-utf8-child-text-encoding-is-refused": (
+        PATH,
+        None,
+        "import subprocess\ndef test_a():\n"
+        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, encoding='cp1252')\n",
+        PATH + "::test-child-text-encoding::test_a",
+        None,
+    ),
     "an-unclassed-model-turn-is-refused": (
         PATH,
         None,
@@ -312,6 +394,20 @@ def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
     """A size or form count over its bound never refuses a commit, and is named as a signal only
     in a function the change wrote; a blanket type ignore is still refused (the 11-14 verdict).
     A test's unbounded child or unclassed model turn is refused past its allowance, by function."""
+    if request.node.callspec.id in {
+        "a-piped-child-waited-without-reading-is-refused",
+        "a-piped-child-read-with-a-bound-is-accepted",
+        "an-unfed-input-pipe-is-refused",
+        "a-fed-input-pipe-is-accepted",
+        "a-bare-python-child-is-refused",
+        "the-current-python-child-is-accepted",
+        "implicit-child-text-encoding-is-refused",
+        "utf8-child-text-encoding-is-accepted",
+        "non-utf8-child-text-encoding-is-refused",
+    }:
+        findings = shape.child_antipatterns({path: new})
+        assert findings == ({refused: 1} if refused else {})
+        return
     held = ALLOWED.get(request.node.callspec.id)
     empty = json.dumps({"counts": dict([held]) if held else {}})
     texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty, ":" + HELPER: HELPER_CASES}
@@ -805,7 +901,7 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
         commands.append(command)
         return real_run(command, **kwargs)
 
-    monkeypatch.setattr(shape.subprocess, "run", run)
+    monkeypatch.setattr(spawn, "run", run)
     result = shape.clone_problems_batch(
         [(copy, None, duplicate), (copy, duplicate, duplicate)], corpus
     )
@@ -879,22 +975,22 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     state = {"merge": False}
     texts = {":" + path: bad, "HEAD:" + path: "", "MERGE_HEAD:" + path: ""}
-    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [path], state))
+    monkeypatch.setattr(spawn, "run", _git_backend(texts, [path], state))
     assert shape.main([]) == 1
     for guarded in ("scripts/example.py", "tests/structural/example.py"):
         bad_flag = "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
         blobs = {":" + guarded: bad_flag, "HEAD:" + guarded: ""}
-        monkeypatch.setattr(shape.subprocess, "run", _git_backend(blobs, [guarded]))
+        monkeypatch.setattr(spawn, "run", _git_backend(blobs, [guarded]))
         assert shape.main([]) == 1
         blobs[":" + guarded] = "import subprocess\nx = subprocess.CREATE_NO_WINDOW\n"
         assert shape.main([]) == 0
-    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [path], state))
+    monkeypatch.setattr(spawn, "run", _git_backend(texts, [path], state))
     state["merge"] = True
     texts["HEAD:" + path] = bad
     assert shape.main([]) == 0
     asset = "src/image.png"
     texts = {":" + asset: "\0" * shape.CAP_BYTES, "HEAD:" + asset: ""}
-    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [asset]))
+    monkeypatch.setattr(spawn, "run", _git_backend(texts, [asset]))
     assert shape.main([]) == 0
     texts[":" + asset] += "\0"
     assert shape.main([]) == 0  # a grown asset is a size signal, never refused
@@ -908,7 +1004,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     texts = {":" + new: legacy, "HEAD:" + old: legacy}  # a byte-identical move keeps its old debt
     for blob, code in (("a", 0), ("b", 1)):  # an edited move is new: its missing docstring refuses
         state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
-        monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
+        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new], state))
         assert shape.main([]) == code
 
     table = "config/registries/test-layout.json"
@@ -925,9 +1021,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": row_old}}}
         )
         texts[":" + new] = legacy + added
-        monkeypatch.setattr(
-            shape.subprocess, "run", _git_backend(texts, [new, table], {"raw": edited})
-        )
+        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new, table], {"raw": edited}))
         assert shape.main([]) == code
     texts[":" + new] = legacy
 
@@ -941,7 +1035,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             return shape.subprocess.CompletedProcess(command, 0, trees[command[5]] + "\0")
         return _git_backend(texts, [data, "tests/unit/testing/notes.md"], moves)(command, **kwargs)
 
-    monkeypatch.setattr(shape.subprocess, "run", holding)
+    monkeypatch.setattr(spawn, "run", holding)
     assert shape.main([]) == 1  # a new data file names no reason
     trees["HEAD"] = data
     assert shape.main([]) == 0  # the tree is the baseline
@@ -988,7 +1082,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             return shape.subprocess.CompletedProcess(command, 0, source + "\0")
         return _git_backend(texts, paths, placement_state)(command, **kwargs)
 
-    monkeypatch.setattr(shape.subprocess, "run", staged)
+    monkeypatch.setattr(spawn, "run", staged)
     assert shape.main([]) == 1  # the added file must use the declared source's mapped path
     suffix = "tests/unit/testing/layout_test.py"
     paths[:] = [suffix]
@@ -1032,7 +1126,7 @@ def test_the_stage_judges_the_committed_head_against_its_merge_base(monkeypatch)
             return shape.subprocess.CompletedProcess(command, int(not known), "fork\n" * known)
         return backend(command, **kwargs)
 
-    monkeypatch.setattr(shape.subprocess, "run", run)
+    monkeypatch.setattr(spawn, "run", run)
     assert shape.main(["--base", "develop"]) == 1  # the committed break, though the index is clean
     assert ["merge-base", "develop", "HEAD"] in asked
     assert shape.main([]) == 0  # the hook judges the clean index
@@ -1052,7 +1146,7 @@ def test_weekly_report_lists_static_candidates_and_respects_config_string_reader
         "HEAD:tests/test_reader.py": "from example import used\nassert used() == 1\n",
         "HEAD:config/example.json": '{"callable": "configured"}\n',
     }
-    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [spec[5:] for spec in texts]))
+    monkeypatch.setattr(spawn, "run", _git_backend(texts, [spec[5:] for spec in texts]))
     report = shape.weekly_report()
     assert [row["name"] for row in report["candidates"]] == ["unused"]
     assert report["growth"] == [{"path": "src/example.py", "added": 1, "removed": 0, "net": 1}]

@@ -226,8 +226,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
 
     def check(expected, *extra, covered=False):
         with monkeypatch.context() as scope:
-            run = Mock(wraps=subprocess.run)
-            scope.setattr(subprocess, "run", run)
+            from devtools.architecture import git_inputs
+
+            run = Mock(wraps=git_inputs.spawn.run)
+            scope.setattr(git_inputs.spawn, "run", run)
             try:
                 code = registry_main(["--root", str(tmp_path), "--staged", *extra])
             except SystemExit as error:
@@ -456,8 +458,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         check(0, "--baseline", baseline, "--update")
         saved = (tmp_path / baseline).read_bytes()
         with monkeypatch.context() as scoped:
+            from devtools.architecture import git_inputs
+
             scoped.setattr(
-                subprocess, "run", Mock(side_effect=subprocess.CalledProcessError(128, "git"))
+                git_inputs.spawn, "run", Mock(side_effect=subprocess.CalledProcessError(128, "git"))
             )
             with pytest.raises(subprocess.CalledProcessError):
                 owner.census_check(tmp_path, baseline=str(tmp_path / baseline), update=True)
@@ -806,7 +810,7 @@ def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path:
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     }
-    assert job_owners == {"src/alphalattice/control/product_host/composition/process_job.py"}
+    assert job_owners == {"src/alphalattice/kernel/shared_kernel/spawn.py"}
 
 
 def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(

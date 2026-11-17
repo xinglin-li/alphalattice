@@ -2635,6 +2635,7 @@ def test_cli_and_web_compile_the_same_bound_document(inputs: Path, tmp_path: Pat
         env={**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1"},
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=60,
     )
@@ -2785,6 +2786,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
             env={**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1"},
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=630,
             check=False,
         )

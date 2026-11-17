@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Self
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash

@@ -295,6 +295,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -553,7 +554,9 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
                 raise failure
 
             with monkeypatch.context() as scoped:
-                scoped.setattr(subprocess, "run", interrupted)
+                from devtools.architecture import git_inputs
+
+                scoped.setattr(git_inputs.spawn, "run", interrupted)
                 if case == "binding git-error":
                     with pytest.raises(receipt.ReceiptError, match="receipt_cost_unmeasured"):
                         receipt.verify(target_receipt, **args)
@@ -582,7 +585,9 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
                     digest,
                     str(source_receipt),
                 ]
-                completed = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                completed = subprocess.run(
+                    command, capture_output=True, text=True, encoding="utf-8", timeout=30
+                )
                 assert completed.returncode == 0, completed.stderr
                 assert (
                     json.loads(completed.stdout)["cost_standing"][target_node]["source_node"]
@@ -592,6 +597,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
                     [*command, "--cost-source", digest, str(source_receipt)],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     timeout=30,
                 )
                 assert duplicate.returncode != 0 and "duplicate" in duplicate.stderr.lower()

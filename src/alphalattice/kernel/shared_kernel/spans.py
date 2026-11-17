@@ -269,7 +269,7 @@ def absorb(readout: Mapping[str, Any] | None) -> None:
 def _psutil() -> Any:
     """psutil, imported when a reading is first taken, or None on a platform without it."""
     try:
-        import psutil  # type: ignore[import-untyped]  # lazy: a reading's first need pays it
+        import psutil  # lazy: a reading's first need pays it
     except ImportError:  # pragma: no cover - platform without psutil
         return None
     return psutil

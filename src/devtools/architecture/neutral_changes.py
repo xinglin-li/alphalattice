@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
-import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -44,6 +43,7 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.source_identity import source_bytes_syntax_sha256
 from devtools.architecture import structural
 from devtools.architecture.identity_closures import closure_sites
@@ -779,7 +779,7 @@ def git_previous(root: Path, revision: str) -> Callable[[str], bytes | None]:
     """
 
     def read(path: str) -> bytes | None:
-        completed = subprocess.run(
+        completed = spawn.run(
             ("git", "-C", str(root), "show", f"{revision}:{path}"),
             capture_output=True,
             check=False,
@@ -810,7 +810,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         diff.append("--cached")
     elif args.base:
         diff.append(args.base)
-    changed = subprocess.run(diff, capture_output=True, text=True, check=True).stdout.split()
+    changed = spawn.run(diff, capture_output=True, text=True, check=True).stdout.split()
     previous = git_previous(root, args.base or "HEAD")
     for verdict in neutral_verdicts(root, changed, previous):
         print(f"{'NEUTRAL' if verdict.neutral else 'CHANGED'} {verdict.path}: {verdict.reason}")

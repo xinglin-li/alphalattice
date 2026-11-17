@@ -81,6 +81,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     LOCKED_SETUP_WORDS,
     setup_environment,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
     offline,
@@ -1726,7 +1727,7 @@ def _install_tool() -> dict[str, Any]:
     """Run the existing locked tool-install steps with subprocess-owned scratch."""
     with setup_environment(ROOT) as environment:
         for command in TOOL_INSTALL:
-            subprocess.run(
+            spawn.run(
                 shlex.split(command),
                 cwd=ROOT,
                 env=environment,

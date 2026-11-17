@@ -50,6 +50,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
@@ -65,7 +66,7 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
     if executable is None:
         return {**result, "reason": "COMMAND_MISSING"}
     try:
-        completed = subprocess.run(
+        completed = spawn.run(
             [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
         )
     except subprocess.TimeoutExpired:
@@ -149,7 +150,7 @@ def codex_queue_reach(path: str | None = None) -> dict[str, Any]:
     if command is None:
         return {**result, "reason": "COMMAND_MISSING"}
     try:
-        done = subprocess.run(
+        done = spawn.run(
             [command, "queue", "--thread", CODEX_REACH_THREAD, "--message", "reach probe"],
             capture_output=True,
             timeout=30,

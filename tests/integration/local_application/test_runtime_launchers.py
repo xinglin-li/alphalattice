@@ -28,6 +28,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.interface.local_application import client as local_client
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 
@@ -161,17 +162,18 @@ def test_attached_launcher_stops_on_explicit_stdin_or_eof(
                 calls.append("stopped" if self.stop_requested() else "missed")
             if not during and lines != "ignored\nstop\n":  # one real child per ending
                 root = resolve_playpen_root(Path(__file__))
-                host = subprocess.Popen(
-                    [sys.executable, "-c", _WATCHED_STDIN, str(root)],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                )
-                assert host.stdout is not None and host.stdin is not None
-                assert host.stdout.readline().strip() == "started"
-                host.stdin.write("noise\n" + lines)
-                host.stdin.close()
-                assert host.wait(timeout=30) == 0
+                with spawn.InteractiveSession(timeout=30, stop_scope="tree") as owner:
+                    host = owner.start(
+                        [sys.executable, "-c", _WATCHED_STDIN, str(root)],
+                        stdout=subprocess.PIPE,
+                        text=True,
+                    )
+                    assert host.stdout is not None
+                    assert host.stdout.readline().strip() == "started"
+                    owner.send("noise\n" + lines)
+                    owner.close_input()
+                    assert host.wait(timeout=30) == 0
+                    owner.check()
             calls.append("start")
             return "http://127.0.0.1:12345/"
 
@@ -227,24 +229,31 @@ raise SystemExit(entry.main(sys.argv[1:]))
     sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))
     environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
     arguments = ["--workspace", str(workspace), "serve", "--no-browser", "--stop-on-stdin"]
+    output = (tmp_path / "host-output.log").open("w", encoding="utf-8")
     parent = subprocess.Popen(
         [_PYTHON, "-c", script, *arguments],
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
+        stdout=output,
         stderr=subprocess.STDOUT,
-        text=True,
         env=environment,
         cwd=tmp_path,
         creationflags=_FLAGS,
     )
-    assert parent.stdout is not None and parent.stdin is not None
+    assert parent.stdin is not None
     ready, lines = threading.Event(), []
+    finished = threading.Event()
 
     def read_ready():
-        for line in parent.stdout:
-            lines.append(line)
-            if OPEN_THE_WORKBENCH in line:
-                ready.set()
+        with (tmp_path / "host-output.log").open(encoding="utf-8") as stream:
+            while not finished.is_set():
+                line = stream.readline()
+                if line:
+                    lines.append(line)
+                    if OPEN_THE_WORKBENCH in line:
+                        ready.set()
+                        return
+                else:
+                    finished.wait(0.05)
 
     reader = threading.Thread(target=read_ready, daemon=True)
     reader.start()
@@ -264,8 +273,8 @@ raise SystemExit(entry.main(sys.argv[1:]))
         capture()
         assert host["pid"] in {pid for pid, _ in owned}
         parent.terminate()
-        parent.wait(timeout=5)
         assert not parent.stdin.closed
+        parent.communicate(input=b"", timeout=5)
         for _, handle in owned:
             assert kernel.WaitForSingleObject(handle, 5000) == 0
     finally:
@@ -274,14 +283,16 @@ raise SystemExit(entry.main(sys.argv[1:]))
                 capture()
         with contextlib.suppress(OSError):
             parent.terminate()
-        parent.wait(timeout=5)
+        if parent.poll() is None:
+            parent.communicate(input=b"", timeout=5)
         for _, handle in owned:
             kernel.TerminateProcess(handle, 1)
             kernel.WaitForSingleObject(handle, 5000)
             kernel.CloseHandle(handle)
         parent.stdin.close()
+        finished.set()
         reader.join(timeout=5)
-        parent.stdout.close()
+        output.close()
 
 
 @WINDOWS
@@ -351,6 +362,7 @@ with open(sys.argv[1], 'rb') as stray:
         input="owned-input\n",
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=20,
         creationflags=_FLAGS,
     )
@@ -473,13 +485,42 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
                 os.killpg(turn.pid, signal.SIGKILL)
 
 
-@pytest.mark.parametrize("workspace_state", ["cp1252"])
+@pytest.mark.parametrize("workspace_state", ["cp1252", "timeout", "attached"])
 def test_a_detached_host_outlives_the_turn_that_started_it(
-    tmp_path: Path, workspace_state: str, request, monkeypatch
+    tmp_path: Path, workspace_state: str, request, monkeypatch, capsys
 ) -> None:
     """A turn's end kills everything its launch started; the Host `serve --detach` started, on
     a new workspace or an initialized one, serves a later client until `host stop`, with its
     key in no log; a second launch is refused by name and leaves no log."""
+    if workspace_state == "attached":
+        from alphalattice.control.product_host.composition import web_launcher
+        from alphalattice.kernel.shared_kernel import spawn
+
+        calls = []
+        monkeypatch.setattr(spawn, "attached", lambda *a, **k: calls.append((a, k)) or 7)
+        env = {"EXAMPLE": "value"}
+        assert web_launcher.attached_child(["tool"], env=env) == 7
+        assert calls == [((["tool"],), {"env": env, "job_factory": web_launcher.ChildJob})]
+        return
+    if workspace_state == "timeout":
+        from alphalattice.control.product_host.composition import web_launcher
+        from alphalattice.kernel.shared_kernel import spawn
+
+        stopped = []
+        monkeypatch.setattr(spawn, "stop_tree", stopped.append)
+        monkeypatch.setattr(spawn, "detached", lambda *a, **k: SimpleNamespace(pid=42))
+        monkeypatch.setattr(web_launcher, "READY_SECONDS", 0)
+        monkeypatch.setattr(web_launcher.tempfile, "tempdir", str(tmp_path))
+        args = SimpleNamespace(workspace=tmp_path, no_browser=True, port=0, stop_on_stdin=False)
+        assert web_launcher._detach(args) == 2
+        answer = json.loads(capsys.readouterr().out)
+        assert stopped == [42]
+        assert answer["detail"] == (
+            "The Host did not become ready within 0 seconds and was stopped. "
+            f"Its log is {next(tmp_path.glob('alphalattice-host-*.log'))}. "
+            "Run alphalattice serve again."
+        )
+        return
     if workspace_state == "cp1252":
         from alphalattice.control.product_host.composition import web_launcher
 
@@ -798,7 +839,12 @@ def test_the_launchers_module_loads_no_numerical_library() -> None:
     )
     env = {**os.environ, "PYTHONPATH": str(root / "src")}
     loaded = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, text=True, env=env, check=True
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        check=True,
     )
     assert loaded.stdout.strip() == "[]"
 
@@ -842,7 +888,12 @@ def test_a_token_count_needs_no_network_and_writes_no_temporary_file(tmp_path: P
         "print(_cl100k().encode('hello world'))"
     )
     counted = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, text=True, env=env, timeout=120
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        timeout=120,
     )
     assert counted.returncode == 0, counted.stderr[-600:]
     # cl100k's own ids for the phrase: the shipped ranks are tiktoken's, bit for bit
@@ -853,7 +904,9 @@ def _access(path: Path) -> list[str]:
     """A file's access entries as Windows lists them, or its POSIX mode."""
     if sys.platform != "win32":
         return [oct(path.stat().st_mode & 0o777)]
-    listed = subprocess.run(["icacls", str(path)], capture_output=True, text=True, check=True)
+    listed = subprocess.run(
+        ["icacls", str(path)], capture_output=True, text=True, encoding="utf-8", check=True
+    )
     lines = listed.stdout.splitlines()
     entries = [lines[0][len(str(path)) :].strip()]
     entries += [line.strip() for line in lines[1:] if line.startswith(" ") and line.strip()]

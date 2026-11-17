@@ -28,6 +28,7 @@ from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
 from devtools.testing import os_marks
@@ -128,7 +129,7 @@ def _ruff(snapshots: dict[str, str], *options: str) -> dict[str, list[dict]]:
             path = root / f"{index:08}.py"
             path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
             names[path.name] = key
-        done = subprocess.run(
+        done = spawn.run(
             [
                 sys.executable,
                 "-m",
@@ -231,7 +232,7 @@ def ruff_docstrings(
         for path, text in snapshots.items():
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             (root / path).write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
-        done = subprocess.run(
+        done = spawn.run(
             [
                 *(sys.executable, "-m", "ruff", "check", "--config", "pyproject.toml"),
                 *("--select", ",".join(DOCSTRING_RULES), "--no-cache"),
@@ -368,6 +369,8 @@ def antipattern_growth(held: dict[str, int], found: dict[str, int]) -> list[str]
 # dotted name inside a class), or ``<module>``, so an allowance is keyed by file and function.
 
 UNBOUNDED = "test-child-unbounded"
+BARE_PYTHON = "test-child-bare-python"
+TEXT_ENCODING = "test-child-text-encoding"
 PAID = "test-paid-agent"
 PARAMETRIZED = "test-parametrized-process"
 CHILD_CALLS = frozenset({"run", "check_output", "check_call", "call", "Popen"})
@@ -377,6 +380,8 @@ MODEL_PACKAGES = frozenset({"anthropic", "openai", "claude_agent_sdk", "claude_c
 MODEL_HOSTS = ("api.anthropic.com", "api.openai.com")
 CHILD_REPAIRS = {
     UNBOUNDED: "pass timeout= and stdin=subprocess.DEVNULL, or input=",
+    BARE_PYTHON: "use sys.executable instead of a bare Python command",
+    TEXT_ENCODING: "decode text explicitly with encoding='utf-8'",
     PAID: "mark it @pytest.mark.paid_agent, which no gate, queue, nightly or full run selects",
     PARAMETRIZED: "test the decision in memory and keep one real journey per distinct path",
 }
@@ -465,6 +470,16 @@ def _stdin_closed(given: dict[str | None, ast.AST], names: dict[str, ast.AST]) -
     )
 
 
+def _pipe(value: ast.AST | None, names: dict[str, ast.AST]) -> bool:
+    value = _resolved(value, names)
+    return (isinstance(value, ast.Name) and value.id == "PIPE") or (
+        isinstance(value, ast.Attribute)
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "subprocess"
+        and value.attr == "PIPE"
+    )
+
+
 def _test_owners(tree: ast.Module) -> dict[int, str]:
     """Each node's owning test function by id: its dotted name, or ``<module>``."""
     owner: dict[int, str] = {}
@@ -502,6 +517,33 @@ def unbounded_children(tree: ast.Module, owner: Mapping[int, str]) -> list[tuple
             and isinstance(n.func.value, ast.Name)
             and _finite(_timeout(n, n.func.attr), names)
         }
+        communicated = {
+            n.func.value.id
+            for n in owned
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "communicate"
+            and isinstance(n.func.value, ast.Name)
+            and _finite(_timeout(n, "communicate"), names)
+        }
+        fed = {
+            n.func.value.id
+            for n in owned
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "communicate"
+            and isinstance(n.func.value, ast.Name)
+            and _finite(_timeout(n, "communicate"), names)
+            and _stdin_closed(
+                {
+                    "input": next(
+                        (k.value for k in n.keywords if k.arg == "input"),
+                        n.args[0] if n.args else UNKNOWN,
+                    )
+                },
+                names,
+            )
+        }
         held = {
             id(n.value): n.targets[0].id
             for n in owned
@@ -522,12 +564,40 @@ def unbounded_children(tree: ast.Module, owner: Mapping[int, str]) -> list[tuple
             ):
                 continue
             given: dict[str | None, ast.AST] = {k.arg: k.value for k in node.keywords if k.arg}
+            args = _resolved(node.args[0], names) if node.args else None
+            executable = (
+                _resolved(args.elts[0], names)
+                if isinstance(args, ast.List | ast.Tuple) and args.elts
+                else args
+            )
+            if (
+                isinstance(executable, ast.Constant)
+                and isinstance(executable.value, str)
+                and executable.value.lower() in {"python", "python.exe", "python3"}
+            ):
+                found.append((BARE_PYTHON, owner.get(id(node), "<module>"), node.lineno))
+            text_mode = any(
+                isinstance(value := _resolved(given.get(key), names), ast.Constant)
+                and value.value is True
+                for key in ("text", "universal_newlines")
+            )
+            encoding = _resolved(given.get("encoding"), names)
+            if (text_mode or encoding is not None) and not (
+                isinstance(encoding, ast.Constant)
+                and isinstance(encoding.value, str)
+                and encoding.value.lower().replace("-", "") == "utf8"
+            ):
+                found.append((TEXT_ENCODING, owner.get(id(node), "<module>"), node.lineno))
+            child = held.get(id(node))
+            output_pipe = _pipe(given.get("stdout"), names) or _pipe(given.get("stderr"), names)
+            input_pipe = _pipe(given.get("stdin"), names)
             bounded = (
-                held.get(id(node)) in waited
+                child in (communicated if output_pipe else waited)
+                and (not input_pipe or child in fed)
                 if node.func.attr == "Popen"
                 else _finite(given.get("timeout"), names)
             )
-            if not bounded or not _stdin_closed(given, names):
+            if not bounded or not _stdin_closed(given, names) or (input_pipe and child not in fed):
                 found.append((UNBOUNDED, owner.get(id(node), "<module>"), node.lineno))
     return found
 
@@ -991,7 +1061,7 @@ def _semgrep_selftest(rules: str, cases: str) -> None:
         (root / "rules.yml").write_text(rules, encoding="utf-8")
         (root / "rules.py").write_text(cases, encoding="utf-8")
         exe = Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
-        result = subprocess.run(
+        result = spawn.run(
             [
                 str(exe),
                 "--test",
@@ -1039,7 +1109,7 @@ def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int
             target = root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
-        done = subprocess.run(
+        done = spawn.run(
             [
                 str(
                     Path(sys.executable).parent / ("semgrep.exe" if os.name == "nt" else "semgrep")
@@ -1080,7 +1150,7 @@ def semgrep_antipatterns(snapshots: dict[str, str], rules: str) -> dict[str, int
 def _astgrep_rows(root: Path, target: str) -> list[tuple[str, str, int]]:
     """Each ast-grep finding of root/rules.yml in root/target: its path under target, rule, line."""
     exe = Path(sys.executable).parent / ("ast-grep.exe" if os.name == "nt" else "ast-grep")
-    done = subprocess.run(
+    done = spawn.run(
         [str(exe), "scan", "--rule", "rules.yml", "--json=compact", target],
         cwd=root,
         stdin=subprocess.DEVNULL,
@@ -1169,7 +1239,7 @@ def auxiliary_antipatterns(snapshots: dict[str, str]) -> dict[str, int]:
                     f"{tool} is not installed at {executable}; sync the locked environment "
                     "(uv sync --locked --all-extras)"
                 )
-            done = subprocess.run(
+            done = spawn.run(
                 [str(executable), *options, *files],
                 cwd=root,
                 capture_output=True,
@@ -1636,7 +1706,7 @@ def jscpd_runner(
         raise ValueError("jscpd.unavailable: install Node.js and the locked tool")
     try:
         if not cache:
-            cache = subprocess.run(
+            cache = spawn.run(
                 [npm, "config", "get", "cache", "--offline"],
                 capture_output=True,
                 text=True,
@@ -1650,7 +1720,7 @@ def jscpd_runner(
             "const m=require(process.argv[1]);const k=m.getPlatformKey();"
             "if(!k)process.exit(2);process.stdout.write(m.PLATFORM_MAP[k].packageName)"
         )
-        name = subprocess.run(
+        name = spawn.run(
             [node, "-e", choose, str(modules / "jscpd/platform-map.js")],
             capture_output=True,
             text=True,
@@ -1719,7 +1789,7 @@ def clone_problems_batch(
                 )
             # jscpd counts the distance between line endpoints, so seven admits
             # an exact eight-line block; the existing window check filters shorter hits.
-            subprocess.run(
+            spawn.run(
                 [
                     node,
                     str(runner),
@@ -2034,7 +2104,7 @@ def problems(
 
 
 def _git(*args: str, root: Path = ROOT) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return spawn.run(
         ["git", *args],
         cwd=root,
         input="",

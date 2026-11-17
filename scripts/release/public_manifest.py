@@ -21,6 +21,8 @@ from collections import Counter
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from alphalattice.kernel.shared_kernel import spawn
+
 if TYPE_CHECKING:
     from devtools.architecture.structural import FileFacts
 
@@ -905,13 +907,15 @@ class _GitObjects:
 
     ROUND = 32
 
-    def __init__(self, repo: Path):
-        self.process = subprocess.Popen(
-            ["git", "cat-file", "--batch-command", "--buffer", "-z"],
+    def __init__(self, repo: Path, *, safe_directory: bool = False):
+        self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
+        git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
+        self.process = self.session.start(
+            [*git, "cat-file", "--batch-command", "--buffer", "-z"],
             cwd=repo,
             creationflags=_NO_WINDOW,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            stderr=None,
         )
         self.resolved: dict[str, str | None] = {}
         self.contents: dict[str, bytes] = {}
@@ -920,27 +924,31 @@ class _GitObjects:
         return self
 
     def __exit__(self, failure, *_) -> None:
-        with self.process:  # both pipes closed and the process waited for, on every exit
+        try:
             if failure is not None:
-                self.process.kill()
+                self.session.stop()
                 return
-            self.process.stdin.close()
+            self.session.close_input()
             trailing = self.process.stdout.read()
-        if self.process.returncode:
-            raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
-        if trailing:
-            raise ValueError("unexpected trailing git object response; restore Git objects")
+            self.session.check()
+            self.process.wait(timeout=5)
+            if self.process.returncode:
+                raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
+            if trailing:
+                raise ValueError("unexpected trailing git object response; restore Git objects")
+        finally:
+            self.process.stdout.close()
+            self.session.__exit__(failure, None, None)
 
     def _rounds(self, verb: str, items: list[str]):
         for start in range(0, len(items), self.ROUND):
             chunk = items[start : start + self.ROUND]
             try:
-                self.process.stdin.write(
+                self.session.send(
                     b"".join(f"{verb} {item}\0".encode() for item in chunk) + b"flush\0"
                 )
-                self.process.stdin.flush()
             except OSError:
-                pass  # Git stopped reading: its missing reply refuses below.
+                self.session.check()  # A timeout is named; an ordinary missing reply refuses below.
             yield from chunk
 
     def acquire(self, specs: set[str]) -> None:
@@ -948,8 +956,10 @@ class _GitObjects:
         for spec in self._rounds("info", sorted(specs - self.resolved.keys())):
             missing = (spec + " missing\n").encode()
             line = out.readline()
+            self.session.check()
             if missing.startswith(line):  # a path may hold a newline: its reply spans lines
                 line += out.read(len(missing) - len(line))
+                self.session.check()
             if line == missing:
                 self.resolved[spec] = None
                 continue
@@ -966,9 +976,11 @@ class _GitObjects:
         wanted = {oid for oid in self.resolved.values() if oid} - self.contents.keys()
         for oid in self._rounds("contents", sorted(wanted)):
             header = out.readline().split()
+            self.session.check()
             if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
                 raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
             body = out.read(int(header[2]) + 1)
+            self.session.check()
             if len(body) != int(header[2]) + 1 or body[-1:] != b"\n":
                 raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
             self.contents[oid] = body[:-1]
@@ -987,7 +999,7 @@ def validate_internal_id_history(
 def _validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
 ) -> None:
-    found = subprocess.run(  # one start: the history's depth, then the source's commit
+    found = spawn.run(  # one start: the history's depth, then the source's commit
         ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1005,7 +1017,7 @@ def _validate_internal_id_history(
     source = resolved_source.strip()
     later = ""
     if admissions_from is not None:
-        later = subprocess.run(
+        later = spawn.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
             cwd=repo,
             creationflags=_NO_WINDOW,
@@ -1014,7 +1026,7 @@ def _validate_internal_id_history(
             check=False,
         ).stdout.strip()
     graph = {}
-    for row in subprocess.check_output(
+    for row in spawn.check_output(
         ["git", "rev-list", "--parents", source],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1031,7 +1043,7 @@ def _validate_internal_id_history(
         parent not in graph for parents in graph.values() for parent in parents
     ):
         raise ValueError("incomplete internal-label history graph; restore Git history")
-    commits = subprocess.check_output(
+    commits = spawn.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1113,7 +1125,7 @@ def _validate_internal_id_history(
             return True
         # Git remains authoritative at shallow boundaries or for unrelated anchors.
         return (
-            subprocess.run(
+            spawn.run(
                 ["git", "merge-base", "--is-ancestor", anchor, commit],
                 cwd=repo,
                 creationflags=_NO_WINDOW,
@@ -1241,7 +1253,7 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     if not objects:
         return {}
     ordered = sorted(objects)
-    raw = subprocess.check_output(
+    raw = spawn.check_output(
         ["git", "cat-file", "--batch"],
         cwd=repo,
         input="".join(oid + "\n" for oid in ordered).encode(),
@@ -1267,10 +1279,10 @@ def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[st
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")
-    sha = subprocess.check_output(
+    sha = spawn.check_output(
         ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"], cwd=repo, text=True
     ).strip()
-    listing = subprocess.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
+    listing = spawn.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
     objects = []
     modes = {}
     for record in listing.split(b"\0"):

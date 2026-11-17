@@ -24,6 +24,7 @@ from typing import Any, TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline.definition import DefinitionError
 from devtools.pipeline.receipt import (
     CASCADE,
@@ -61,7 +62,7 @@ LARGE_BYTES = 100 * 1024  # the shape guard's ceiling for any tracked file under
 
 
 def _tracked(root: Path, top: str) -> list[Path]:
-    listed = subprocess.run(
+    listed = spawn.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", top],
         capture_output=True,
         check=True,
@@ -594,7 +595,7 @@ class _HolderResolver:
         self.blobs: dict[str, str | None] = {}
         self.moves: dict[str, dict[str, str]] = {}
         self.clean: set[str] = set()
-        result = subprocess.run(
+        result = spawn.run(
             ["git", "rev-parse", "--verify", "HEAD^{commit}"],
             cwd=root,
             capture_output=True,
@@ -645,7 +646,7 @@ class _HolderResolver:
         if disk.is_symlink() or not disk.resolve().is_relative_to(self.root.resolve()):
             raise ValueError("the target holder resolves outside its checkout")
         if target_path not in self.clean:
-            checked = subprocess.run(
+            checked = spawn.run(
                 ["git", "diff", "--quiet", self.target, "--", target_path],
                 cwd=self.root,
                 capture_output=True,
@@ -893,7 +894,7 @@ def flake_assessment(
 
 def _merged(root: Path, head: str) -> bool | None:
     """Whether a stage's head is in this checkout's history; None when Git cannot tell."""
-    found = subprocess.run(
+    found = spawn.run(
         ["git", "-C", str(root), "merge-base", "--is-ancestor", head, "HEAD"], capture_output=True
     )
     return {0: True, 1: False}.get(found.returncode)
@@ -1026,7 +1027,7 @@ def _read_digest(root: Path) -> str:
         for p in (root / "src").rglob("*")
         if p.suffix in {".py", ".pyi"} or p.name == ".gitignore"
     ]
-    listed = subprocess.run(
+    listed = spawn.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", "src"], capture_output=True, check=True
     ).stdout
     digest = sha256(b"%d\0" % len(listed) + listed)
@@ -1164,7 +1165,7 @@ def _run(
         argv = (sys.executable, *argv)
     else:
         argv = ("git", "-c", "core.quotepath=off", *argv[1:])
-    done = subprocess.run(
+    done = spawn.run(
         argv,
         cwd=root,
         capture_output=True,

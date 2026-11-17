@@ -34,7 +34,7 @@ import threading
 import time
 import webbrowser
 from collections.abc import Callable
-from contextlib import ExitStack, closing, suppress
+from contextlib import suppress
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -53,6 +53,7 @@ from alphalattice.interface.local_application.web import (
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 from alphalattice.kernel.shared_kernel.waits import pause
 
@@ -205,54 +206,8 @@ def _refusal(
 
 def attached_child(command: list[str], *, env: dict[str, str]) -> int:
     """Run the retrieval child with its caller's streams and parent-owned lifetime."""
-    if sys.platform != "win32":
-        return subprocess.call(command, env=env)
-    import _winapi
-
     try:
-        with closing(ChildJob()) as job, ExitStack() as streams:
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags = subprocess.STARTF_USESTDHANDLES
-            current, handles = _winapi.GetCurrentProcess(), []
-            for field, kind in (
-                ("hStdInput", _winapi.STD_INPUT_HANDLE),
-                ("hStdOutput", _winapi.STD_OUTPUT_HANDLE),
-                ("hStdError", _winapi.STD_ERROR_HANDLE),
-            ):
-                handle = _winapi.GetStdHandle(kind)
-                if handle not in (None, -1):
-                    handle = _winapi.DuplicateHandle(
-                        current, handle, current, 0, True, _winapi.DUPLICATE_SAME_ACCESS
-                    )
-                    streams.callback(_winapi.CloseHandle, handle)
-                    # Popen excludes Windows console pseudo-handles from its allow-list too.
-                    if handle & 3 != 3 or _winapi.GetFileType(handle) != _winapi.FILE_TYPE_CHAR:
-                        handles.append(handle)
-                setattr(startup, field, handle)
-            startup.lpAttributeList = {"handle_list": handles}
-            process, thread, _, _ = _winapi.CreateProcess(
-                None,
-                subprocess.list2cmdline(command),
-                None,
-                None,
-                bool(handles),
-                0x4,
-                env,
-                None,
-                startup,  # CREATE_SUSPENDED; cwd and streams are inherited.
-            )
-            try:
-                job.assign_and_resume(process, thread)
-                _winapi.WaitForSingleObject(process, _winapi.INFINITE)
-                return int(_winapi.GetExitCodeProcess(process))
-            except BaseException:
-                with suppress(OSError):
-                    _winapi.TerminateProcess(process, 1)
-                    _winapi.WaitForSingleObject(process, _winapi.INFINITE)
-                raise
-            finally:
-                _winapi.CloseHandle(thread)
-                _winapi.CloseHandle(process)
+        return spawn.attached(command, env=env, job_factory=ChildJob)
     except OSError:
         return _refusal(
             "local_web.child_ownership_unavailable",
@@ -279,40 +234,7 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
         "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
     }
-    common: dict[str, Any] = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": log,
-        "stderr": log,
-        "env": environment,
-    }
-    if sys.platform != "win32":
-        return subprocess.Popen(command, start_new_session=True, **common)
-    # No console window: the Host's workers start in its hidden console, never in new windows.
-    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-    import ctypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.IsProcessInJob.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.c_int),
-    ]
-    in_job = ctypes.c_int()
-    child = subprocess.Popen(
-        command, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **common
-    )
-    # Windows Popen exposes a native handle absent from the cross-platform stub.
-    native: Any = child
-    handle = ctypes.c_void_p(int(native._handle))
-    proved = kernel32.IsProcessInJob(handle, None, ctypes.byref(in_job))
-    error_code = ctypes.get_last_error() if not proved else 0
-    if not proved or in_job.value:
-        child.terminate()
-        child.wait()
-        error = PermissionError("local_web.detached_breakaway_denied")
-        error.winerror = error_code
-        raise error
-    return child
+    return spawn.detached(command, log=log, env=environment)
 
 
 def _names_a_host(workspace: Path) -> bool:
@@ -449,12 +371,12 @@ def _detach(
         if host.poll() is not None:
             return _failed_start(arguments.workspace, host, text, log_path)
         pause(0.2)
+    spawn.stop_tree(host.pid)
     return _refusal(
         "local_web.detached_host_not_ready",
-        f"The detached Host (process {host.pid}) has not reported serving after "
-        f"{READY_SECONDS} s; it may still be starting. Read its log, {log_path}, or stop it "
-        "with `alphalattice host stop`.",
-        "READ_THE_HOST_LOG_OR_STOP_IT",
+        f"The Host did not become ready within {READY_SECONDS} seconds and was stopped. "
+        f"Its log is {log_path}. Run alphalattice serve again.",
+        "SERVE_AGAIN",
     )
 
 

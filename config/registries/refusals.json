@@ -1,5 +1,15 @@
 {
 "entries": {
+"spawn.encoding_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Use UTF-8 for a text child."},
+"spawn.initial_thread_unavailable": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The suspended child could not be admitted and resumed; inspect process access and retry."},
+"spawn.session_input_closed": {"owner": "alphalattice.kernel.shared_kernel", "category": "FAILED_PRECONDITION", "classification_note": "The child input is closed; start a new owned session."},
+"spawn.session_owns_stdin": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Choose a pipe or a closed input for the owned session."},
+"spawn.session_stop_unconfirmed": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The owned child did not reach its termination barrier; inspect its owner before retrying."},
+"spawn.session_terminal": {"owner": "alphalattice.kernel.shared_kernel", "category": "FAILED_PRECONDITION", "classification_note": "The owned session has ended; start a new session."},
+"spawn.stdin_unfed": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Supply input to the child or close its standard input."},
+"spawn.stop_scope_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Choose the tree or root stop scope."},
+"spawn.timeout_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Supply a finite positive child deadline."},
+"spawn.tree_not_stopped": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The complete child tree was not confirmed stopped; inspect the owner before retrying."},
 "market_data.workspace_identity_ambiguous": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "Multiple active workspace registrations name the same folder; repair the workspace registry before reading world data."},
 "market_data_ops.universe_workspace_unmeasured": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "The admitted universe reader cannot identify its workspace; repair the workspace registry before reading its lineage."},
 "agent_telemetry.signal_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT"},

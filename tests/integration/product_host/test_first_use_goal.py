@@ -97,6 +97,7 @@ def _cli(
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
         env={**os.environ, "CLAUDE_CODE_SESSION_ID": session, **passed},
     )

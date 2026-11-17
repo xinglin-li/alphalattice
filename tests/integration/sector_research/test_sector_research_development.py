@@ -689,6 +689,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=environment,
         check=True,
     )
@@ -708,6 +709,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=environment,
         check=True,
     )

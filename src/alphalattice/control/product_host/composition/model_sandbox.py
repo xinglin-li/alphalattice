@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 import yaml  # type: ignore[import-untyped]
 
 from alphalattice.control.task_control.upgrade import carry_tasks

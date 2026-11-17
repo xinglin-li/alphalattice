@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import definition
 from release.public_manifest import (
     INTERNAL_ID_BASELINE,
@@ -546,13 +547,11 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
                 + raw
                 + b"\n\n"
             )
-        subprocess.check_output(
-            ["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream
-        )
+        spawn.check_output(["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream)
         tip = _git("rev-parse", "batched")
         side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
         merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
-        check_output, responses = subprocess.check_output, {}
+        check_output, responses = spawn.check_output, {}
         popen, sent = subprocess.Popen, bytearray()
 
         def recorded(
@@ -562,14 +561,16 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             if "--batch-command" in command:
                 stdin, sent[:] = process.stdin, b""
                 write = lambda data: sent.extend(data) or stdin.write(data)
-                process.stdin = SimpleNamespace(write=write, flush=stdin.flush, close=stdin.close)
+                process.stdin = SimpleNamespace(
+                    write=write, flush=stdin.flush, close=stdin.close, closed=False
+                )
             return process
 
         with monkeypatch.context() as patch:
             starts = Mock(wraps=recorded)
             patch.setattr(subprocess, "Popen", starts)
             patch.setattr(
-                subprocess,
+                spawn,
                 "check_output",
                 lambda command, **kwargs: responses.setdefault(
                     tuple(command), check_output(command, **kwargs)
@@ -596,7 +597,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         ):
             with monkeypatch.context() as patch:
                 patch.setattr(
-                    subprocess,
+                    spawn,
                     "check_output",
                     lambda command, option=option, damage=damage, **kwargs: (
                         damage(responses[tuple(command)])
@@ -604,15 +605,33 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
                         else responses[tuple(command)]
                     ),
                 )
-                patch.setattr(
-                    subprocess,
-                    "Popen",
-                    lambda command, option=option, damage=damage, **kwargs: (
-                        MagicMock(stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0)
-                        if option in command
-                        else popen(command, **kwargs)
-                    ),
-                )
+                if option == "--batch-command":
+
+                    class DamagedSession:
+                        def __init__(self, *, damage=damage, **kwargs):
+                            self.child = MagicMock(
+                                stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0
+                            )
+
+                        def start(self, *args, **kwargs):
+                            return self.child
+
+                        def send(self, data):
+                            self.child.stdin.write(data)
+
+                        def close_input(self):
+                            self.child.stdin.close()
+
+                        def check(self):
+                            pass
+
+                        def stop(self):
+                            pass
+
+                        def __exit__(self, *args):
+                            pass
+
+                    patch.setattr(spawn, "InteractiveSession", DamagedSession)
                 with pytest.raises(ValueError, match=r"git object response|history graph"):
                     validate_internal_id_history(tmp_path, merged)
         return
@@ -630,10 +649,8 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     with pytest.raises(ValueError, match="allowance increased"):
         validate_internal_id_history(tmp_path, "HEAD")
     shallow = tmp_path.parent / (tmp_path.name + "-shallow")
-    subprocess.check_output(
-        ["git", "clone", "--quiet", "--depth=1", tmp_path.as_uri(), str(shallow)]
-    )
-    shallow_head = subprocess.check_output(
+    spawn.check_output(["git", "clone", "--quiet", "--depth=1", tmp_path.as_uri(), str(shallow)])
+    shallow_head = spawn.check_output(
         ["git", "-C", str(shallow), "rev-parse", "HEAD"], text=True
     ).strip()
     assert _git("rev-parse", "HEAD") == shallow_head
@@ -985,7 +1002,7 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
         PYTEST_WORKER_DIAGNOSTICS=str(diagnostics),
     )
-    run = subprocess.run(
+    run = spawn.run(
         [
             sys.executable,
             "-m",

@@ -135,6 +135,7 @@ from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.admit import SECRET_NAME
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.clocks import clock_metadata
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
@@ -1666,7 +1667,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     if codex is None:
         return {**result, "failure": "CODEX_COMMAND_MISSING"}
     try:
-        subprocess.run(
+        spawn.run(
             [codex, "queue", "--thread", thread, "--message", message],
             check=True,
             capture_output=True,

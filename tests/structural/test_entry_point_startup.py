@@ -131,6 +131,7 @@ def test_every_script_starts_without_an_inherited_import_path(module: ScriptModu
             env=_startup_environment(),
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
     assert completed.returncode == 0, f"{module.name}: {completed.stderr[-2000:]}"
@@ -149,8 +150,63 @@ def test_every_product_importing_script_binds_this_tree_as_its_import_root() -> 
     assert unbound == []
 
 
-def test_the_entry_point_inventory_separates_commands_from_helpers() -> None:
+@pytest.mark.parametrize(
+    "case", ["inventory", "configure-child", "review-child", "authority-child"]
+)
+def test_the_entry_point_inventory_separates_commands_from_helpers(
+    case, monkeypatch, tmp_path
+) -> None:
     """requirement: every script is covered, by the probe its invocation admits."""
+
+    if case == "authority-child":
+        from types import SimpleNamespace
+
+        from scripts import materialize_post_governance_strategy_authority as authority
+
+        calls = []
+
+        def fake(command, **kwargs):
+            calls.append((command, kwargs))
+            value = str(tmp_path) if len(calls) == 1 else authority.POST_OBSERVED_RESEARCH_SHA
+            return SimpleNamespace(returncode=0, stdout=value)
+
+        monkeypatch.setattr(authority.spawn, "run", fake)
+        assert authority._repository_root(tmp_path) == tmp_path.resolve()
+        assert len(calls) == 2 and all(call[0][0] == "git" for call in calls)
+        return
+
+    if case == "review-child":
+        from types import SimpleNamespace
+
+        from scripts import playpen_review_context as context
+
+        calls = []
+        monkeypatch.setattr(
+            context.spawn,
+            "run",
+            lambda *a, **kw: calls.append((a, kw)) or SimpleNamespace(stdout="answer\n"),
+        )
+        assert context._git("status") == "answer"
+        assert calls[0][0][0][0] == "git" and calls[0][1]["check"]
+        return
+
+    if case == "configure-child":
+        from types import SimpleNamespace
+
+        from scripts import configure_playpen_dev as configure
+
+        (tmp_path / ".githooks").mkdir()
+        (tmp_path / ".githooks/pre-commit").touch()
+        calls = []
+        monkeypatch.setattr(configure, "PLAYPEN_ROOT", tmp_path)
+        monkeypatch.setattr(
+            configure.spawn,
+            "run",
+            lambda *a, **kw: calls.append((a, kw)) or SimpleNamespace(stdout=".githooks\n"),
+        )
+        assert configure.main() == 0 and len(calls) == 2
+        assert all(call[0][0][0] == "git" and call[1]["check"] for call in calls)
+        return
 
     assert INVENTORY
     helpers = frozenset(module.name for module in INVENTORY if not module.executable)

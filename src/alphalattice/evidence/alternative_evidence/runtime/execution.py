@@ -38,7 +38,7 @@ from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (

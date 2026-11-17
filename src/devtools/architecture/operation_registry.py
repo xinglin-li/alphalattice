@@ -18,7 +18,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -40,6 +39,7 @@ from alphalattice.interface.local_application.cli_contract import (
     host_checked,
     worded,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
 from devtools.architecture.registries import refusal_entries
@@ -255,10 +255,10 @@ def userspace_problems(root: Path) -> list[str]:
         return [f"USERSPACE {SURFACE}:1 missing manifest; restore the frozen registry"]
     manifest = json.loads(path.read_bytes())
     command = ["git", "show", f"HEAD:{SURFACE}"]
-    old = subprocess.run(command, cwd=root, capture_output=True)
+    old = spawn.run(command, cwd=root, capture_output=True)
     if old.stdout == path.read_bytes():
         command[-1] = f"HEAD^:{SURFACE}"
-        old = subprocess.run(command, cwd=root, capture_output=True)
+        old = spawn.run(command, cwd=root, capture_output=True)
     previous = json.loads(old.stdout) if old.returncode == 0 else None
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     manifest["release"] = project["version"]

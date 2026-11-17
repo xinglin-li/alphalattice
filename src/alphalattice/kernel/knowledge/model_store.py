@@ -26,7 +26,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -65,6 +64,7 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     SUPPORTED_RECIPES,
     TOKENIZER_SHA256,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 
 @dataclass(frozen=True, slots=True)
@@ -604,7 +604,7 @@ def _link_directory(link: Path, target: Path) -> None:
         else:
             shutil.rmtree(link)
     if os.name == "nt":
-        subprocess.run(
+        spawn.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)],
             check=True,
             capture_output=True,

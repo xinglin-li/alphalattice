@@ -1632,6 +1632,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "shared_kernel.child_processes_are_bounded_and_isolated": {
+      "description": "A child starts quietly with closed input and UTF-8 text, and a timeout ends its process tree.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "contract",
+      "seconds": 10,
+      "lower_layer": "The process and its descendant must actually run for the operating system to establish their lifetime and pipe behavior."
+    },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
       "owner": "alphalattice.kernel.shared_kernel",

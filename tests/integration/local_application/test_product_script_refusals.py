@@ -159,6 +159,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     monkeypatch.setenv(
         "PIP_INDEX_URL", "https://example.invalid/simple?key=x7Z"
     )  # too short to mask
+    monkeypatch.setattr(setup.spawn, "run", exits)
     monkeypatch.setattr(setup.subprocess, "run", exits)
     monkeypatch.setattr(sys, "argv", ["create_retrieval_environment.py", "--offline"])
     assert setup.main() == 2
@@ -206,7 +207,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     def missing(command: tuple[str, ...], **_options: object) -> None:
         raise FileNotFoundError(2, "The system cannot find the file specified")
 
-    monkeypatch.setattr(setup.subprocess, "run", missing)
+    monkeypatch.setattr(setup.spawn, "run", missing)
     assert setup.main() == 2
     assert _refusal(capsys)["failure_code"] == "retrieval_environment.uv_unavailable"
 
@@ -246,7 +247,7 @@ def test_retrieval_setup_uses_checkout_scratch(
         local.setattr(setup, "PLAYPEN", checkout)
         local.setattr(setup, "LOCK", checkout / "uv.lock")
         local.setattr(setup, "ENVIRONMENT", checkout / ".venv-retrieval")
-        local.setattr(setup.subprocess, "run", checked)
+        local.setattr(setup.spawn, "run", checked)
         setup.create(offline=True)
         assert len(seen) == 2 and seen[0] == seen[1] and not seen[0].exists()
         assert os.environ["TEMP"] == str(blocked_temp)
@@ -255,7 +256,7 @@ def test_retrieval_setup_uses_checkout_scratch(
             checked(command, **options)
             raise subprocess.CalledProcessError(2, command)
 
-        local.setattr(setup.subprocess, "run", failed)
+        local.setattr(setup.spawn, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             setup.create(offline=True)
     assert len(seen) == 3 and not seen[-1].exists()
@@ -264,22 +265,36 @@ def test_retrieval_setup_uses_checkout_scratch(
 
     with monkeypatch.context() as local:
         local.setattr(native_setup, "ROOT", checkout)
-        local.setattr(native_setup.subprocess, "run", checked)
+        local.setattr(native_setup.spawn, "run", checked)
         assert native_setup._install_tool()["status"] == "TOOL_INSTALLED"
         assert len(seen) == 7 and len(set(seen[3:])) == 1 and not seen[3].exists()
-        local.setattr(native_setup.subprocess, "run", failed)
+        local.setattr(native_setup.spawn, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             native_setup._install_tool()
     assert len(seen) == 8 and not seen[-1].exists()
 
 
+@pytest.mark.parametrize("case", ["unwritable", "check-child"])
 def test_the_local_web_build_answers_an_asset_it_cannot_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], case: str
 ) -> None:
     """requirement: the build writes its assets beside their sources in the checkout; a
     write it cannot make is refused in words, the served assets left as they were."""
 
     from scripts import build_local_web_ui as build
+
+    if case == "check-child":
+        calls = []
+        monkeypatch.setattr(build.spawn, "run", lambda command, **kw: calls.append((command, kw)))
+        monkeypatch.setattr(build, "concat", lambda *_: "")
+        monkeypatch.setattr(build, "parameters_js", lambda: "")
+        monkeypatch.setattr(build, "messages_js", lambda: "")
+        monkeypatch.setattr(build, "read", lambda *_: "")
+        monkeypatch.setattr(build, "dictionary", lambda *_: "")
+        build.check()
+        assert calls[0][0][0] == sys.executable
+        assert len(calls) == 5 and all(call[0][:2] == ["node", "--check"] for call in calls[1:])
+        return
 
     for name in build.FONT_FILES:
         target = tmp_path / name
@@ -909,6 +924,7 @@ def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.Compl
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
