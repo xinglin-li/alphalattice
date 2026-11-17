@@ -39,6 +39,14 @@ repos:
         language: system
         always_run: true
         require_serial: true
+      - id: deptry
+        name: declared dependencies
+        entry: python -m deptry src --known-first-party=alphalattice --known-first-party=devtools --known-first-party=scripts --known-first-party=tests
+        language: system
+        # Always run: pre-commit omits deleted paths from its file filter, but a
+        # deleted import can make a declaration unused.
+        always_run: true
+        pass_filenames: false
       # The hook runs every guard check outside COMMIT_STAGE_ONLY (test-shape and
       # test-budget among them) within its budget; every stage still runs all
       # (scripts/check_playpen.py).

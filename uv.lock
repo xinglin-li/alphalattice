@@ -144,16 +144,18 @@ name = "alphalattice"
 version = "0.2.7"
 source = { editable = "." }
 dependencies = [
+    { name = "annotated-types" },
     { name = "blake3" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-system-metrics" },
-    { name = "opentelemetry-proto" },
     { name = "opentelemetry-processor-baggage" },
+    { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "protobuf" },
     { name = "psutil" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "sqlite-vec" },
@@ -178,6 +180,7 @@ data-live = [
 ]
 live-evidence = [
     { name = "httpx" },
+    { name = "lxml" },
     { name = "trafilatura" },
 ]
 quant = [
@@ -213,6 +216,7 @@ dev = [
     { name = "inspect-ai" },
     { name = "markdown-it-py", version = "4.2.0", source = { registry = "https://pypi.org/simple" } },
     { name = "mypy" },
+    { name = "packaging" },
     { name = "pandas-stubs" },
     { name = "pip-licenses" },
     { name = "portalocker" },
@@ -249,6 +253,7 @@ supply-chain = [
 
 [package.metadata]
 requires-dist = [
+    { name = "annotated-types", specifier = ">=0.6.0" },
     { name = "blake3", specifier = ">=1.0.11,<2" },
     { name = "clarabel", marker = "extra == 'quant'", specifier = ">=0.11,<1" },
     { name = "cvxpy-base", marker = "extra == 'quant'", specifier = ">=1.9,<2" },
@@ -260,6 +265,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'live-evidence'", specifier = ">=0.28,<1" },
     { name = "joblib", marker = "extra == 'quant'", specifier = ">=1.5,<2" },
     { name = "lightgbm", marker = "extra == 'quant'", specifier = ">=4.7,<4.8" },
+    { name = "lxml", marker = "extra == 'live-evidence'", specifier = ">=6.1.1" },
     { name = "numpy", marker = "extra == 'data'", specifier = ">=2.5,<3" },
     { name = "numpy", marker = "extra == 'quant'", specifier = ">=2.5,<3" },
     { name = "numpy", marker = "extra == 'semantic'", specifier = ">=2.5,<3" },
@@ -267,8 +273,8 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-instrumentation-system-metrics", specifier = ">=0.66b2,<1" },
-    { name = "opentelemetry-proto", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-processor-baggage", specifier = ">=0.66b2,<1" },
+    { name = "opentelemetry-proto", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2,<2" },
     { name = "optuna", marker = "extra == 'quant'", specifier = ">=5,<6" },
     { name = "osqp", marker = "extra == 'quant'", specifier = ">=1.1,<2" },
@@ -279,6 +285,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'data'", specifier = ">=26,<27" },
     { name = "pyarrow", marker = "extra == 'quant'", specifier = ">=26,<27" },
     { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "pydantic-core" },
     { name = "python-dotenv", specifier = ">=1.1,<2" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "scikit-learn", marker = "extra == 'quant'", specifier = ">=1.9,<2" },
@@ -307,6 +314,7 @@ dev = [
     { name = "inspect-ai", specifier = "==0.3.288" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "mypy", specifier = ">=1.18,<2" },
+    { name = "packaging" },
     { name = "pandas-stubs", specifier = ">=3.0,<4" },
     { name = "pip-licenses", specifier = ">=5,<6" },
     { name = "portalocker", specifier = ">=3.2,<4" },

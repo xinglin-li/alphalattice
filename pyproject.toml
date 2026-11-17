@@ -34,6 +34,9 @@ dependencies = [
     # Already locked; process telemetry is runtime, not only a test dependency.
     "psutil>=7,<8",
     "pydantic>=2.12,<3",
+    # Imported directly; Pydantic supplies the compatible core and metadata versions.
+    "pydantic-core",
+    "annotated-types>=0.6.0",
     "python-dotenv>=1.1,<2",
     "pyyaml>=6.0,<7",
     # `protocols.actor_execution.projections` imports it at module load and is
@@ -84,6 +87,7 @@ data-live = [
 # Explicitly admitted live evidence acquisition; network stays off by default.
 live-evidence = [
     "httpx>=0.28,<1",
+    "lxml>=6.1.1",  # online_sources parses HTML directly, as well as via trafilatura
     # Hold through 2026-12-12: 2.3.1 changes canonical evidence bytes and escapes table notices;
     # lift after v6 byte compatibility is proved or an identity successor is approved.
     "trafilatura==2.1.0",
@@ -127,6 +131,7 @@ dev = [
     # Preserve the product environment while the docs tools use mdformat's <4 range.
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
+    "packaging",  # devtools.architecture reads installed package versions directly
     "pandas-stubs>=3.0,<4",
     "pip-licenses>=5,<6",
     "portalocker>=3.2,<4",
@@ -146,6 +151,7 @@ dev = [
     "shellcheck-py==0.11.0.1",
     "actionlint-py==1.7.12.25",
 ]
+
 # Each package below registers a pytest plugin that loads itself into every pytest run in an
 # environment it is installed in, so each stays out of the default dev group and in a group of
 # its own; a run that uses one asks for it with --group.
@@ -166,6 +172,17 @@ docs = [
 mutation = [
     "mutmut>=3,<4",
 ]
+
+[tool.deptry.per_rule_ignores]
+# Retrieval has its own pinned, isolated environment; torch is an optional device probe.
+DEP001 = ["tokenizers", "fastembed", "torch"]
+# Wheels loaded by DuckDB, the calendar, timezone database, CVXPY's solver, and
+# the semantic runtimes are consumed dynamically. Keep dotenv and Optuna in the
+# existing install profile for compatibility (Optuna is also a documented research tool).
+DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "clarabel", "optuna", "onnxruntime", "sentencepiece"]
+# These imports are in src/devtools, which is not included in the product wheel;
+# they are correctly declared in the development dependency group.
+DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging"]
 
 [tool.uv]
 package = true
