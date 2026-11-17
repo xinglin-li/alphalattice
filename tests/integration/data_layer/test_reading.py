@@ -8,7 +8,7 @@ from contextlib import closing
 
 import pytest
 
-from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer import create_data_root, reading
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.reading import compare, reading_session
 from tests.integration.data_layer.test_project import AGENT, T0, _aftermath, _define, _research
@@ -25,6 +25,8 @@ def bare(tmp_path_factory):
     with HostLog.open(root, now_us=T0) as log:
         artifacts = _research(log)
         _aftermath(root, log, artifacts)
+        log.record("conclusion.drawn", ("goal", "g1"), text="The goal's conclusion.", **AGENT)
+        log.record("lesson.recorded", ("goal", "g1"), text="The goal's lesson.", **AGENT)
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con, con:
         con.execute("DELETE FROM artifact_body")
     for folder in ("data", "blobs"):
@@ -47,6 +49,28 @@ def test_experience_returns_each_trial_with_its_measures_and_no_body(bare):
             ("t2", "completed", "price_momentum", "never_stored", 3),
             ("t3", "completed", "price_momentum", "collected", 3),
         ]
+        view = session.execute(
+            "SELECT * FROM experience ORDER BY registered_at DESC, trial_id"
+        ).fetchall()
+        names = [column[0] for column in session.description]
+        trials = reading.experience(session, limit=50)
+        assert trials == [dict(zip(names, row, strict=True)) for row in view]
+        assert (
+            reading.experience(
+                session,
+                goal="g1",
+                hypothesis="h1",
+                method="price_momentum",
+                workspace="w1",
+                limit=2,
+            )
+            == trials[:2]
+        )
+        assert reading.experience(session, goal="absent", limit=50) == []
+        collected = next(trial for trial in trials if trial["trial_id"] == "t3")
+        assert collected["body_state"] == "collected" and len(collected["measures"]) == 3
+        assert collected["goal_conclusions"] == ["The goal's conclusion."]
+        assert collected["goal_lessons"] == ["The goal's lesson."]
         spread = "SELECT n FROM approach_spread WHERE metric = 'sharpe_ratio' ORDER BY n"
         assert [r[0] for r in session.execute(spread).fetchall()] == [1, 2]
         assert session.execute("SELECT trials FROM search_size").fetchall() == [(3,)]

@@ -464,7 +464,7 @@ GRAMMAR: Final[dict[str, Command]] = {
         collection=True,
     ),
     "EXPERIMENT_RUN": Command(
-        "study", "run", "Runs a kept plan as a Task, or reuses the identical completed study."
+        "study", "run", "Runs a kept plan as a Task, optionally testing a stated hypothesis."
     ),
     "EXPERIMENT_SUMMARY": Command(
         "study",
@@ -601,7 +601,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "GOAL_NOTE": Command(
         "goal",
         "note",
-        "Records a decision or conclusion in the goal's record; a conclusion must cite evidence.",
+        "Records a decision, conclusion or open hypothesis in the goal's record.",
         "goal_id",
     ),
     "GOAL_OPEN": Command(
@@ -744,6 +744,12 @@ GRAMMAR: Final[dict[str, Command]] = {
         "history",
         "list",
         "Lists past studies, installed results, updates and CRO reviews, a page at a time.",
+        collection=True,
+    ),
+    "EXPERIENCE_READ": Command(
+        "experience",
+        "list",
+        "Reads recorded trials, their measures and conclusions.",
         collection=True,
     ),
     "RESEARCH_INPUTS": Command(
@@ -1080,6 +1086,9 @@ FLAGS: Final[dict[str, str]] = {
     "history_entry_id": "entry",
     "history_kind": "kind",
     "history_limit": "limit",
+    "experience_hypothesis": "hypothesis",
+    "experience_method": "method",
+    "experience_workspace": "from-workspace",
     "incident_key": "incident",
     "input_binding_hash": "binding",
     "input_pinned": "pinned",
@@ -1319,6 +1328,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("portfolio-update", "A Portfolio update settling observed sessions."),
             ("automation", "The daily research update, on or off."),
             ("history", "Past studies, results, updates and reviews."),
+            ("experience", "Trials, measures and conclusions from recorded research."),
         ),
     ),
     (

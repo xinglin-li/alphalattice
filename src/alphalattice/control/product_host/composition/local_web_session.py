@@ -1213,6 +1213,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/tasks/recovery", "TASK_RECOVERY"),
     ("GET", "/api/tasks/guardian", "TASK_GUARDIAN"),
     ("GET", "/api/research-history", "RESEARCH_HISTORY"),
+    ("GET", "/api/experience", "EXPERIENCE_READ"),
     ("GET", "/api/upgrade", "UPGRADE_OVERVIEW"),
     ("POST", "/api/upgrade/acknowledge", "UPGRADE_ACKNOWLEDGE"),
     ("GET", "/api/workspace/network", "NETWORK_ACCESS"),

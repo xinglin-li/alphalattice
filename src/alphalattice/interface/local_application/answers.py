@@ -471,6 +471,17 @@ class ResearchHistoryAnswer(_Answer):
     names."""
 
 
+class ExperienceAnswer(_Answer):
+    """A bounded page of recorded trials and their attribution."""
+
+    trials: list[dict[str, Any]]
+    """Trials with their trial and trace IDs, selections, measures and conclusions."""
+    notes: list[dict[str, Any]]
+    """Bounded conclusions and lessons recorded about goals, including those without trials."""
+    unattributed_in_page: int
+    """Trials on this page that have no recorded hypothesis."""
+
+
 class GuardianEntry(_Answer):
     """One unfinished Task as Guanyin sees it: its liveness, progress, work kept and next steps."""
 
@@ -647,6 +658,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESULTS": ResultsAnswer,
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
+    "EXPERIENCE_READ": ExperienceAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),
 }

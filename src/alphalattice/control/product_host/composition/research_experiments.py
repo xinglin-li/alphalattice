@@ -25,12 +25,22 @@ from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
+from alphalattice.control.product_host.composition.experience_read import (
+    run_with_hypothesis,
+)
 from alphalattice.control.product_host.composition.plain_refusals import (
     explain,
     task_record_refusal,
 )
 from alphalattice.control.product_host.composition.research_authoring import (
     build_research_program_workflow,
+)
+from alphalattice.control.product_host.composition.research_experiment_blocks import (
+    CAPACITY_BLOCKS,
+    retryable_block,
+)
+from alphalattice.control.product_host.composition.research_experiment_blocks import (
+    RETRYABLE_ARTIFACT_BLOCKS as RETRYABLE_ARTIFACT_BLOCKS,
 )
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     STAGES as STAGES,
@@ -41,10 +51,14 @@ from alphalattice.control.product_host.composition.research_experiment_plan impo
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     AlphaExperimentSource,
     ExperimentPlan,
+    _check_evidence_window,
     checked_task_plan,
 )
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     _task_contract as _task_contract,
+)
+from alphalattice.control.product_host.composition.research_experiment_plan import (
+    review_requests as review_requests,
 )
 from alphalattice.control.product_host.composition.research_experiment_projection import (
     SAMPLE_SCHEME_SUPERSEDED,
@@ -282,6 +296,7 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
@@ -300,40 +315,6 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
 )
-
-RETRYABLE_ARTIFACT_BLOCKS: frozenset[str] = frozenset(
-    {
-        "risk_research.covariance_chunk_identity_invalid",
-        "risk_research.covariance_chunk_tampered",
-        "risk_research.development_checkpoint_matrix_mismatch",
-        "risk_research.development_checkpoint_scope_mismatch",
-        "risk_research.development_checkpoint_axis_mismatch",
-        "research_authoring.evidence_artifact_unverifiable",
-    }
-)
-"""Stage refusals that name a required artifact that was missing or did not read.
-
-Once it is back, the same execution contract can continue from its verified prefix
-and checkpoint, so a person may ask for that. A scientific or permission refusal,
-an exhausted budget or an unrepaired source is not in this set and stays a stop.
-"""
-
-
-CAPACITY_BLOCKS = {
-    "storage.managed_capacity_exceeded": "Raise the cap (`storage set --cap-bytes <bytes>`) or "
-    "confirm a cleanup on the person's yes",
-    "storage.disk_space_insufficient": "Free disk space or move the workspace to a larger disk",
-}
-"""Capacity stops and their way on; the same declaration goes on once restored."""
-
-
-def retryable_block(failure_code: str | None) -> str | None:
-    """The repaired-artifact or operator-capacity stop this owner permits retrying."""
-    if not failure_code:
-        return None
-    code = failure_code.split(":", 1)[0]
-    return code if code in RETRYABLE_ARTIFACT_BLOCKS or code in CAPACITY_BLOCKS else None
-
 
 _VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
     "research_experiment_verified_evidence", default=None
@@ -2827,7 +2808,13 @@ class ResearchExperimentApplication:
         )
 
     def run(
-        self, plan_hash: str, *, caller: str, agent_execution: AgentExecutionBinding | None
+        self,
+        plan_hash: str,
+        *,
+        caller: str,
+        agent_execution: AgentExecutionBinding | None,
+        hypothesis_id: str | None = None,
+        expected_goal: str | None = None,
     ) -> dict[str, object]:
         """Admit the caller and reuse or submit only the exact previewed experiment.
 
@@ -2843,6 +2830,8 @@ class ResearchExperimentApplication:
             AuthoringError: Neither an exact preview nor its admitted task exists, or caller
                 authority is absent.
         """
+        if hypothesis_id is not None:
+            history.hypothesis_goal(hypothesis_id, expected_goal=expected_goal)
         entry = self._previews.get(plan_hash)
         # No preview here: after a restart or eviction the only lawful answers
         # are the Task this exact plan already admitted, or a fresh explicit
@@ -2858,6 +2847,8 @@ class ResearchExperimentApplication:
         actor = self._admit_actor(plan, caller=caller, agent_execution=agent_execution)
         if entry is None:
             assert admitted is not None
+            if admitted.input.payload.get("hypothesis_id") != hypothesis_id:
+                raise AuthoringError("experience.hypothesis_existing_run")
             return self._existing_task_answer(admitted)
         if self._previews.expired(entry):
             return self._replan_refusal("research_experiment.preview_expired", entry)
@@ -2867,8 +2858,10 @@ class ResearchExperimentApplication:
             return self._replan_refusal(str(error), entry)
         task = self._matching_task(plan)
         if task is not None:
+            if task.input.payload.get("hypothesis_id") != hypothesis_id:
+                raise AuthoringError("experience.hypothesis_existing_run")
             return self._existing_task_answer(task)
-        sent = self.dispatcher.submit(ResearchExperimentCommand(self, plan, actor))
+        sent = self.dispatcher.submit(ResearchExperimentCommand(self, plan, actor, hypothesis_id))
         return {
             "status": sent.disposition,
             "task_id": str(sent.task_id) if sent.task_id else None,
@@ -2943,7 +2936,9 @@ class ResearchExperimentApplication:
             )
         return answer
 
-    def admit(self, plan: ExperimentPlan, actor: ActorSubmissionBinding) -> CommandAdmission:
+    def admit(
+        self, plan: ExperimentPlan, actor: ActorSubmissionBinding, hypothesis_id: str | None = None
+    ) -> CommandAdmission:
         """Admit the plan `run` verified in this same request; never a second verification.
 
         The dispatcher calls this synchronously from `run`'s submission, on the
@@ -2952,7 +2947,7 @@ class ResearchExperimentApplication:
         the only route here with a plan. The execution verifies again before
         any numerical work (`compatibility`, then the first stage).
         """
-        envelope, goal, workflow = _task_contract(plan, actor)
+        envelope, goal, workflow = _task_contract(plan, actor, hypothesis_id)
         registry = self.session.task_control_registry
         for task in registry.tasks():
             if (
@@ -2960,6 +2955,8 @@ class ResearchExperimentApplication:
                 and task.lifecycle is not TaskLifecycle.CANCELLED
                 and self._same_execution(self._of(task)[0], plan)
             ):
+                if task.input.payload.get("hypothesis_id") != hypothesis_id:
+                    raise AuthoringError("experience.hypothesis_existing_run")
                 return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         task = registry.admit(
             input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()
@@ -3822,6 +3819,7 @@ class ResearchExperimentApplication:
                 authority=plan.authority,
                 program=plan.program,
                 binding=actor,
+                hypothesis_id=task.input.payload.get("hypothesis_id"),
             )
             if plan.program.kind == ALPHA_EXPERIMENT_KIND:
                 with self._fit_threads(plan.program.program_hash):
@@ -4130,9 +4128,7 @@ class ResearchExperimentApplication:
             return self.preview_readback(request.experiment_plan_hash)
         if op == "EXPERIMENT_RUN":
             assert request.experiment_plan_hash is not None
-            return self.run(
-                request.experiment_plan_hash, caller=caller, agent_execution=agent_execution
-            )
+            return run_with_hypothesis(self, request, caller, agent_execution)
         if op == "EXPERIMENTS":
             return self.listing()
         assert request.task_id is not None
@@ -4302,22 +4298,6 @@ def draft_revision(
     return chosen, prior_hash if chosen == prior_input else None
 
 
-def review_requests(selector: Mapping[str, str]) -> dict[str, dict[str, str]]:
-    """The requests that take a book to its Evidence and CRO review, bound to the book.
-
-    Every answer that names a book for its review offers them -- a study book's readback, an
-    update's positions, a recorded choice of analysis -- so the agent continues the book it
-    read, never the workspace's default.
-    """
-    return {
-        "review": {"operation": "EVIDENCE_CRO", **selector},
-        # The book's Evidence begins at its preview.
-        "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
-        # Read the current Evidence state before it offers CRO work: a generic
-        # book read cannot know whether its bounded continuation is settled (P1).
-    }
-
-
 def _preview_readback_request(plan_hash: str) -> dict[str, object]:
     return {"operation": "EXPERIMENT_PREVIEW_READBACK", "experiment_plan_hash": plan_hash}
 
@@ -4329,6 +4309,7 @@ class ResearchExperimentCommand:
     application: ResearchExperimentApplication
     plan: ExperimentPlan | None = None
     actor: ActorSubmissionBinding | None = None
+    hypothesis_id: str | None = None
     command_kind: str = TASK_KIND
 
     def admit(self) -> CommandAdmission:
@@ -4342,7 +4323,7 @@ class ResearchExperimentCommand:
         """
         if self.plan is None or self.actor is None:
             raise AuthoringError("research_experiment.preview_required")
-        return self.application.admit(self.plan, self.actor)
+        return self.application.admit(self.plan, self.actor, self.hypothesis_id)
 
     def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
         """Execute one exact admitted experiment task.
@@ -4352,21 +4333,6 @@ class ResearchExperimentCommand:
             expected_task_hash: Optional optimistic task identity.
         """
         self.application.execute(task_id, expected_task_hash=expected_task_hash)
-
-
-def _check_evidence_window(plan: ExperimentPlan, evidence: ResearchExecutionEvidence) -> None:
-    """Refuse evidence whose sessions are not the window the plan previewed."""
-    if (
-        str(evidence.formation_sessions[0]) != plan.execution_preview["statistical_start"]
-        or str(evidence.formation_sessions[-1]) != plan.execution_preview["statistical_end"]
-        or len(evidence.formation_sessions) != plan.execution_preview["statistical_session_count"]
-        or (
-            plan.program.kind == FACTOR_EXPERIMENT_KIND
-            and plan.execution_preview["latest_outcome_session"]
-            > plan.document["experiment"]["sessions"]["as_of"]["session"]
-        )
-    ):
-        raise AuthoringError("research_experiment.evidence_window_mismatch")
 
 
 def verify_task_evidence(

@@ -506,12 +506,17 @@ class GoalStatement(GoalContract):
     """An attributed decision or conclusion with explicit evidence standing."""
 
     statement_id: str = Field(pattern=_ID)
-    kind: Literal["DECISION", "CONCLUSION", "PM_RESPONSE"]
+    kind: Literal["DECISION", "CONCLUSION", "HYPOTHESIS", "PM_RESPONSE"]
     attribution: str = Field(min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=12000)
     evidence: tuple[str, ...] = Field(default=(), max_length=64)
     disposition: Literal["SUPPORTS", "DOES_NOT_SUPPORT", "INSUFFICIENT", "OPEN", "REJECTED"]
     responds_to: str | None = Field(default=None, max_length=64)
+
+    def model_post_init(self, __context: Any) -> None:
+        """A stated hypothesis begins open; its standing is recorded separately."""
+        if self.kind == "HYPOTHESIS" and self.disposition != "OPEN":
+            raise ValueError("goal.hypothesis_must_be_open")
 
 
 class GoalSession(GoalContract):

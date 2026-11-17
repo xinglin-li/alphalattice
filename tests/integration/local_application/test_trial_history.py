@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,8 @@ from alphalattice.control.research_program.authoring.document import load_author
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import replay
 from alphalattice.kernel.data_layer.project import differences
+from alphalattice.kernel.data_layer.reading import experience, reading_session
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from tests.integration.research_program.test_program_execution import _FIXTURE, _workflow
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
@@ -31,18 +34,37 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     workflow: Any = _workflow(real_risk_workspace, tmp_path)
     who = {"actor_kind": ActorKind.HUMAN, "actor_id": "researcher"}
     workflow.preflight(document, **who)
+    sealed = workflow.prepare(document, **who)
+    attributed = replace(sealed, hypothesis_id="h1")
+    assert canonical_hash(sealed.document) == canonical_hash(attributed.document)
+    assert sealed.program.program_hash == attributed.program.program_hash
     assert history.open_history("w-risk", "risk", root) is None
     try:
-        first, _ = workflow.run_sealed(document, **who)
+        history.record("goal.set", ("goal", "g1"), {"title": "A goal"})
+        history.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="A claim")
+        first = workflow.execute_prepared(attributed)
         again, _ = workflow.run_sealed(document, **who)
     finally:
         history.close_history()
     assert (first.disposition, again.numerical_call_count) == ("COMPUTED", 0)
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         trials = con.execute(
-            "SELECT state, result_artifact, seeds FROM trial ORDER BY registered_seq"
+            "SELECT state, result_artifact, seeds, goal_id, hypothesis_id, recipe_key "
+            "FROM trial ORDER BY registered_seq"
         ).fetchall()
-        assert trials == [("completed", first.evidence_hash, "[0]"), ("completed", None, "[0]")]
+        assert [row[:5] for row in trials] == [
+            ("completed", first.evidence_hash, "[0]", "g1", "h1"),
+            ("completed", None, "[0]", None, None),
+        ]
+        assert trials[0][5] == trials[1][5]
+        (trace_id,) = con.execute(
+            "SELECT e.trace_id FROM trial t JOIN event e ON e.seq=t.registered_seq "
+            "WHERE t.hypothesis_id='h1'"
+        ).fetchone()
+        assert trace_id
+        assert (
+            con.execute("SELECT count(*) FROM event WHERE subject_kind = 'task'").fetchone()[0] == 0
+        )
         assert con.execute("SELECT count(*) FROM selection").fetchone()[0] == 1
         recipe = con.execute(
             "SELECT l.name FROM recipe r JOIN definition_lineage l ON l.definition_id = r.method_id"
@@ -55,3 +77,7 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
         assert artifact.fetchall() == [("research_evidence", "none", 1)]
         with closing(replay(con, tmp_path / "replayed.sqlite")) as target:
             assert differences(con, target) == []
+    with closing(reading_session(root)) as view:
+        assert view is not None
+        (row,) = experience(view, hypothesis="h1")
+        assert row["trial_id"] and row["trace_id"] == trace_id

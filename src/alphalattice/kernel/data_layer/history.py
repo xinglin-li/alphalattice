@@ -33,8 +33,8 @@ from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.data_layer.reading import reading_session
+from alphalattice.kernel.data_layer.log import HostLog, uuid7
+from alphalattice.kernel.data_layer.reading import experience, goal_notes, reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
 from alphalattice.kernel.shared_kernel.environment import offline
 
@@ -177,6 +177,18 @@ def open_history(
             for step_name, (required, text) in STEPS.items():
                 kind = {"work": True, "subject": None, "required": required, "text": "none"}
                 define("event_type", step_name, text, kind | {"durable": False})
+            define(
+                "event_type",
+                "experience.read",
+                "A read of recorded trial experience.",
+                {
+                    "work": False,
+                    "subject": None,
+                    "required": ["count"],
+                    "text": "none",
+                    "durable": False,
+                },
+            )
         log = _open["log"]
     known = log.read("SELECT 1 FROM workspace WHERE workspace_id = ?", (workspace_id,))
     subject = ("workspace", workspace_id)
@@ -222,6 +234,69 @@ def record(
 def recording() -> bool:
     """Whether this process is a Host whose history records."""
     return "log" in _open
+
+
+def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:
+    """Read the open Host's experience and record the read; None if unavailable."""
+    with _lock:
+        reading = _open.get("reading")
+        if reading is None:
+            return None
+        _open["log"].flush()
+        trials = experience(reading, **filters)
+        notes = goal_notes(reading, **filters)
+        record("experience.read", attrs={"count": len(trials)})
+        _open["log"].flush()
+        return {"trials": trials, "notes": notes}
+
+
+def hypothesis_goal(hypothesis: str, *, expected_goal: str | None = None) -> str | None:
+    """Resolve an explicitly selected hypothesis in the current Host's log."""
+    with _lock:
+        log = _open.get("log")
+        if log is None:
+            raise ValueError("experience.history_unavailable")
+        rows = log.read(
+            "SELECT workspace_id, goal_id FROM hypothesis WHERE hypothesis_id = ?", (hypothesis,)
+        )
+        if not rows:
+            raise ValueError("experience.hypothesis_unknown")
+        workspace, goal = rows[0]
+        if workspace != _open["workspace"]:
+            raise ValueError("experience.hypothesis_workspace")
+        if expected_goal is not None and goal != expected_goal:
+            raise ValueError("experience.hypothesis_goal")
+        return goal
+
+
+def record_hypothesis(goal_id: str, name: str, text: str, attribution: str) -> str:
+    """Return the one recorded Host-issued id for a goal statement, including on retry."""
+    with _once:
+        log = _open.get("log")
+        if log is None:
+            raise ValueError("experience.history_unavailable")
+        rows = log.read(
+            "SELECT e.subject_id, x.text, e.actor_id FROM event e "
+            "LEFT JOIN event_text x ON x.seq=e.seq "
+            "WHERE e.workspace_id=? AND e.type='hypothesis.stated' "
+            "AND json_extract(e.attrs, '$.goal_id')=? "
+            "AND json_extract(e.attrs, '$.statement_id')=?",
+            (_open["workspace"], goal_id, name),
+        )
+        if rows:
+            if len(rows) != 1 or rows[0][1] != text or rows[0][2] != attribution:
+                raise ValueError("goal.duplicate_identifier")
+            return str(rows[0][0])
+        hypothesis_id = str(uuid7())
+        record(
+            "hypothesis.stated",
+            ("hypothesis", hypothesis_id),
+            {"goal_id": goal_id, "statement_id": name},
+            text=text,
+            actor=("agent", attribution),
+        )
+        log.flush()
+        return hypothesis_id
 
 
 def record_new(

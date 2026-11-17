@@ -2,6 +2,11 @@
  "upgrade.refused": {"detail": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.", "next_action": "VERIFY_BACKUPS_AND_REPAIR_THE_NAMED_FAMILY"},
  "workspace_database.runtime_extension_refused": {"detail": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
  "data_layer.extension_unavailable": {"detail": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
+ "experience.history_unavailable": {"detail": "The Host's research history is unavailable, so its trial experience could not be read.", "next_action": "RESTORE_THE_HOST_HISTORY"},
+ "experience.hypothesis_unknown": {"detail": "That hypothesis is not in the Host's history. State it on the goal first.", "next_action": "STATE_THE_HYPOTHESIS_ON_THE_GOAL"},
+ "experience.hypothesis_workspace": {"detail": "That hypothesis belongs to another workspace. State one on this workspace's goal.", "next_action": "STATE_THE_HYPOTHESIS_ON_THE_GOAL"},
+ "experience.hypothesis_goal": {"detail": "That hypothesis belongs to a different goal from this request.", "next_action": "SELECT_THE_HYPOTHESIS_FOR_THIS_GOAL"},
+ "experience.hypothesis_existing_run": {"detail": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "next_action": "READ_THE_EXISTING_STUDY"},
  "alpha_research.development_artifact_identity_invalid": {
   "detail": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"

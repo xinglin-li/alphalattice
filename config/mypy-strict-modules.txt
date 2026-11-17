@@ -165,6 +165,9 @@ src/alphalattice/control/product_host/research_authoring/factor_handoff.py
 src/alphalattice/control/product_host/storage/input_references.py
 src/alphalattice/control/product_host/data_preparation/application.py
 src/alphalattice/control/product_host/composition/research_experiments.py
+src/alphalattice/control/product_host/composition/experience_read.py
+src/alphalattice/control/product_host/composition/research_experiment_blocks.py
+src/alphalattice/control/product_host/composition/research_review_outcome.py
 src/alphalattice/control/product_host/composition/research_experiment_plan.py
 src/alphalattice/control/product_host/composition/research_history.py
 src/alphalattice/control/product_host/composition/upgrade_overview.py

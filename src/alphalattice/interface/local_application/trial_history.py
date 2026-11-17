@@ -34,6 +34,7 @@ class Trial:
     span: str
     actor: tuple[str, str]
     started_us: int
+    trace: str
 
 
 def started(sealed: SealedSubmission) -> Trial | None:
@@ -80,11 +81,19 @@ def started(sealed: SealedSubmission) -> Trial | None:
         "product_version": _product_version(),
         "context": {"program": program.program_hash, "sessions": len(program.resolved_sessions)},
     }
-    cause = history.record("trial.registered", ("trial", trial), registered, actor=actor)
+    if sealed.hypothesis_id is not None:
+        registered["hypothesis_id"] = sealed.hypothesis_id
+        registered["goal_id"] = history.hypothesis_goal(sealed.hypothesis_id)
+    trace = secrets.token_hex(16)
+    cause = history.record(
+        "trial.registered", ("trial", trial), registered, actor=actor, trace=trace
+    )
     span = secrets.token_hex(8)
     now = time.time_ns() // 1000
-    history.record("trial", ("trial", trial), phase="started", span=span, cause=cause, actor=actor)
-    return Trial(trial, span, actor, now)
+    history.record(
+        "trial", ("trial", trial), phase="started", span=span, cause=cause, actor=actor, trace=trace
+    )
+    return Trial(trial, span, actor, now, trace)
 
 
 def ended(trial: object, evidence: ResearchExecutionEvidence | None) -> None:
@@ -96,6 +105,7 @@ def ended(trial: object, evidence: ResearchExecutionEvidence | None) -> None:
         "span": trial.span,
         "actor": trial.actor,
         "started_us": trial.started_us,
+        "trace": trial.trace,
     }
     if evidence is None:
         history.record("trial", subject, phase="failed", **ending)

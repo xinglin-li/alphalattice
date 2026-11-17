@@ -46,6 +46,61 @@ def reading_session(root: Path) -> Any | None:
     return connection
 
 
+def experience(
+    con: Any,
+    *,
+    goal: str | None = None,
+    hypothesis: str | None = None,
+    method: str | None = None,
+    workspace: str | None = None,
+    limit: int = 25,
+) -> list[dict[str, Any]]:
+    """Read bounded trials from the experience view, newest first."""
+    return _experience_rows(
+        con,
+        "experience",
+        "registered_at DESC, trial_id",
+        goal=goal,
+        hypothesis=hypothesis,
+        method=method,
+        workspace=workspace,
+        limit=limit,
+    )
+
+
+def goal_notes(con: Any, **filters: Any) -> list[dict[str, Any]]:
+    """Read bounded goal conclusions and lessons, including goals without trials."""
+    return _experience_rows(con, "goal_note", "recorded_at DESC, note_id", **filters)
+
+
+def _experience_rows(
+    con: Any,
+    view: str,
+    order: str,
+    *,
+    goal: str | None = None,
+    hypothesis: str | None = None,
+    method: str | None = None,
+    workspace: str | None = None,
+    limit: int = 25,
+) -> list[dict[str, Any]]:
+    filters = {
+        "goal_id": goal,
+        "hypothesis_id": hypothesis,
+        "method": method,
+        "workspace_id": workspace,
+    }
+    clauses = [f"{field} = ?" for field, value in filters.items() if value is not None]
+    values = [value for value in filters.values() if value is not None]
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    result = con.execute(
+        f"SELECT * FROM {view}{where} ORDER BY {order} LIMIT ?",
+        [*values, limit],
+    )
+    names = [column[0] for column in result.description]
+    return [dict(zip(names, row, strict=True)) for row in result.fetchall()]
+
+
 def compare(con: sqlite3.Connection, a: str, b: str) -> list[dict[str, Any]]:
     """Two artifacts by their measures, bodies present or not. A version both hold compares
     directly; with none shared, a's newest version is converted to b's when every version between

@@ -2,6 +2,13 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "experience.label.trials": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial experience", "zh-CN": "试验经验"}},
+    "experience.label.hypothesis": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Hypothesis", "zh-CN": "假设"}},
+    "experience.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's research history is unavailable, so its trial experience could not be read.", "zh-CN": "Host 的研究历史不可用，因此无法读取试验经验。"}},
+    "experience.hypothesis_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis is not in the Host's history. State it on the goal first.", "zh-CN": "Host 的历史中没有该假设。请先在目标中陈述它。"}},
+    "experience.hypothesis_workspace": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to another workspace. State one on this workspace's goal.", "zh-CN": "该假设属于另一个工作区。请在当前工作区的目标中陈述假设。"}},
+    "experience.hypothesis_goal": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to a different goal from this request.", "zh-CN": "该假设所属的目标与本次请求不同。"}},
+    "experience.hypothesis_existing_run": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "zh-CN": "该研究已有与其他假设关联的运行；复用不能更改其历史。"}},
     "upgrade.refused": {
       "owner": "alphalattice.kernel.data_layer",
       "kind": "MESSAGE",

@@ -1405,22 +1405,31 @@ class GoalApplication:
                 ref, _ = self._sealed_reference(goal, draft_ref, caller, scope=scope)
             return self._save(request, caller, goal, references=(*goal.references, ref))
         if request.operation == "GOAL_NOTE":
-            statement = GoalStatement.model_validate(request.goal_statement)
-            self._require_references(goal, statement.evidence)
-            if statement.disposition in {"SUPPORTS", "DOES_NOT_SUPPORT"} and not statement.evidence:
-                raise GoalRefusal("goal.conclusion_requires_evidence", goal)
-            if statement.responds_to and not any(
-                s.statement_id == statement.responds_to for s in goal.statements
-            ):
-                raise ValueError("goal.response_target_absent")
-            with GoalReferenceReadScope() as scope:
-                # Re-read cited owners before accepting a statement; its text stays
-                # attributed interpretation, never a correctness certificate.
-                for ref in goal.references:
-                    if ref.reference_id in statement.evidence:
-                        self._verified(ref, caller, scope=scope)
-            return self._save(request, caller, goal, statements=(*goal.statements, statement))
+            return self._note(request, caller, goal)
         raise ValueError("goal.operation_not_supported")
+
+    def _note(
+        self, request: PortfolioResearchOperationRequest, caller: str, goal: Goal
+    ) -> dict[str, Any]:
+        """Record one attributed statement against its verified references."""
+        goal, document = goal_history.replay_note(
+            request.goal_statement, goal, self.store, caller, request.change_reason
+        )
+        statement = GoalStatement.model_validate(goal_history.prepare_note(document))
+        self._require_references(goal, statement.evidence)
+        if statement.disposition in {"SUPPORTS", "DOES_NOT_SUPPORT"} and not statement.evidence:
+            raise GoalRefusal("goal.conclusion_requires_evidence", goal)
+        if statement.responds_to and not any(
+            s.statement_id == statement.responds_to for s in goal.statements
+        ):
+            raise ValueError("goal.response_target_absent")
+        with GoalReferenceReadScope() as scope:
+            # Re-read cited owners before accepting a statement; its text stays
+            # attributed interpretation, never a correctness certificate.
+            for ref in goal.references:
+                if ref.reference_id in statement.evidence:
+                    self._verified(ref, caller, scope=scope)
+        return self._save(request, caller, goal, statements=(*goal.statements, statement))
 
     def _open(
         self,
@@ -1772,7 +1781,7 @@ class GoalApplication:
         )
         value = Goal.seal(**fields)
         saved = self.store.publish(value, prior.goal_hash if prior else None)
-        goal_history.saved(prior, saved, caller)
+        hypothesis_id = goal_history.saved(prior, saved, caller)
         answer: dict[str, Any] = {
             "status": "GOAL_SAVED",
             **self._identity_of(saved),
@@ -1780,6 +1789,8 @@ class GoalApplication:
             "numerical_work": "NONE",
             "next_requests": self._next(saved),
         }
+        if hypothesis_id is not None:
+            answer["hypothesis_id"] = hypothesis_id
         if request.operation == "GOAL_SUBMIT" and saved.completion is not None:
             answer.update(
                 next_action="RECORD_THE_EXPERIENCE",

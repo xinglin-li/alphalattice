@@ -1770,7 +1770,6 @@ function pctText(s, threshold = null) {
 const CODE_WORDS = {
   'alternative_evidence.scoped_refresh': 'Refresh Evidence',
   'evidence_review.retrieval_environment_not_loaded': 'Retrieval environment not loaded',
-  "EVIDENCE_AUTHORITY_NOT_ADMITTED": "Evidence authority not admitted",
   "risk_research.installed_risk_surface_absent": "Installed risk surface not available",
   "risk_research.date_risk_unavailable": "Risk for this date not available",
   "risk_research.return_surface_short_of_the_date": "Return history does not reach this date",
@@ -1998,6 +1997,7 @@ const CODE_WORDS = {
   PORTFOLIO_UPDATE_READBACK: "Read Portfolio update",
   PORTFOLIO_UPDATE_RUN: "Portfolio update RUN",
   RESEARCH_HISTORY: "Research history",
+  EXPERIENCE_READ: "experience.label.trials",
   RESEARCH_INPUTS: "Research inputs",
   RESEARCH_INPUT_READBACK: "Read input publication",
   RESEARCH_STRATEGY_CONTROLS: "Strategy preparation controls",
@@ -2055,6 +2055,7 @@ const CODE_WORDS = {
   "NOT_ASSESSED": "Criterion not assessed",
   "DECISION": "Decision",
   "CONCLUSION": "Conclusion",
+  "HYPOTHESIS": "experience.label.hypothesis",
   "PM_RESPONSE": "PM response",
   "SUPPORTS": "Supports",
   "DOES_NOT_SUPPORT": "Does not support",
@@ -2193,7 +2194,7 @@ const CODE_WORDS = {
   // a passage's codes: the method, the placement in an interval, the delivery, the comparison, the statement, the families, the time's basis and precision
   UNIT_WINDOW: 'Matter window', RESIDUAL_SEARCH: 'Residual search', TYPED_RULE: 'Typed rule', TABLE_VIEW: 'Table view', STRUCTURAL_SCAN: 'Structural scan',
   IN: 'In the interval', BOUNDARY: 'On the boundary', OUTSIDE: 'Outside the interval', UNKNOWN: 'Unknown', HISTORICAL_CONTEXT: 'Historical context', EXACT_REPEAT: 'Exact repeat',
-  DELIVERED: 'Delivered', SERVED_BY_LATER_READING: 'Served by a later reading', WHOLE_VIEW: 'Whole view',
+  DELIVERED: 'Delivered', WHOLE_VIEW: 'Whole view',
   FIRST_OBSERVED: 'First observed', UNCHANGED: 'Unchanged', CHANGED: 'Changed', RESTATED: 'Restated',
   SOURCE_UNAVAILABLE: 'Source unavailable', ABSENT: 'The company states none', PRESENT: 'Stated', AMBIGUOUS: 'Ambiguous', MIXED: 'Mixed', MITIGATING: 'Mitigating', FAVOURABLE: 'Favourable', NO_CONCLUSION: 'No conclusion', SCOPE_UNRESOLVED: 'Scope unresolved', UNREAD_RELEVANT_STATEMENT: 'A relevant statement unread',
   FINANCING: 'Financing', LITIGATION: 'Litigation', CORPORATE_EVENT: 'Corporate event', CUSTOMER_CONCENTRATION: 'Customer concentration', GOING_CONCERN: 'Going concern', SUPPLY: 'Supply',

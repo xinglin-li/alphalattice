@@ -440,7 +440,7 @@ def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
         app.store.load(new.goal_hash)
 
 
-def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_app):
+def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_app, monkeypatch):
     app, opened, _calls, _body, _tasks = goal_app
     with pytest.raises(ValueError, match="exact_review_required"):
         app.operate(
@@ -519,6 +519,65 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
             ),
             "EXTERNAL_AUTOMATION",
         )
+
+    # The saved Goal survives a lost history acknowledgement, with one issued hypothesis.
+    from alphalattice.interface.local_application import goal_history
+
+    monkeypatch.setattr(goal_history.history, "recording", lambda: True)
+    issued: dict[tuple[str, str], str] = {}
+    interrupt = {"when": "before"}
+
+    def record_once(goal_id, name, text, attribution):
+        key = (goal_id, name)
+        if interrupt["when"] == "before":
+            interrupt["when"] = "done"
+            raise OSError("lost history reply")
+        if key not in issued:
+            issued[key] = str(goal_history.uuid7())
+            if interrupt["when"] == "after":
+                interrupt["when"] = "done"
+                raise OSError("lost history reply")
+        return issued[key]
+
+    def old_record(exists, args, event_type, subject, attrs, **more):
+        if event_type == "hypothesis.stated":
+            record_once(attrs["goal_id"], attrs["statement_id"], more["text"], more["actor"][1])
+        return 1
+
+    monkeypatch.setattr(goal_history.history, "record_new", old_record)
+    monkeypatch.setattr(goal_history.history, "record_hypothesis", record_once, raising=False)
+    for number, when in ((3, "before"), (4, "after")):
+        opened_retry = app.operate(
+            Request(operation="GOAL_OPEN", goal_id=UUID(int=number), goal_declaration=DECLARATION),
+            "HUMAN",
+        )
+        interrupt["when"] = when
+        document = {
+            "kind": "HYPOTHESIS",
+            "attribution": "researcher",
+            "text": "Does it work?",
+            "disposition": "OPEN",
+        }
+        if when == "after":
+            document["statement_id"] = "named-claim"
+        selector = (
+            {"goal_hash": opened_retry["goal_hash"]}
+            if when == "before"
+            else {"goal_id": UUID(int=number)}
+        )
+        request = Request(
+            operation="GOAL_NOTE",
+            change_reason="state the question",
+            goal_statement=document,
+            **selector,
+        )
+        with pytest.raises(OSError, match="lost history reply"):
+            app.operate(request, "HUMAN")
+        answer = app.operate(request, "HUMAN")
+        repeated = app.operate(request, "HUMAN")
+        assert answer["hypothesis_id"] == repeated["hypothesis_id"]
+        assert len(app.store.head(UUID(int=number)).statements) == 1
+        assert sum(goal == str(UUID(int=number)) for goal, _name in issued) == 1
 
 
 def _team_event(sequence: int, text: str = "A message.", **subject: str) -> Any:

@@ -56,6 +56,7 @@ class SealedSubmission:
     authority: ResolvedResearchAuthority
     program: SealedResearchProgram
     binding: ActorSubmissionBinding
+    hypothesis_id: str | None = None
 
 
 class ResearchExperimentDispatcher:

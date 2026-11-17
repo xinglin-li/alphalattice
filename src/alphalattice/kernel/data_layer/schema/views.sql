@@ -64,12 +64,22 @@ JOIN log.definition_lineage tl ON tl.definition_id = a.type_id
 JOIN log.definition_lineage ml ON ml.definition_id = m.metric_id
 WHERE a.trial_id IS NOT NULL;
 
+-- A goal's own notes remain visible before it has a trial. Optional attribution comes from the note itself.
+CREATE VIEW goal_note AS
+SELECT e.event_id AS note_id, e.workspace_id, e.subject_id AS goal_id, e.type, x.text,
+       json_extract_string(e.attrs, '$.hypothesis_id') AS hypothesis_id,
+       json_extract_string(e.attrs, '$.method') AS method,
+       make_timestamptz(e.occurred_us) AS recorded_at
+FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
+WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorded');
+
 -- One row per trial, as state, action, effect and new state: what an agent studies before it tries something.
 -- It reads profiles and measures only, so it is whole whether or not any artifact body still exists.
 CREATE VIEW experience AS
-SELECT t.trial_id, t.workspace_id,
+SELECT t.trial_id, reg.trace_id, t.workspace_id,
        -- state
-       t.goal_id, t.hypothesis_id, ht.text AS hypothesis_text, s.cutoff_us, make_timestamptz(s.cutoff_us) AS knowledge_cutoff,
+       t.goal_id, t.hypothesis_id, json_extract_string(he.attrs, '$.statement_id') AS hypothesis_name,
+       ht.text AS hypothesis_text, s.cutoff_us, make_timestamptz(s.cutoff_us) AS knowledge_cutoff,
        s.universe, s.valid_from, s.valid_to,
        t.product_version, t.model, t.context, t.reads_legacy,
        -- action
@@ -79,6 +89,7 @@ SELECT t.trial_id, t.workspace_id,
        -- new state
        t.standing_after AS hypothesis_standing, h.standing AS hypothesis_standing_now, n.conclusions, n.lessons, n.adopted,
        d.trial_id IS NOT NULL AS deployed, hn.conclusions AS hypothesis_conclusions, hn.lessons AS hypothesis_lessons,
+       gn.conclusions AS goal_conclusions, gn.lessons AS goal_lessons,
        make_timestamptz(reg.occurred_us) AS registered_at
 FROM log.trial t
 JOIN log.selection s ON s.selection_id = t.selection_id
@@ -92,6 +103,7 @@ LEFT JOIN (SELECT trial_id,
                        ORDER BY artifact_type, metric, metric_version, dims) AS measures
            FROM trial_measure GROUP BY trial_id) m ON m.trial_id = t.trial_id
 LEFT JOIN log.hypothesis h ON h.hypothesis_id = t.hypothesis_id
+LEFT JOIN log.event he ON he.seq = h.stated_seq
 LEFT JOIN log.event_text ht ON ht.seq = h.stated_seq
 -- adopted is the person's newest word; deployed: a book followed one of the trial's artifacts, at activation or a rebalance
 LEFT JOIN (SELECT e.subject_id AS trial_id,
@@ -107,6 +119,12 @@ LEFT JOIN (SELECT e.subject_id AS hypothesis_id,
            FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
            WHERE e.subject_kind = 'hypothesis' AND e.type IN ('conclusion.drawn', 'lesson.recorded')
            GROUP BY e.subject_id) hn ON hn.hypothesis_id = t.hypothesis_id
+LEFT JOIN (SELECT e.subject_id AS goal_id,
+                  list(x.text) FILTER (WHERE e.type = 'conclusion.drawn') AS conclusions,
+                  list(x.text) FILTER (WHERE e.type = 'lesson.recorded') AS lessons
+           FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
+           WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorded')
+           GROUP BY e.subject_id) gn ON gn.goal_id = t.goal_id
 LEFT JOIN (SELECT DISTINCT a.trial_id FROM log.event e
            JOIN log.artifact a ON a.artifact_id = json_extract_string(e.attrs, '$.holding_artifact')
            WHERE e.type IN ('book.activated', 'book.rebalanced') AND a.trial_id IS NOT NULL) d ON d.trial_id = t.trial_id;

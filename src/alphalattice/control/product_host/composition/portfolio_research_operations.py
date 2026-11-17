@@ -59,6 +59,7 @@ from alphalattice.control.product_host.composition.evidence_review_delivery impo
 from alphalattice.control.product_host.composition.evidence_review_projection import (
     EvidenceCroProjector,
 )
+from alphalattice.control.product_host.composition.experience_read import read_experience
 from alphalattice.control.product_host.composition.feature_trials import (
     FeatureTrials,
     trial_reads_once,
@@ -115,6 +116,9 @@ from alphalattice.control.product_host.composition.research_experiments import (
     verified_study_evidence,
 )
 from alphalattice.control.product_host.composition.research_history import ResearchHistory
+from alphalattice.control.product_host.composition.research_review_outcome import (
+    _review_outcome_body as _review_outcome_body,
+)
 from alphalattice.control.product_host.composition.research_update_automation import (
     ResearchUpdateAutomation,
     dated_plan,
@@ -1364,6 +1368,25 @@ class PortfolioResearchOperations:
             caller=caller,
         )
 
+    def _execute_goal(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        """Route goal operations and preserve their named refusals."""
+        try:
+            answer = self.goals.operate(request, caller, REQUEST_PROVENANCE.get())
+            if request.operation in {"GOAL_SUBMIT", "GOAL_ABANDON"}:
+                self._settle_first_use(self.goals.first_use())
+            return answer
+        except ValidationError as error:
+            return {
+                "status": "REFUSED",
+                **located_failure(error, "goal.document_invalid"),
+                "next_action": "READ_GOAL_SCHEMA_AND_CORRECT_DOCUMENT",
+                "next_requests": {"schema": {"operation": "GOAL_SCHEMA"}},
+            }
+        except (ValueError, KeyError, OSError) as error:
+            return goal_refusal(error, request)
+
     def _execute(
         self,
         request: PortfolioResearchOperationRequest,
@@ -1419,20 +1442,7 @@ class PortfolioResearchOperations:
         if common is not None:
             return common
         if request.operation.startswith("GOAL_"):
-            try:
-                answer = self.goals.operate(request, caller, REQUEST_PROVENANCE.get())
-                if request.operation in {"GOAL_SUBMIT", "GOAL_ABANDON"}:
-                    self._settle_first_use(self.goals.first_use())
-                return answer
-            except ValidationError as error:
-                return {
-                    "status": "REFUSED",
-                    **located_failure(error, "goal.document_invalid"),
-                    "next_action": "READ_GOAL_SCHEMA_AND_CORRECT_DOCUMENT",
-                    "next_requests": {"schema": {"operation": "GOAL_SCHEMA"}},
-                }
-            except (ValueError, KeyError, OSError) as error:
-                return goal_refusal(error, request)
+            return self._execute_goal(request, caller)
         if request.operation == "PENDING_DECISIONS":
             return self.pending_decisions(caller=caller)
         if request.operation == "ACTIVITY_REFUSALS":
@@ -1493,6 +1503,8 @@ class PortfolioResearchOperations:
             )
         if request.operation in {"UPGRADE_OVERVIEW", "UPGRADE_ACKNOWLEDGE"}:
             return self.upgrade(request)
+        if request.operation == "EXPERIENCE_READ":
+            return read_experience(request)
         if request.operation == "RESEARCH_HISTORY":
             try:
                 answer = ResearchHistory(
@@ -6567,42 +6579,6 @@ def _with_trial(readback: dict[str, Any]) -> dict[str, Any]:
             },
         },
     }
-
-
-def _review_outcome_body(outcome: ReviewOutcome | dict[str, object]) -> dict[str, object]:
-    """One JSON shape for both evidence actions, including their refusals.
-
-    `task_id` is present exactly when a Task was admitted, so a reader can tell
-    an admitted refresh from a reuse or a refusal without parsing the detail.
-    """
-
-    if isinstance(outcome, dict):
-        return outcome
-    body: dict[str, object] = {"disposition": outcome.disposition, "detail": outcome.detail}
-    if outcome.task_id is not None:
-        body["task_id"] = str(outcome.task_id)
-    if outcome.lifecycle is not None:
-        body["lifecycle"] = outcome.lifecycle
-    if outcome.review is not None:
-        body["review_key"] = outcome.review.publication.review_key
-        body["review_publication_hash"] = outcome.review.publication.publication_hash
-    if outcome.evidence_as_of is not None:
-        body["evidence_as_of"] = outcome.evidence_as_of.isoformat()
-    if outcome.failure_code is not None:
-        body["failure_code"] = outcome.failure_code
-    if outcome.next_requests:
-        body["next_requests"] = dict(outcome.next_requests)
-    if outcome.evidence_unit_id is not None:
-        body["evidence_unit_id"] = outcome.evidence_unit_id
-    if outcome.answer is not None:
-        body["answer"] = dict(outcome.answer)
-    if outcome.network_access is not None:
-        body["network_access"] = dict(outcome.network_access)
-    if outcome.source_network_access is not None:
-        body["source_network_access"] = dict(outcome.source_network_access)
-    if outcome.source_ways is not None:
-        body["source_ways"] = dict(outcome.source_ways)
-    return body
 
 
 _FOLLOW_READ_SECONDS = 0.1

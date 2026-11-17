@@ -29,6 +29,7 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
+from alphalattice.interface.local_application.cli_refused import refused as refused
 from alphalattice.interface.local_application.labels import titles_in
 from alphalattice.interface.local_application.message_catalog import catalog_words
 from alphalattice.interface.local_application.questions import person_question
@@ -455,27 +456,6 @@ def task_state(body: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value in _PENDING_STATES | _REFUSED_STATES:
             return value
     return None
-
-
-def refused(body: dict[str, Any]) -> bool:
-    """Check whether an owner's answer carries a refusal.
-
-    Args:
-        body: The full owner answer.
-
-    Returns:
-        Whether a failure code, refusal, or refused disposition is present. A `refused`
-        field is a refusal only as a code: the controls answer lists the controls a book
-        refuses under it, and that catalog is an answer.
-    """
-    code = body.get("refused")
-    return bool(
-        body.get("failure_code")
-        or (isinstance(code, str) and code)
-        or any(
-            str(body.get(field, "")).startswith("REFUSED") for field in ("status", "disposition")
-        )
-    )
 
 
 # Each refusal code's words and way on, now from the shared resource cache (OP4).
@@ -1751,6 +1731,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "PORTFOLIO_READBACK",
         "REPORT",
         "RESEARCH_HISTORY",
+        "EXPERIENCE_READ",
         "RESEARCH_INPUTS",
         "RESEARCH_INPUT_READBACK",
         "MODEL_TRAINING_INPUT_READBACK",
