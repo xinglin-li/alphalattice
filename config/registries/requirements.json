@@ -1030,6 +1030,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.world_serves_only_an_admission_that_took_every_row": {
+      "description": "World serves no market read from an admission that dropped a workspace row written at the same time as its own version; the workspace's tables answer.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.world_serves_the_workspace_market_reads": {
       "description": "Market value reads are equal under both settings; world serves them while it holds the workspace's tables, the Host admitting a write first and a child reading the workspace until then.",
       "lower_layer": "World's read-only attach, the Host's admission and the workspace's marks need a real catalog, log and workspace database.",

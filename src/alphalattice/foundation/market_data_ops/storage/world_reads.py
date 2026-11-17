@@ -3,11 +3,12 @@ and 0.2.7's market tables as world's as-of reads, in 0.2.7's names and columns.
 
 `ALPHALATTICE_MARKET_READS` is `world`, the default, or `workspace`, the rollback; a Task child
 inherits it. World serves a workspace's reads while it holds that workspace's market tables as
-they are: their marks, the content fingerprint world.admit records, equal one of its admissions'
-(`reading`). The Host admits its own workspace's tables first when they have changed; a Task
-child, which may not write the catalog, reads the workspace's own tables until the Host has, and
-so does a process whose data root never admitted the workspace. Inside a market data update
-(`writing`) the writer's reads take the workspace's tables, and the Host admits once at its end.
+they are: their marks, the content fingerprint world.admit records, equal those of an admission
+that took every row they mark (`reading`). The Host admits its own workspace's tables first when
+they have changed; a Task child, which may not write the catalog, reads the workspace's own
+tables until the Host has, and so does a process whose data root never admitted the workspace.
+Inside a market data update (`writing`) the writer's reads take the workspace's tables, and the
+Host admits once at its end.
 A world read runs on `session`: in the Host a cursor on its StorePort's session, and in any other
 process the data root's reading surface attached read-only (`reading_session`), opened once.
 Each relation reads world as of a cutoff in microseconds: a selection's, or `LATEST`, all that is
@@ -20,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
@@ -97,13 +98,13 @@ def session() -> Iterator[Any | None]:
 def reading(database: Path, marks: Callable[[], dict[str, Any]]) -> Iterator[Any | None]:
     """A cursor on world while it serves the market reads of the workspace in `database`, else
     None and its own tables answer. World serves when the setting is world and the tables'
-    `marks` equal those of one of its market admissions. A verdict is kept for its catalog and the
-    database's file and WAL as they stand (`store_fingerprint`); one that world does not serve is
-    read again once the catalog has a newer snapshot, since an admission may have brought the
-    tables meanwhile. In the Host, tables of its own workspace that no admission holds are
-    admitted first, unless this process holds the file open in an instance, which an
-    admission's attach would meet; that read takes the workspace, and the next admits. The
-    cursor's statements share one transaction, so they see one catalog snapshot."""
+    `marks` equal those of a market admission that took every row (`_admitted`). A verdict is
+    kept for its catalog and the database's file and WAL as they stand (`store_fingerprint`); one
+    that world does not serve is read again once the catalog has a newer snapshot, since an
+    admission may have brought the tables meanwhile. In the Host, tables of its own workspace that
+    no admission holds are admitted first, unless this process holds the file open in an
+    instance, which an admission's attach would meet; that read takes the workspace, and the next
+    admits. The cursor's statements share one transaction, so they see one catalog snapshot."""
     path = str(database.resolve())
     if chosen() != "world" or path in _writing:
         yield None
@@ -174,17 +175,26 @@ def _snapshot(cursor: Any) -> int:
 
 
 def _admitted(cursor: Any, marks: dict[str, Any], host: tuple[Any, str] | None) -> bool:
-    """Whether one of world's market admissions recorded these marks: read from the Host's own
-    log, its open batch included, or else from the log the session attached."""
+    """Whether one of world's market admissions that took every row it marks (`taken`) recorded
+    these marks: read from the Host's own log, its open batch included, or else from the log the
+    session attached."""
     sql = (  # SQLite's json_extract gives text, as DuckDB's json_extract_string does
-        "SELECT {0}(attrs, '$.marks') FROM {1}event WHERE type = 'admission'"
-        " AND {0}(attrs, '$.dataset') = ?"
+        "SELECT {0}(attrs, '$.marks'), {0}(attrs, '$.dropped.equal_time') FROM {1}event"
+        " WHERE type = 'admission' AND {0}(attrs, '$.dataset') = ?"
     )
     if host is not None:
         admitted = host[0].read(sql.format("json_extract", ""), (DATASET,))
     else:
         admitted = cursor.execute(sql.format("json_extract_string", "log."), [DATASET]).fetchall()
-    return bool(marks) and marks in [json.loads(row[0]) for row in admitted if row[0]]
+    return bool(marks) and marks in taken(admitted)
+
+
+def taken(admissions: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
+    """The marks of the admissions, each as (marks, equal-time drops), that took every row they
+    mark. One that dropped a row written at the same time as world's version of its key
+    (`equal_time`) left world holding that other value; an older row's drop leaves world the
+    newer one, which it serves."""
+    return [json.loads(marks) for marks, equal in admissions if marks and equal is None]
 
 
 def _folder(cursor: Any, workspace_id: str) -> Path | None:

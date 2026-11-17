@@ -44,3 +44,11 @@ def test_each_workspace_table_has_a_world_relation_read_as_of_the_cutoff():
     for relation in named.values():
         cutoffs = {part.split(")")[0] for part in relation.split("_asof(")[1:]}
         assert cutoffs == {"1700000000000000"}
+
+
+@pytest.mark.proves("market_data_ops.world_serves_only_an_admission_that_took_every_row")
+def test_an_admission_that_dropped_an_equal_time_row_does_not_hold_its_marks():
+    """An admission's marks count only when it dropped no workspace row as written at the same time
+    as world's version of its key; an older row's drop leaves world the newer value."""
+    admissions = [('{"bars": [2, 7]}', 1), ('{"bars": [3, 8]}', None), (None, None)]
+    assert world_reads.taken(admissions) == [{"bars": [3, 8]}]
