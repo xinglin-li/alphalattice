@@ -10,6 +10,11 @@
 "count": 1,
 "description": "A read's own moment as a cutoff: the end of year 9999, past every knowledge time, so a read without a selection's cutoff sees all that is known."
 },
+"src/alphalattice/foundation/market_data_ops/storage/world.py::ADMISSION_ROWS::21": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most bars one admission stages, in whole years, bounding its Arrow batch."
+},
 "src/alphalattice/foundation/market_data_ops/storage/world.py::days::10": {
 "class": "METHOD",
 "count": 1,

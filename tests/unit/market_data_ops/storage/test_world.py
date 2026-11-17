@@ -6,7 +6,11 @@ from typing import Any
 
 import pytest
 
-from alphalattice.foundation.market_data_ops.storage.world import world_action, world_listing
+from alphalattice.foundation.market_data_ops.storage.world import (
+    admissions,
+    world_action,
+    world_listing,
+)
 from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world.py"
@@ -46,3 +50,25 @@ def test_a_0_2_7_action_is_one_world_row_or_refused_by_name(
         return
     assert world_listing(AAPL).replace("-", "") == "32e379d73d7c53f7ad63982fd6dade63"  # pinned
     assert world_action(action, world_listing(AAPL), "USD") == expected
+
+
+@pytest.mark.proves("market_data_ops.bars_are_admitted_in_whole_years_under_a_bound")
+@pytest.mark.parametrize(
+    ("years", "expected"),
+    [
+        pytest.param([("yf", 2024, 4), ("yf", 2025, 5)], [("yf", 2024, 2025)], id="all in one"),
+        pytest.param(
+            [("yf", 2023, 6), ("yf", 2024, 4), ("yf", 2025, 5)],
+            [("yf", 2023, 2024), ("yf", 2025, 2025)],
+            id="over the bound",
+        ),
+        pytest.param([("yf", 2024, 12)], [("yf", 2024, 2024)], id="a year over it, alone"),
+        pytest.param(
+            [("av", 2024, 1), ("yf", 2024, 1)], [("av", 2024, 2024), ("yf", 2024, 2024)], id="two"
+        ),
+    ],
+)
+def test_bars_are_admitted_in_whole_years_while_they_fit_the_bound(years, expected):
+    """A provider's consecutive years go in one admission while their bars fit the bound; a year
+    over it goes alone, and each provider's bars are their own admissions."""
+    assert admissions(years, bound=10) == expected

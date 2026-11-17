@@ -83,6 +83,11 @@ DROPS: Final = (
     "DROP TABLE IF EXISTS temp.market_bars",
 )
 """The admission's temporary tables, dropped when it ends however it ends."""
+ADMISSION_ROWS: Final = 1 << 21
+"""The most bars one admission stages, in whole years: a market's history in one commit where it
+fits, which DuckDB judges and writes across its threads at once (ls1-daily's 1,252,430 bars in
+1.4 s against 2.9 s as eleven years); a longer one in groups of years under it, so its Arrow
+batch stays bounded."""
 _WRITTEN: Final = "strftime({0}, '%Y-%m-%d %H:%M:%S.%f+00')"
 """A 0.2.7 write time, which 0.2.7 keeps in UTC, as StorePort reads a staged time."""
 
@@ -332,7 +337,8 @@ def _symbols(
 def _bars(lake: Any) -> Iterator[tuple[str, Any]]:
     """Each provider's bars whose values differ from world's newest version of their key, or
     whose source wrote them after that version's value was last written, with the provider's
-    adjusted close and their source's last write, a year at a time, as DuckDB's Arrow result."""
+    adjusted close and their source's last write, in whole years of at most ADMISSION_ROWS bars,
+    as DuckDB's Arrow result."""
     w = WORKSPACE
     lake.execute(
         "CREATE OR REPLACE TEMP TABLE market_bars AS SELECT r.provider,"
@@ -351,16 +357,32 @@ def _bars(lake: Any) -> Iterator[tuple[str, Any]]:
         " OR greatest(r.observed_at, a.updated_at) > x.ordered_at"
     ).complete()
     years = lake.execute(
-        "SELECT DISTINCT provider, year(session_date) FROM temp.market_bars ORDER BY ALL"
+        "SELECT provider, year(session_date), count(*) FROM temp.market_bars GROUP BY ALL"
+        " ORDER BY ALL"
     ).fetchall()
-    for provider, year in years:
+    for provider, first, last in admissions(years):
         rows = lake.sql(
             "SELECT * EXCLUDE (provider, session_date),"
             " strftime(session_date, '%Y-%m-%d') AS session_date FROM temp.market_bars"
-            " WHERE provider = ? AND year(session_date) = ? ORDER BY ALL",
-            params=[provider, year],
+            " WHERE provider = ? AND year(session_date) BETWEEN ? AND ? ORDER BY ALL",
+            params=[provider, first, last],
         ).to_arrow_table()
         yield provider, rows
+
+
+def admissions(
+    years: Iterable[tuple[str, int, int]], bound: int = ADMISSION_ROWS
+) -> list[tuple[str, int, int]]:
+    """Each admission of bars, as its provider and first and last year, from each provider's bars
+    by year in order: consecutive whole years while their bars stay within `bound`, a year over
+    it alone."""
+    groups: list[tuple[str, int, int, int]] = []
+    for provider, year, count in years:
+        if groups and groups[-1][0] == provider and groups[-1][3] + count <= bound:
+            groups[-1] = (provider, groups[-1][1], year, groups[-1][3] + count)
+        else:
+            groups.append((provider, year, year, count))
+    return [(provider, first, last) for provider, first, last, _ in groups]
 
 
 def _actions(run: Any, dated: list[tuple[Any, ...]]) -> Iterator[tuple[str, dict[str, Any]]]:

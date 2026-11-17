@@ -1013,6 +1013,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.bars_are_admitted_in_whole_years_under_a_bound": {
+      "description": "A provider's bars are admitted as consecutive whole years while their count fits a bound, a year over it alone.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.daily_provider_conformance": {
       "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
       "owner": "alphalattice.foundation.market_data_ops",
