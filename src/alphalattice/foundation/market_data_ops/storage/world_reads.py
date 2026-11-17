@@ -25,7 +25,7 @@ import json
 import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
@@ -38,13 +38,12 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import sql_path
 
 from . import world
-from .world import DATASET, DISPLAY_ALIAS, LISTING_ALIAS
+from .world import DATASET, DISPLAY_ALIAS, LISTING_ALIAS, _log_rows
 
 SETTING: Final = "ALPHALATTICE_MARKET_READS"
 CHOICES: Final = ("world", "workspace")
@@ -318,6 +317,18 @@ def taken(admissions: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
     return [json.loads(marks) for marks, equal in admissions if marks and equal is None]
 
 
+def workspace(database: Path) -> str | None:
+    """The registered workspace owning this database, if its folder is unambiguous."""
+    folder = database.parents[3] if binding(database) is not None else database.parent
+    rows = _log_rows(
+        "SELECT workspace_id FROM workspace WHERE folder = ? AND status = 'active'",
+        (str(folder.resolve()),),
+    )
+    if len(rows) > 1:
+        raise ValueError("market_data.workspace_identity_ambiguous: repair the workspace registry")
+    return str(rows[0][0]) if rows else None
+
+
 def _folder(workspace_id: str) -> Path | None:
     """The folder the log records for a workspace, resolved; None when it records none."""
     found = _log_rows("SELECT folder FROM workspace WHERE workspace_id = ?", (workspace_id,))
@@ -325,12 +336,8 @@ def _folder(workspace_id: str) -> Path | None:
 
 
 def workspace_id(database: Path) -> str | None:
-    """The log's source workspace identity, including a bound research copy's owner."""
-    folder = database.parents[3] if binding(database) is not None else database.parent
-    rows = _log_rows(
-        "SELECT workspace_id FROM workspace WHERE folder = ?", (str(folder.resolve()),)
-    )
-    return str(rows[0][0]) if rows else None
+    """The log's unambiguous active workspace, including a bound copy's owner."""
+    return workspace(database)
 
 
 _LOG_TABLES: Final = (
@@ -369,22 +376,6 @@ def _log_tables(cursor: Any) -> None:
     for name, sql, schema in _LOG_TABLES:
         rows = [dict(zip(schema.names, row, strict=True)) for row in _log_rows(sql, ())]
         cursor.register(name, pa.Table.from_pylist(rows, schema=schema))
-
-
-def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
-    """Rows of `sql` over the log: in the process that holds it, through the HostLog's own
-    connection, its open batch included; in any other, through a read-only one (`log.attach`).
-    Both are Python's sqlite3, the one SQLite library a process opens the log with. No rows in a
-    data root with no log yet."""
-    host = history.opened_log()
-    held = host[0] if host is not None else history.holding()
-    if held is not None:
-        return [tuple(row) for row in held.read(sql, tuple(params))]
-    root = history.data_root()
-    if not (root / "machine" / "log.sqlite").is_file():
-        return []
-    with closing(attach(root)) as con:
-        return [tuple(row) for row in con.execute(sql, tuple(params)).fetchall()]
 
 
 def relations(

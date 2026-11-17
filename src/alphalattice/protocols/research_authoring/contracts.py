@@ -14,7 +14,7 @@ development-only value.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from enum import IntEnum
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Protocol, Self, cast
@@ -142,6 +142,12 @@ class DecisionCutoff(_Contract):
             except ValueError as error:
                 raise AuthoringError("research_authoring.decision_cutoff_invalid") from error
         raise AuthoringError("research_authoring.decision_cutoff_invalid")
+
+    @property
+    def selection_cutoff_us(self) -> int:
+        """The stored selection's knowledge cutoff: the end of its session date in UTC."""
+        end = datetime.combine(self.session + timedelta(days=1), datetime.min.time(), UTC)
+        return int(end.timestamp()) * 1_000_000
 
     @property
     def is_resolvable(self) -> bool:

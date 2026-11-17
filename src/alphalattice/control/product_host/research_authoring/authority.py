@@ -343,7 +343,9 @@ class WorkspaceResearchAuthorityResolver:
         sample = exploration_sample_size(envelope.universe_handle)
         if sample is not None and envelope.kind not in EXPLORATION_SAMPLE_KINDS:
             raise AuthoringError(f"research_lane.sample_not_supported:{envelope.kind}")
-        store = MarketDataRepository(self._workspace)
+        store = MarketDataRepository(
+            self._workspace, cutoff_us=envelope.sessions.as_of.selection_cutoff_us
+        )
         current_manifest = None
         if envelope.data_snapshot_handle == CURRENT_SNAPSHOT_HANDLE:
             # Preserve the generic current-route refusal order: an unknown

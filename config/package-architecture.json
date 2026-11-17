@@ -546,6 +546,7 @@
     }
   ],
   "deferred_imports": {
+    "alphalattice.foundation.market_data_ops.storage.duckdb": "The world admission reads the existing workspace repository after module initialization; that repository imports world, so loading it eagerly would form a cycle.",
     "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.capabilities.alpha_modeling.adapters.huber": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",

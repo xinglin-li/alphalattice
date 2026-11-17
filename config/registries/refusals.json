@@ -1,5 +1,7 @@
 {
 "entries": {
+"market_data.workspace_identity_ambiguous": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "Multiple active workspace registrations name the same folder; repair the workspace registry before reading world data."},
+"market_data_ops.universe_workspace_unmeasured": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "The admitted universe reader cannot identify its workspace; repair the workspace registry before reading its lineage."},
 "agent_telemetry.signal_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT"},
 "native_bridge.usage_disabled": {"owner": "native_bridge", "category": "FAILED_PRECONDITION"},
 "agent_telemetry.payload_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "The native export is malformed, uses an unsupported encoding or exceeds the existing request body bound; no payload text is logged or stored."},

@@ -378,6 +378,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with closing(reading):
         assert reading.execute("SELECT count(*) FROM raw_bar_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
+        assert reading.execute("SELECT count(*) FROM universe_member_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
     files = _files(tmp_path)
     second = create_data_root(tmp_path)

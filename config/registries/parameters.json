@@ -1,5 +1,20 @@
 {
 "entries": {
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_cutoff::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the UTC timestamp from seconds to the microsecond cutoff used by the world reader."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::epoch::1970": {
+"class": "METHOD",
+"count": 3,
+"description": "The UTC Unix epoch for exact microsecond conversion of universe event clocks."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::selected_at::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The UTC Unix epoch for exact conversion of the selection cutoff to a decision time."
+},
 "src/alphalattice/foundation/market_data_ops/storage/world_reads.py::cutoff::1970": {
 "class": "METHOD",
 "count": 1,

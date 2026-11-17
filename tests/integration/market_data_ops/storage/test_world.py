@@ -6,7 +6,8 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Iterator, Sequence
-from datetime import date, datetime, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -102,7 +103,7 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
     """A 0.2.7 workspace its own owner wrote: two listings' bars, AAPL's adjusted closes and a
     dividend, and a Host history open on a data root of its own."""
     manifest = acquisition_manifest()
-    store = MarketDataRepository(tmp_path / "workspace")
+    store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
     store.bootstrap(manifest)
     bars(store, manifest, DAYS, 101.0, 0)
     dividend = CorporateActionEvent("listing-aapl", "fixture", DAYS[2], "CASH_DIVIDEND", None, 0.5)
@@ -132,6 +133,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
     monkeypatch: pytest.MonkeyPatch,
     focus: str,
+    tmp_path: Path,
 ) -> None:
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
@@ -216,6 +218,98 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
                 )
         assert world.admit(other.path, "w2") is None
         return
+    set_id = world.admit_member_set(("listing-aapl", "listing-msft"), DAYS[1], "fixture")
+    assert world.admit_member_set(("listing-msft", "listing-aapl"), DAYS[1], "fixture") == set_id
+    close = int(datetime(2026, 7, 28, 20, tzinfo=UTC).timestamp() * 1_000_000)
+    members = (
+        "SELECT listing_id::VARCHAR, known_at FROM universe_member_asof(?)"
+        " WHERE universe_id = ? ORDER BY 1"
+    )
+    assert lake.execute(members, (close - 1, set_id)).fetchall() == []
+    assert lake.execute(members, (close, set_id)).fetchall() == [
+        (item, None)
+        for item in sorted(world.world_listing(old) for old in ("listing-aapl", "listing-msft"))
+    ]
+    world.admit_universe_manifest(manifest, "w1")
+    manifest_cutoff = int(datetime(2026, 8, 4, tzinfo=UTC).timestamp() * 1_000_000)
+    assert world.load_universe_manifest(
+        manifest.manifest_id, manifest_cutoff, workspace_id="w1"
+    ) == store.load_universe_manifest(manifest.manifest_id)
+    from alphalattice.foundation.market_data_ops.sources.membership import UniverseBootstrapRecord
+
+    bootstrap = UniverseBootstrapRecord(
+        market_profile_id=manifest.profile.market_profile_id,
+        t0_session=DAYS[1],
+        history_start=DAYS[0],
+        cohort_listing_ids=("listing-aapl", "listing-msft"),
+        cohort_hash="",
+        manifest_revision=manifest.revision_sha256,
+        candidate_manifest_hash="1" * 64,
+        qualification_policy_hash="2" * 64,
+        feature_input_policy_hash="3" * 64,
+        source_observed_at=NOW - timedelta(days=1),
+        admitted_at=NOW,
+        panel_snapshot_hash="4" * 64,
+        derivation="FIRST_QUALIFIED_PUBLICATION",
+    )
+    store.record_universe_bootstrap(bootstrap)
+    world.admit_universe_bootstrap(bootstrap, "fixture", "w1")
+    assert world.universe_bootstrap(
+        manifest.profile.market_profile_id, manifest_cutoff, workspace_id="w1"
+    ) == store.universe_bootstrap(manifest.profile.market_profile_id)
+    from alphalattice.foundation.market_data_ops.sources.membership import MembershipEvent
+
+    event = MembershipEvent(
+        market_profile_id=manifest.profile.market_profile_id,
+        sequence=1,
+        listing_id="listing-msft",
+        kind="EXIT",
+        effective_session=DAYS[2],
+        observed_at=datetime(2026, 7, 28, 15, tzinfo=UTC),
+        decided_at=datetime(2026, 7, 28, 16, tzinfo=UTC),
+        authority="fixture",
+        reference_hash="5" * 64,
+        manifest_revision=manifest.revision_sha256,
+    )
+    MarketDataRepository(store.workspace).append_membership_events((event,))
+    assert world.membership_events(
+        manifest.profile.market_profile_id, workspace_id="w1"
+    ) == store.membership_events(manifest.profile.market_profile_id)
+    live = world.universe_lineage("w1", manifest.profile.market_profile_id)
+    exit_close = int(datetime(2026, 7, 29, 20, tzinfo=UTC).timestamp() * 1_000_000)
+    interval = (
+        "SELECT valid_to FROM universe_member_asof(?) WHERE universe_id = ? AND listing_id = ?"
+    )
+    assert lake.execute(
+        interval, (exit_close - 1, live, world.world_listing("listing-msft"))
+    ).fetchone() == (None,)
+    assert lake.execute(
+        interval, (exit_close, live, world.world_listing("listing-msft"))
+    ).fetchone() == (DAYS[2],)
+    old_schedule = store.membership_schedule(
+        manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+    )
+    new_schedule = world.membership_schedule(
+        manifest.profile.market_profile_id, DAYS, (), manifest_cutoff, workspace_id="w1"
+    )
+    assert new_schedule == old_schedule
+    selected = MarketDataRepository(store.workspace, cutoff_us=manifest_cutoff)
+    with selected._universe_reads() as connection:
+        assert connection is not None
+    assert selected.load_universe_manifest(manifest.manifest_id) == store.load_universe_manifest(
+        manifest.manifest_id
+    )
+    assert selected.load_universe_manifest_revision(
+        manifest.revision_sha256
+    ) == store.load_universe_manifest_revision(manifest.revision_sha256)
+    assert selected.universe_bootstrap(manifest.profile.market_profile_id) == bootstrap
+    assert selected.membership_events(manifest.profile.market_profile_id) == (event,)
+    assert (
+        selected.membership_schedule(
+            manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+        )
+        == old_schedule
+    )
     lake.execute(f"ATTACH '{database.as_posix()}' AS old (READ_ONLY)")
     lake.execute("CREATE TEMP TABLE ids (old VARCHAR, new UUID)")
     for old in ("listing-aapl", "listing-msft"):
@@ -247,6 +341,113 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     }
     assert corrected == {"rows": {"raw_bar": 4}}
     assert seen == [[101.0] * 4 + [103.0], [101.0] * 3 + [103.0] * 2]
+    entry_day = date(2026, 8, 4)
+    entry = replace(
+        event,
+        sequence=2,
+        kind="ENTRY",
+        effective_session=entry_day,
+        observed_at=NOW + timedelta(minutes=30),
+        decided_at=NOW + timedelta(hours=1),
+        reference_hash="6" * 64,
+        event_hash="",
+    )
+    MarketDataRepository(store.workspace).append_membership_events((entry,))
+    entry_close = int(datetime(2026, 8, 4, 20, tzinfo=UTC).timestamp() * 1_000_000)
+    early = MarketDataRepository(store.workspace, cutoff_us=entry_close - 1)
+    late = MarketDataRepository(store.workspace, cutoff_us=entry_close)
+    for reader, expected in ((early, ("listing-aapl",)), (late, ("listing-aapl", "listing-msft"))):
+        assert (
+            reader.membership_schedule(
+                manifest.profile.market_profile_id, sessions=(entry_day,), fallback_listing_ids=()
+            ).members(entry_day)
+            == expected
+        )
+    old_schedule = store.membership_schedule(
+        manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+    )
+    # A different workspace owns a different bootstrap even when both use the same profile.
+    other = MarketDataRepository(tmp_path / "other-universe", universe_reader="workspace")
+    other.bootstrap(manifest)
+    bars(other, manifest, (*DAYS, NEW), 101.0, 0)
+    audit_one(
+        other,
+        manifest,
+        listing_id="listing-aapl",
+        provider="fixture",
+        actions=(
+            CorporateActionEvent("listing-aapl", "fixture", DAYS[2], "CASH_DIVIDEND", None, 0.5),
+        ),
+        adjusted_closes=tuple(
+            ProviderAdjustedClosePoint("listing-aapl", "fixture", d, 100.5) for d in DAYS
+        ),
+        history_start=DAYS[0],
+        history_end=DAYS[-1],
+        observed_at=NOW,
+    )
+    other_bootstrap = replace(
+        bootstrap,
+        cohort_listing_ids=("listing-aapl",),
+        cohort_hash="",
+        admitted_at=NOW + timedelta(seconds=1),
+        record_hash="",
+    )
+    other.record_universe_bootstrap(other_bootstrap)
+    if focus == "workspace":
+        late_exit = replace(
+            event,
+            listing_id="listing-aapl",
+            observed_at=datetime(2026, 7, 29, 19, tzinfo=UTC),
+            decided_at=datetime(2026, 7, 29, 21, tzinfo=UTC),
+            event_hash="",
+        )
+        late_entry = replace(
+            late_exit,
+            sequence=2,
+            kind="ENTRY",
+            effective_session=DAYS[3],
+            observed_at=datetime(2026, 7, 30, 19, tzinfo=UTC),
+            decided_at=datetime(2026, 7, 30, 21, tzinfo=UTC),
+            event_hash="",
+        )
+        other.append_membership_events((late_exit, late_entry))
+    history.open_history("w-universe2", "other", other.workspace, root=tmp_path / "data")
+    try:
+        world.admit(other.path, "w-universe2")
+        other_world = MarketDataRepository(other.workspace, cutoff_us=manifest_cutoff)
+        with other_world._universe_reads() as source:
+            assert source is not None and source[1] == "w-universe2"
+        with selected._universe_reads() as source:
+            assert source is not None and source[1] == "w1"
+        assert other_world.universe_bootstrap(manifest.profile.market_profile_id) == other_bootstrap
+        if focus == "identity":
+            assert other_world.membership_schedule(
+                manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+            ) == other.membership_schedule(
+                manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+            )
+        assert selected.universe_bootstrap(manifest.profile.market_profile_id) == bootstrap
+        assert (
+            selected.membership_schedule(
+                manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
+            )
+            == old_schedule
+        )
+        assert world.universe_lineage(
+            "w1", manifest.profile.market_profile_id
+        ) != world.universe_lineage("w-universe2", manifest.profile.market_profile_id)
+        if focus == "workspace":
+            # A decision after the effective close cannot change that session's historical read.
+            schedule = other_world.membership_schedule(
+                manifest.profile.market_profile_id,
+                sessions=(DAYS[2], DAYS[3], NEW),
+                fallback_listing_ids=(),
+            )
+            assert schedule.members(DAYS[2]) == ("listing-aapl",)
+            assert schedule.members(DAYS[3]) == ()
+            assert schedule.members(NEW) == ("listing-aapl",)
+    finally:
+        history.release_history()
     lake.execute(f"ATTACH '{database.as_posix()}' AS old (READ_ONLY)")
     revisions = lake.sql("SELECT * FROM old.bar_revision ORDER BY revision_id").to_arrow_table()
     cutoff = lake.execute("SELECT min(epoch_us(observed_at)) FROM old.bar_revision").fetchone()[0]
@@ -492,6 +693,22 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     seen_world.clear()
     assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Utilities"}
     assert not seen_world  # the marks of an equal-time drop cannot make world serve the workspace
+    if focus == "identity":
+        # Later world aliases cannot alter the old manifest's frozen listing facts.
+        for provider, symbol in ((world.DISPLAY_ALIAS, "AAPL-NEW"), ("fixture", "AAPL.NEW")):
+            with world.stage(
+                port.root,
+                "provider_symbol",
+                definition_id("provider", provider),
+                world._arrow([{"listing_id": aapl, "symbol": symbol, "valid_from": DAYS[3]}]),
+            ) as staged:
+                port.commit(staged)
+        assert (
+            world.load_universe_manifest(
+                manifest.manifest_id, world_reads.LATEST, workspace_id="w1"
+            )
+            == manifest
+        )
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")

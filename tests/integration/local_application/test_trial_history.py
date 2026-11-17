@@ -149,6 +149,10 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
         assert trace_id
         assert con.execute("SELECT task_id FROM task").fetchall() == [(str(task.task_id),)]
         assert con.execute("SELECT count(*) FROM selection").fetchone()[0] == 1
+        assert (
+            con.execute("SELECT cutoff_us FROM selection").fetchone()[0]
+            == sealed.envelope.sessions.as_of.selection_cutoff_us
+        )
         recipe = con.execute(
             "SELECT l.name FROM recipe r JOIN definition_lineage l ON l.definition_id = r.method_id"
         ).fetchall()

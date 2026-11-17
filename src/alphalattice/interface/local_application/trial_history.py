@@ -11,7 +11,6 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
@@ -54,9 +53,7 @@ def started(sealed: SealedSubmission) -> Trial | None:
     selection = digest(canonical(window))
     if not history.recording():
         return None
-    # Nothing known after the cutoff session's end, UTC; the phase is in the spec.
-    end = datetime.combine(cutoff.session + timedelta(days=1), datetime.min.time(), UTC)
-    attrs = window | {"cutoff_us": int(end.timestamp()) * 1_000_000}
+    attrs = window | {"cutoff_us": cutoff.selection_cutoff_us}
     exists = "SELECT 1 FROM selection WHERE selection_id = ?"
     history.record_new(
         exists, (selection,), "selection.made", ("selection", selection), attrs, actor=actor

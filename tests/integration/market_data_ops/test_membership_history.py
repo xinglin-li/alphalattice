@@ -165,7 +165,7 @@ def test_store_appends_only_actual_changes_and_refuses_gaps_and_rewrites(
 ) -> None:
     """The journal is incremental: the cohort once, then events in sequence."""
 
-    market = MarketDataRepository(tmp_path / "workspace")
+    market = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
     market.bootstrap(_manifest(("A", "B", "C")))
     assert market.universe_bootstrap("us-current-index-research") is None
     with pytest.raises(ValueError, match="require a recorded universe bootstrap"):
@@ -194,6 +194,28 @@ def test_store_appends_only_actual_changes_and_refuses_gaps_and_rewrites(
     assert schedule.members(SESSIONS[0]) == ("A", "B", "C")
     assert schedule.members(entry) == ("A", "C", "D")
     assert schedule.journal_sequence == 2
+
+    # The machine log reconstructs the 0.2.7 bootstrap and journal with their identities and clocks.
+    from alphalattice.foundation.market_data_ops.storage import world
+    from alphalattice.kernel.data_layer import history
+
+    expected = market.membership_events(record.market_profile_id)
+    from alphalattice.kernel.data_layer.chain import canonical, digest
+
+    cohort = record.cohort_listing_ids
+    assert world.universe_set_digest(cohort) == digest(
+        canonical(sorted(world.world_listing(item) for item in cohort))
+    )
+    assert world.universe_set_id(reversed(cohort)) == world.universe_set_id(cohort)
+    history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
+    try:
+        world._universe_journal(expected, "w1")
+        world._universe_journal(
+            expected, "w1"
+        )  # rereading the workspace never duplicates its journal
+        assert world.membership_events(record.market_profile_id, workspace_id="w1") == expected
+    finally:
+        history.release_history()
 
 
 @pytest.mark.parametrize(

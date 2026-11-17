@@ -15625,6 +15625,62 @@
    "successor": "a645e59d654e938aced1fb697699b18b5318f943d3dab6de9900b64b39c839a6",
    "change": "Read market checks and audit receipts from admitted data, with rollback",
    "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5f128dde1b726b9d381c7ce20fcaa8bab50f302a0b79b87c78184cf61d680fa9",
+   "successor": "b69a5488a5c5b14fb132f3a4dabab8c6dba48be20cdb1aa1ccdd37ff9e228916",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "713fd97c3970d8bb53b167842bd72b9a5bb84c990682cc41a5a943faa52ebb60",
+   "successor": "e18e7481cd4ee8e815bde61e435e8f927e18b6a21bd4e8cb904917b38d7904ed",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a571b471ffc235a90fd74fc27ef8090d0d22a57418aa8cb124bea741eb91d600",
+   "successor": "6647a5b837f332f020374e9a6f07a51db6856fb16011d30a32593e36af6f9cbd",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "7ec9695bb57cd1bce9833e7ffc5eb8ae58d628a9f776045ac4d620dd6602f6a1",
+   "successor": "2bc46ab6857bc05f710737c49fe93e7098235d932d974ae6e457f4e86ba1948e",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "cee7aa9264d3e8a17094f57033318dca0dcdeba0f71674cb5fc4ebfb03bf6b73",
+   "successor": "aa6fc0be00f186456f31571122aec1ed6f635a5fa5de78e5b7751430aee7700a",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "6bb104feb302b015f3686246c76dbbab76d2c1b03f6e5cb0139bb90d5ddf09e3",
+   "successor": "584734d6c35d562a3e5374d36112f44dff82af1a79a24c65b5048dc5dc433332",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "4ef35231fc4964b9c06786df065f3ee83bac0e0167d79939ae1de40bd17a3e2d",
+   "successor": "79eb1ab3817f464f29aace88c058275511cb060bda3aefb6b4e19226e9cfc466",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "9a7af9b35592db9c906da8f5617c964822e96b4b05b3d48f55b370b313a01f5f",
+   "successor": "3a9ac45eff67d6193325f8e7e12a0dcf6cf5ae2172afe65da78cd6ea1285a230",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
   }
  ]
 }

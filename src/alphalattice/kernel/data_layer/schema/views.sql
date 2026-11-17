@@ -35,6 +35,12 @@ ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
+CREATE MACRO universe_member_asof(cutoff_us) AS TABLE
+SELECT r.* FROM lake.world.universe_member r
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:4eff40b9de1e126de71c58606d308ec45cfe5c8419b5ceeba7a506a4d533cbc0'
+           AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
+
 CREATE MACRO evidence_doc_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.evidence_doc r
 ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:f32f870f25736dde4f9aed2ef136f06e8d3deb862aa447ad8eabfe844d8e2577'
@@ -48,6 +54,10 @@ WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 CREATE VIEW raw_bar_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.raw_bar r
 LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473' AND s.version_id = r.version_id;
+
+CREATE VIEW universe_member_versions AS
+SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.universe_member r
+LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:4eff40b9de1e126de71c58606d308ec45cfe5c8419b5ceeba7a506a4d533cbc0' AND s.version_id = r.version_id;
 
 CREATE VIEW corporate_action_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.corporate_action r

@@ -30,14 +30,34 @@ import json
 import re
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from datetime import date, datetime, timedelta
+from contextlib import closing
+from dataclasses import asdict
+from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Final
 
 from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.foundation.market_data_ops.sources.manifest import (
+    ManifestListing,
+    MarketProfile,
+    UniverseManifest,
+)
+from alphalattice.foundation.market_data_ops.sources.membership import (
+    MembershipEpoch,
+    MembershipEvent,
+    MembershipSchedule,
+    UniverseBootstrapRecord,
+    resolve_membership_schedule,
+)
+from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
+    UniverseWorkspaceReader,
+)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.chain import canonical, digest
+from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
@@ -107,6 +127,10 @@ TABLES: Final = (
     "raw_daily_bar_current",
     "provider_adjusted_close_current",
     "corporate_action_current",
+    "universe_manifest",
+    "universe_manifest_listing",
+    "universe_bootstrap",
+    "universe_membership_event",
     *REVISIONS,
 )
 """The 0.2.7 tables the admission reads. Each one's mark is its row count and the exclusive-or of
@@ -136,9 +160,571 @@ def table_marks(run: Any, schema: str = "") -> dict[str, list[int]]:
     }
 
 
+UNIVERSE_EVENTS: Final = {
+    "ENTRY": "universe.member_added",
+    "EXIT": "universe.member_removed",
+}
+"""The journal's two membership changes, registered with the machine log."""
+
+
+def _universe_journal(events: Sequence[Any], workspace_id: str) -> None:
+    """Import 0.2.7 journal facts once, keeping the original content digest and knowledge time."""
+    for kind in UNIVERSE_EVENTS.values():
+        history.define(
+            "event_type",
+            kind,
+            "A universe membership changed on its effective session.",
+            {
+                "work": False,
+                "subject": "universe",
+                "required": ["content_digest"],
+                "text": "none",
+                "durable": True,
+            },
+        )
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    for event in events:
+        attrs = {
+            "sequence": event.sequence,
+            "listing_id": event.listing_id,
+            "effective_session": event.effective_session.isoformat(),
+            "observed_at": event.observed_at.isoformat(),
+            "authority": event.authority,
+            "reference_hash": event.reference_hash,
+            "manifest_revision": event.manifest_revision,
+            "content_digest": event.event_hash,
+        }
+        history.record_new(
+            "SELECT 1 FROM event WHERE subject_kind = 'universe' AND subject_id = ?"
+            " AND type IN ('universe.member_added', 'universe.member_removed')"
+            " AND json_extract(attrs, '$.content_digest') = ?",
+            (universe_lineage(workspace_id, event.market_profile_id), event.event_hash),
+            UNIVERSE_EVENTS[event.kind],
+            ("universe", universe_lineage(workspace_id, event.market_profile_id)),
+            attrs,
+            occurred_us=(event.decided_at - epoch) // timedelta(microseconds=1),
+            workspace=None,
+            node="market_data_ops",
+        )
+
+
+def membership_events(
+    market_profile_id: str,
+    cutoff_us: int | None = None,
+    *,
+    workspace_id: str,
+    connection: Any = None,
+) -> tuple[Any, ...]:
+    """Rebuild the 0.2.7 journal from the machine's registered events."""
+    connection = _universe_surface(connection)
+    rows = _log_rows(
+        "SELECT type, occurred_us, attrs FROM event WHERE subject_kind = 'universe'"
+        " AND subject_id = ? AND type IN ('universe.member_added', 'universe.member_removed')"
+        " AND (? IS NULL OR occurred_us <= ?)"
+        " ORDER BY CAST(json_extract(attrs, '$.sequence') AS INTEGER)",
+        (universe_lineage(workspace_id, market_profile_id), cutoff_us, cutoff_us),
+    )
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    values = []
+    for kind, occurred, raw in rows:
+        attrs = json.loads(raw)
+        values.append(
+            MembershipEvent(
+                market_profile_id=market_profile_id,
+                sequence=attrs["sequence"],
+                listing_id=attrs["listing_id"],
+                kind="ENTRY" if kind == UNIVERSE_EVENTS["ENTRY"] else "EXIT",
+                effective_session=date.fromisoformat(attrs["effective_session"]),
+                observed_at=datetime.fromisoformat(attrs["observed_at"]),
+                decided_at=epoch + timedelta(microseconds=occurred),
+                authority=attrs["authority"],
+                reference_hash=attrs["reference_hash"],
+                manifest_revision=attrs["manifest_revision"],
+                event_hash=attrs["content_digest"],
+            )
+        )
+    return tuple(values)
+
+
 def world_listing(listing_id: str) -> str:
     """A 0.2.7 listing's world id."""
     return str(uuid.uuid5(LISTINGS, listing_id))
+
+
+def universe_name(workspace_id: str, profile_id: str) -> str:
+    """A workspace's governed profile, named by their registered ids."""
+    return f"{workspace_id}/{profile_id}"
+
+
+def universe_lineage(workspace_id: str, profile_id: str) -> str:
+    """The universe definition id assigned to a workspace's governed profile."""
+    return definition_id("universe", universe_name(workspace_id, profile_id))
+
+
+def universe_set_digest(listing_ids: Iterable[str]) -> str:
+    """Name a frozen member set by the canonical sorted world listing IDs."""
+    return digest(canonical(sorted({world_listing(listing) for listing in listing_ids})))
+
+
+def universe_set_id(listing_ids: Iterable[str]) -> str:
+    """The registered universe lineage of a frozen member set."""
+    return definition_id("universe", universe_set_digest(listing_ids))
+
+
+def admit_member_set(listing_ids: Iterable[str], valid_from: date, provider: str) -> str:
+    """Admit a frozen set through StorePort, with the source's registered legacy lag."""
+    listings = sorted(set(listing_ids))
+    content = universe_set_digest(listings)
+    identity = definition_id("universe", content)
+    history.define(
+        "universe", content, "A frozen universe member set.", {"content_digest": content}
+    )
+    _commit_universe_members(identity, ((item, valid_from, None) for item in listings), provider)
+    return identity
+
+
+def _commit_universe_members(
+    identity: str, intervals: Iterable[tuple[str, date, date | None]], provider: str
+) -> None:
+    """Admit one universe's legacy intervals through its registered StorePort."""
+    port = history.store()
+    if port is None:
+        raise DataError(
+            "the Host's universe store is not open", code="data_layer.history_unavailable"
+        )
+    rows = [
+        {
+            "universe_id": identity,
+            "listing_id": world_listing(listing),
+            "valid_from": start.isoformat(),
+            "valid_to": None if end is None else end.isoformat(),
+        }
+        for listing, start, end in intervals
+    ]
+    if rows:
+        with stage(
+            port.root,
+            "universe_member",
+            definition_id("provider", provider),
+            _arrow(rows),
+            lag=MARKET_CLOSE,
+        ) as staged:
+            port.commit(staged)
+
+
+def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
+    """Rows of `sql` over the log: in the process that holds it, through the HostLog's own
+    connection, its open batch included; in any other, through a read-only one (`log.attach`).
+    Both are Python's sqlite3, the one SQLite library a process opens the log with. No rows in a
+    data root with no log yet."""
+    host = history.opened_log()
+    held = host[0] if host is not None else history.holding()
+    if held is not None:
+        return [tuple(row) for row in held.read(sql, tuple(params))]
+    root = history.data_root()
+    if not (root / "machine" / "log.sqlite").is_file():
+        return []
+    with closing(attach(root)) as con:
+        return [tuple(row) for row in con.execute(sql, tuple(params)).fetchall()]
+
+
+def _universe_surface(connection: Any = None) -> Any:
+    """Use the admitted reader's snapshot, or the open Host's surface for direct reads."""
+    if connection is not None:
+        return connection
+    port = history.store()
+    if port is None:
+        raise DataError(
+            "the Host's universe store is not open", code="data_layer.history_unavailable"
+        )
+    port.log.flush()
+    return port.lake
+
+
+def _member_ids(connection: Any, set_id: str, cutoff_us: int) -> tuple[str, ...]:
+    """Read a content-keyed set's 0.2.7 listing aliases and verify its world content."""
+    rows = connection.execute(
+        "SELECT DISTINCT CAST(m.listing_id AS VARCHAR), p.symbol FROM universe_member_asof(?) m"
+        " JOIN lake.world.provider_symbol p USING (listing_id) WHERE m.universe_id = ?"
+        " AND p.provider_id = ? AND NOT p.retracted AND p.known_asof <= make_timestamptz(?)"
+        " AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = ?"
+        " AND s.version_id = p.version_id"
+        " AND s.superseded_asof <= make_timestamptz(?)) ORDER BY ALL",
+        [
+            cutoff_us,
+            set_id,
+            definition_id("provider", LISTING_ALIAS),
+            cutoff_us,
+            definition_id("world_table", "provider_symbol"),
+            cutoff_us,
+        ],
+    ).fetchall()
+    definition = _log_rows(
+        "SELECT spec FROM definition_version WHERE definition_id = ? AND version = 1",
+        (set_id,),
+    )
+    if (
+        len(definition) != 1
+        or digest(canonical(sorted({row[0] for row in rows})))
+        != json.loads(definition[0][0])["content_digest"]
+    ):
+        raise ValueError("market_data_ops.universe_manifest_membership_changed")
+    return tuple(sorted(row[1] for row in rows))
+
+
+def admit_universe_bootstrap(record: Any, provider: str, workspace_id: str) -> None:
+    """Record one frozen bootstrap, with its cohort held as a world member set."""
+    cohort = admit_member_set(record.cohort_listing_ids, record.history_start, provider)
+    history.define(
+        "event_type",
+        "universe.bootstrapped",
+        "A universe's initial cohort and boundary were frozen.",
+        {
+            "work": False,
+            "subject": "universe",
+            "required": ["member_set", "record_hash"],
+            "text": "none",
+            "durable": True,
+        },
+    )
+    attrs = asdict(record)
+    attrs.pop("cohort_listing_ids")
+    attrs["member_set"] = cohort
+    for key in ("t0_session", "history_start", "source_observed_at", "admitted_at"):
+        attrs[key] = attrs[key].isoformat()
+    opened = history.opened_log()
+    if opened is None:
+        raise DataError(
+            "the Host's universe log is not open", code="data_layer.history_unavailable"
+        )
+    log = opened[0]
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    with log.unit() as con:
+        held = con.execute(
+            "SELECT attrs FROM event WHERE type = 'universe.bootstrapped' AND subject_id = ?",
+            (universe_lineage(workspace_id, record.market_profile_id),),
+        ).fetchall()
+        if held:
+            if len(held) != 1 or json.loads(held[0][0]) != attrs:
+                raise ValueError("universe bootstrap is already recorded with different content")
+            return
+        log.record(
+            "universe.bootstrapped",
+            ("universe", universe_lineage(workspace_id, record.market_profile_id)),
+            attrs,
+            occurred_us=(record.admitted_at - epoch) // timedelta(microseconds=1),
+            node="market_data_ops",
+        )
+
+
+def universe_bootstrap(
+    market_profile_id: str, cutoff_us: int, *, workspace_id: str, connection: Any = None
+) -> Any:
+    """Rebuild the frozen bootstrap boundary and its cohort at the selection's cutoff."""
+    connection = _universe_surface(connection)
+    found = _log_rows(
+        "SELECT attrs FROM event WHERE type = 'universe.bootstrapped'"
+        " AND subject_id = ? AND occurred_us <= ?",
+        (universe_lineage(workspace_id, market_profile_id), cutoff_us),
+    )
+    if not found:
+        return None
+    if len(found) != 1:
+        raise ValueError("universe bootstrap is ambiguous")
+    attrs = json.loads(found[0][0])
+    set_id = attrs.pop("member_set")
+    attrs["cohort_listing_ids"] = _member_ids(connection, set_id, cutoff_us)
+    for key in ("t0_session", "history_start"):
+        attrs[key] = date.fromisoformat(attrs[key])
+    for key in ("source_observed_at", "admitted_at"):
+        attrs[key] = datetime.fromisoformat(attrs[key])
+    return UniverseBootstrapRecord(**attrs)
+
+
+def admit_universe_manifest(manifest: Any, workspace_id: str) -> str:
+    """Register an immutable manifest version and its content-keyed world member set."""
+    listing_ids = [item.listing_id for item in manifest.listings]
+    set_id = admit_member_set(
+        listing_ids, manifest.profile.manifest_as_of, manifest.profile.provider
+    )
+    spec = asdict(manifest)
+    spec["profile"]["manifest_as_of"] = manifest.profile.manifest_as_of.isoformat()
+    spec["member_set"] = set_id
+    spec = json.loads(json.dumps(spec))  # the version's canonical JSON shape, including tuples
+    opened = history.opened_log()
+    if opened is None:
+        raise DataError(
+            "the Host's universe log is not open", code="data_layer.history_unavailable"
+        )
+    log = opened[0]
+    name = universe_name(workspace_id, manifest.profile.market_profile_id)
+    with log.unit() as con:
+        versions = con.execute(
+            "SELECT version, spec FROM definition WHERE family = 'universe'"
+            " AND name = ? ORDER BY version",
+            (name,),
+        ).fetchall()
+        for _, raw in versions:
+            previous = json.loads(raw)
+            if previous.get("revision_sha256") == manifest.revision_sha256:
+                if previous != spec:
+                    raise ValueError(
+                        "universe manifest revision disagrees with its registered content"
+                    )
+                return set_id
+        version = len(versions) + 1
+        key = {"family": "universe", "name": name, "version": version}
+        body = key | {
+            "status": "standard",
+            "spec": spec,
+            "owner": "market_data_ops",
+            "text": "A frozen market universe manifest.",
+        }
+        if version > 1:
+            body["relation"] = "not_comparable"
+        log.record(
+            "definition.registered",
+            ("definition", f"universe/{name}"),
+            key,
+            text=canonical(body).decode(),
+            node="market_data_ops",
+        )
+    return set_id
+
+
+def load_universe_manifest(
+    manifest_id: str, cutoff_us: int, *, workspace_id: str, connection: Any = None
+) -> Any:
+    """Read one immutable manifest and its member set at the selection's cutoff."""
+    connection = _universe_surface(connection)
+    found = _log_rows(
+        "SELECT v.spec FROM definition_version v JOIN definition_lineage l"
+        " USING (definition_id)"
+        " WHERE l.family = 'universe' AND instr(l.name, ?) = 1"
+        " AND json_extract(v.spec, '$.manifest_id') = ?",
+        (workspace_id + "/", manifest_id),
+    )
+    if len(found) != 1:
+        raise ValueError("workspace manifest does not exist or is ambiguous")
+    spec = json.loads(found[0][0])
+    universe = spec.pop("member_set")
+    listings = tuple(ManifestListing(**item) for item in spec.pop("listings"))
+    expected = tuple(sorted(item.listing_id for item in listings))
+    if (
+        universe_set_id(expected) != universe
+        or _member_ids(connection, universe, cutoff_us) != expected
+    ):
+        raise ValueError("market_data_ops.universe_manifest_membership_changed")
+    profile = spec.pop("profile")
+    profile["manifest_as_of"] = date.fromisoformat(profile["manifest_as_of"])
+    spec["profile"] = MarketProfile(**profile)
+    spec["listings"] = listings
+    for key in ("universe_components", "qualification_obligations"):
+        spec[key] = tuple(spec[key])
+    return UniverseManifest(**spec)
+
+
+def membership_schedule(
+    market_profile_id: str,
+    sessions: Sequence[date],
+    fallback_listing_ids: Sequence[str],
+    cutoff_us: int,
+    *,
+    workspace_id: str,
+    connection: Any = None,
+) -> Any:
+    """Read each session's membership at its close or the selection's earlier cutoff."""
+    connection = _universe_surface(connection)
+    bootstrap = universe_bootstrap(
+        market_profile_id, cutoff_us, workspace_id=workspace_id, connection=connection
+    )
+    events = membership_events(
+        market_profile_id, cutoff_us, workspace_id=workspace_id, connection=connection
+    )
+    reference = resolve_membership_schedule(
+        sessions=sessions,
+        bootstrap=bootstrap,
+        events=events,
+        fallback_listing_ids=fallback_listing_ids,
+    )
+    if bootstrap is None:
+        return reference
+    profile = _log_rows(
+        "SELECT v.spec FROM definition_version v JOIN definition_name n"
+        " USING (definition_id)"
+        " WHERE n.family = 'universe' AND n.name = ? ORDER BY v.version DESC LIMIT 1",
+        (universe_name(workspace_id, market_profile_id),),
+    )
+    if not profile:
+        raise ValueError("universe manifest is not registered")
+    market = market_of(json.loads(profile[0][0])["profile"]["calendar_id"])
+    days = list(reference.sessions)
+    rows = connection.execute(
+        "WITH days AS (SELECT unnest(?::DATE[]) AS day),"
+        " clocks AS (SELECT session_date, max(close_utc) AS close_utc FROM lake.world.session"
+        " WHERE market = ? AND NOT retracted GROUP BY session_date),"
+        " aliases AS (SELECT p.*, row_number() OVER (PARTITION BY p.listing_id"
+        " ORDER BY p.valid_from DESC) AS n"
+        " FROM lake.world.provider_symbol p WHERE p.provider_id = ? AND NOT p.retracted"
+        " AND p.known_asof <= make_timestamptz(?) AND NOT EXISTS"
+        " (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = ?"
+        " AND s.version_id = p.version_id AND s.superseded_asof <= make_timestamptz(?)))"
+        " SELECT days.day, max(clocks.close_utc),"
+        " list(a.symbol ORDER BY a.symbol) FILTER (WHERE a.symbol IS NOT NULL)"
+        " FROM days LEFT JOIN clocks ON clocks.session_date = days.day"
+        " LEFT JOIN universe_member_versions m ON m.universe_id = ? AND NOT m.retracted"
+        " AND m.valid_from <= days.day AND (m.valid_to IS NULL OR days.day < m.valid_to)"
+        " AND m.known_asof <= least(clocks.close_utc, make_timestamptz(?))"
+        " AND (m.visible_to IS NULL OR m.visible_to > least(clocks.close_utc, make_timestamptz(?)))"
+        " LEFT JOIN aliases a ON a.listing_id = m.listing_id AND a.n = 1"
+        " GROUP BY days.day ORDER BY days.day",
+        [
+            days,
+            market,
+            definition_id("provider", LISTING_ALIAS),
+            cutoff_us,
+            definition_id("world_table", "provider_symbol"),
+            cutoff_us,
+            universe_lineage(workspace_id, market_profile_id),
+            cutoff_us,
+            cutoff_us,
+        ],
+    ).fetchall()
+    if any(clock is None for _, clock, _ in rows):
+        raise ValueError("universe membership session close is unavailable")
+    # The imported interval's legacy lag is its effective close. The journal is the owner of
+    # each decision time, including decisions after that close. Apply its facts only once known,
+    # so the interval projection cannot move a historical selection before the decision.
+    journal = membership_events(market_profile_id, workspace_id=workspace_id, connection=connection)
+    by_listing: dict[str, list[Any]] = {}
+    for event in sorted(journal, key=lambda item: (item.effective_session, item.sequence)):
+        by_listing.setdefault(event.listing_id, []).append(event)
+    cohort = set(bootstrap.cohort_listing_ids)
+    selected_at = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=cutoff_us)
+    members = []
+    for day, close, values in rows:
+        held = set(values or ())
+        known = min(close, selected_at)
+        for listing, changes in by_listing.items():
+            last = next(
+                (
+                    event
+                    for event in reversed(changes)
+                    if event.effective_session <= day
+                    and (event.effective_session < day or close <= selected_at)
+                    and event.decided_at <= known
+                ),
+                None,
+            )
+            if (last.kind == "ENTRY") if last is not None else (listing in cohort):
+                held.add(listing)
+            else:
+                held.discard(listing)
+        members.append((day, tuple(sorted(held))))
+    epochs = []
+    for _, group in groupby(members, key=lambda item: item[1]):
+        part = list(group)
+        epochs.append(MembershipEpoch(part[0][0], part[-1][0], part[0][1]))
+    return MembershipSchedule(
+        reference.sessions,
+        tuple(epochs),
+        reference.basis_ranges,
+        bootstrap,
+        reference.journal_sequence,
+        reference.admitted_listing_ids,
+    )
+
+
+def load_universe_manifest_revision(
+    manifest_revision: str, cutoff_us: int, *, workspace_id: str, connection: Any = None
+) -> Any:
+    """Resolve an immutable manifest revision from the machine's definitions."""
+    connection = _universe_surface(connection)
+    rows = _log_rows(
+        "SELECT json_extract(v.spec, '$.manifest_id') FROM definition_version v"
+        " JOIN definition_lineage l USING (definition_id)"
+        " WHERE l.family = 'universe' AND instr(l.name, ?) = 1"
+        " AND json_extract(v.spec, '$.revision_sha256') = ?",
+        (workspace_id + "/", manifest_revision),
+    )
+    if len(rows) != 1:
+        raise ValueError("workspace manifest revision is missing or ambiguous")
+    return load_universe_manifest(
+        str(rows[0][0]), cutoff_us, workspace_id=workspace_id, connection=connection
+    )
+
+
+def _admit_universe_intervals(
+    bootstrap: Any, events: Sequence[Any], provider: str, workspace_id: str
+) -> None:
+    """Admit the bootstrap cohort and its journal as legacy membership intervals."""
+    identity = history.definition_id(
+        "universe", universe_name(workspace_id, bootstrap.market_profile_id)
+    )
+    if identity is None:
+        raise ValueError("universe manifest is not registered")
+    active = {listing: bootstrap.history_start for listing in bootstrap.cohort_listing_ids}
+    intervals: list[tuple[str, date, date | None]] = []
+    for event in sorted(events, key=lambda item: (item.effective_session, item.sequence)):
+        if event.kind == "ENTRY":
+            if event.listing_id in active:
+                raise ValueError("membership entry for a listing already present")
+            active[event.listing_id] = event.effective_session
+        else:
+            if event.listing_id not in active:
+                raise ValueError("membership exit for a listing not present")
+            start = active.pop(event.listing_id)
+            if start < event.effective_session:
+                intervals.append((event.listing_id, start, event.effective_session))
+    intervals.extend((listing, start, None) for listing, start in active.items())
+    _commit_universe_members(identity, intervals, provider)
+
+
+def admit_universe(database: Path, workspace_id: str) -> None:
+    """Admit market and universe data together through their shared admission edge."""
+    admit(database, workspace_id)
+
+
+def _admit_universe_contents(database: Path, workspace_id: str) -> None:
+    """Copy a workspace's manifests, bootstrap and journal before its admission is recorded."""
+    market = UniverseWorkspaceReader(database.parent)
+    connection = market._connect(read_only=True)
+    try:
+        tables = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
+        if "universe_manifest" not in tables:
+            return
+        manifest_ids = [
+            row[0]
+            for row in connection.execute(
+                "SELECT manifest_id FROM universe_manifest"
+                " ORDER BY market_profile_id, as_of_date, manifest_id"
+            ).fetchall()
+        ]
+        profiles = (
+            [
+                row[0]
+                for row in connection.execute(
+                    "SELECT market_profile_id FROM universe_bootstrap ORDER BY market_profile_id"
+                ).fetchall()
+            ]
+            if "universe_bootstrap" in tables
+            else []
+        )
+    finally:
+        connection.close()
+    providers: dict[str, str] = {}
+    for name in manifest_ids:
+        manifest = market._workspace_load_universe_manifest(name)
+        admit_universe_manifest(manifest, workspace_id)
+        providers[manifest.profile.market_profile_id] = manifest.profile.provider
+    for profile in profiles:
+        bootstrap = market._workspace_universe_bootstrap(profile)
+        if bootstrap is None:
+            continue
+        events = market._workspace_membership_events(profile)
+        _universe_journal(events, workspace_id)
+        admit_universe_bootstrap(bootstrap, providers[profile], workspace_id)
+        _admit_universe_intervals(bootstrap, events, providers[profile], workspace_id)
 
 
 def market_of(calendar: str) -> str:
@@ -175,6 +761,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         started = port.log.clock()
         providers = _register(run)
         admitted = _admit(port, providers)
+        _admit_universe_contents(database, workspace_id)
         _revisions(port, workspace_id)
         history.record(
             "admission",
