@@ -1104,8 +1104,8 @@
     "requested_seq": "log_seq",
     "started_seq": "log_seq",
     "ended_seq": "log_seq",
-    "admitted_at": "iso_text",
-    "updated_at": "iso_text"
+    "admitted_us": "utc_us",
+    "updated_us": "utc_us"
    },
    "status": {
     "state": {
@@ -1142,9 +1142,73 @@
      }
     },
     "lifecycle": {
-     "states": [],
-     "terminal": [],
-     "moves": {}
+     "states": [
+      "QUEUED",
+      "RUNNING",
+      "DEFERRED",
+      "REVIEW_PENDING",
+      "CANCEL_REQUESTED",
+      "CANCELLED",
+      "SUCCEEDED",
+      "BLOCKED",
+      "RECOVERY_REQUIRED"
+     ],
+     "terminal": [
+      "SUCCEEDED",
+      "CANCELLED"
+     ],
+     "moves": {
+      "QUEUED": [
+       "RUNNING",
+       "CANCELLED",
+       "BLOCKED",
+       "RECOVERY_REQUIRED"
+      ],
+      "RUNNING": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "REVIEW_PENDING",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "DEFERRED": [
+       "SUCCEEDED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "REVIEW_PENDING": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "CANCEL_REQUESTED": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "RECOVERY_REQUIRED": [
+       "RUNNING",
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED"
+      ],
+      "BLOCKED": [
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ]
+     },
+     "enforced_by": "trigger task_lifecycle_moves"
     }
    },
    "versions": {
@@ -1281,49 +1345,6 @@
     }
    }
   },
-  "log.workspace_task_command": {
-   "home": "projection",
-   "key": [
-    "command_id"
-   ],
-   "id": {
-    "command_id": "uuid7"
-   },
-   "up": "task_id",
-   "copy_of": "log.event",
-   "times": {
-    "accepted_at": "iso_text",
-    "resolved_at": "iso_text"
-   }
-  },
-  "log.workspace_task_event": {
-   "home": "projection",
-   "key": [
-    "event_id"
-   ],
-   "id": {
-    "event_id": "uuid7"
-   },
-   "up": "task_id",
-   "copy_of": "log.event",
-   "times": {
-    "recorded_at": "iso_text"
-   }
-  },
-  "log.workspace_task_execution": {
-   "home": "projection",
-   "key": [
-    "execution_id"
-   ],
-   "id": {
-    "execution_id": "uuid7"
-   },
-   "up": "task_id",
-   "copy_of": "log.task",
-   "times": {
-    "started_at": "iso_text"
-   }
-  },
   "log.workspace_task_heartbeat_at": {
    "home": "working",
    "key": [
@@ -1334,11 +1355,11 @@
    },
    "up": "execution_id",
    "times": {
-    "last_heartbeat_at": "iso_text"
+    "last_heartbeat_us": "utc_us"
    }
   },
   "log.workspace_task_projection": {
-   "home": "working",
+   "home": "cache",
    "key": [
     "task_id"
    ],
@@ -1346,76 +1367,12 @@
     "task_id": "link"
    },
    "up": "task_id",
-   "copy_of": "log.task",
    "times": {
-    "updated_at": "iso_text"
-   }
-  },
-  "log.workspace_task_stage_receipt": {
-   "home": "projection",
-   "key": [
-    "receipt_hash"
-   ],
-   "id": {
-    "receipt_hash": "digest: the hash of its sealed receipt"
-   },
-   "up": "task_id",
-   "copy_of": "log.task_step",
-   "times": {
-    "observed_at": "iso_text"
-   }
-  },
-  "log.workspace_task_work_item": {
-   "home": "projection",
-   "key": [
-    "task_id",
-    "stage_id"
-   ],
-   "id": {
-    "task_id": "link",
-    "stage_id": "standard: the stage's id within its task's plan"
-   },
-   "up": "task_id",
-   "copy_of": "log.task_step",
-   "times": {
-    "updated_at": "iso_text"
-   },
-   "status": {
-    "lifecycle": {
-     "states": [],
-     "terminal": [],
-     "moves": {}
-    }
+    "updated_us": "utc_us"
    }
   }
  },
  "known": {
-  "task-two-homes": {
-   "says": "A task's record keeps its lifecycle and times as Task Control's text, and its work items, executions, notes, commands and receipts have a second home in the workspace_task tables, which key a receipt by its hash and check no lifecycle states.",
-   "problems": [
-    "home: log.workspace_task_command: a second home of log.event's facts, kept as a table",
-    "home: log.workspace_task_event: a second home of log.event's facts, kept as a table",
-    "home: log.workspace_task_execution: a second home of log.task's facts, kept as a table",
-    "home: log.workspace_task_projection: a second home of log.task's facts, kept as a table",
-    "home: log.workspace_task_stage_receipt: a second home of log.task_step's facts, kept as a table",
-    "home: log.workspace_task_work_item: a second home of log.task_step's facts, kept as a table",
-    "id: log.workspace_task_stage_receipt.receipt_hash: a digest id",
-    "status: log.task.lifecycle: its moves are declared, not enforced",
-    "status: log.task.lifecycle: the DDL checks no states",
-    "status: log.workspace_task_work_item.lifecycle: its moves are declared, not enforced",
-    "status: log.workspace_task_work_item.lifecycle: the DDL checks no states",
-    "time: log.task.admitted_at: a time kept as text on its writer's clock",
-    "time: log.task.updated_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_command.accepted_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_command.resolved_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_event.recorded_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_execution.started_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_heartbeat_at.last_heartbeat_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_projection.updated_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_stage_receipt.observed_at: a time kept as text on its writer's clock",
-    "time: log.workspace_task_work_item.updated_at: a time kept as text on its writer's clock"
-   ]
-  },
   "research-digest-ids": {
    "says": "A selection, a recipe and an artifact are named by digests, and a measure's dimensions by a packed string.",
    "problems": [

@@ -23,6 +23,7 @@ from alphalattice.control.workspace_runtime.database import open_workspace_datab
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.history import data_root, held, holding
 from alphalattice.kernel.data_layer.log import attach, uuid7
+from alphalattice.kernel.data_layer.project import registry_us
 from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -157,19 +158,36 @@ STORE_0_2_7: tuple[str, ...] = (
 )
 """A 0.2.7 workspace's Task Control store, as its registry created it: the shape the import
 reads and a restored backup is written in, so the import moves both onto the log alike."""
+
+
+def _clock(us: str, name: str) -> str:
+    """The log's microseconds as the 0.2.7 store's naive UTC text, under its 0.2.7 name."""
+    seconds = f"strftime('%Y-%m-%d %H:%M:%S', {us} / 1000000, 'unixepoch')"
+    fraction = f"printf('.%06d', {us} % 1000000)"
+    return f"CASE WHEN {us} IS NOT NULL THEN {seconds} || {fraction} END AS {name}"
+
+
 _AS_0_2_7 = {
     "workspace_task": "SELECT task_id, task_kind, input_hash, plan_hash, lifecycle, record_json,"
-    " admitted_at, updated_at, admission_sequence, submitted_by_json FROM workspace_task w"
-    " WHERE workspace_id = ?",
-    "workspace_task_work_item": "SELECT w.* FROM workspace_task_work_item w",
+    f" {_clock('admitted_us', 'admitted_at')}, {_clock('updated_us', 'updated_at')},"
+    " admission_sequence, submitted_by_json FROM workspace_task w WHERE workspace_id = ?",
+    "workspace_task_work_item": "SELECT w.task_id, w.stage_id, w.ordinal, w.lifecycle,"
+    f" w.state_json, {_clock('w.updated_us', 'updated_at')} FROM workspace_task_work_item w",
     "workspace_task_execution": "SELECT w.execution_id, w.task_id, w.graph_thread_id,"
     " w.worker_instance_id, w.compatibility_hash, w.execution_json, 0 AS checkpoint_seen,"
-    " w.started_at, coalesce(h.last_heartbeat_at, w.started_at) AS last_heartbeat_at"
+    f" {_clock('w.started_us', 'started_at')},"
+    f" {_clock('coalesce(h.last_heartbeat_us, w.started_us)', 'last_heartbeat_at')}"
     " FROM workspace_task_execution w LEFT JOIN workspace_task_heartbeat_at h USING (execution_id)",
-    "workspace_task_event": "SELECT w.* FROM workspace_task_event w",
-    "workspace_task_command": "SELECT w.* FROM workspace_task_command w",
-    "workspace_task_stage_receipt": "SELECT w.* FROM workspace_task_stage_receipt w",
-    "workspace_task_projection": "SELECT w.* FROM workspace_task_projection w",
+    "workspace_task_event": "SELECT w.event_id, w.task_id, w.execution_id, w.sequence, w.kind,"
+    f" w.details_json, {_clock('w.recorded_us', 'recorded_at')} FROM workspace_task_event w",
+    "workspace_task_command": "SELECT w.command_id, w.task_id, w.command_hash, w.command_json,"
+    f" {_clock('w.accepted_us', 'accepted_at')}, {_clock('w.resolved_us', 'resolved_at')},"
+    " w.resolution FROM workspace_task_command w",
+    "workspace_task_stage_receipt": "SELECT w.receipt_hash, w.task_id, w.execution_id,"
+    f" w.stage_id, w.receipt_json, {_clock('w.observed_us', 'observed_at')}"
+    " FROM workspace_task_stage_receipt w",
+    "workspace_task_projection": "SELECT w.task_id, w.task_record_hash, w.projection_json,"
+    f" {_clock('w.updated_us', 'updated_at')} FROM workspace_task_projection w",
 }
 """Each table of a workspace's Tasks on the log, read in its 0.2.7 shape."""
 
@@ -400,7 +418,7 @@ def _import(
                 projection["task_id"],
                 projection["task_record_hash"],
                 projection["projection_json"],
-                _stored_time(projection["updated_at"]),
+                registry_us(_stored_time(projection["updated_at"])),
             ],
         )
 

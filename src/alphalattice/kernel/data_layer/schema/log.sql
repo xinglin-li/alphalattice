@@ -1,8 +1,8 @@
 -- log.sqlite: the machine's one event log, and every table projected from it. Only the Host writes.
 -- Shape tiers (plan 0.2.8): [1] strict core  [2] versioned definitions  [3] contract content  [4] opaque bodies.
 -- Rule: `event` is the only truth. Every other table here is a projection the Host updates in the event's own
--- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Two tables are the Host's private
--- working state and are not projections: cache_entry, deletion_queue, workspace_task_heartbeat_at and
+-- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Four tables are the Host's private
+-- working state or caches and are not projections: cache_entry, deletion_queue, workspace_task_heartbeat_at and
 -- workspace_task_projection.
 -- Times are integer microseconds since the Unix epoch, UTC (`*_us`). Every `*_seq` is a position in event.seq.
 PRAGMA journal_mode = WAL;
@@ -242,10 +242,11 @@ CREATE TABLE task (
   task_kind TEXT NOT NULL,
   input_hash TEXT NOT NULL,
   plan_hash TEXT NOT NULL,
-  lifecycle TEXT NOT NULL,
+  lifecycle TEXT NOT NULL CHECK (lifecycle IN ('QUEUED', 'RUNNING', 'DEFERRED', 'REVIEW_PENDING', 'CANCEL_REQUESTED',
+                                               'CANCELLED', 'SUCCEEDED', 'BLOCKED', 'RECOVERY_REQUIRED')),
   record_json TEXT CHECK (record_json IS NULL OR json_valid(record_json)),  -- set by its first save
-  admitted_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
+  admitted_us INTEGER NOT NULL,  -- the registry's clock, as its record holds it
+  updated_us INTEGER NOT NULL,
   admission_sequence INTEGER,  -- in its workspace; NULL for a record admitted before admissions were ordered
   submitted_by_json TEXT CHECK (submitted_by_json IS NULL OR json_valid(submitted_by_json)),
   CHECK ((parent_task_id IS NOT NULL) + (goal_id IS NOT NULL) + (workspace_id IS NOT NULL) = 1),
@@ -274,6 +275,23 @@ WITH RECURSIVE up(task_id, parent_task_id, goal_id) AS (
   SELECT up.task_id, p.parent_task_id, p.goal_id FROM up JOIN task p ON p.task_id = up.parent_task_id
 )
 SELECT task_id, goal_id FROM up WHERE parent_task_id IS NULL;
+
+-- A Task's lifecycle moves only as Task Control moves it; SUCCEEDED and CANCELLED are final.
+CREATE TRIGGER task_lifecycle_moves BEFORE UPDATE OF lifecycle ON task
+WHEN NEW.lifecycle <> OLD.lifecycle AND (OLD.lifecycle, NEW.lifecycle) NOT IN (VALUES
+  ('QUEUED', 'RUNNING'), ('QUEUED', 'CANCELLED'), ('QUEUED', 'BLOCKED'), ('QUEUED', 'RECOVERY_REQUIRED'),
+  ('RUNNING', 'SUCCEEDED'), ('RUNNING', 'DEFERRED'), ('RUNNING', 'BLOCKED'), ('RUNNING', 'REVIEW_PENDING'),
+  ('RUNNING', 'CANCEL_REQUESTED'), ('RUNNING', 'CANCELLED'), ('RUNNING', 'RECOVERY_REQUIRED'),
+  ('DEFERRED', 'SUCCEEDED'), ('DEFERRED', 'BLOCKED'), ('DEFERRED', 'CANCEL_REQUESTED'), ('DEFERRED', 'CANCELLED'),
+  ('DEFERRED', 'RECOVERY_REQUIRED'),
+  ('REVIEW_PENDING', 'SUCCEEDED'), ('REVIEW_PENDING', 'DEFERRED'), ('REVIEW_PENDING', 'BLOCKED'),
+  ('REVIEW_PENDING', 'CANCEL_REQUESTED'), ('REVIEW_PENDING', 'CANCELLED'), ('REVIEW_PENDING', 'RECOVERY_REQUIRED'),
+  ('CANCEL_REQUESTED', 'SUCCEEDED'), ('CANCEL_REQUESTED', 'DEFERRED'), ('CANCEL_REQUESTED', 'BLOCKED'),
+  ('CANCEL_REQUESTED', 'CANCELLED'), ('CANCEL_REQUESTED', 'RECOVERY_REQUIRED'),
+  ('RECOVERY_REQUIRED', 'RUNNING'), ('RECOVERY_REQUIRED', 'SUCCEEDED'), ('RECOVERY_REQUIRED', 'DEFERRED'),
+  ('RECOVERY_REQUIRED', 'BLOCKED'), ('RECOVERY_REQUIRED', 'CANCEL_REQUESTED'), ('RECOVERY_REQUIRED', 'CANCELLED'),
+  ('BLOCKED', 'CANCELLED'), ('BLOCKED', 'RECOVERY_REQUIRED'))
+BEGIN SELECT RAISE(ABORT, 'a task lifecycle moves only as Task Control declares'); END;
 
 -- An admission's place is unique in its workspace.
 CREATE TRIGGER task_admission_order BEFORE INSERT ON task WHEN NEW.admission_sequence IS NOT NULL
@@ -313,67 +331,66 @@ CREATE INDEX wait_heartbeat ON wait(
   json_extract(match_attrs, '$.source'), json_extract(match_attrs, '$.signal.execution_id'), started_seq
 ) WHERE purpose = 'task.heartbeat';
 
--- Task Control's records (task_control.registry), each row the projection of the event that carries its sealed
--- record. They keep the registry's own model: a Task's version (on task), its work items, executions, notes, commands
--- bound to the version they confirmed, and stage receipts; the same events project task and task_step above. Their
--- times are the registry's own clock, UTC ISO text, as each record holds them. workspace_task is a Task's record as the
--- registry reads it, with its derived workspace.
+-- Task Control's records (task_control.registry). A Task's record and its version are on task; every other record is
+-- the event that carries it, sealed as that event's text, and each view below reads it there: a work item's saves, an
+-- execution's start, a note, a command's acceptance and resolution. A verified stage is the Task's step in task_step,
+-- whose event carries its receipt. The registry's clock stays its own: each view reads it from the event's attrs, as
+-- the registry wrote it (UTC ISO text, or a 0.2.7 store's naive UTC), in integer microseconds.
 CREATE VIEW workspace_task AS
-SELECT t.task_id, w.workspace_id, t.task_kind, t.input_hash, t.plan_hash, t.lifecycle, t.record_json, t.admitted_at,
-       t.updated_at, t.admission_sequence, t.submitted_by_json
+SELECT t.task_id, w.workspace_id, t.task_kind, t.input_hash, t.plan_hash, t.lifecycle, t.record_json, t.admitted_us,
+       t.updated_us, t.admission_sequence, t.submitted_by_json
 FROM task t JOIN task_workspace w USING (task_id);
 
-CREATE TABLE workspace_task_work_item (
-  task_id TEXT NOT NULL REFERENCES task(task_id),
-  stage_id TEXT NOT NULL,
-  ordinal INTEGER NOT NULL,
-  lifecycle TEXT NOT NULL,
-  state_json TEXT NOT NULL CHECK (json_valid(state_json)),
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (task_id, stage_id)
-) STRICT, WITHOUT ROWID;
+-- A work item: its first save names its place; its latest save is its state.
+CREATE VIEW workspace_task_work_item AS
+SELECT f.subject_id AS task_id, json_extract(f.attrs, '$.stage_id') AS stage_id, json_extract(f.attrs, '$.ordinal') AS ordinal,
+       json_extract(l.attrs, '$.lifecycle') AS lifecycle, x.text AS state_json, (unixepoch(substr(json_extract(l.attrs, '$.updated_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(l.attrs, '$.updated_at'), 21, 6) AS INTEGER)) AS updated_us
+FROM event f
+JOIN event l ON l.seq = (
+  SELECT max(m.seq) FROM event m
+  WHERE m.type = 'work_item.saved' AND m.subject_id = f.subject_id AND json_extract(m.attrs, '$.stage_id') = json_extract(f.attrs, '$.stage_id')
+)
+JOIN event_text x ON x.seq = l.seq
+WHERE f.type = 'work_item.saved' AND json_extract(f.attrs, '$.ordinal') IS NOT NULL;
 
-CREATE TABLE workspace_task_execution (
-  execution_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES task(task_id),
-  graph_thread_id TEXT NOT NULL UNIQUE,
-  worker_instance_id TEXT NOT NULL,
-  compatibility_hash TEXT NOT NULL,
-  execution_json TEXT NOT NULL CHECK (json_valid(execution_json)),  -- as sealed at its start
-  started_at TEXT NOT NULL
-) STRICT, WITHOUT ROWID;
+CREATE VIEW workspace_task_execution AS
+SELECT json_extract(e.attrs, '$.execution_id') AS execution_id, e.subject_id AS task_id, json_extract(e.attrs, '$.graph_thread_id') AS graph_thread_id,
+       json_extract(e.attrs, '$.worker_instance_id') AS worker_instance_id, json_extract(e.attrs, '$.compatibility_hash') AS compatibility_hash,
+       x.text AS execution_json, (unixepoch(substr(json_extract(e.attrs, '$.started_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(e.attrs, '$.started_at'), 21, 6) AS INTEGER)) AS started_us
+FROM event e JOIN event_text x ON x.seq = e.seq WHERE e.type = 'execution.started';
+-- An execution's id and its graph thread are unique, as a note's place in its Task and a command's hash are.
+CREATE UNIQUE INDEX event_execution ON event(json_extract(attrs, '$.execution_id')) WHERE type = 'execution.started';
+CREATE UNIQUE INDEX event_execution_thread ON event(json_extract(attrs, '$.graph_thread_id'))
+WHERE type = 'execution.started';
 
-CREATE TABLE workspace_task_event (
-  event_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES task(task_id),
-  execution_id TEXT,
-  sequence INTEGER NOT NULL,
-  kind TEXT NOT NULL,
-  details_json TEXT NOT NULL CHECK (json_valid(details_json)),
-  recorded_at TEXT NOT NULL,
-  UNIQUE (task_id, sequence)
-) STRICT, WITHOUT ROWID;
-CREATE INDEX workspace_task_event_kind ON workspace_task_event(kind, recorded_at);
+CREATE VIEW workspace_task_event AS
+SELECT json_extract(e.attrs, '$.event_id') AS event_id, e.subject_id AS task_id, json_extract(e.attrs, '$.execution_id') AS execution_id,
+       json_extract(e.attrs, '$.sequence') AS sequence, json_extract(e.attrs, '$.kind') AS kind, x.text AS details_json,
+       (unixepoch(substr(json_extract(e.attrs, '$.recorded_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(e.attrs, '$.recorded_at'), 21, 6) AS INTEGER)) AS recorded_us
+FROM event e JOIN event_text x ON x.seq = e.seq WHERE e.type = 'task.noted';
+CREATE UNIQUE INDEX event_task_note ON event(json_extract(attrs, '$.event_id')) WHERE type = 'task.noted';
+CREATE UNIQUE INDEX event_task_note_place ON event(subject_id, json_extract(attrs, '$.sequence'))
+WHERE type = 'task.noted';
 
-CREATE TABLE workspace_task_command (
-  command_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES task(task_id),
-  command_hash TEXT NOT NULL UNIQUE,
-  command_json TEXT NOT NULL CHECK (json_valid(command_json)),
-  accepted_at TEXT NOT NULL,
-  resolved_at TEXT,
-  resolution TEXT
-) STRICT, WITHOUT ROWID;
+CREATE VIEW workspace_task_command AS
+SELECT json_extract(a.attrs, '$.command_id') AS command_id, a.subject_id AS task_id, json_extract(a.attrs, '$.command_hash') AS command_hash,
+       x.text AS command_json, (unixepoch(substr(json_extract(a.attrs, '$.accepted_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(a.attrs, '$.accepted_at'), 21, 6) AS INTEGER)) AS accepted_us, (unixepoch(substr(json_extract(r.attrs, '$.resolved_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(r.attrs, '$.resolved_at'), 21, 6) AS INTEGER)) AS resolved_us,
+       json_extract(r.attrs, '$.resolution') AS resolution
+FROM event a JOIN event_text x ON x.seq = a.seq
+LEFT JOIN event r ON r.type = 'command.resolved' AND r.subject_id = a.subject_id
+  AND json_extract(r.attrs, '$.command_id') = json_extract(a.attrs, '$.command_id')
+WHERE a.type = 'command.accepted';
+CREATE UNIQUE INDEX event_command ON event(json_extract(attrs, '$.command_id'), type)
+WHERE type IN ('command.accepted', 'command.resolved');
+CREATE UNIQUE INDEX event_command_hash ON event(json_extract(attrs, '$.command_hash'))
+WHERE type = 'command.accepted';
 
-CREATE TABLE workspace_task_stage_receipt (
-  receipt_hash TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES task(task_id),
-  execution_id TEXT NOT NULL,
-  stage_id TEXT NOT NULL,
-  receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
-  observed_at TEXT NOT NULL,
-  UNIQUE (task_id, stage_id)
-) STRICT, WITHOUT ROWID;
+-- A verified stage's receipt: the event its step was completed by. Its hash is a sealed column beside its id.
+CREATE VIEW workspace_task_stage_receipt AS
+SELECT json_extract(e.attrs, '$.receipt_hash') AS receipt_hash, json_extract(x.text, '$.receipt_id') AS receipt_id, s.task_id,
+       json_extract(e.attrs, '$.execution_id') AS execution_id, s.step AS stage_id, x.text AS receipt_json,
+       (unixepoch(substr(json_extract(e.attrs, '$.observed_at'), 1, 19)) * 1000000 + CAST(substr(json_extract(e.attrs, '$.observed_at'), 21, 6) AS INTEGER)) AS observed_us
+FROM task_step s JOIN event e ON e.seq = s.completed_seq AND e.type = 'stage.verified' JOIN event_text x ON x.seq = e.seq;
 
 -- ===== [1] Research: state, action, effect, new state =====
 -- The action's definition. Its identity holds the method's lineage, its version, the parameters and the upstream
@@ -672,18 +689,19 @@ CREATE TABLE cache_entry (
 ) STRICT, WITHOUT ROWID;
 
 -- A running execution's latest business heartbeat, beside its sealed record; reading the execution reseals it with
--- this time. A Task's lease is not yet a wait on the log.
+-- this time. A Task's lease is not yet a wait on the log. Its execution is an execution.started event's.
 CREATE TABLE workspace_task_heartbeat_at (
-  execution_id TEXT PRIMARY KEY REFERENCES workspace_task_execution(execution_id),
-  last_heartbeat_at TEXT NOT NULL
+  execution_id TEXT PRIMARY KEY,
+  last_heartbeat_us INTEGER NOT NULL  -- the registry's clock
 ) STRICT, WITHOUT ROWID;
 
--- Each Task's latest safe projection, derived from its records for a fast listing.
+-- A cache: each Task's latest safe projection, computed from its records for a fast listing and recomputed from them
+-- when its row is missing or damaged; its record hash names the record it was computed from.
 CREATE TABLE workspace_task_projection (
   task_id TEXT PRIMARY KEY REFERENCES task(task_id),
   task_record_hash TEXT NOT NULL,
   projection_json TEXT NOT NULL CHECK (json_valid(projection_json)),
-  updated_at TEXT NOT NULL
+  updated_us INTEGER NOT NULL  -- its last activity, on the registry's clock
 ) STRICT, WITHOUT ROWID;
 
 -- Files to delete that another process still holds open; retried, never blocking.

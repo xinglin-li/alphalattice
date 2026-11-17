@@ -364,6 +364,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_task_control_time_is_its_microseconds": {
+      "description": "A Task Control time is read as UTC integer microseconds by one rule the log's views share, and refused by name otherwise.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_task_parent_is_its_nearest": {
       "description": "A task stores its parent task, else its goal held in its own workspace, else its workspace, by its event's version.",
       "owner": "alphalattice.kernel.data_layer",

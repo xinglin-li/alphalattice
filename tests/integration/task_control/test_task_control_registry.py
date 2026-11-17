@@ -2280,11 +2280,16 @@ def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journa
     # A fresh owner refuses a broken link seal.
     damaged = preview.model_dump(mode="json")
     damaged["link_hash"] = "f" * 64
-    with history.held().unit() as connection:  # a damaged row, written past its events
-        connection.execute(
-            "UPDATE workspace_task_event SET details_json = ? WHERE task_id = ? AND kind = ?",
-            [json.dumps(damaged), str(source.task_id), "task.recovery_link"],
-        )
+    with history.held().unit() as connection:  # a damaged note, appended past its sealed one
+        attrs, workspace = connection.execute(
+            "SELECT attrs, workspace_id FROM event WHERE type = 'task.noted' AND subject_id = ?"
+            " AND json_extract(attrs, '$.kind') = 'task.recovery_link'",
+            [str(source.task_id)],
+        ).fetchone()
+        noted = json.loads(attrs) | {"event_id": str(uuid4())}
+        noted["sequence"] += 100
+        subject, text = ("task", str(source.task_id)), json.dumps(damaged)
+        history.held().record("task.noted", subject, noted, workspace=workspace, text=text)
     fresh = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
     with pytest.raises(
         TaskControlDatabaseAuthorityError, match=r"task_control\.recovery_link_invalid"

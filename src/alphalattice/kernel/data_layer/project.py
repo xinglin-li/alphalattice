@@ -10,8 +10,10 @@ schemas/project.py); a refusal here rolls the event back with everything else of
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Callable, Iterable
+from datetime import datetime, timedelta
 from typing import Any, Final
 
 from alphalattice.kernel.data.errors import DataError
@@ -28,11 +30,6 @@ PROJECTED: Final = (
     "task",
     "task_step",
     "wait",
-    "workspace_task_work_item",
-    "workspace_task_execution",
-    "workspace_task_event",
-    "workspace_task_command",
-    "workspace_task_stage_receipt",
     "recipe",
     "recipe_upstream",
     "selection",
@@ -67,7 +64,7 @@ MACHINE_TEXT: Final = frozenset(
 )
 """The types whose text is never forgotten: a definition's, which replay rebuilds the registry
 from; a Task's frozen request, what it was admitted to do; and the sealed record each Task
-Control event carries, which its projection keeps."""
+Control event carries, which its view reads."""
 TASK_STATE: Final = {
     "QUEUED": "requested",
     "RUNNING": "running",
@@ -376,7 +373,7 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(  # its record follows in the same unit (`task.saved`)
         "INSERT INTO task (task_id, parent_task_id, goal_id, workspace_id, type_id, state,"
         " trace_id, product_version, requested_seq, task_kind, input_hash, plan_hash, lifecycle,"
-        " admitted_at, updated_at, admission_sequence, submitted_by_json)"
+        " admitted_us, updated_us, admission_sequence, submitted_by_json)"
         " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)",
         (
             task,
@@ -388,8 +385,8 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a["type"],
             a["input_hash"],
             a["plan_hash"],
-            a["admitted_at"],
-            a["admitted_at"],
+            registry_us(a["admitted_at"]),
+            registry_us(a["admitted_at"]),
             a.get("admission_sequence"),
             _json(a.get("submitted_by")),
         ),
@@ -422,8 +419,8 @@ def _goal_held(con: Con, goal: str, workspace: str) -> bool:
 def _task_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     _one(
         con.execute(
-            "UPDATE task SET lifecycle = ?, record_json = ?, updated_at = ? WHERE task_id = ?",
-            (a["lifecycle"], text, a["updated_at"], e["subject_id"]),
+            "UPDATE task SET lifecycle = ?, record_json = ?, updated_us = ? WHERE task_id = ?",
+            (a["lifecycle"], text, registry_us(a["updated_at"]), e["subject_id"]),
         ),
         "task_unknown",
         "a saved record names a Task the log was never asked for",
@@ -440,87 +437,85 @@ def _task_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("work_item.saved")
 def _work_item_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A work item's save is its own home (workspace_task_work_item reads it): its first save
+    names its place; each later one moves it only as Task Control declares."""
+    registry_us(a["updated_at"])
+    prior = con.execute(
+        "SELECT json_extract(attrs, '$.lifecycle') FROM event WHERE type = 'work_item.saved'"
+        " AND subject_id = ? AND json_extract(attrs, '$.stage_id') = ? AND seq < ?"
+        " ORDER BY seq DESC LIMIT 1",
+        (e["subject_id"], a["stage_id"], e["seq"]),
+    ).fetchone()
     if "ordinal" in a:  # its first save, at the Task's admission, names its place
-        con.execute(
-            "INSERT INTO workspace_task_work_item VALUES (?, ?, ?, ?, ?, ?)",
-            (e["subject_id"], a["stage_id"], a["ordinal"], a["lifecycle"], text, a["updated_at"]),
-        )
+        if prior is not None:
+            raise _refuse("work_item_repeated", "a work item's place is named once")
         return
-    _one(
-        con.execute(
-            "UPDATE workspace_task_work_item SET lifecycle = ?, state_json = ?, updated_at = ?"
-            " WHERE task_id = ? AND stage_id = ?",
-            (a["lifecycle"], text, a["updated_at"], e["subject_id"], a["stage_id"]),
-        ),
-        "work_item_unknown",
-        "a saved work item names a stage its Task was not admitted with",
-    )
+    if prior is None:
+        raise _refuse(
+            "work_item_unknown", "a saved work item names a stage its Task was not admitted with"
+        )
+    if prior[0] != a["lifecycle"] and a["lifecycle"] not in WORK_ITEM_MOVES.get(prior[0], ()):
+        raise _refuse(
+            "work_item_move_undeclared", "a work item moves only as Task Control declares"
+        )
 
 
 @on("task.noted")
 def _task_noted(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
-        "INSERT INTO workspace_task_event VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            a["event_id"],
-            e["subject_id"],
-            a.get("execution_id"),
-            a["sequence"],
-            a["kind"],
-            text,
-            a["recorded_at"],
-        ),
-    )
+    registry_us(a["recorded_at"])  # the note is its event: workspace_task_event reads it
 
 
 @on("execution.started")
 def _execution(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
-        "INSERT INTO workspace_task_execution VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            a["execution_id"],
-            e["subject_id"],
-            a["graph_thread_id"],
-            a["worker_instance_id"],
-            a["compatibility_hash"],
-            text,
-            a["started_at"],
-        ),
-    )
+    registry_us(a["started_at"])  # the start is its event: workspace_task_execution reads it
 
 
 @on("stage.verified")
 def _stage_verified(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    receipt = a["receipt_hash"]
-    con.execute(
-        "INSERT INTO workspace_task_stage_receipt VALUES (?, ?, ?, ?, ?, ?)",
-        (receipt, e["subject_id"], a["execution_id"], a["stage_id"], text, a["observed_at"]),
-    )
-    con.execute(  # the verified stage is the Task's completed step
+    registry_us(a["observed_at"])
+    con.execute(  # the verified stage is the Task's completed step; its event carries the receipt
         "INSERT OR REPLACE INTO task_step VALUES (?, ?, ?, ?)",
-        (e["subject_id"], a["stage_id"], _json({"receipt": receipt}), e["seq"]),
+        (e["subject_id"], a["stage_id"], _json({"receipt": a["receipt_hash"]}), e["seq"]),
     )
 
 
 @on("command.accepted")
 def _command_accepted(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
-        "INSERT INTO workspace_task_command VALUES (?, ?, ?, ?, ?, NULL, NULL)",
-        (a["command_id"], e["subject_id"], a["command_hash"], text, a["accepted_at"]),
-    )
+    registry_us(a["accepted_at"])  # the command is its event: workspace_task_command reads it
 
 
 @on("command.resolved")
 def _command_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    _one(
-        con.execute(
-            "UPDATE workspace_task_command SET resolved_at = ?, resolution = ?"
-            " WHERE command_id = ? AND task_id = ?",
-            (a["resolved_at"], a["resolution"], a["command_id"], e["subject_id"]),
-        ),
-        "command_unknown",
-        "a resolution names a command the Task never accepted",
-    )
+    registry_us(a["resolved_at"])
+    accepted = con.execute(
+        "SELECT 1 FROM event WHERE type = 'command.accepted' AND subject_id = ?"
+        " AND json_extract(attrs, '$.command_id') = ?",
+        (e["subject_id"], a["command_id"]),
+    ).fetchone()
+    if accepted is None:
+        raise _refuse("command_unknown", "a resolution names a command the Task never accepted")
+
+
+# A work item's declared moves; VERIFIED and CANCELLED are final.
+WORK_ITEM_MOVES: Final[dict[str, frozenset[str]]] = {
+    "PENDING": frozenset({"IN_PROGRESS", "CANCELLED"}),
+    "IN_PROGRESS": frozenset({"READY_FOR_VERIFICATION", "PENDING", "BLOCKED", "CANCELLED"}),
+    "READY_FOR_VERIFICATION": frozenset({"VERIFIED", "PENDING", "BLOCKED", "CANCELLED"}),
+    "BLOCKED": frozenset({"PENDING", "CANCELLED"}),
+}
+_REGISTRY_TIME: Final = re.compile(r"\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(\.\d{6})?(\+00:00|Z)?")
+_EPOCH: Final = datetime(1970, 1, 1)
+
+
+def registry_us(value: object) -> int:
+    """A Task Control time in integer microseconds. The registry writes UTC ISO text to the
+    microsecond, and a 0.2.7 store's import its naive UTC; the views read each by this rule:
+    the second at characters 1-19, then six fraction digits or none."""
+    if not isinstance(value, str) or not _REGISTRY_TIME.fullmatch(value):
+        raise _refuse("task_time_unreadable", "a Task Control time is UTC ISO, to the microsecond")
+    whole = datetime.strptime(value[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+    fraction = int(value[20:26]) if value[19:20] == "." else 0
+    return (whole - _EPOCH) // timedelta(seconds=1) * 1_000_000 + fraction
 
 
 @on("task")

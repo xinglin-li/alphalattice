@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import duckdb
 
@@ -92,10 +92,11 @@ _RUNNING_PLACE = _ACTIVE_TASKS - {TaskLifecycle.RECOVERY_REQUIRED}
 waited for a person or a changed install while every Task behind it waited too. More than one
 holds a place only when each may run beside others (`overlapping`)."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)  # the log keeps the registry clock in microseconds since
 
 _QUEUE_HEAD = """
     SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ? AND lifecycle = 'QUEUED'
-    ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id LIMIT 1
+    ORDER BY admission_sequence NULLS FIRST, admitted_us, task_id LIMIT 1
 """
 
 
@@ -346,6 +347,13 @@ class DuckDbTaskControlRegistry:
         return model_type.model_validate_json(value)
 
     @staticmethod
+    def _us(value: datetime) -> int:
+        """A registry clock as the log's rows keep it: UTC integer microseconds."""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("task-control clock must be timezone-aware")
+        return (value - _EPOCH) // timedelta(microseconds=1)
+
+    @staticmethod
     def _db_time(value: datetime) -> str:
         """A registry clock as its rows keep it: UTC, ISO text to the microsecond, so it sorts."""
         if value.tzinfo is None or value.utcoffset() is None:
@@ -541,7 +549,7 @@ class DuckDbTaskControlRegistry:
             [str(task_id)],
         ).fetchone()[0]
         attrs = {
-            "event_id": str(uuid4()),
+            "event_id": uuid7(),
             "execution_id": str(execution_id) if execution_id else None,
             "sequence": sequence,
             "kind": kind,
@@ -608,7 +616,7 @@ class DuckDbTaskControlRegistry:
     ) -> TaskExecution | None:
         """An execution as sealed at its start, resealed with its latest heartbeat if it beat."""
         row = connection.execute(
-            "SELECT e.execution_json, h.last_heartbeat_at FROM workspace_task_execution e"
+            "SELECT e.execution_json, h.last_heartbeat_us FROM workspace_task_execution e"
             " LEFT JOIN workspace_task_heartbeat_at h ON h.execution_id = e.execution_id"
             " WHERE e.execution_id = ?",
             [str(execution_id)],
@@ -618,7 +626,7 @@ class DuckDbTaskControlRegistry:
         execution = TaskExecution.model_validate_json(row[0])
         if row[1] is None:
             return execution
-        return cls._beat(execution, datetime.fromisoformat(row[1]).replace(tzinfo=UTC))
+        return cls._beat(execution, _EPOCH + timedelta(microseconds=row[1]))
 
     def admit(
         self,
@@ -799,7 +807,7 @@ class DuckDbTaskControlRegistry:
                 raise TaskVersionStale("task_control.start_version_stale")
             if current.plan.workflow_definition_hash != compatibility.workflow_definition_hash:
                 raise TaskTransitionRejected("task workflow compatibility changed before start")
-            execution_id = uuid4()
+            execution_id = UUID(uuid7())
             execution = TaskExecution.from_identity(
                 execution_id=execution_id,
                 task_id=current.task_id,
@@ -945,7 +953,7 @@ class DuckDbTaskControlRegistry:
                     started_at=None,
                 )
                 self._save_work_item(connection, reset)
-            execution_id = uuid4()
+            execution_id = UUID(uuid7())
             execution = TaskExecution.from_identity(
                 execution_id=execution_id,
                 task_id=current.task_id,
@@ -1329,7 +1337,7 @@ class DuckDbTaskControlRegistry:
                 SELECT command_json FROM workspace_task_command
                 WHERE task_id = ?
                   AND json_extract(command_json, '$.kind') = 'CANCEL_REQUESTED'
-                ORDER BY accepted_at DESC LIMIT 1
+                ORDER BY accepted_us DESC LIMIT 1
                 """,
                 [str(task_id)],
             ).fetchone()
@@ -1343,7 +1351,7 @@ class DuckDbTaskControlRegistry:
             if not _cancel_available(current):
                 raise TaskTransitionRejected("terminal task cannot be cancelled")
             command = TaskCommand.from_identity(
-                command_id=uuid4(),
+                command_id=UUID(uuid7()),
                 task_id=task_id,
                 expected_task_hash=expected_task_hash,
                 kind=TaskCommandKind.CANCEL_REQUESTED,
@@ -1484,7 +1492,7 @@ class DuckDbTaskControlRegistry:
         self._save_task(connection, task)
         for (command_id,) in connection.execute(
             "SELECT command_id FROM workspace_task_command WHERE task_id = ? AND resolution IS NULL"
-            " ORDER BY accepted_at, command_id",
+            " ORDER BY accepted_us, command_id",
             [str(task_id)],
         ).fetchall():
             self._resolved(task_id, command_id, self._db_time(observed_at), "CANCELLED")
@@ -1608,8 +1616,8 @@ class DuckDbTaskControlRegistry:
                 raise TaskTransitionRejected("heartbeat worker identity is stale")
             connection.execute(  # working state: a beat is not history (no event)
                 "INSERT INTO workspace_task_heartbeat_at VALUES (?, ?) ON CONFLICT (execution_id)"
-                " DO UPDATE SET last_heartbeat_at = excluded.last_heartbeat_at",
-                [str(execution_id), self._db_time(observed_at)],
+                " DO UPDATE SET last_heartbeat_us = excluded.last_heartbeat_us",
+                [str(execution_id), self._us(observed_at)],
             )
             return self._beat(current, observed_at)
 
@@ -1689,7 +1697,7 @@ class DuckDbTaskControlRegistry:
     ) -> tuple[dict[str, Any], ...]:
         """Fold each Codex wake's journal events into its current receipt (WAKE)."""
         rows = connection.execute(
-            "SELECT e.task_id, e.kind, e.details_json, e.recorded_at FROM workspace_task_event e"
+            "SELECT e.task_id, e.kind, e.details_json, e.recorded_us FROM workspace_task_event e"
             " JOIN workspace_task t ON t.task_id = e.task_id"
             f" WHERE t.workspace_id = ? AND e.kind IN ({', '.join('?' * len(_WAKE_STATES))})"
             + (" AND e.task_id = ?" if task_id is not None else "")
@@ -1697,7 +1705,7 @@ class DuckDbTaskControlRegistry:
             [self.workspace_id, *_WAKE_STATES, *([str(task_id)] if task_id is not None else [])],
         ).fetchall()
         wakes: dict[str, dict[str, Any]] = {}
-        for stored_task, kind, details_json, recorded_at in rows:
+        for stored_task, kind, details_json, recorded_us in rows:
             details = json.loads(details_json)
             held = wakes.get(details["registration_id"])
             if held is None and kind == "task.wake_registered":
@@ -1707,7 +1715,7 @@ class DuckDbTaskControlRegistry:
             held.update(
                 details,
                 state=_WAKE_STATES[kind],
-                recorded_at=datetime.fromisoformat(recorded_at).replace(tzinfo=UTC).isoformat(),
+                recorded_at=(_EPOCH + timedelta(microseconds=recorded_us)).isoformat(),
             )
         return tuple(wakes.values())
 
@@ -1725,7 +1733,7 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection):  # type: ignore[no-untyped-def]
             task = self._task_row(connection, task_id)
-            registration_id = str(uuid4())
+            registration_id = uuid7()
             held = [w for w in self._wakes_from(connection, task_id) if w["thread_id"] == thread_id]
             if held:
                 last = held[-1]
@@ -1855,18 +1863,18 @@ class DuckDbTaskControlRegistry:
         if task_id is None:
             rows = connection.execute(
                 """
-                SELECT e.task_id, e.details_json, e.recorded_at FROM workspace_task_event e
+                SELECT e.task_id, e.details_json, e.recorded_us FROM workspace_task_event e
                 JOIN workspace_task t ON t.task_id = e.task_id
                 WHERE t.workspace_id = ? AND e.kind = ?
-                ORDER BY e.recorded_at, e.task_id, e.sequence
+                ORDER BY e.recorded_us, e.task_id, e.sequence
                 """,
                 [workspace_id, _RECOVERY_LINK_EVENT],
             ).fetchall()
         else:
             rows = connection.execute(
                 """
-                SELECT task_id, details_json, recorded_at FROM workspace_task_event
-                WHERE kind = ? AND task_id = ? ORDER BY recorded_at, sequence
+                SELECT task_id, details_json, recorded_us FROM workspace_task_event
+                WHERE kind = ? AND task_id = ? ORDER BY recorded_us, sequence
                 """,
                 [_RECOVERY_LINK_EVENT, str(task_id)],
             ).fetchall()
@@ -1877,8 +1885,8 @@ class DuckDbTaskControlRegistry:
                 if str(link.source_task_id) != str(stored_task_id):
                     raise ValueError("task recovery link source differs from its journal row")
                 if (
-                    not isinstance(event_time, str)
-                    or DuckDbTaskControlRegistry._db_time(link.recorded_at) != event_time
+                    not isinstance(event_time, int)
+                    or DuckDbTaskControlRegistry._us(link.recorded_at) != event_time
                 ):
                     raise ValueError("task recovery link clock differs from its journal row")
             except (TypeError, ValueError) as error:
@@ -1922,18 +1930,18 @@ class DuckDbTaskControlRegistry:
         """Read this Task's admission documents; the kind owner verifies their seals."""
         rows = self._read(
             lambda connection: connection.execute(
-                "SELECT details_json, recorded_at FROM workspace_task_event "
-                "WHERE task_id = ? AND kind = ? ORDER BY recorded_at, sequence",
+                "SELECT details_json, recorded_us FROM workspace_task_event "
+                "WHERE task_id = ? AND kind = ? ORDER BY recorded_us, sequence",
                 [str(task_id), _ADMISSION_SUBJECT_EVENT],
             ).fetchall()
         )
         subjects: list[dict[str, Any]] = []
-        for document, recorded_at in rows:
+        for document, recorded_us in rows:
             try:
                 subject = json.loads(document)
                 if (
                     subject["task_id"] != str(task_id)
-                    or self._db_time(datetime.fromisoformat(subject["admitted_at"])) != recorded_at
+                    or self._us(datetime.fromisoformat(subject["admitted_at"])) != recorded_us
                 ):
                     raise ValueError("admission subject differs from its journal row")
             except (KeyError, TypeError, ValueError) as error:
@@ -2060,7 +2068,7 @@ class DuckDbTaskControlRegistry:
                 lambda connection: connection.execute(
                     "SELECT task_id, submitted_by_json FROM workspace_task WHERE workspace_id = ?"
                     " AND json_extract(submitted_by_json, '$.session') = ?"
-                    " ORDER BY admission_sequence DESC NULLS LAST, admitted_at DESC, task_id DESC",
+                    " ORDER BY admission_sequence DESC NULLS LAST, admitted_us DESC, task_id DESC",
                     [self.workspace_id, session],
                 ).fetchall()
             )
@@ -2203,7 +2211,7 @@ class DuckDbTaskControlRegistry:
         refused_task_ids: list[str] = []
         for stored_id, document in connection.execute(
             "SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ?"
-            " ORDER BY admission_sequence NULLS FIRST, admitted_at, task_id",
+            " ORDER BY admission_sequence NULLS FIRST, admitted_us, task_id",
             [workspace_id],
         ).fetchall():
             try:
@@ -2270,7 +2278,7 @@ class DuckDbTaskControlRegistry:
                 for row in connection.execute(
                     """
                     SELECT receipt_json FROM workspace_task_stage_receipt
-                    WHERE task_id = ? ORDER BY observed_at, stage_id
+                    WHERE task_id = ? ORDER BY observed_us, stage_id
                     """,
                     [str(task_id)],
                 ).fetchall()
@@ -2387,20 +2395,20 @@ class DuckDbTaskControlRegistry:
                         str(projection.task_id),
                         projection.task_record_hash,
                         self._json(projection),
-                        self._db_time(projection.last_activity_at),
+                        self._us(projection.last_activity_at),
                     ],
                 )
             else:
                 connection.execute(
                     """
                     UPDATE workspace_task_projection
-                    SET task_record_hash = ?, projection_json = ?, updated_at = ?
+                    SET task_record_hash = ?, projection_json = ?, updated_us = ?
                     WHERE task_id = ?
                     """,
                     [
                         projection.task_record_hash,
                         self._json(projection),
-                        self._db_time(projection.last_activity_at),
+                        self._us(projection.last_activity_at),
                         str(projection.task_id),
                     ],
                 )
@@ -2420,7 +2428,7 @@ class DuckDbTaskControlRegistry:
                     """
                     SELECT p.projection_json FROM workspace_task_projection p
                     JOIN workspace_task t ON t.task_id = p.task_id WHERE t.workspace_id = ?
-                    ORDER BY p.updated_at DESC, p.task_id
+                    ORDER BY p.updated_us DESC, p.task_id
                     """,
                     [self.workspace_id],
                 ).fetchall()
@@ -2448,7 +2456,7 @@ class DuckDbTaskControlRegistry:
                 f"""
                 SELECT task_id, projection_json FROM workspace_task_projection
                 WHERE task_id IN ({placeholders})
-                ORDER BY updated_at DESC, task_id
+                ORDER BY updated_us DESC, task_id
                 """,
                 wanted,
             ).fetchall()

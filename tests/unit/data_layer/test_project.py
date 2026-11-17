@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from alphalattice.kernel.data_layer.project import definition_id, recipe_key, task_parent
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.project import (
+    definition_id,
+    recipe_key,
+    registry_us,
+    task_parent,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
 MOMENTUM = definition_id("method", "momentum")
@@ -54,3 +60,27 @@ def test_a_task_stores_its_nearest_parent(version, attrs, parent):
     agent's, when the log holds it in the task's own workspace."""
     event = {"type_version": version, "workspace_id": "w1"}
     assert task_parent(event, attrs, {"g1"}.__contains__) == parent
+
+
+SECOND = 1_763_078_400_000_000  # 2025-11-14 00:00:00 UTC, in microseconds
+
+
+@pytest.mark.proves("data_layer.a_task_control_time_is_its_microseconds")
+@pytest.mark.parametrize(
+    ("text", "us"),
+    [
+        pytest.param("2025-11-14 00:00:00.000007", SECOND + 7, id="registry"),
+        pytest.param("2025-11-14 00:00:00.000007+00:00", SECOND + 7, id="offset"),
+        pytest.param("2025-11-14T00:00:00Z", SECOND, id="whole-second"),
+        pytest.param("2025-11-14T00:00:00.123Z", None, id="three-digits"),
+        pytest.param("2025-11-14 00:00:00+05:00", None, id="not-utc"),
+        pytest.param("2025-11-14", None, id="a-date"),
+    ],
+)
+def test_a_task_control_time_is_read_to_the_microsecond(text, us):
+    """The second, then six fraction digits or none, in UTC: anything else is refused by name."""
+    if us is None:
+        with pytest.raises(DataError, match="UTC ISO"):
+            registry_us(text)
+    else:
+        assert registry_us(text) == us

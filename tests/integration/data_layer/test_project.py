@@ -155,7 +155,11 @@ def _aftermath(root, log, artifacts):
     log.record("tag.removed", ("trial", "t3"), {"key": "instrument", "value": "MSFT"}, **AGENT)
     log.record("artifact.collected", ("artifact", artifacts["t3"]))
     requested = {"type": "evidence.prepare", "product_version": "0.2.8", "input_hash": "i"}
-    requested |= {"plan_hash": "p", "workflow_definition_hash": "f", "admitted_at": "2026-11-14"}
+    requested |= {
+        "plan_hash": "p",
+        "workflow_definition_hash": "f",
+        "admitted_at": "2026-11-14 00:00:00",
+    }
     log.record("task.requested", ("task", "k1"), requested, text='{"asked": "evidence"}', **AGENT)
     span = uuid.uuid4().hex[:16]
     log.record("task", ("task", "k1"), phase="started", span=span, **AGENT)
@@ -395,10 +399,21 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             **there,
         )
         requested = {"type": "factor.run", "product_version": "0.2.8", "input_hash": "i"}
-        requested |= {"plan_hash": "p", "workflow_definition_hash": "d", "admitted_at": "t"}
+        requested |= {
+            "plan_hash": "p",
+            "workflow_definition_hash": "d",
+            "admitted_at": "2026-11-14 00:00:00",
+        }
         log.record("task.requested", ("task", "k1"), requested, workspace="w1", version=2)
         under_k1, under_g2 = requested | {"parent_task_id": "k1"}, requested | {"goal_id": "g2"}
-        v2 = {"version": 2}
+        item = {"stage_id": "s", "lifecycle": "PENDING", "updated_at": "2026-11-14 00:00:00"}
+        log.record("work_item.saved", ("task", "k1"), item | {"ordinal": 0}, text="{}", **AGENT)
+        late = requested | {"admitted_at": "2026-11-14T00:00:00.123Z"}  # three fraction digits
+        v2, V, T = (
+            {"version": 2},
+            {"lifecycle": "VERIFIED"},
+            {"text": "{}"},
+        )  # PENDING never VERIFIED
         before = log.read("SELECT count(*) FROM event")[0][0]
         reads = recipe_key(MOMENTUM, 1, {}, ["no-such-recipe"])
         mine = {"selection_id": "s2", "recipe_key": "r", "seeds": [], "product_version": "0.2.8"}
@@ -446,6 +461,8 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
                 there,
             ),
             ("task_workspace_disagrees", "task.requested", ("task", "k9"), under_k1, there | v2),
+            ("task_time_unreadable", "task.requested", ("task", "k9"), late, AGENT | v2),
+            ("work_item_move_undeclared", "work_item.saved", ("task", "k1"), item | V, AGENT | T),
             ("task_workspace_disagrees", "task.requested", ("task", "k9"), under_g2, AGENT | v2),
             (
                 "trial_goal_disagrees",

@@ -364,7 +364,7 @@ def test_only_a_ledger_rebuilt_block_can_close_without_discarding_its_history(
             [str(blocked.task_id)],
         ).fetchall()
         commands = connection.execute(
-            "SELECT command_hash, resolution, resolved_at FROM workspace_task_command "
+            "SELECT command_hash, resolution, resolved_us FROM workspace_task_command "
             "WHERE task_id = ?",
             [str(blocked.task_id)],
         ).fetchall()
@@ -373,7 +373,7 @@ def test_only_a_ledger_rebuilt_block_can_close_without_discarding_its_history(
     assert json.loads(after_history[-1][5]) == {
         "command_hash": command.command_hash,
     }
-    closed = closed_at.replace(tzinfo=None).isoformat(sep=" ", timespec="microseconds")
+    closed = (closed_at - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
     assert [tuple(row) for row in commands] == [(command.command_hash, "CANCELLED", closed)]
 
 

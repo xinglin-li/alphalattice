@@ -67,7 +67,7 @@ def active_same_work(  # type: ignore[no-untyped-def]
         SELECT task_id, record_json FROM workspace_task
         WHERE workspace_id = ? AND input_hash = ? AND plan_hash = ?
           AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
-        ORDER BY admitted_at DESC
+        ORDER BY admitted_us DESC
         """,
         [workspace_id, input_envelope.input_hash, plan.plan_hash],
     ).fetchall()
@@ -80,7 +80,7 @@ def active_same_work(  # type: ignore[no-untyped-def]
         SELECT task_id, record_json FROM workspace_task
         WHERE workspace_id = ? AND task_kind = ?
           AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
-        ORDER BY admitted_at DESC
+        ORDER BY admitted_us DESC
         """,
         [workspace_id, input_envelope.task_kind],
     ).fetchall()
