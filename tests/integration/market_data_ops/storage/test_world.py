@@ -4,7 +4,7 @@ marks alone while unchanged, and a later correction known only from its admissio
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -177,9 +177,13 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
     uses = {"world": 0}
     relations = world_reads.relations
 
-    def counted(cutoff_us: int = world_reads.LATEST, held_us: int | None = None) -> dict[str, str]:
+    def counted(
+        cutoff_us: int = world_reads.LATEST,
+        held_us: int | None = None,
+        listings: Sequence[str] | None = None,
+    ) -> dict[str, str]:
         uses["world"] += 1
-        return relations(cutoff_us, held_us)
+        return relations(cutoff_us, held_us, listings)
 
     def read(setting: str) -> tuple[object, ...]:
         monkeypatch.setenv(world_reads.SETTING, setting)
@@ -264,9 +268,13 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
     uses = {"world": 0}
     relations = world_reads.relations
 
-    def counted(cutoff_us: int = world_reads.LATEST, held_us: int | None = None) -> dict[str, str]:
+    def counted(
+        cutoff_us: int = world_reads.LATEST,
+        held_us: int | None = None,
+        listings: Sequence[str] | None = None,
+    ) -> dict[str, str]:
         uses["world"] += 1
-        return relations(cutoff_us, held_us)
+        return relations(cutoff_us, held_us, listings)
 
     def read(copy: MarketDataRepository, setting: str) -> tuple[object, ...]:
         monkeypatch.setenv(world_reads.SETTING, setting)

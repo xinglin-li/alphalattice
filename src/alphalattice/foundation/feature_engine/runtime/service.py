@@ -2000,6 +2000,10 @@ class FeatureFoundationService:
         if not require_current_source or not qualification.exclusions:
             return qualification
         rows_by_listing = {str(row["listing_id"]): row for row in rows}
+        observed = self.market_data.raw_bar_sessions_by_listing(
+            [listing_id for listing_id, _reasons in qualification.exclusions],
+            through=as_of_session,
+        )
         market_frame: pd.DataFrame | None = None
         unproven: list[str] = []
         for listing_id, reasons in qualification.exclusions:
@@ -2017,6 +2021,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed[listing_id],
             ):
                 unproven.append(listing_id)
         if not unproven:
@@ -2033,8 +2038,10 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether a listing's unavailability at ``as_of_session`` is today's.
+        """Whether a listing's unavailability at ``as_of_session`` is today's, given its observed
+        sessions through it (read for every listing judged in one read).
 
         One bounded read of this listing (its window of source rows), only
         for a listing about to be excluded; the market frame is the caller's,
@@ -2051,6 +2058,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             )
         owners = self.layer.factor_parts()
         for part_hash in sorted({owners[factor_id] for factor_id in missing_factor_ids}):
@@ -2075,6 +2083,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             ):
                 return False
         return True
@@ -2090,8 +2099,10 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether the materialization that computed one catalog's row still applies."""
+        """Whether the materialization that computed one catalog's row still applies, given the
+        listing's observed sessions through ``as_of_session``."""
         receipt = row.get("source_verification_receipt_hash")
         if receipt is None:
             return False
@@ -2117,7 +2128,6 @@ class FeatureFoundationService:
         window, start, end = windows[receipt_hash]
         if not start <= as_of_session <= end:
             return False
-        observed = self.market_data.raw_bar_sessions(listing_id, through=as_of_session)
         if not observed:
             return False
         if observed_at is None and allows_missing_source_rows(self.panel.policy_hash):

@@ -41,6 +41,7 @@ from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import (
+    THREADS,
     catalog,
     catalog_matches,
     load_extensions,
@@ -155,7 +156,11 @@ class StorePort:
 
         lake = duckdb.connect(  # in memory: the catalog and the log are attached to it
             ":memory:",
-            config={"autoinstall_known_extensions": False, "autoload_known_extensions": False},
+            config={
+                "autoinstall_known_extensions": False,
+                "autoload_known_extensions": False,
+                "threads": THREADS,
+            },
         )
         load_extensions(lake)
         catalog(root)  # made at the store's first open, not with the root

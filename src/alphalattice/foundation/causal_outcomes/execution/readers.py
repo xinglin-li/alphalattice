@@ -135,16 +135,11 @@ def read_local_qa_market_snapshot(
         raise ValueError("causal_outcomes.qa_source_support_absent")
     bars: list[RawDailyBar] = []
     actions: list[CorporateActionEvent] = []
-    with store._connect(read_only=True) as connection:
-        for listing in listing_ids:
-            bars.extend(
-                store.raw_bars(listing, start=start, through=through, _connection=connection)
-            )
-            actions.extend(
-                v
-                for v in store.actions(listing, _connection=connection)
-                if v.effective_date <= through
-            )
+    bars_by_listing = store.raw_bars_by_listing(listing_ids, start=start, through=through)
+    actions_by_listing = store.actions_by_listing(listing_ids)
+    for listing in listing_ids:
+        bars.extend(bars_by_listing[listing])
+        actions.extend(v for v in actions_by_listing[listing] if v.effective_date <= through)
     return LocalQAMarketSnapshot.create(
         source_hash=manifest.revision_sha256,
         through=through,
@@ -616,31 +611,28 @@ def read_local_qa_execution_rows(
     bars: dict[tuple[date, str], RawDailyBar] = {}
     rows: list[dict[str, object]] = []
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
-    with store._connect(read_only=True) as connection:
-        for listing in listing_ids:
-            for bar in store.raw_bars(
-                listing, start=start, through=through, _connection=connection
-            ):
-                bars[bar.session_date, listing] = bar
-            dividends = _action_dividends(
-                store.actions(listing, _connection=connection), through=through
-            )
-            for point in points:
-                rows.append(
-                    derive_causal_execution_row(
-                        listing_id=listing,
-                        symbol=listing,
+    bars_by_listing = store.raw_bars_by_listing(listing_ids, start=start, through=through)
+    actions_by_listing = store.actions_by_listing(listing_ids)
+    for listing in listing_ids:
+        for bar in bars_by_listing[listing]:
+            bars[bar.session_date, listing] = bar
+        dividends = _action_dividends(actions_by_listing[listing], through=through)
+        for point in points:
+            rows.append(
+                derive_causal_execution_row(
+                    listing_id=listing,
+                    symbol=listing,
+                    point=point,
+                    entry_bar=bars.get((point.entry_session, listing)),
+                    holding_bar=bars.get((point.holding_end_session, listing)),
+                    period_dividend_split_adjusted=period_dividend_for_point(
+                        recipe=method,
+                        dividends=dividends,
+                        ordered_sessions=dividend_axis,
                         point=point,
-                        entry_bar=bars.get((point.entry_session, listing)),
-                        holding_bar=bars.get((point.holding_end_session, listing)),
-                        period_dividend_split_adjusted=period_dividend_for_point(
-                            recipe=method,
-                            dividends=dividends,
-                            ordered_sessions=dividend_axis,
-                            point=point,
-                        ),
-                    )
+                    ),
                 )
+            )
     return pa.Table.from_pylist(rows, schema=_schema()), bars, axis
 
 
@@ -1308,35 +1300,33 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         recipe = build_one_session_recipe()
         axis = (point.formation_session, point.entry_session, point.holding_end_session)
         rows: list[dict[str, object]] = []
-        connection = self.market_store._connect(read_only=True)
-        try:
-            for listing in listings:
-                bars = self.market_store.raw_bars(
-                    listing.listing_id,
-                    start=point.entry_session,
-                    through=point.holding_end_session,
-                    _connection=connection,
-                )
-                by_session = {value.session_date: value for value in bars}
-                actions = self.market_store.actions(listing.listing_id, _connection=connection)
-                dividends = _action_dividends(actions, through=point.holding_end_session)
-                rows.append(
-                    derive_causal_execution_row(
-                        listing_id=listing.listing_id,
-                        symbol=listing.symbol,
+        ids = tuple(listing.listing_id for listing in listings)
+        bars_by_listing = self.market_store.raw_bars_by_listing(
+            ids, start=point.entry_session, through=point.holding_end_session
+        )
+        actions_by_listing = self.market_store.actions_by_listing(ids)
+        for listing in listings:
+            by_session = {
+                value.session_date: value for value in bars_by_listing[listing.listing_id]
+            }
+            dividends = _action_dividends(
+                actions_by_listing[listing.listing_id], through=point.holding_end_session
+            )
+            rows.append(
+                derive_causal_execution_row(
+                    listing_id=listing.listing_id,
+                    symbol=listing.symbol,
+                    point=point,
+                    entry_bar=by_session.get(point.entry_session),
+                    holding_bar=by_session.get(point.holding_end_session),
+                    period_dividend_split_adjusted=period_dividend_for_point(
+                        recipe=recipe,
+                        dividends=dividends,
+                        ordered_sessions=axis,
                         point=point,
-                        entry_bar=by_session.get(point.entry_session),
-                        holding_bar=by_session.get(point.holding_end_session),
-                        period_dividend_split_adjusted=period_dividend_for_point(
-                            recipe=recipe,
-                            dividends=dividends,
-                            ordered_sessions=axis,
-                            point=point,
-                        ),
-                    )
+                    ),
                 )
-        finally:
-            connection.close()
+            )
         return self.artifacts.publish_chunk(
             split="SEALED_HOLDOUT",
             table=pa.Table.from_pylist(rows, schema=_schema()),

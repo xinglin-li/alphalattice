@@ -57,7 +57,7 @@ def _read_raw_bar_table(
         raise TradabilitySurfaceError("data_tradability.listing_axis_invalid")
     if start > through:
         raise TradabilitySurfaceError("data_tradability.source_range_invalid")
-    with store.market_reads() as (connection, tables):
+    with store.market_reads(listings=listing_ids) as (connection, tables):
         block: pa.Table = connection.execute(
             f"""
             SELECT listing_id, provider, session_date, open, high, low, close, volume

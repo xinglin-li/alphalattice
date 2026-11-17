@@ -46,6 +46,9 @@ SPEC_FIELDS: Final = {
     "world_tables": ("world_table", ()),
 }
 """Each seed list's definition family and the fields its rows keep as their spec."""
+THREADS: Final = min(8, os.cpu_count() or 1)
+"""Threads of a DuckDB session over the lake. Its statements are many and small, and each pipeline
+fans out to every thread: past eight, a statement pays more in that fan-out than its scans gain."""
 
 
 @dataclass(frozen=True)
@@ -184,6 +187,7 @@ def duckdb_session(root: Path) -> Any | None:
             "extension_directory": str(root / "extensions"),
             "autoinstall_known_extensions": False,
             "autoload_known_extensions": False,
+            "threads": THREADS,
         },
     )
     try:

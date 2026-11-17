@@ -90,8 +90,8 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
         ),
         execution_source_watermark=lambda *a, **k: {"watermark_hash": digest},
         _connect=lambda **k: SimpleNamespace(close=lambda: None),
-        raw_bars=bars,
-        actions=lambda *a, **k: (),
+        raw_bars_by_listing=lambda ids, **k: {listing: bars(listing, **k) for listing in ids},
+        actions_by_listing=lambda ids: dict.fromkeys(ids, ()),
     )
     resolver = ArtifactResolver(tmp_path / "artifacts")
     monkeypatch.setattr(
@@ -428,18 +428,14 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     store = MarketDataRepository(workspace.workspace)
     resolver = ArtifactResolver(workspace.artifact_root)
     poisoned = workspace.manifest.listings[3].listing_id
-    original_actions = MarketDataRepository.actions
+    original_actions = MarketDataRepository.actions_by_listing
 
-    def actions_with_a_spin_off(self, listing_id, *args, **kwargs):
-        values = original_actions(self, listing_id, *args, **kwargs)
-        if listing_id != poisoned:
-            return values
-        return (
-            *values,
-            CorporateActionEvent(
-                listing_id, workspace.manifest.profile.provider, HISTORY_START, "SPIN_OFF"
-            ),
+    def actions_with_a_spin_off(self, listing_ids, *args, **kwargs):
+        values = original_actions(self, listing_ids, *args, **kwargs)
+        spin_off = CorporateActionEvent(
+            poisoned, workspace.manifest.profile.provider, HISTORY_START, "SPIN_OFF"
         )
+        return {**values, poisoned: (*values[poisoned], spin_off)}
 
     def publish() -> PublishedCausalExecutionOutcome:
         return CausalExecutionOutcomePublisher(
@@ -464,7 +460,7 @@ def test_a_worker_failure_publishes_nothing_and_leaves_no_worker_behind(tmp_path
     threads_before = {thread.name for thread in threading.enumerate()}
     with (
         patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1),
-        patch.object(MarketDataRepository, "actions", actions_with_a_spin_off),
+        patch.object(MarketDataRepository, "actions_by_listing", actions_with_a_spin_off),
         pytest.raises(ValueError, match="unsupported corporate action"),
     ):
         publish()

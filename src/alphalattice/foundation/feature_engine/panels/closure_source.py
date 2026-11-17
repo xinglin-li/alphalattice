@@ -303,7 +303,10 @@ class PanelClosureSourceRepository:
                     ["session_date", "listing_id"]
                 )
                 market = MarketDataRepository(self._database_path.parent)
-                with market.market_reads() as (reading, tables):
+                with market.market_reads(listings=missing.column("listing_id").to_pylist()) as (
+                    reading,
+                    tables,
+                ):
                     reading.register("panel_missing_base_keys", missing)
                     observed = reading.execute(
                         f"""SELECT count(*) FROM panel_missing_base_keys k

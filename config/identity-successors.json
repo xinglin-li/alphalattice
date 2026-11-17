@@ -15394,6 +15394,146 @@
    "successor": "d50f91fb489eaa7cfabd0f91d60932efaa60c133ece8fa389f6cb40d703c95b5",
    "change": "A bound research input reads world's market data as of its selection",
    "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "870a853897a448c6b2ee47b467ca807b8bcd07e801f2a11efa9118de7d0a879c",
+   "successor": "9742856c37d3bca91406b4d02ae4a1615d970a1dd97f66168aeae3700d5da2cc",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "e7037d16c547d615143e4e4534082b0afcf9dae2b3e40ff23aeb5d7be653d5a2",
+   "successor": "fa1a05d97b7361acd6c412677a210cf8759b76a3378218a8e00266928e2c822d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "9c50c97985136e938c0fcacddca69e3413b1e72551d16e51dc70194537c7e000",
+   "successor": "967b82dd7020af43f783447ca1da69d19bd8d68e98336e95e10783102c9463bb",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "8e8954080092dccd7edb850a35d34fbbdc1410b2593730fa5ebc8d67380a71ff",
+   "successor": "98d2b205a21b77d3eb654099763ed1de8c67f2af6ee2a46aaa856fd74b7bb9ea",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "78ef054274ab19317635a99c515ae6bfdc3512964a0f9bdeea786dc9dfa43bbb",
+   "successor": "7470a619f274042ae2e1fb921e6763128544ed2e93e5f0f2a93d6a06d89d426a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "1d9bf2e9b2a3b20622c1a434f6d71a6a820be37620de11b0074b37ece33d9458",
+   "successor": "44bb74a51812e2403c87cb5befa96fe3955fecc036af2ed4c1c38cadc0ac770f",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "19afda46fa6cb2afbee98184f50232fbceb5c686e66cf6d24ec4a44436c6ed59",
+   "successor": "98e67718d5c725a837d30281bae0daa6e714733069a8293cc46d3d52cc9d7f4d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "5ef4193ed2d274903fba3f88d02b367a64cc8d02fcf35de6ed9bb6bb428369ce",
+   "successor": "713fd97c3970d8bb53b167842bd72b9a5bb84c990682cc41a5a943faa52ebb60",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "75f98ea0463d1ecef8ec065b966a16ee7dc654eefa379e222b29422b97b340a9",
+   "successor": "3f03d4096ee837e4c2ca9312a33928c2071fe09d3871f367d20a397ab6cb9e62",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "bcdf9367bf05f42bf2786252a4f24ad66fcc74e79404748c0b3ff18b7dc07347",
+   "successor": "30348543ff8974c5a7f92e5cae148b836c27d792c8ab7a1a5d3072ecbd7150fd",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "72c4b68610f57fd5d9ed11a4275839195d9536e93f0d8ae89fddcc7f0ba82b4b",
+   "successor": "7ec9695bb57cd1bce9833e7ffc5eb8ae58d628a9f776045ac4d620dd6602f6a1",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "dff37b2a71dee54021b56fe4620ce527d938d598a2ed6c76817b7d0ea9b38e1d",
+   "successor": "9c70825ac95d687ae10c28f450f2b80ee6463c579d36241d280fed2a03f2fe1e",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "42a8daef63fe3cfebe7612799c19536d774ff58339f028bf0f3eb61719430300",
+   "successor": "badc30e5778d0b10609c091a9a67a2ba5aeefb243098d4faeb91299ff9489375",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "d50f91fb489eaa7cfabd0f91d60932efaa60c133ece8fa389f6cb40d703c95b5",
+   "successor": "29df854e25855251ee68dbde961eb5c9a17034d7987fca4f3fce76dffd12339c",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "successor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "successor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "b1bb1ecfb62af98a0ff89c0d87409d25e9fe8cb93fd6187d73004e6aa056aa15",
+   "successor": "406913a9deb02dd1268b2311ec647c0375a0efa390335fc41291a2c27e2e9694",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "12e8f2a6a10696d4f34a4629e3a9fb3f4afbf243ad734f9feb6f23dbee4e84d7",
+   "successor": "93fd7574092e7ad941602580ebc443b1f4c862a8298b3abf6f27d1dacea2236d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "47fa63e23c088760068f81130e9565461d6eae1d8053147c574be58e11e36d51",
+   "successor": "4ef35231fc4964b9c06786df065f3ee83bac0e0167d79939ae1de40bd17a3e2d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "bc5590e040f36da93ee57fd05373ea87914550df70ac54385fd47a6bee04b81e",
+   "successor": "9a7af9b35592db9c906da8f5617c964822e96b4b05b3d48f55b370b313a01f5f",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
   }
  ]
 }

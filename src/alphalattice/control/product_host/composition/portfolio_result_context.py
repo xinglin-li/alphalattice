@@ -110,6 +110,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
     RiskReturnSurfaceError,
     listing_returns,
+    listing_sources,
 )
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -1051,17 +1052,12 @@ def _carried_returns(
         return None
     returns = np.full((len(sessions) - 1, len(listings)), np.nan)
     hashes: list[str] = []
-    connection = market._connect(read_only=True)
-    try:
-        for listing in scope:
-            try:
-                rows = listing_returns(market, universe, listing, sessions, connection)
-            except RiskReturnSurfaceError:
-                continue
-            returns[:, listings.index(listing.listing_id)] = [
-                r["open_total_return_log"] for r in rows
-            ]
-            hashes.extend(str(row["row_hash"]) for row in rows)
-    finally:
-        connection.close()
+    sources = listing_sources(market, scope, sessions)
+    for listing in scope:
+        try:
+            rows = listing_returns(universe, listing, sessions, sources)
+        except RiskReturnSurfaceError:
+            continue
+        returns[:, listings.index(listing.listing_id)] = [r["open_total_return_log"] for r in rows]
+        hashes.extend(str(row["row_hash"]) for row in rows)
     return (returns, hashes) if hashes else None

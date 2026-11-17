@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
@@ -440,22 +440,33 @@ def derive_risk_return_rows(
     return tuple(rows)
 
 
+def listing_sources(
+    store: Any, listings: Sequence[Any], sessions: tuple[date, ...]
+) -> dict[str, tuple[tuple[Any, ...], tuple[Any, ...]]]:
+    """Each listing's bars over `sessions` and its actions within them, from the store's bars and
+    actions of every listing read at once."""
+    ids = [listing.listing_id for listing in listings]
+    bars = store.raw_bars_by_listing(ids, start=sessions[0], through=sessions[-1])
+    actions = store.actions_by_listing(ids)
+    return {
+        listing_id: (
+            bars[listing_id],
+            tuple(
+                v for v in actions[listing_id] if sessions[0] <= v.effective_date <= sessions[-1]
+            ),
+        )
+        for listing_id in ids
+    }
+
+
 def listing_returns(
-    store: Any,
     manifest: UniverseManifest,
     listing: Any,
     sessions: tuple[date, ...],
-    connection: Any = None,
+    sources: Mapping[str, tuple[tuple[Any, ...], tuple[Any, ...]]],
 ) -> tuple[dict[str, object], ...]:
-    """One listing's causal returns over `sessions`, from the store's bars and actions."""
-    bars = store.raw_bars(
-        listing.listing_id, start=sessions[0], through=sessions[-1], _connection=connection
-    )
-    actions = tuple(
-        item
-        for item in store.actions(listing.listing_id, _connection=connection)
-        if sessions[0] <= item.effective_date <= sessions[-1]
-    )
+    """One listing's causal returns over `sessions`, from its bars and actions in `sources`."""
+    bars, actions = sources[listing.listing_id]
     return derive_risk_return_rows(
         manifest=manifest,
         listing_id=listing.listing_id,
@@ -563,19 +574,14 @@ class CausalRiskReturnSurfacePublisher:
         )
         source_watermark_hash = str(watermark["watermark_hash"])
         rows_by_year: dict[int, list[dict[str, object]]] = {}
-        connection = self.store._connect(read_only=True)
-        try:
-            for index_value, listing in enumerate(listings, start=1):
-                for row in listing_returns(self.store, manifest, listing, sessions, connection):
-                    formation = row["formation_session"]
-                    if not isinstance(formation, date):
-                        raise RiskReturnSurfaceError(
-                            "risk_research.return_formation_session_invalid"
-                        )
-                    rows_by_year.setdefault(formation.year, []).append(row)
-                self.progress(f"risk_return_source {index_value}/{len(listing_ids)}")
-        finally:
-            connection.close()
+        sources = listing_sources(self.store, listings, sessions)
+        for index_value, listing in enumerate(listings, start=1):
+            for row in listing_returns(manifest, listing, sessions, sources):
+                formation = row["formation_session"]
+                if not isinstance(formation, date):
+                    raise RiskReturnSurfaceError("risk_research.return_formation_session_invalid")
+                rows_by_year.setdefault(formation.year, []).append(row)
+            self.progress(f"risk_return_source {index_value}/{len(listing_ids)}")
         chunks: list[CausalRiskReturnChunk] = []
         with self.mutation_gate.try_hold(timeout_seconds=30.0):
             for _year, rows in sorted(rows_by_year.items()):

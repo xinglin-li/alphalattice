@@ -296,16 +296,42 @@ def _folder(cursor: Any, workspace_id: str) -> Path | None:
     return None if found is None or found[0] is None else Path(found[0]).resolve()
 
 
-def relations(cutoff_us: int = LATEST, held_us: int | None = None) -> dict[str, str]:
+def relations(
+    cutoff_us: int = LATEST, held_us: int | None = None, listings: Sequence[str] | None = None
+) -> dict[str, str]:
     """WORKSPACE's relations as world knew them at `cutoff_us`, by the same names; with
     `held_us`, a selection's cutoff, only the rows world held by then: a 0.2.7 row's knowledge
-    time is derived from its valid date, so a row admitted later can be known earlier."""
+    time is derived from its valid date, so a row admitted later can be known earlier. Of
+    `listings` only when the read names them (`scope`), else of every listing world holds."""
+    named = scope(listings)
     return {
-        "bars": bars(cutoff_us, held_us),
-        "adjusted": adjusted(cutoff_us, held_us),
-        "actions": actions(cutoff_us, held_us),
-        "mappings": mappings(cutoff_us, held_us),
+        "bars": bars(cutoff_us, held_us, named),
+        "adjusted": adjusted(cutoff_us, held_us, named),
+        "actions": actions(cutoff_us, held_us, named),
+        "mappings": mappings(cutoff_us, held_us, named),
     }
+
+
+def scope(listings: Sequence[str] | None) -> tuple[str, str] | None:
+    """The 0.2.7 ids a read names, resolved to their world ids once (world.world_listing): the
+    relation that names a world row's listing by its 0.2.7 id, and the filter on a world row's
+    listing (`{row}` its table's alias), so a world table's scan takes only those listings. One
+    listing is named by constant and filtered by its id; several are joined to the read's ids, the
+    join's filter reaching the scan. None for every listing, named through world's alias of each."""
+    if listings is None:
+        return None
+    ids = sorted(set(listings))
+    if not ids:
+        return "(SELECT NULL::VARCHAR AS listing_id, NULL::UUID AS world WHERE false)", ""
+    old = ["'" + listing.replace("'", "''") + "'" for listing in ids]
+    new = [f"'{world.world_listing(listing)}'" for listing in ids]
+    if len(ids) == 1:
+        return (
+            f"(SELECT {old[0]} AS listing_id, {new[0]}::UUID AS world)",
+            f"{{row}}.listing_id = {new[0]}",
+        )
+    pairs = f"unnest([{', '.join(old)}]) AS listing_id, unnest([{', '.join(new)}])::UUID AS world"
+    return f"(SELECT {pairs})", ""
 
 
 def _held_by(row: str, held_us: int | None) -> str:
@@ -316,55 +342,70 @@ def _held_by(row: str, held_us: int | None) -> str:
     return f"{row}.admission_id IN ({admitted})"
 
 
-def _named(row: str, cutoff_us: int) -> str:
-    """The joins that name a world row's listing by its 0.2.7 id and its provider by name."""
-    return (
-        f" JOIN provider_symbol_asof({cutoff_us}) alias ON alias.listing_id = {row}.listing_id"
-        f" AND alias.provider_id = '{_ALIAS}'"
-        f" JOIN log.definition_lineage named ON named.definition_id = {row}.provider_id"
-    )
+def _named(row: str, cutoff_us: int, held_us: int | None, named: tuple[str, str] | None) -> str:
+    """The joins that name a world row's listing by its 0.2.7 id and its provider by name, and the
+    filter on the row: its admission held by `held_us`, and its listing, the read's own ids when it
+    names its listings, else world's alias of every listing."""
+    provider = f" JOIN log.definition_lineage named ON named.definition_id = {row}.provider_id"
+    where = f" WHERE {_held_by(row, held_us)}"
+    if named is None:
+        return (
+            f" JOIN (SELECT listing_id AS world, symbol AS listing_id FROM"
+            f" provider_symbol_asof({cutoff_us}) WHERE provider_id = '{_ALIAS}') alias"
+            f" ON alias.world = {row}.listing_id{provider}{where}"
+        )
+    ids, within = named
+    if within:
+        return f" CROSS JOIN {ids} alias{provider}{where} AND {within.format(row=row)}"
+    return f" JOIN {ids} alias ON alias.world = {row}.listing_id{provider}{where}"
 
 
-def bars(cutoff_us: int = LATEST, held_us: int | None = None) -> str:
+def bars(
+    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+) -> str:
     """0.2.7's raw_daily_bar_current with its provider's adjusted close, as world knew it at
     `cutoff_us`: listing_id, provider, session_date, open, high, low, close, volume and
     adjusted_close."""
     return (
-        "(SELECT alias.symbol AS listing_id, named.name AS provider, r.session_date, r.open,"
+        "(SELECT alias.listing_id, named.name AS provider, r.session_date, r.open,"
         " r.high, r.low, r.close, CAST(r.volume AS BIGINT) AS volume, r.adjusted_close"
-        f" FROM raw_bar_asof({cutoff_us}) r{_named('r', cutoff_us)}"
-        f" WHERE {_held_by('r', held_us)})"
+        f" FROM raw_bar_asof({cutoff_us}) r{_named('r', cutoff_us, held_us, named)})"
     )
 
 
-def adjusted(cutoff_us: int = LATEST, held_us: int | None = None) -> str:
+def adjusted(
+    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+) -> str:
     """0.2.7's provider_adjusted_close_current, as world knew it at `cutoff_us`: listing_id,
     provider, session_date and adjusted_close, where the bar's provider gave one."""
     return (
         "(SELECT listing_id, provider, session_date, adjusted_close"
-        f" FROM {bars(cutoff_us, held_us)} WHERE adjusted_close IS NOT NULL)"
+        f" FROM {bars(cutoff_us, held_us, named)} WHERE adjusted_close IS NOT NULL)"
     )
 
 
-def actions(cutoff_us: int = LATEST, held_us: int | None = None) -> str:
+def actions(
+    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+) -> str:
     """0.2.7's active rows of corporate_action_current, as world knew them at `cutoff_us`:
     listing_id, provider, effective_date, action_kind, new_shares_per_old_share, cash_amount,
     provisional, provenance and status. A retracted action is world's withdrawal, so no row."""
     return (
-        "(SELECT alias.symbol AS listing_id, named.name AS provider, c.effective_date,"
+        "(SELECT alias.listing_id, named.name AS provider, c.effective_date,"
         " c.action_id AS action_kind, c.ratio AS new_shares_per_old_share,"
         " c.amount AS cash_amount, c.provisional, c.provenance, 'ACTIVE' AS status"
-        f" FROM corporate_action_asof({cutoff_us}) c{_named('c', cutoff_us)}"
-        f" WHERE {_held_by('c', held_us)})"
+        f" FROM corporate_action_asof({cutoff_us}) c{_named('c', cutoff_us, held_us, named)})"
     )
 
 
-def mappings(cutoff_us: int = LATEST, held_us: int | None = None) -> str:
+def mappings(
+    cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
+) -> str:
     """0.2.7's provider_symbol_mapping, as world knew it at `cutoff_us`: listing_id, provider,
     provider_symbol, effective_from and effective_to; world's own aliases are not mappings."""
     return (
-        "(SELECT alias.symbol AS listing_id, named.name AS provider, m.symbol AS provider_symbol,"
+        "(SELECT alias.listing_id, named.name AS provider, m.symbol AS provider_symbol,"
         " m.valid_from AS effective_from, m.valid_to AS effective_to"
-        f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us)}"
-        f" WHERE m.provider_id NOT IN {_ALIASES} AND {_held_by('m', held_us)})"
+        f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us, held_us, named)}"
+        f" AND m.provider_id NOT IN {_ALIASES})"
     )

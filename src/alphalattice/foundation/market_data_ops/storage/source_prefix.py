@@ -91,7 +91,7 @@ def market_data_source_prefix_proofs(
     ):
         raise ValueError("market_data_ops.source_prefix_request_invalid")
     scope = tuple(sorted(scope))
-    with market.market_reads(_connection) as (connection, tables):
+    with market.market_reads(_connection, listings=scope) as (connection, tables):
         providers_sql = _selected_provider_sql(tables["mappings"])
         providers = connection.execute(
             providers_sql

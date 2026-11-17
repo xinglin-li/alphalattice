@@ -9,22 +9,26 @@
 -- row, so no read ranks every version. Every world table gets this macro; a selection's cutoff_us is the argument.
 -- world.superseded names a table by its lineage's id, written here as the id itself: an id is assigned once and never
 -- moves, and a lookup of it in the log from inside the anti-join keeps DuckDB from filtering the table first, ten times
--- slower. store.TABLE_IDS holds the same ids.
+-- slower. store.TABLE_IDS holds the same ids. The anti-join is an ANTI JOIN, not a correlated NOT EXISTS: a reader's
+-- filter on the macro (a listing) then reaches the table scan, which skips the row groups it excludes.
 -- A decision at session t reads knowledge no later than the lesser of its selection's cutoff and t's decision time.
 CREATE MACRO raw_bar_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.raw_bar r
-WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473' AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473'
+           AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO corporate_action_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.corporate_action r
-WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:86df14c7a7c125636b4d7c5f69931a0209b331d185dc1211694c7a2d5b72036e' AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:86df14c7a7c125636b4d7c5f69931a0209b331d185dc1211694c7a2d5b72036e'
+           AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO provider_symbol_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.provider_symbol r
-WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:aa4380b4805a50588d8ddf14cf3115e8db90e4b1cdb47855ca74a1572cf20a51' AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:aa4380b4805a50588d8ddf14cf3115e8db90e4b1cdb47855ca74a1572cf20a51'
+           AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 -- Every version with the moment the next one replaced it (world.superseded), for a walk-forward read over many decision times in one
 -- pass: version v is what decision time t saw when known_asof <= t < visible_to (or visible_to is null), with t never
@@ -41,7 +45,10 @@ LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:86df14c7a7c125636b4d7c
 -- What we know now.
 CREATE VIEW raw_bar_latest AS
 SELECT r.* FROM lake.world.raw_bar r
-WHERE NOT r.retracted AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473' AND s.version_id = r.version_id);
+ANTI JOIN (SELECT version_id FROM lake.world.superseded
+           WHERE table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473') s
+  ON s.version_id = r.version_id
+WHERE NOT r.retracted;
 
 -- ===== Steps =====
 -- One row per finished step: a filter over the log, since a step is one event.

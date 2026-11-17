@@ -142,7 +142,7 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
         epoch=SimpleNamespace(ordered_listing_ids=listings, universe_manifest_revision="u"),
     )
 
-    def carried(_market: Any, _universe: Any, listing: Any, sessions: Any, _connection: Any) -> Any:
+    def carried(_universe: Any, listing: Any, sessions: Any, _sources: Any) -> Any:
         if listing.listing_id not in state.bars:
             raise RiskReturnSurfaceError("risk_research.return_bars_missing")
         column = listings.index(listing.listing_id)
@@ -157,7 +157,8 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     market = SimpleNamespace(
         load_universe_manifest_revision=lambda _revision: "universe",
         listing_scope=lambda _u, listing_ids: [SimpleNamespace(listing_id=v) for v in listing_ids],
-        _connect=lambda read_only: SimpleNamespace(close=lambda: None),
+        raw_bars_by_listing=lambda ids, **_bounds: dict.fromkeys(ids, ()),
+        actions_by_listing=lambda ids: dict.fromkeys(ids, ()),
     )
     reader = SimpleNamespace(
         available_sessions=lambda _surface: tuple(state.sessions),

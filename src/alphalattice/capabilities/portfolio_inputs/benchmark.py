@@ -217,8 +217,10 @@ def _benchmark_source_lineage(
     """
     market._assert_manifest_scope(reference.manifest, (reference.listing_id,))
     through = max(formation_sessions) + date.resolution * 10
-    with market.market_reads() as (reading, tables):
-        provider = market._provider_for_listing(reading, reference.listing_id, tables)
+    with market.market_reads(listings=(reference.listing_id,)) as (reading, tables):
+        provider, actions = market._provider_actions(reading, (reference.listing_id,), tables)[
+            reference.listing_id
+        ]
         row = reading.execute(
             f"""
             SELECT min(session_date)
@@ -230,7 +232,6 @@ def _benchmark_source_lineage(
         ).fetchone()
         if row is None or row[0] is None:
             raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.axis_unavailable")
-        actions = market._current_actions(reading, reference.listing_id, provider, tables)
     connection = market._connect(read_only=True)
     try:  # the raw-evidence hash is a receipt of the workspace's rows
         raw_hash = market._raw_evidence_hash(

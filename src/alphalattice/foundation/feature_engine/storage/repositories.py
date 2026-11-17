@@ -88,7 +88,10 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
-from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.foundation.market_data_ops.sources.manifest import (
+    ManifestListing,
+    UniverseManifest,
+)
 from alphalattice.foundation.market_data_ops.sources.sector_forward import sector_effective_session
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
@@ -895,16 +898,15 @@ class FeatureStateRepository(WorkspaceRepository):
         """
         market = self._market_data
         market._assert_manifest_scope(manifest, (listing_id,))
-        with market.market_reads(_connection) as (reading, tables):
+        with market.market_reads(_connection, listings=(listing_id,)) as (reading, tables):
             bars = market._raw_bar_table(
                 reading, listing_id, start=start, through=through, tables=tables
             )
             if not bars.num_rows:
                 raise ValueError("listing has no raw bars for feature materialization")
             first_session = cast(date, bars.column("session_date")[0].as_py())
-            provider = market._provider_for_listing(reading, listing_id, tables)
-            # What ``actions`` reads, under the provider read once for the listing's inputs.
-            actions = market._current_actions(reading, listing_id, provider, tables)
+            # What ``actions`` reads, with the provider it selects for the listing's inputs.
+            provider, actions = market._provider_actions(reading, (listing_id,), tables)[listing_id]
             adjusted_close = cast(
                 pa.Table,
                 reading.execute(
@@ -958,7 +960,7 @@ class FeatureStateRepository(WorkspaceRepository):
         market = self._market_data
         for listing_id, (manifest, _start) in starts.items():
             market._assert_manifest_scope(manifest, (listing_id,))
-        with market.market_reads(_connection) as (reading, named):
+        with market.market_reads(_connection, listings=list(starts)) as (reading, named):
             tables = market._raw_bar_tables(
                 reading,
                 {listing: start for listing, (_m, start) in starts.items()},
@@ -979,7 +981,12 @@ class FeatureStateRepository(WorkspaceRepository):
                 listing: cast(date, tables[listing].column("session_date")[0].as_py())
                 for listing in held
             }
-            actions = market.actions_by_listing(held, _connection=_connection)
+            actions = {
+                listing: listing_actions
+                for listing, (_provider, listing_actions) in market._provider_actions(
+                    reading, held, named
+                ).items()
+            }
             adjusted = cast(
                 pa.Table,
                 reading.execute(
@@ -3664,7 +3671,7 @@ class PanelStateRepository(WorkspaceRepository):
             ).fetchall()
             missing = tuple(sorted(set(listing_ids) - {str(row[0]) for row in rows}))
             if missing and allow_missing_market_observations:
-                with self._market_data.market_reads() as (reading, tables):
+                with self._market_data.market_reads(listings=missing) as (reading, tables):
                     has_source = reading.execute(
                         f"""
                         SELECT DISTINCT listing_id FROM {tables["bars"]}
@@ -4380,8 +4387,12 @@ class PanelStateRepository(WorkspaceRepository):
         receipt_hashes: set[str] = set()
         failures: list[FailureEvidence] = []
         prepared: list[tuple[str, tuple[object, ...], ActionAuditReceipt]] = []
+        bars_by_listing = self._market_data.raw_bars_by_listing(
+            [item.listing_id for item in selected], through=as_of_session
+        )
+        ready: list[tuple[ManifestListing, tuple[RawDailyBar, ...], ActionAuditReceipt]] = []
         for listing in selected:
-            bars = self._market_data.raw_bars(listing.listing_id, through=as_of_session)
+            bars = bars_by_listing[listing.listing_id]
             if not bars:
                 failures.append(
                     FailureEvidence(
@@ -4413,11 +4424,15 @@ class PanelStateRepository(WorkspaceRepository):
                     )
                 )
                 continue
+            ready.append((listing, bars, receipt))
+        held_actions = self._market_data.actions_by_listing(
+            [listing.listing_id for listing, _bars, _receipt in ready]
+        )
+        for listing, bars, receipt in ready:
             try:
-                actions = self._market_data.actions(listing.listing_id)
                 projection = project_research_series(
                     bars,
-                    actions,
+                    held_actions[listing.listing_id],
                     daily_price_basis=manifest.profile.daily_price_basis,
                 )
             except FeatureAdmissionBlocked as exc:
