@@ -30,7 +30,6 @@ def safe_observation_draft(
     run_id: str | None = None,
     stage_id: str | None = None,
     correlation_ids: tuple[str, ...] = (),
-    supersedes_observation_id: str | None = None,
 ) -> ObservationDraft:
     """Create one inline public-safe draft under its code-owned schema policy."""
     policy = policies.policy(schema_kind, 1)
@@ -56,7 +55,6 @@ def safe_observation_draft(
         retention_class=retention_class,
         inline_safe_payload=payload,
         policy_hash=policy.policy_hash,
-        supersedes_observation_id=supersedes_observation_id,
     )
 
 

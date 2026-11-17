@@ -26,6 +26,7 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationReadCursor,
     ObservationReadItem,
 )
+from alphalattice.control.observation_runtime.log_reads import OBSERVATION_ID
 from alphalattice.interface.local_application.cli_contract import (
     READ_OPERATIONS,
     RequestProvenance,
@@ -668,7 +669,7 @@ class ExternalActivityReadQuery:
             raise LocalWebError("activity.query_field_unknown")
         observation_id = _single(query, "observation_id")
         if observation_id is not None:
-            if re.fullmatch(r"[0-9a-f]{64}", observation_id) is None:
+            if OBSERVATION_ID.fullmatch(observation_id) is None:
                 raise LocalWebError("activity.observation_id_invalid")
             if "limit" in query or "before" in query or "native_session_id" in query:
                 raise LocalWebError("activity.query_selection_conflict")
@@ -704,45 +705,45 @@ def _single(query: Mapping[str, list[str]], key: str) -> str | None:
 
 
 def activity_item(item: ObservationReadItem) -> dict[str, Any]:
-    """One observation as a consumer sees it: envelope facts and its safe payload.
-
-    The payload is `None` when retention removed it; the row keeps its place so
-    a reader that was away sees the gap where it happened.
-    """
-    envelope = item.envelope
+    """One observation as a consumer sees it: its own fields and its safe payload; its
+    `observation_id` is the opaque id of the log event that keeps it."""
+    record = item.record
     questions = []
-    payload = envelope.inline_safe_payload
+    payload = record.inline_safe_payload
     if (
-        envelope.schema_kind == "ProductOperationObserved"
-        and envelope.source_kind == "PRODUCT_OPERATION"
-        and envelope.authority.value == "OPERATIONAL_ASSERTION"
+        record.schema_kind == "ProductOperationObserved"
+        and record.source_kind == "PRODUCT_OPERATION"
+        and record.authority.value == "OPERATIONAL_ASSERTION"
         and isinstance(payload, dict)
     ):
-        for record in payload.get("subject", {}).get("person_questions", []):
+        for asked in payload.get("subject", {}).get("person_questions", []):
             try:
-                words = person_question(record["code"]) if record.get("code") else {}
+                words = person_question(asked["code"]) if asked.get("code") else {}
             except ValueError:
                 words = {}
-            if words.get("catalog_hash") != record.get("catalog_hash"):
+            if words.get("catalog_hash") != asked.get("catalog_hash"):
                 words = {}
-            questions.append({**words, **record, "catalog_available": bool(words)})
+            questions.append({**words, **asked, "catalog_available": bool(words)})
     return {
         "ordinal": item.ordinal,
-        "observation_id": envelope.observation_id,
-        "occurred_at": envelope.occurred_at.isoformat(),
-        "observed_at": envelope.observed_at.isoformat(),
-        "schema_kind": envelope.schema_kind,
-        "source_kind": envelope.source_kind,
-        "source_id": envelope.source_id,
-        "source_sequence": envelope.source_sequence,
-        "task_id": envelope.task_id,
-        "run_id": envelope.run_id,
-        "stage_id": envelope.stage_id,
-        "correlation_ids": list(envelope.correlation_ids),
-        "authority": envelope.authority.value,
-        "retention_class": envelope.retention_class.value,
-        "availability": envelope.availability.value,
-        "payload": envelope.inline_safe_payload,
+        "observation_id": record.observation_id,
+        "trace_id": item.trace_id,
+        "span_id": item.span_id,
+        "parent_span_id": item.parent_span_id,
+        "occurred_at": record.occurred_at.isoformat(),
+        "observed_at": record.observed_at.isoformat(),
+        "schema_kind": record.schema_kind,
+        "source_kind": record.source_kind,
+        "source_id": record.source_id,
+        "source_sequence": record.source_sequence,
+        "task_id": record.task_id,
+        "run_id": record.run_id,
+        "stage_id": record.stage_id,
+        "correlation_ids": list(record.correlation_ids),
+        "authority": record.authority.value,
+        "retention_class": record.retention_class.value,
+        "availability": record.availability.value,
+        "payload": record.inline_safe_payload,
         **({"person_questions": questions} if questions else {}),
     }
 

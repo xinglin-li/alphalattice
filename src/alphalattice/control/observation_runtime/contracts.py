@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, Protocol, Self, cast
+from typing import Any, Literal, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -217,7 +217,6 @@ class ObservationDraft(_Contract):
         inline_safe_payload: Inline payload when no payload reference is supplied.
         payload_ref: Artifact reference when no inline payload is supplied.
         policy_hash: Identity of the recording policy.
-        supersedes_observation_id: Optional identity of an earlier observation.
     """
 
     kind: Literal["ObservationDraft"] = "ObservationDraft"
@@ -237,7 +236,6 @@ class ObservationDraft(_Contract):
     inline_safe_payload: dict[str, Any] | None = None
     payload_ref: ObservationPayloadRef | None = None
     policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    supersedes_observation_id: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_draft(self) -> Self:
@@ -261,30 +259,23 @@ class ObservationDraft(_Contract):
         return self
 
 
-class ObservationEnvelope(_Contract):
-    """Bind a ledger observation to its source, payload and recording policy.
+class ObservationRecord(_Contract):
+    """One kept observation as the Host's log holds it: its own fields and its payload.
 
-    Identity retains the occurrence clock, source and correlation scope, authority,
-    sensitivity, retention class, payload hash and policy. It excludes the arrival
-    clock and availability so retention can remove payload bytes without minting a
-    different observation. Available envelopes carry exactly one representation.
+    Its identity is the log's: `observation_id` is the id of the event that keeps it, issued by
+    the Host and opaque; the log's hash chain binds its content. Its kind is the event's type,
+    its place the event's. Every record the log keeps holds its payload.
 
     Attributes:
-        occurred_at: Aware source occurrence clock included in identity.
-        observed_at: Aware ledger arrival clock excluded from observation identity.
-        source_sequence: Source-local nonnegative sequence, distinct from ledger ordinal.
-        correlation_ids: Sorted unique handles included in identity.
-        payload_hash: Payload commitment retained even when content is unavailable.
-        inline_safe_payload: Inline content, forbidden when availability is not AVAILABLE.
-        payload_ref: Referenced content whose owner retains availability information.
-        availability: Readback state excluded from observation identity.
-        policy_hash: Recording-policy commitment.
-        observation_id: Canonical source/payload/policy identity.
+        occurred_at: Aware clock its source recorded.
+        observed_at: Aware clock the Host kept it at.
+        source_sequence: Source-local nonnegative sequence, distinct from the log's order.
+        correlation_ids: Sorted unique handles.
+        observation_id: The event id that keeps it.
     """
 
-    kind: Literal["ObservationEnvelope"] = "ObservationEnvelope"
+    kind: Literal["ObservationRecord"] = "ObservationRecord"
     schema_kind: str = Field(min_length=1)
-    schema_version: int = Field(ge=1)
     occurred_at: datetime
     observed_at: datetime
     source_kind: str = Field(min_length=1)
@@ -295,37 +286,25 @@ class ObservationEnvelope(_Contract):
     stage_id: str | None = None
     correlation_ids: tuple[str, ...] = ()
     authority: ObservationAuthority
-    sensitivity: ObservationSensitivity
     retention_class: ObservationRetentionClass
-    payload_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    inline_safe_payload: dict[str, Any] | None = None
-    payload_ref: ObservationPayloadRef | None = None
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    supersedes_observation_id: Hash | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    inline_safe_payload: dict[str, Any]
     availability: ObservationAvailability = ObservationAvailability.AVAILABLE
-    observation_id: Hash = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_id: str = Field(min_length=1)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_envelope(self) -> Self:
-        """Validate clocks, availability shape and the observation identity.
+    def validate_record(self) -> Self:
+        """Validate its clocks and correlations.
 
         Returns:
-            This validated envelope.
+            This validated record.
 
         Raises:
-            ValueError: A clock, correlation, payload representation or identity is invalid.
+            ValueError: A clock is naive or the correlations are not sorted and unique.
         """
         _require_aware(self.occurred_at, "observation occurred_at")
         _require_aware(self.observed_at, "observation observed_at")
         if self.correlation_ids != tuple(sorted(set(self.correlation_ids))):
             raise ValueError("observation correlation IDs must be sorted and unique")
-        if self.availability is ObservationAvailability.AVAILABLE:
-            if (self.inline_safe_payload is None) == (self.payload_ref is None):
-                raise ValueError("available observation requires one payload representation")
-        elif self.inline_safe_payload is not None:
-            raise ValueError("unavailable observation cannot retain inline payload")
-        if self.observation_id != observation_identity(self):
-            raise ValueError("observation envelope identity is invalid")
         return self
 
 
@@ -373,16 +352,22 @@ class ObservationReadCursor(_Contract):
 
 
 class ObservationReadItem(_Contract):
-    """Pair an envelope with its positive ledger commit ordinal.
+    """Pair a record with its positive place in the log and its place in the trace tree.
 
     Attributes:
-        ordinal: Commit order within the store epoch, distinct from source sequence.
-        envelope: Observation metadata and current payload availability.
+        ordinal: The log's order within the store epoch, distinct from source sequence.
+        record: The observation the event keeps.
+        trace_id: The trace its event is in: one CLI call's, or the Host's own.
+        span_id: Its own span (an operation's), or the span it happened in (a fact's).
+        parent_span_id: Its span's parent: the Host step it ran in, None at a trace's root.
     """
 
     kind: Literal["ObservationReadItem"] = "ObservationReadItem"
     ordinal: int = Field(ge=1)
-    envelope: ObservationEnvelope
+    record: ObservationRecord
+    trace_id: str | None = None
+    span_id: str | None = None
+    parent_span_id: str | None = None
 
 
 class ObservationReadPage(_Contract):
@@ -419,14 +404,13 @@ class ObservationReadPage(_Contract):
 
     @property
     def unavailable_count(self) -> int:
-        """Count page items whose envelopes are not AVAILABLE.
+        """Count page items whose records are not AVAILABLE.
 
         Returns:
             The number of compacted, evicted or missing/tampered payloads in this page.
         """
         return sum(
-            item.envelope.availability is not ObservationAvailability.AVAILABLE
-            for item in self.items
+            item.record.availability is not ObservationAvailability.AVAILABLE for item in self.items
         )
 
 
@@ -503,71 +487,6 @@ def build_observation_authority_readback(
     return ObservationAuthorityReadback(**identity, readback_hash=canonical_hash(identity))
 
 
-def envelope_of(draft: ObservationDraft, observed_at: datetime) -> ObservationEnvelope:
-    """The envelope a validated draft is kept as, observed at `observed_at`: its payload's hash,
-    available, and its identity over its content.
-
-    Raises:
-        ValueError: The clock is naive, or the draft carries no payload.
-    """
-    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
-        raise ValueError("observation clock must be timezone-aware")
-    if draft.inline_safe_payload is not None:
-        payload: Any = draft.inline_safe_payload
-    elif draft.payload_ref is not None:
-        payload = draft.payload_ref.model_dump(mode="json")
-    else:
-        raise ValueError("observation.payload_not_admitted")
-    provisional = ObservationEnvelope.model_construct(
-        **draft.model_dump(mode="python", exclude={"kind"}),
-        observed_at=observed_at.astimezone(UTC),
-        payload_hash=canonical_hash(payload),
-        availability=ObservationAvailability.AVAILABLE,
-        observation_id="",
-    )
-    return ObservationEnvelope(
-        **provisional.model_dump(mode="python", exclude={"observation_id"}),
-        observation_id=observation_identity(provisional),
-    )
-
-
-def observation_identity(value: ObservationEnvelope) -> Hash:
-    """Hash immutable source, scope, payload and policy fields of an envelope.
-
-    Args:
-        value: Envelope whose identity-bearing fields are selected.
-
-    Returns:
-        The canonical observation identity, excluding arrival time and availability.
-    """
-    return cast(
-        str,
-        canonical_hash(
-            {
-                "schema_kind": value.schema_kind,
-                "schema_version": value.schema_version,
-                "occurred_at": value.occurred_at,
-                "source_kind": value.source_kind,
-                "source_id": value.source_id,
-                "source_sequence": value.source_sequence,
-                "task_id": value.task_id,
-                "run_id": value.run_id,
-                "stage_id": value.stage_id,
-                # Retired fields, kept null in the hash so every kept identity stays the same.
-                "span_id": None,
-                "parent_span_id": None,
-                "correlation_ids": value.correlation_ids,
-                "authority": value.authority,
-                "sensitivity": value.sensitivity,
-                "retention_class": value.retention_class,
-                "payload_hash": value.payload_hash,
-                "policy_hash": value.policy_hash,
-                "supersedes_observation_id": value.supersedes_observation_id,
-            }
-        ),
-    )
-
-
 def _require_aware(value: datetime, label: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{label} must be timezone-aware")
@@ -581,14 +500,13 @@ __all__ = [
     "ObservationAuthorityReference",
     "ObservationAvailability",
     "ObservationDraft",
-    "ObservationEnvelope",
     "ObservationPayloadRef",
     "ObservationReadCursor",
     "ObservationReadItem",
     "ObservationReadPage",
+    "ObservationRecord",
     "ObservationRetentionClass",
     "ObservationSensitivity",
     "build_observation_authority_readback",
     "build_observation_authority_reference",
-    "observation_identity",
 ]

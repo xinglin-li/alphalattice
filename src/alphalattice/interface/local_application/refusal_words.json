@@ -1544,7 +1544,8 @@
   "next_action": "READ_THE_NEWEST_ACTIVITY_PAGE_THEN_USE_ITS_RETURNED_CURSOR"
  },
  "activity.observation_id_invalid": {
-  "detail": "The selected observation must use its complete 64-character lowercase hexadecimal identity. Read the activity page and use the exact observation id it returns.",
+  "message_id": "activity.observation_id_invalid",
+  "detail": "activity.observation_id_invalid",
   "next_action": "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID"
  },
  "activity.query_selection_conflict": {

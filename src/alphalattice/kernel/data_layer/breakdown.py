@@ -4,9 +4,12 @@ A goal is many traces, one per CLI call naming it (`cli.call`). Under each call 
 steps (`host.request`, `product.operation`, `worker.call` and any other step type), each a row
 with its span, parent, start and end. The agent's own time is between its calls: the gap from one
 call's end to the next call of the same conversation is one `invoke_agent` span, inferred from
-the call times, since the agent's inside is not traced here. A call whose direct steps leave more
-than `UNTRACED_BOUND` of its wall untraced is flagged. A step not yet ended is live: its end is
-None, and it counts no seconds yet.
+the call times. Where the agent's own OpenTelemetry records of that conversation are at hand
+(`native`, joined by the vendor's session id), the gap splits into model requests, the agent's
+own tools outside the product and waits on the person; only the remainder stays one agent span,
+marked unattributed. The view never depends on them: with none, the whole gap is inferred. A call
+whose direct steps leave more than `UNTRACED_BOUND` of its wall untraced is flagged. A step not
+yet ended is live: its end is None, and it counts no seconds yet.
 """
 
 from __future__ import annotations
@@ -19,6 +22,22 @@ from typing import Any, Final
 UNTRACED_BOUND: Final = 0.2
 """The share of a call's wall its direct steps may leave untraced before the call is flagged."""
 SCHEMA: Final = "alphalattice.goal-trace.v1"
+NATIVE: Final = {
+    "claude_code.api_request": "model",
+    "codex.api_request": "model",
+    "claude_code.tool_result": "tool",
+    "codex.tool_result": "tool",
+    "claude_code.tool_decision": "person",
+    "codex.tool_decision": "person",
+    "claude_code.user_prompt": "person",
+    "codex.user_prompt": "person",
+}
+"""Each agent's native event that places its time, by its class: a model request and a tool run
+end at the event and last its `duration_ms`; a wait on the person ends at the prompt the person
+sent or the permission they decided (a decision whose `source` is the user's), and runs from the
+agent's previous record. Any other event places nothing."""
+_CLASSES: Final = ("person", "tool", "model")
+"""The order a moment two classes claim is counted in: the person's wait first."""
 
 
 def _attrs(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -69,9 +88,12 @@ def goal_trace(
     calls: Sequence[Mapping[str, Any]],
     steps: Sequence[Mapping[str, Any]],
     *,
+    native: Iterable[Mapping[str, Any]] = (),
     untraced_bound: float = UNTRACED_BOUND,
 ) -> dict[str, Any]:
-    """The goal's waterfall and breakdown from its call rows and its calls' step rows."""
+    """The goal's waterfall and breakdown from its call rows, its calls' step rows and its
+    conversations' native records (`conversation`, `name`, `at_us`, `duration_ms`, `source`,
+    `agent_id`), if any."""
     called = sorted(_spans(calls).values(), key=lambda span: span["started_us"])
     stepped = _spans(steps)
     children: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -121,7 +143,7 @@ def goal_trace(
                 flagged.append(call["span_id"])
                 row["untraced_flagged"] = True
         waterfall.append(row)
-    agents = _agent_gaps(called)
+    agents = _agent_gaps(called, native)
     ended = [call["ended_us"] for call in called if call["ended_us"] is not None]
     return {
         "schema": SCHEMA,
@@ -131,26 +153,52 @@ def goal_trace(
         },
         "calls": waterfall,
         "agent": agents,
-        "breakdown": {
-            "agent_seconds": round(sum(gap["seconds"] for gap in agents), 6),
-            "agent_split": "INFERRED_FROM_CALL_TIMES",
-            "call_seconds": round(
-                sum((c["ended_us"] - c["started_us"]) for c in called if c["ended_us"]) / 1e6, 6
-            ),
-            "stages": sorted(
-                ({**stage, "seconds": round(stage["seconds"], 6)} for stage in stages.values()),
-                key=lambda stage: -stage["seconds"],
-            ),
-            "untraced_seconds": round(untraced_us / 1e6, 6),
-            "untraced_bound": untraced_bound,
-            "untraced_flagged_calls": len(flagged),
-            "unattributed_calls": sum(1 for row in waterfall if row["unattributed"]),
-        },
+        "breakdown": _breakdown(called, agents, waterfall, stages, untraced_us, untraced_bound)
+        | {"untraced_flagged_calls": len(flagged)},
     }
 
 
-def _agent_gaps(called: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Each conversation's time between consecutive calls: one inferred `invoke_agent` span."""
+def _breakdown(
+    called: Sequence[Mapping[str, Any]],
+    agents: Sequence[Mapping[str, Any]],
+    waterfall: Sequence[Mapping[str, Any]],
+    stages: Mapping[tuple[str, str], Mapping[str, Any]],
+    untraced_us: int,
+    untraced_bound: float,
+) -> dict[str, Any]:
+    """Where the goal's time went: the agent's split, the calls, each stage, the untraced share."""
+    call_us = sum(call["ended_us"] - call["started_us"] for call in called if call["ended_us"])
+    return {
+        "agent_seconds": round(sum(gap["seconds"] for gap in agents), 6),
+        "agent_split": (
+            "NATIVE_EVENTS"
+            if any(not gap["inferred"] for gap in agents)
+            else "INFERRED_FROM_CALL_TIMES"
+        ),
+        **{
+            f"{name}_seconds": round(sum(gap.get(f"{name}_seconds", 0) for gap in agents), 6)
+            for name in (*_CLASSES, "unattributed")
+        },
+        "call_seconds": round(call_us / 1e6, 6),
+        "stages": sorted(
+            ({**stage, "seconds": round(stage["seconds"], 6)} for stage in stages.values()),
+            key=lambda stage: -stage["seconds"],
+        ),
+        "untraced_seconds": round(untraced_us / 1e6, 6),
+        "untraced_share": round(untraced_us / call_us, 6) if call_us else None,
+        "untraced_bound": untraced_bound,
+        "unattributed_calls": sum(1 for row in waterfall if row["unattributed"]),
+    }
+
+
+def _agent_gaps(
+    called: Sequence[Mapping[str, Any]], native: Iterable[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Each conversation's time between consecutive calls: one `invoke_agent` span, split by the
+    conversation's native records where it has them."""
+    records: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for record in native:
+        records[str(record["conversation"])].append(record)
     last: dict[str, Mapping[str, Any]] = {}
     gaps = []
     for call in called:
@@ -160,15 +208,53 @@ def _agent_gaps(called: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         before = last.get(conversation)
         ended = None if before is None else before["ended_us"]
         if ended is not None and call["started_us"] > ended:
-            gaps.append(
-                {
-                    "gen_ai.operation.name": "invoke_agent",
-                    "gen_ai.conversation.id": conversation,
-                    "inferred": True,
-                    "started_us": ended,
-                    "ended_us": call["started_us"],
-                    "seconds": (call["started_us"] - ended) / 1e6,
-                }
-            )
+            gap = {
+                "gen_ai.operation.name": "invoke_agent",
+                "gen_ai.conversation.id": conversation,
+                "inferred": True,
+                "started_us": ended,
+                "ended_us": call["started_us"],
+                "seconds": (call["started_us"] - ended) / 1e6,
+            }
+            gaps.append(gap | _split(records.get(conversation, ()), ended, call["started_us"]))
         last[conversation] = call
     return gaps
+
+
+def _split(records: Iterable[Mapping[str, Any]], lo: int, hi: int) -> dict[str, Any]:
+    """The gap [lo, hi] as its native records place it: each record's span in its class, the
+    seconds of each class (a moment counted once, the person's wait first) and the remainder,
+    unattributed: the whole gap when no record falls in it."""
+    spans, previous = [], lo
+    for record in sorted(records, key=lambda record: int(record["at_us"])):
+        at, name = int(record["at_us"]), str(record["name"])
+        kind = NATIVE.get(name)
+        if not lo < at <= hi or kind is None:
+            continue
+        source = str(record.get("source") or "")
+        if name.endswith("tool_decision") and not source.startswith("user"):
+            kind = None  # decided by configuration or a hook: no wait on the person
+        start = previous if kind == "person" else at - int(1000 * (record.get("duration_ms") or 0))
+        if kind is not None and start < at:
+            spans.append(
+                {
+                    "class": kind,
+                    "name": name,
+                    "started_us": max(lo, start),
+                    "ended_us": at,
+                    **({"gen_ai.agent.id": record["agent_id"]} if record.get("agent_id") else {}),
+                }
+            )
+        previous = at
+    if not spans:
+        return {"unattributed_seconds": (hi - lo) / 1e6, "unattributed": True}
+    split: dict[str, Any] = {"inferred": False, "spans": spans}
+    claimed: list[tuple[int, int]] = []
+    for kind in _CLASSES:
+        mine = [(s["started_us"], s["ended_us"]) for s in spans if s["class"] == kind]
+        alone = _covered(mine + claimed, lo, hi) - _covered(claimed, lo, hi)
+        split[f"{kind}_seconds"] = alone / 1e6
+        claimed += mine
+    split["unattributed_seconds"] = (hi - lo - _covered(claimed, lo, hi)) / 1e6
+    split["unattributed"] = split["unattributed_seconds"] > 0
+    return split

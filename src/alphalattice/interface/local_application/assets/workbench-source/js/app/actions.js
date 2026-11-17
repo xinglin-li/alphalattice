@@ -60,6 +60,7 @@ const PRODUCT_ACTIONS = {
     'goal-save':()=>LiveGoals.save(),
     'goal-open':hash=>LiveGoals.open(hash),
     'goal-verify':()=>LiveGoals.verify(),
+    'goal-time':()=>LiveGoals.readTime(),
     'goal-attach':()=>LiveGoals.attach(),
     'goal-attach-save':()=>LiveGoals.attachSave(),
     'goal-note':()=>LiveGoals.note(),

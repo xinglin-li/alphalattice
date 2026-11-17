@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 import pytest
+from tests._support.history_fixtures import native_first_use
 
 from alphalattice.kernel.data_layer.breakdown import goal_trace
 
@@ -79,9 +80,45 @@ def test_two_agents_calls_read_apart_with_their_gaps_stages_and_untraced_share()
     breakdown = trace["breakdown"]
     assert (breakdown["agent_seconds"], breakdown["call_seconds"]) == (5.0, 15.0)
     assert (breakdown["untraced_flagged_calls"], breakdown["unattributed_calls"]) == (1, 1)
-    assert breakdown["untraced_seconds"] == 8.0
+    assert (breakdown["untraced_seconds"], breakdown["untraced_share"]) == (8.0, round(8 / 15, 6))
     stages = {(s["type"], s["name"]): (s["seconds"], s["steps"]) for s in breakdown["stages"]}
     assert stages[("host.request", "GOAL_OPEN")] == (2.0, 1)
     assert stages[("product.operation", "GOAL_OPEN")] == (0.5, 1)
     assert ("worker.call", "m:f") not in stages  # live: no seconds yet
     assert trace["window"] == {"started_us": 0, "ended_us": 21 * S}
+
+
+@pytest.mark.proves("data_layer.native_events_split_an_agents_gap")
+def test_a_conversations_native_records_split_its_gap_and_leave_the_remainder_unattributed() -> (
+    None
+):
+    """A conversation's gap splits by its records into waits, tools and model, then the rest."""
+    s1, s2 = {"gen_ai.conversation.id": "s1"}, {"gen_ai.conversation.id": "s2"}
+    calls = [
+        _row("cli.call", "c1", "completed", 0, 2 * S, **s1),
+        _row("cli.call", "c2", "completed", 0, 1 * S, **s2),
+        _row("cli.call", "c3", "completed", 7 * S, 9 * S, **s1),
+        _row("cli.call", "c4", "completed", 4 * S, 5 * S, **s2),
+    ]
+    trace = goal_trace(calls, [], native=native_first_use("s1", 2 * S, 7 * S))
+    other, split = trace["agent"]  # in the order their next calls start
+    assert (split["gen_ai.conversation.id"], split["seconds"], split["inferred"]) == (
+        "s1",
+        5.0,
+        False,
+    )
+    seconds = {
+        kind: split[f"{kind}_seconds"] for kind in ("person", "tool", "model", "unattributed")
+    }
+    assert seconds == pytest.approx({"person": 0.9, "tool": 0.7, "model": 2.3, "unattributed": 1.1})
+    assert split["unattributed"] is True
+    assert [s["gen_ai.agent.id"] for s in split["spans"] if "gen_ai.agent.id" in s] == ["a1"]
+    assert all(2 * S <= s["started_us"] < s["ended_us"] <= 7 * S for s in split["spans"])
+    assert (other["inferred"], other["unattributed_seconds"]) == (True, 3.0)
+    breakdown = trace["breakdown"]
+    assert breakdown["agent_split"] == "NATIVE_EVENTS"
+    assert (breakdown["agent_seconds"], breakdown["unattributed_seconds"]) == pytest.approx(
+        (8.0, 4.1)
+    )
+    assert (breakdown["model_seconds"], breakdown["person_seconds"]) == pytest.approx((2.3, 0.9))
+    assert goal_trace(calls, [])["breakdown"]["agent_split"] == "INFERRED_FROM_CALL_TIMES"

@@ -1315,6 +1315,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/goals/schema", "GOAL_SCHEMA"),
     ("GET", "/api/goals/show", "GOAL_SHOW"),
     ("GET", "/api/goals/narrative", "GOAL_NARRATIVE"),
+    ("GET", "/api/goals/profile", "GOAL_PROFILE"),
     ("GET", "/api/goals/reference", "GOAL_REFERENCE"),
     ("GET", "/api/goals/export", "GOAL_EXPORT"),
     ("POST", "/api/goals/open", "GOAL_OPEN"),

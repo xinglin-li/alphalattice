@@ -73,6 +73,9 @@ from alphalattice.kernel.data_layer import history
 from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
 from tests.workspace_task_runner.task_control_support import task_log
 
+UNKNOWN_ID = "01a1e448-0000-0000-0000-000000000000"  # an event id's shape no event has
+SHAPED_ID, OTHER_ID = UNKNOWN_ID.replace("0", "a"), UNKNOWN_ID.replace("0", "b")
+
 
 @pytest.mark.proves("composition.observation_writes_do_not_wait_for_workspace_mutations")
 def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(
@@ -1073,8 +1076,8 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
     assert selected["accepted_answer"]["status"] == "UNAVAILABLE"
     assert selected["accepted_answer"]["reason"] == "activity.accepted_answer_unavailable"
     assert "contribution" not in selected["accepted_answer"]
-    missing = _json(live, f"/api/activity/external?observation_id={'f' * 64}")
-    assert missing["observation_id"] == "f" * 64 and "items" not in missing
+    missing = _json(live, f"/api/activity/external?observation_id={UNKNOWN_ID}")
+    assert missing["observation_id"] == UNKNOWN_ID and "items" not in missing
     assert missing["accepted_answer"]["status"] == "UNAVAILABLE"
     assert missing["accepted_answer"]["reason"] == "activity.accepted_answer_unavailable"
     assert "contribution" not in missing["accepted_answer"]
@@ -1136,16 +1139,16 @@ def test_declared_sessions_are_read_from_their_owner_not_the_feed_tail(
         ("after=1", "activity.query_field_unknown"),
         ("observation_id=x", "activity.observation_id_invalid"),
         (f"observation_id={'A' * 64}", "activity.observation_id_invalid"),
-        (f"observation_id={'a' * 64}&limit=1", "activity.query_selection_conflict"),
-        (f"observation_id={'a' * 64}&before=1", "activity.query_selection_conflict"),
+        (f"observation_id={SHAPED_ID}&limit=1", "activity.query_selection_conflict"),
+        (f"observation_id={SHAPED_ID}&before=1", "activity.query_selection_conflict"),
         (
-            f"observation_id={'a' * 64}&native_session_id=session-a",
+            f"observation_id={SHAPED_ID}&native_session_id=session-a",
             "activity.query_selection_conflict",
         ),
         ("native_session_id=%00", "activity.query_parameter_invalid:native_session_id"),
         (f"native_session_id={'x' * 201}", "activity.query_parameter_invalid:native_session_id"),
         (
-            f"observation_id={'a' * 64}&observation_id={'b' * 64}",
+            f"observation_id={SHAPED_ID}&observation_id={OTHER_ID}",
             "activity.query_parameter_invalid:observation_id",
         ),
     ):

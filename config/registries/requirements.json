@@ -466,6 +466,12 @@
       "lower_layer": "The corruption crosses real copied SQLite/DuckLake owners, retained files and the restore publication boundary.",
       "owner": "alphalattice.kernel.data_layer"
     },
+    "data_layer.native_events_split_an_agents_gap": {
+      "description": "The time between a conversation's calls splits by its native records into waits on the person, the agent's tools and model requests, each moment counted once, the remainder unattributed; with no records the whole gap stays inferred.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.one_host_writes_the_data_root": {
       "description": "A second Host is refused the data root's lock by name with its holder, and other processes read the log through a read-only attach that refuses a write.",
       "lower_layer": "The lock is an operating-system file lock and the attach a SQLite connection.",

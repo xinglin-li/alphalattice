@@ -43,28 +43,32 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import Any, Final, cast
 from uuid import UUID, uuid4
+
+from pydantic_core import to_jsonable_python
 
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationAvailability,
     ObservationDraft,
-    ObservationEnvelope,
     ObservationReadCursor,
+    ObservationReadPage,
+    ObservationRecord,
     ObservationRetentionClass,
-    envelope_of,
 )
 from alphalattice.control.observation_runtime.log_reads import (
     INDEXED,
     MAXIMUM_READ_PAGE,
+    OBSERVATION_ID,
     OBSERVATION_INDEXED,
     SUBJECT_INDEXED,
     LogObservations,
     ObservationStorageError,
     agent_attributes,
     agent_event,
+    payload_of,
 )
 from alphalattice.control.observation_runtime.policy import (
     EXTERNAL_ACTIVITY_SCHEMA,
@@ -523,7 +527,7 @@ class WorkspaceActivity:
                 == body.get("answer_reference")
                 and conversation.get("bundle_reference") == body.get("bundle_reference")
                 and isinstance(conversation.get("observation_id"), str)
-                and re.fullmatch(r"[0-9a-f]{64}", conversation["observation_id"]) is not None
+                and OBSERVATION_ID.fullmatch(conversation["observation_id"]) is not None
                 and conversation.get("original_session_host") in {"codex", "claude-code"}
                 and isinstance(conversation.get("original_session_id"), str)
                 and _REFERENCE_VALUE.fullmatch(conversation["original_session_id"]) is not None
@@ -846,7 +850,8 @@ class WorkspaceActivity:
     # --------------------------------------------------------------- reads
 
     def read(self, query: ActivityReadQuery) -> dict[str, object]:
-        """One bounded page plus the current projection of every Task it names.
+        """One bounded page, the current projection of every Task it names and the CLI call at the
+        root of each of its traces.
 
         The Task join reads only the projections this page references (plus the
         watched ids), never the whole projection table; a Task admitted moments
@@ -859,7 +864,7 @@ class WorkspaceActivity:
         items = [] if page is None else [activity_item(item) for item in page.items]
         if page is not None:
             referenced.update(
-                item.envelope.task_id for item in page.items if item.envelope.task_id is not None
+                item.record.task_id for item in page.items if item.record.task_id is not None
             )
         tasks = self._task_projections(referenced)
         return {
@@ -872,6 +877,7 @@ class WorkspaceActivity:
             "items": items,
             "unavailable": 0 if page is None else page.unavailable_count,
             "tasks": tasks,
+            "calls": _calls(ledger, page),
             "observer": self.observer_state(),
             **({"workspace_writer": writer} if (writer := self.gate.waiting()) else {}),
             "read_cost": {
@@ -901,25 +907,23 @@ class WorkspaceActivity:
                 break
             head = head or page.head_ordinal
             for item in page.items:
-                envelope, payload = item.envelope, item.envelope.inline_safe_payload
+                record, payload = item.record, item.record.inline_safe_payload
                 if item.ordinal > head:
                     break
                 if payload is None:
-                    gaps.append(
-                        {"code": "LEDGER_ROW_UNAVAILABLE", "source": envelope.observation_id}
-                    )
+                    gaps.append({"code": "LEDGER_ROW_UNAVAILABLE", "source": record.observation_id})
                 elif (
-                    envelope.schema_kind in {PRODUCT_OPERATION_SCHEMA, "ClockCorrelationRecorded"}
-                    and envelope.source_kind == OPERATION_SOURCE_KIND
-                    and envelope.authority == ObservationAuthority.OPERATIONAL_ASSERTION
+                    record.schema_kind in {PRODUCT_OPERATION_SCHEMA, "ClockCorrelationRecorded"}
+                    and record.source_kind == OPERATION_SOURCE_KIND
+                    and record.authority == ObservationAuthority.OPERATIONAL_ASSERTION
                 ):
-                    target = rows if envelope.schema_kind == PRODUCT_OPERATION_SCHEMA else clocks
+                    target = rows if record.schema_kind == PRODUCT_OPERATION_SCHEMA else clocks
                     target.append(
                         {
                             **payload,
-                            "at": envelope.observed_at.isoformat(),
-                            "source": envelope.source_id,
-                            "provenance": envelope.observation_id,
+                            "at": record.observed_at.isoformat(),
+                            "source": record.source_id,
+                            "provenance": record.observation_id,
                             "clock_domain": payload.get("clock_domain", "LEDGER_OBSERVED_AT"),
                         }
                     )
@@ -1239,16 +1243,16 @@ class WorkspaceActivity:
         observations = 0
         if ledger is not None:
             try:
-                envelope = ledger.read(observation_id)
+                record = ledger.read(observation_id)
             except (ObservationStorageError, ValueError):
                 pass
             else:
                 observations = 1
-                payload = envelope.inline_safe_payload or {}
+                payload = record.inline_safe_payload or {}
                 subject = payload.get("subject")
                 if (
-                    envelope.schema_kind == EXTERNAL_ACTIVITY_SCHEMA
-                    and envelope.availability is ObservationAvailability.AVAILABLE
+                    record.schema_kind == EXTERNAL_ACTIVITY_SCHEMA
+                    and record.availability is ObservationAvailability.AVAILABLE
                     and payload.get("event_kind") == "NATIVE_COORDINATION_MESSAGE"
                     and isinstance(subject, dict)
                     and (subject.get("message_kind"), subject.get("input_channel"))
@@ -1272,22 +1276,21 @@ class WorkspaceActivity:
                             "observation_id": observation_id,
                         }
                 elif (
-                    envelope.schema_kind == PRODUCT_OPERATION_SCHEMA
-                    and envelope.schema_version == 1
-                    and envelope.source_kind == OPERATION_SOURCE_KIND
+                    record.schema_kind == PRODUCT_OPERATION_SCHEMA
+                    and record.source_kind == OPERATION_SOURCE_KIND
                     and (
-                        envelope.source_id == self.source_id
-                        or re.fullmatch(r"local-web:[0-9a-f]{32}", envelope.source_id) is not None
+                        record.source_id == self.source_id
+                        or re.fullmatch(r"local-web:[0-9a-f]{32}", record.source_id) is not None
                     )
-                    and envelope.authority is ObservationAuthority.OPERATIONAL_ASSERTION
-                    and envelope.availability is ObservationAvailability.AVAILABLE
+                    and record.authority is ObservationAuthority.OPERATIONAL_ASSERTION
+                    and record.availability is ObservationAvailability.AVAILABLE
                     and payload.get("operation") == "AGENT_ANSWER_SUBMIT"
                     and payload.get("phase") == "RETURNED"
                     and payload.get("status") in {"ACCEPTED", "DONE"}
                     and isinstance(subject, dict)
                     and isinstance(subject.get("task_id"), str)
-                    and envelope.task_id == payload.get("task_id") == subject["task_id"]
-                    and envelope.run_id == task_run_id(subject["task_id"])
+                    and record.task_id == payload.get("task_id") == subject["task_id"]
+                    and record.run_id == task_run_id(subject["task_id"])
                     and operations is not None
                     and operations.review is not None
                 ):
@@ -1296,9 +1299,9 @@ class WorkspaceActivity:
                             subject, verdict=payload["status"]
                         ),
                         "observation_id": observation_id,
-                        "source_kind": envelope.source_kind,
-                        "source_id": envelope.source_id,
-                        "authority": envelope.authority.value,
+                        "source_kind": record.source_kind,
+                        "source_id": record.source_id,
+                        "authority": record.authority.value,
                     }
         return {
             "workspace_id": self.workspace_id,
@@ -1315,7 +1318,7 @@ class WorkspaceActivity:
     def _product_accepted_event_detail(
         self, observation_id: str, subject: Mapping[str, object]
     ) -> tuple[dict[str, object], int]:
-        """Read a default relay only through its actual correlated owner-return envelope."""
+        """Read a default relay only through its actual correlated owner-return record."""
         unavailable: dict[str, object] = {
             "status": "UNAVAILABLE",
             "reason": "activity.accepted_answer_unavailable",
@@ -1345,7 +1348,6 @@ class WorkspaceActivity:
         accepted = payload.get("subject")
         if not (
             receipt.schema_kind == PRODUCT_OPERATION_SCHEMA
-            and receipt.schema_version == 1
             and receipt.source_kind == OPERATION_SOURCE_KIND
             and (
                 receipt.source_id == self.source_id
@@ -1552,12 +1554,12 @@ class WorkspaceActivity:
             return
         self._note_append()
 
-    def _keep(self, draft: ObservationDraft) -> tuple[str, ObservationEnvelope]:
+    def _keep(self, draft: ObservationDraft) -> tuple[str, ObservationRecord]:
         """Validate a draft and write it into the Host's history once.
 
         Returns:
-            APPENDED with the envelope written, or REUSED_EXACT with the one an agent's replayed
-            sequence already wrote.
+            APPENDED with the record written (its id the event's), or REUSED_EXACT with the one an
+            agent's replayed sequence already wrote.
 
         Raises:
             ObservationStorageError: The Host's history does not record, or did not keep it.
@@ -1569,23 +1571,28 @@ class WorkspaceActivity:
             raise ObservationStorageError("activity.storage_unavailable", "history not recording")
         if draft.schema_kind not in (PRODUCT_OPERATION_SCHEMA, EXTERNAL_ACTIVITY_SCHEMA, *_FACTS):
             raise ValueError("observation.payload_not_admitted")
-        kept = envelope_of(_POLICIES.validate_and_redact(draft), self.clock())
+        kept, observed_at = _POLICIES.validate_and_redact(draft), self.clock()
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("observation clock must be timezone-aware")
+        observed_at = observed_at.astimezone(UTC)
         with self._keeping:
             if kept.schema_kind == EXTERNAL_ACTIVITY_SCHEMA:
                 existing = reads.replayed(kept.source_id, kept.source_sequence)
                 if existing is not None:
-                    if existing.observation_id != kept.observation_id:
+                    if _own(existing) != _own(kept):
                         raise ValueError("observation.source_sequence_collision")
                     return "REUSED_EXACT", existing
             try:
-                trace_record(kept, self._operation_spans, self.workspace_id)
+                event_id = trace_record(kept, observed_at, self._operation_spans, self.workspace_id)
             except ObservationStorageError:
                 raise
             except Exception as error:  # the history did not keep it: never counted as kept
                 raise ObservationStorageError(
                     "activity.observer_failed", type(error).__name__
                 ) from error
-        return "APPENDED", kept
+        if event_id is None:
+            raise ObservationStorageError("activity.storage_unavailable", "history not recording")
+        return "APPENDED", record_of(kept, observed_at, event_id)
 
     @property
     def _reads(self) -> LogObservations | None:
@@ -1718,16 +1725,63 @@ _POLICIES = default_observation_policies()
 """The schema policies every record is validated and redacted by before it is kept."""
 
 
-def trace_record(kept: ObservationEnvelope, spans: dict[str, Any], workspace: str) -> None:
-    """Write a kept record into the Host's history in `workspace`, whole: its payload as the
-    event's attributes and its envelope, the payload aside, as the `observation` attribute, so the
-    log answers every read the record answered.
+OWN: Final = (
+    "occurred_at",
+    "source_kind",
+    "source_id",
+    "source_sequence",
+    "task_id",
+    "run_id",
+    "stage_id",
+    "correlation_ids",
+    "authority",
+    "retention_class",
+)
+"""A record's own fields, beside its payload and the clock the Host kept it at: what no column
+of its event holds."""
+
+
+def _calls(
+    reads: LogObservations | None, page: ObservationReadPage | None
+) -> dict[str, dict[str, object]]:
+    """The CLI call at the root of each trace a page's items are in, by trace."""
+    traces = {item.trace_id for item in page.items if item.trace_id} if page else set()
+    return reads.calls(traces) if reads is not None and traces else {}
+
+
+def _own(record: ObservationDraft | ObservationRecord) -> dict[str, Any]:
+    """What a replayed agent event must repeat: its own fields and its payload, as the log reads
+    an agent's event back (`payload_of`, which keeps no empty subject)."""
+    own: dict[str, Any] = record.model_dump(mode="json", include=set(OWN))
+    payload = dict(record.inline_safe_payload or {})
+    return own | {
+        "payload": payload_of("agent.activity", agent_attributes(payload), payload.get("summary"))
+    }
+
+
+def record_of(kept: ObservationDraft, observed_at: datetime, event_id: str) -> ObservationRecord:
+    """The record a kept draft is, kept at `observed_at` by the event `event_id`."""
+    return ObservationRecord(
+        **kept.model_dump(mode="python", include={*OWN, "schema_kind", "inline_safe_payload"}),
+        observed_at=observed_at,
+        observation_id=event_id,
+    )
+
+
+def trace_record(
+    kept: ObservationDraft, observed_at: datetime, spans: dict[str, Any], workspace: str
+) -> str | None:
+    """Write a kept record into the Host's history in `workspace` as one event: its payload as the
+    event's attributes and its own fields (`OWN`) with `observed_at` as the `observation`
+    attribute. The event's type is its kind and the event's id its identity: that id, None outside
+    a Host.
 
     An operation is one step: requested writes its started row, returned or failed its ended row.
     An agent's event is a fact with its GenAI names, its summary the text; every other record is
     a fact of its type, and each person question an operation asked or answered is its own fact."""
     payload = dict(kept.inline_safe_payload or {})
-    observation = {"observation": kept.model_dump(mode="json", exclude={"inline_safe_payload"})}
+    own = kept.model_dump(mode="json", include=set(OWN))
+    observation = {"observation": own | {"observed_at": to_jsonable_python(observed_at)}}
     kind = kept.schema_kind
     if kind == PRODUCT_OPERATION_SCHEMA:
         ref, (attributes, text) = (
@@ -1735,18 +1789,20 @@ def trace_record(kept: ObservationEnvelope, spans: dict[str, Any], workspace: st
             bounded(payload | observation, None),
         )
         if payload["phase"] == "REQUESTED":
-            spans[ref] = history.begin("product.operation", attributes, text, workspace=workspace)
+            step = history.begin("product.operation", attributes, text, workspace=workspace)
+            spans[ref], event_id = step, None if step is None else str(step["event_id"])
         else:
             step, failed = spans.pop(ref, None), payload["phase"] == "FAILED"
-            history.finish(
+            event_id = history.finish(
                 step, "product.operation", attributes, text, failed=failed, workspace=workspace
             )
         for question in (payload.get("subject") or {}).get("person_questions") or ():
             asked = {"operation": payload["operation"], **question}
             history.fact("person.question", asked, workspace=workspace)
-    elif kind == EXTERNAL_ACTIVITY_SCHEMA:
+        return event_id
+    if kind == EXTERNAL_ACTIVITY_SCHEMA:
         attributes, text = bounded(agent_attributes(payload) | observation, payload.get("summary"))
-        history.fact(
+        heard: str | None = history.fact(
             "agent.activity",
             attributes,
             subject=("agent_event", agent_event(kept.source_id, kept.source_sequence)),
@@ -1755,14 +1811,17 @@ def trace_record(kept: ObservationEnvelope, spans: dict[str, Any], workspace: st
             at=kept.occurred_at,
             workspace=workspace,
         )
-    elif kind in _FACTS:
-        about = None
-        if kind == "TaskControlTransition" and kept.task_id is not None:
-            about = ("task", kept.task_id)
-        elif kind == "ArtifactVerificationObserved":
-            about = ("artifact", str(payload["artifact_hash"]))
-        attributes, text = bounded(payload | observation, None)
-        history.fact(_FACTS[kind], attributes, subject=about, text=text, workspace=workspace)
+        return heard
+    about = None
+    if kind == "TaskControlTransition" and kept.task_id is not None:
+        about = ("task", kept.task_id)
+    elif kind == "ArtifactVerificationObserved":
+        about = ("artifact", str(payload["artifact_hash"]))
+    attributes, text = bounded(payload | observation, None)
+    kept_as: str | None = history.fact(
+        _FACTS[kind], attributes, subject=about, text=text, workspace=workspace
+    )
+    return kept_as
 
 
 def bounded(attributes: dict[str, Any], text: str | None) -> tuple[dict[str, Any], str | None]:

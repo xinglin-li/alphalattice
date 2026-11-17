@@ -1024,7 +1024,7 @@ def _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outco
         holds = [
             payload["subject"]["analyst_admission_gate_hold_us"]
             for row in recorded.items
-            if (payload := row.envelope.inline_safe_payload or {}).get("operation")
+            if (payload := row.record.inline_safe_payload or {}).get("operation")
             == "AGENT_ANSWER_SUBMIT"
             and payload.get("phase") == "RETURNED"
             and "analyst_admission_gate_hold_us" in payload.get("subject", {})

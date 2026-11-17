@@ -12,7 +12,7 @@ const LiveActivity = (() => {
   // tail holds; later reads continue from the cursor.
   const LIMIT = 200, VISIBLE = 50, MAX_GROUPS = 200, MAX_ITEMS = 40, MAX_PAGES = 4;
   const INTERVAL = 3000, HIDDEN_INTERVAL = 15000, BACKOFF = 10000, CATCH_UP = 250;
-  const S = {cursor: null, epoch: null, watermark: 0, groups: new Map(), tasks: {}, error: '', observer: null,
+  const S = {cursor: null, epoch: null, watermark: 0, groups: new Map(), tasks: {}, calls: {}, error: '', observer: null,
     notice: '', unavailable: 0, unseen: 0, primed: false, fetching: null, timer: null, cost: null, disposition: null, stopped: false,
     stale: false, following: null, paused: null, followGeneration: 0, pendingOpen: null, pendingNoticed: null, opening: null, reconciled: 0};
   // A Goal follows only the Tasks and decisions its owners attributed, never a similar name.
@@ -57,6 +57,8 @@ const LiveActivity = (() => {
     const keep = new Set([...S.groups.values()].map((g) => g.task_id).filter(Boolean));
     for (const task of followedTasks()) keep.add(task);
     for (const id of Object.keys(S.tasks)) if (!keep.has(id)) delete S.tasks[id];
+    const traced = new Set([...S.groups.values()].flatMap((g) => g.items.map((v) => v.trace_id)));
+    for (const trace of Object.keys(S.calls)) if (!traced.has(trace)) delete S.calls[trace];
   }
   /* Facts of a group. Three truths stay apart: what the operation returned, what Task Control
    * says *now* (the fresh projection wins over any recorded transition), and whether an owner
@@ -71,6 +73,7 @@ const LiveActivity = (() => {
     const p = (returned || requested)?.payload || {};
     const live = g.task_id ? S.tasks[g.task_id] || null : null;
     const gap = g.items.some((v) => v.availability !== 'AVAILABLE');
+    const call = S.calls[g.items.find((v) => S.calls[v.trace_id])?.trace_id] || null; // the CLI call it ran under
     let state, tone, basis;
     if (live?.status === 'REFUSED') { state = 'REFUSED'; tone = 'refused'; basis = 'unavailable'; }
     else if (live) { state = live.lifecycle; tone = state.toLowerCase(); basis = 'current'; }
@@ -79,7 +82,7 @@ const LiveActivity = (() => {
     else if (requested) { state = 'REQUESTED'; tone = 'running'; basis = 'returned'; }
     else if (declared.length) { state = declaredWords(declared.at(-1).payload).state; tone = 'metadata'; basis = 'declared'; }
     else { state = gap ? 'PAYLOAD_NOT_RETAINED' : 'RECORDED'; tone = 'metadata'; basis = 'recorded'; }
-    return {ops, declared, transition, artifact, returned, requested, payload: p, live, gap, state, tone, basis,
+    return {ops, declared, transition, artifact, returned, requested, payload: p, live, gap, state, tone, basis, call,
       verified: Boolean(artifact?.payload), artifactKind: artifact?.payload?.artifact_kind || null, artifactHash: artifact?.payload?.artifact_hash || null,
       taskKind: live?.task_kind || transition?.payload?.task_class || null,
       operation: p.operation || (declared.length ? declaredWords(declared.at(-1).payload).operation : '') || (transition ? transition.payload?.task_class : '') || '',
@@ -372,7 +375,8 @@ const LiveActivity = (() => {
     const state = codeWords(f.state);
     const exact = g.items.map((v) => logLine(lineOf(v))), meta = metaLine(f);
     const lead = statusDot(f.tone, state);
-    const title = html`${codeWords(f.operation)}<span class="fv-log-by"> · ${actorWords(f.caller, f.payload?.producer_id)}</span>`;
+    const called = f.call?.command ? t(f.call.ended_at ? 'activity.call' : 'activity.call_running', {command: f.call.command}) : '';
+    const title = html`${codeWords(f.operation)}<span class="fv-log-by"> · ${actorWords(f.caller, f.payload?.producer_id)}${called ? html` · ${called}` : ''}</span>`;
     const way = f.verified ? {action: 'activity-open', value: g.key} : g.task_id ? {action: 'task', value: g.task_id} : null;
     const refusedSubject = f.state === 'REFUSED' ? subjectLine(f, g, true) : '';
     if (refusedSubject) meta[4] = joinMarkup([meta[4], refusedSubject].filter(Boolean));
@@ -439,7 +443,7 @@ const LiveActivity = (() => {
   }
   function rebuild(reason) {
     // Only this module's own state: never the open object, the Task Center selection or a draft.
-    S.notice = reason; S.groups.clear(); S.tasks = {}; S.watermark = 0;
+    S.notice = reason; S.groups.clear(); S.tasks = {}; S.calls = {}; S.watermark = 0;
   }
   /* One page into state. Retained groups, the watermark and the cursor all belong to one store
    * (`S.epoch`). A page from another store -- RESET, or a TAIL/CONTINUED that names a different
@@ -482,6 +486,7 @@ const LiveActivity = (() => {
     if (S.pendingOpen) openFollowed(); else if (S.following || S.paused && goalScope()) reconcileFollowed();
   }
   function mergeFresh(body) {
+    Object.assign(S.calls, body.calls || {}); // a running call's later read ends it
     const fresh = Object.values(body.tasks || {});
     for (const v of fresh) if (S.tasks[v.task_id] || followedTasks().includes(v.task_id) || [...S.groups.values()].some((g) => g.task_id === v.task_id)) S.tasks[v.task_id] = v;
     if (fresh.length) Data.mergeTasks(fresh);

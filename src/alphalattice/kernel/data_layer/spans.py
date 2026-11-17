@@ -196,12 +196,15 @@ class LogFactExporter(LogRecordExporter):
     def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
         """Append each record as its fact; FAILURE when the log refused any, whose refusal the
         emitting thread reads back (`refusal`)."""
-        self._here.refused = None
+        self._here.refused = self._here.kept = None
         for record in batch:
+            row, text = fact_event(record)
             try:
-                self._spans.append(*fact_event(record), raising=True)
+                self._spans.append(row, text, raising=True)
             except (DataError, sqlite3.Error) as error:
                 self._here.refused = error
+            else:
+                self._here.kept = row["event_id"]
         failed = self._here.refused is not None
         return LogRecordExportResult.FAILURE if failed else LogRecordExportResult.SUCCESS
 
@@ -210,6 +213,11 @@ class LogFactExporter(LogRecordExporter):
         A record is exported as it is emitted, on the emitting thread."""
         refused, self._here.refused = getattr(self._here, "refused", None), None
         return cast("DataError | sqlite3.Error | None", refused)
+
+    def kept(self) -> str | None:
+        """The event id of the last record this thread emitted and the log kept, once."""
+        kept, self._here.kept = getattr(self._here, "kept", None), None
+        return cast("str | None", kept)
 
     def shutdown(self) -> None:
         """Nothing of its own: the span exporter commits the log."""

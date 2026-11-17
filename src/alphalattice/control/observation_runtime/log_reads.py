@@ -1,39 +1,45 @@
 """The workspace's observations, read from the Host's log.
 
-The Host writes each kept observation into its log whole (`trace_record`): its payload as the
-event's attributes and its envelope, the payload aside, as the `observation` attribute. An agent's
-event carries its subject's session, agent, model and token counts under their OpenTelemetry GenAI
-names (`agent_attributes`) and its summary as the event's text; `payload_of` inverts both. So each
-read the observation ledger answered is answered here, from the same envelopes: the ordinal is the
-event's place in the log, and the store epoch is the log's first event, which changes only when the
-data root is made again.
+The Host writes each kept observation into its log as one event (`trace_record`): its payload as
+the event's attributes and the record's own fields (its clocks, source and sequence, authority,
+retention, Task, run, stage and correlation ids) as the `observation` attribute. The event's type
+is its kind, the event's id its identity and its place in the log its ordinal; the store epoch is
+the log's first event, which changes only when the data root is made again. An agent's event
+carries its subject's session, agent, model and token counts under their OpenTelemetry GenAI names
+(`agent_attributes`) and its summary as the event's text; `payload_of` inverts both.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal, Protocol
 
 from .contracts import (
-    ObservationEnvelope,
     ObservationReadCursor,
     ObservationReadItem,
     ObservationReadPage,
+    ObservationRecord,
 )
 
 MAXIMUM_READ_PAGE: Final = 500
 """The most observations one read returns."""
-TYPES: Final = (
-    "product.operation",
-    "agent.activity",
-    "task.transition",
-    "artifact.verified",
-    "clock.correlated",
-)
-"""The event types an observation is written as."""
+KINDS: Final = {
+    "product.operation": "ProductOperationObserved",
+    "agent.activity": "ExternalActivityObserved",
+    "task.transition": "TaskControlTransition",
+    "artifact.verified": "ArtifactVerificationObserved",
+    "clock.correlated": "ClockCorrelationRecorded",
+}
+"""The event types an observation is written as, and the kind each is."""
+TYPES: Final = tuple(KINDS)
+TYPE_OF: Final = {kind: type_ for type_, kind in KINDS.items()}
+OBSERVATION_ID: Final = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+"""An observation's id: the id of the log event that keeps it, issued by the Host and opaque; only
+its shape is checked before it is looked up."""
 GENAI_IDS: Final = ("native_session_id", "native_agent_id", "model")
 GENAI: Final = {
     "native_session_id": "gen_ai.conversation.id",
@@ -55,17 +61,14 @@ INDEXED: Final = (
 )
 SUBJECT_INDEXED: Final = ("native_session_id", "agent_session", "agent_vendor", "role")
 OBSERVATION_INDEXED: Final = (
-    "schema_kind",
-    "observation_id",
     "source_kind",
     "authority",
     "run_id",
     "correlation_ids",
 )
 """What the reads select an observation's event on: its attributes, its subject's and its
-envelope's, kept as attributes when the whole is the event's text (`observation.in_text`)."""
+own fields', kept as attributes when the whole is the event's text (`observation.in_text`)."""
 _OBSERVATIONS: Final = f"type IN ({', '.join(repr(name) for name in TYPES)}) AND workspace_id = ?"
-_KIND: Final = "json_extract(attrs, '$.observation.schema_kind')"
 _NATIVE_SESSION: Final = (
     "COALESCE(json_extract(attrs, '$.\"gen_ai.conversation.id\"'), "
     "json_extract(attrs, '$.subject.native_session_id'))"
@@ -201,13 +204,13 @@ class LogObservations:
         ):
             raise ValueError("observation.read_cursor_invalid")
         head = self.head_ordinal() if head_ordinal is None else head_ordinal
-        where = f"{_OBSERVATIONS} AND {_KIND} = ?"
-        args: list[str | int] = [self._workspace, schema_kind]
+        where = f"{_OBSERVATIONS} AND type = ?"
+        args: list[str | int] = [self._workspace, TYPE_OF.get(schema_kind, "")]
         session = schema_kind == "ExternalActivityObserved" and not snapshots
         if native_session_id is not None and session:
             # Operations belong to the Session span; its last message is not its endpoint.
-            where = f"""{_OBSERVATIONS} AND {_SESSION} = ? AND ({_KIND} = 'ExternalActivityObserved'
-                OR ({_KIND} = 'ProductOperationObserved'
+            where = f"""{_OBSERVATIONS} AND {_SESSION} = ? AND (type = 'agent.activity'
+                OR (type = 'product.operation'
                     AND json_extract(attrs, '$.observation.source_kind') = 'PRODUCT_OPERATION'
                     AND json_extract(attrs, '$.observation.authority') = 'OPERATIONAL_ASSERTION'
                     AND json_extract(attrs, '$.subject.agent_vendor')
@@ -228,32 +231,29 @@ class LogObservations:
         rows = self._events(f"{where} ORDER BY seq DESC LIMIT ?", (*args, limit + 1), scoped=False)
         return self._page("TAIL", head, list(reversed(rows[:limit])), len(rows) > limit)
 
-    def read(self, observation_id: str) -> ObservationEnvelope:
-        """One observation by its id.
+    def read(self, observation_id: str) -> ObservationRecord:
+        """One observation by its id, the id of the event that keeps it.
 
         Raises:
             ValueError: No observation has that id (`observation.tampered`, as the ledger said).
         """
-        rows = self._events(
-            f"{_OBSERVATIONS} AND json_extract(attrs, '$.observation.observation_id') = ? LIMIT 1",
-            (observation_id,),
-        )
+        rows = self._events(f"{_OBSERVATIONS} AND event_id = ? LIMIT 1", (observation_id,))
         if not rows:
             raise ValueError("observation.tampered")
-        return rows[0].envelope
+        return rows[0].record
 
-    def replayed(self, source_id: str, source_sequence: int) -> ObservationEnvelope | None:
+    def replayed(self, source_id: str, source_sequence: int) -> ObservationRecord | None:
         """The agent's event already kept for this producer source and sequence, if any."""
         rows = self._events(
             "workspace_id = ? AND type = 'agent.activity' AND subject_kind = 'agent_event'"
             " AND subject_id = ? LIMIT 1",
             (agent_event(source_id, source_sequence),),
         )
-        return rows[0].envelope if rows else None
+        return rows[0].record if rows else None
 
     def unique_correlated_observation(
         self, run_id: str, schema_kind: str, correlation_id: str
-    ) -> ObservationEnvelope | None:
+    ) -> ObservationRecord | None:
         """The one observation of a run and kind whose correlation ids hold `correlation_id`.
 
         Raises:
@@ -265,14 +265,44 @@ class LogObservations:
         ):
             raise ValueError("observation.correlation_selector_invalid")
         rows = self._events(
-            f"""{_OBSERVATIONS} AND json_extract(attrs, '$.observation.run_id') = ? AND {_KIND} = ?
+            f"""{_OBSERVATIONS} AND json_extract(attrs, '$.observation.run_id') = ? AND type = ?
             AND EXISTS (SELECT 1 FROM json_each(attrs, '$.observation.correlation_ids')
                 WHERE type = 'text' AND value = ?) LIMIT 2""",
-            (run_id, schema_kind, correlation_id),
+            (run_id, TYPE_OF.get(schema_kind, ""), correlation_id),
         )
         if len(rows) > 1:
             raise ValueError("observation.correlation_ambiguous")
-        return rows[0].envelope if rows else None
+        return rows[0].record if rows else None
+
+    def calls(self, traces: set[str]) -> dict[str, dict[str, object]]:
+        """The CLI call at the root of each of `traces`, by trace: its command, conversation, start
+        and, once it ended, its end and exit code; a call still running has no end."""
+        named = sorted(traces)
+        calls: dict[str, dict[str, object]] = {}
+        for at in range(0, len(named), MAXIMUM_READ_PAGE):
+            chunk = named[at : at + MAXIMUM_READ_PAGE]
+            rows = self._rows(
+                f"""SELECT trace_id, span_id, phase, started_us, occurred_us, attrs FROM event
+                WHERE type = 'cli.call' AND workspace_id = ?
+                AND trace_id IN ({", ".join("?" * len(chunk))}) ORDER BY seq""",
+                (self._workspace, *chunk),
+            )
+            for trace, span, phase, started, occurred, attrs in rows:
+                values = json.loads(attrs)
+                call = calls.setdefault(
+                    trace,
+                    {
+                        "span_id": span,
+                        "command": values.get("command"),
+                        "conversation": values.get("gen_ai.conversation.id"),
+                        "unattributed": bool(values.get("unattributed")),
+                        "started_at": _moment(occurred if phase == "started" else started),
+                        "ended_at": None,
+                    },
+                )
+                if phase != "started":
+                    call |= {"ended_at": _moment(occurred), "exit_code": values.get("exit_code")}
+        return calls
 
     def refusal_counts(self, *, since_day: str) -> tuple[dict[str, object], ...]:
         """The refusals on or after a day, one row a day, operation, code, caller kind and vendor,
@@ -301,7 +331,8 @@ class LogObservations:
         self, where: str, args: tuple[Any, ...], *, scoped: bool = True
     ) -> list[ObservationReadItem]:
         text = "(SELECT text FROM event_text WHERE event_text.seq = event.seq)"
-        sql = f"SELECT seq, type, attrs, {text} FROM event WHERE {where}"
+        columns = "seq, type, attrs, " + text + ", event_id, trace_id, span_id, parent_span_id"
+        sql = f"SELECT {columns} FROM event WHERE {where}"
         rows = self._rows(sql, (self._workspace, *args) if scoped else args)
         return [_item(row) for row in rows]
 
@@ -324,18 +355,36 @@ class LogObservations:
         return _guarded(lambda: self._log.read(sql, (self._workspace,) if args is None else args))
 
 
+_OWN: Final = frozenset(ObservationRecord.model_fields) - {
+    "kind",
+    "schema_kind",
+    "observation_id",
+    "inline_safe_payload",
+}
+"""The record's own fields an event's `observation` attribute keeps. Any other key there is set
+aside: the in-text marker, and the envelope's fields (its kind, version, sensitivity, hashes and
+minted id) that rows written before the envelope retired still hold."""
+
+
 def _item(row: sqlite3.Row) -> ObservationReadItem:
-    """The observation one event row was written from: its envelope rebuilt and checked."""
+    """The observation one event row keeps: its kind the event's type, its id the event's, its own
+    fields and its payload from the event's attributes and text."""
     attributes, text = json.loads(row[2]), row[3]
     if attributes["observation"].get("in_text"):
         whole = json.loads(text)
         attributes, text = whole["attributes"], whole["text"]
-    observation = attributes["observation"]
-    payload = None
-    if observation.get("payload_ref") is None:
-        payload = payload_of(row[1], attributes, text)
-    envelope = ObservationEnvelope.model_validate(observation | {"inline_safe_payload": payload})
-    return ObservationReadItem(ordinal=int(row[0]), envelope=envelope)
+    own = {key: value for key, value in attributes["observation"].items() if key in _OWN}
+    record = ObservationRecord.model_validate(
+        own
+        | {
+            "schema_kind": KINDS[row[1]],
+            "observation_id": row[4],
+            "inline_safe_payload": payload_of(row[1], attributes, text),
+        }
+    )
+    return ObservationReadItem(
+        ordinal=int(row[0]), record=record, trace_id=row[5], span_id=row[6], parent_span_id=row[7]
+    )
 
 
 def _moment(us: int) -> str:

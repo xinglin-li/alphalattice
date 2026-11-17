@@ -56,6 +56,7 @@ from alphalattice.interface.local_application.goals import (
     target_sessions,
 )
 from alphalattice.kernel.data_layer import history
+from tests._support.history_fixtures import native_first_use
 from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
@@ -285,7 +286,33 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         )
     goal = history.goal_trace(opened["goal_id"], [SESSION])  # the session that worked for it
     assert ELSEWHERE[1] not in {call["span_id"] for call in goal["calls"]}
+    gap = goal["agent"][0]  # the spike's native records laid over the session's first gap
+    native = native_first_use(SESSION, gap["started_us"], gap["ended_us"])
+    split = history.goal_trace(opened["goal_id"], [SESSION], native)
     _assert_each_command_is_one_call(log, before, goal)
+    first, breakdown = split["agent"][0], split["breakdown"]
+    shares = {
+        kind: first[f"{kind}_seconds"] / first["seconds"]
+        for kind in ("person", "tool", "model", "unattributed")
+    }
+    planted = {"person": 0.18, "tool": 0.14, "model": 0.46, "unattributed": 0.22}
+    assert shares == pytest.approx(planted, abs=1e-3)
+    assert breakdown["agent_split"] == "NATIVE_EVENTS"
+    # The share is wall time, so its size moves with the machine's load (the bound itself is proved
+    # on a planted gap); the run reads it as the untraced part of its calls, each over the bound
+    # flagged on its own.
+    calls = split["calls"]
+    walls = [c["ended_us"] - c["started_us"] for c in calls]
+    assert breakdown["untraced_share"] == pytest.approx(
+        breakdown["untraced_seconds"] / breakdown["call_seconds"], abs=1e-5
+    )
+    flagged = [
+        c
+        for c, wall in zip(calls, walls, strict=True)
+        if c["untraced_seconds"] * 1e6 > breakdown["untraced_bound"] * wall
+    ]
+    assert breakdown["untraced_flagged_calls"] == len(flagged)
+    assert all(c.get("untraced_flagged") for c in flagged)
 
 
 def _assert_each_command_is_one_call(log: Path, before: int, goal: Any) -> None:

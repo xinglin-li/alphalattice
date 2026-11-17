@@ -632,15 +632,16 @@ def begin(
 ) -> dict[str, Any] | None:
     """Start one step the Host ends later (`finish`), a child of the current step, and record its
     started row now with exactly `attributes`, so a reader sees it live; None outside a Host.
-    The Host writes both rows itself, so no attributes merge or flatten; a row the log refuses
-    raises its refusal (`DataError`), so the writer never counts it kept."""
+    The step carries that row's `event_id`. The Host writes both rows itself, so no attributes
+    merge or flatten; a row the log refuses raises its refusal (`DataError`), so the writer never
+    counts it kept."""
     exporter = _open.get("exporter")
     if exporter is None:
         return None
     step = _new_step(name, workspace)
     row = envelope(name, attrs=attributes, text=text, phase="started", **_step_fields(step))
     exporter.append(row | {"occurred_us": step["started_us"]}, text, raising=True)
-    return step
+    return step | {"event_id": row["event_id"]}
 
 
 def finish(
@@ -651,18 +652,20 @@ def finish(
     *,
     failed: bool,
     workspace: str | None = None,
-) -> None:
+) -> str | None:
     """Record the ended row of a step `begin` started, with exactly `attributes`; failed is its
-    phase. A step this Host did not begin (None) is a new one, ended now, of type `name`. A row
-    the log refuses raises its refusal (`DataError`)."""
+    phase. A step this Host did not begin (None) is a new one, ended now, of type `name`. The
+    ended row's event id; None outside a Host. A row the log refuses raises its refusal
+    (`DataError`)."""
     exporter = _open.get("exporter")
     if exporter is None:
-        return
+        return None
     step = step or _new_step(name, workspace)
     phase = "failed" if failed else "completed"
     fields = _step_fields(step) | {"started_us": step["started_us"]}
     row = envelope(step["name"], attrs=attributes, text=text, phase=phase, **fields)
     exporter.append(row, text, raising=True)
+    return str(row["event_id"])
 
 
 def _new_step(name: str, workspace: str | None) -> dict[str, Any]:
@@ -695,14 +698,14 @@ def fact(
     actor: tuple[str, str] | None = None,
     at: datetime | None = None,
     workspace: str | None = None,
-) -> None:
+) -> str | None:
     """Emit one log record, a fact in the span current here (a new trace outside one), in the
     Host's workspace, with `attributes` as they are (nested values kept); `text` is its body, `at`
-    when it happened (now by default). Nothing outside a Host; a record the log refuses raises its
-    refusal, so the writer never counts it kept."""
+    when it happened (now by default). Its event id; None outside a Host. A record the log refuses
+    raises its refusal, so the writer never counts it kept."""
     provider = _open.get("logger")
     if provider is None:
-        return
+        return None
     own = {"workspace_id": workspace or _open["workspace"]}
     if subject is not None:
         own |= {"subject_kind": subject[0], "subject_id": subject[1]}
@@ -716,6 +719,8 @@ def fact(
     )
     if (refused := _open["facts"].refusal()) is not None:
         raise refused
+    kept: str | None = _open["facts"].kept()
+    return kept
 
 
 def _attributes(values: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
@@ -735,12 +740,17 @@ def _attributes(values: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
 
 
 def goal_trace(
-    goal_id: str, sessions: Iterable[str] = (), *, workspace: str | None = None
+    goal_id: str,
+    sessions: Iterable[str] = (),
+    native: Iterable[Mapping[str, Any]] = (),
+    *,
+    workspace: str | None = None,
 ) -> dict[str, Any] | None:
     """A goal's waterfall and time breakdown, read from the log: each CLI call `workspace` (else
     the Host's) recorded naming the goal or made by one of `sessions` (those that worked for it),
-    and the steps under each call (`breakdown.goal_trace`). A session working in another workspace
-    on the same log adds nothing. None outside a Host."""
+    and the steps under each call, its agents' gaps split by their conversations' `native` records
+    where there are any (`breakdown.goal_trace`). A session working in another workspace on the
+    same log adds nothing. None outside a Host."""
     log = _open.get("log")
     if log is None:
         return None
@@ -773,7 +783,7 @@ def goal_trace(
                 (where, *chunk),
             ),
         )
-    return traced_goal(calls, steps)
+    return traced_goal(calls, steps, native=native)
 
 
 def traced(rows: Iterable[Mapping[str, Any]] | None) -> None:

@@ -10469,6 +10469,12 @@
     "meaning": "Each Task the page names or you watch, keyed by its exact Task id, as its status read shows it. An unprojectable canonical record has REFUSED status, code, words and workspace/backup requests; no lifecycle, progress or artifact is inferred."
    },
    {
+    "name": "calls",
+    "kind": "object",
+    "required": true,
+    "meaning": "The CLI call at the root of each trace the page's items are in, keyed by trace id: its command, its agent session, its start and, once it ended, its end and exit code. A call still running has no end; an item outside any call's trace names none."
+   },
+   {
     "name": "observer",
     "kind": "object",
     "required": true,
@@ -10522,7 +10528,7 @@
     "name": "observation_id",
     "kind": "string",
     "required": true,
-    "meaning": "The recorded observation, by its id."
+    "meaning": "The recorded observation, by its id: the opaque id of the log event that keeps it."
    },
    {
     "name": "source_id",

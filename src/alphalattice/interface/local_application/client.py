@@ -325,7 +325,7 @@ class LocalResearchClient:
         if observation_id is not None:
             if (
                 not isinstance(observation_id, str)
-                or re.fullmatch(r"[0-9a-f]{64}", observation_id) is None
+                or re.fullmatch(r"[\da-f-]{36}", observation_id) is None
             ):
                 raise LocalResearchClientError("activity.observation_id_invalid")
             if before is not None or native_session_id is not None:

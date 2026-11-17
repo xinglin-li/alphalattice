@@ -885,7 +885,11 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     ),
     (
         "activity.observation_id_invalid",
-        ClientRefusal("INVALID_INPUT", **refusal_words("activity.observation_id_invalid")),
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID",
+            "activity.observation_id_invalid",
+        ),
     ),
     (
         "activity.query_selection_conflict",

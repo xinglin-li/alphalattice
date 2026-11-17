@@ -2,6 +2,10 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "activity.observation_id_invalid": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The selected observation must be named by the exact observation id the activity page returns. Read the activity page and use that id as it is.", "zh-CN": "所选观察必须使用活动页返回的准确观察标识来指定。请读取活动页，并原样使用该标识。"}
+    },
     "activity.storage_unavailable": {
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "This Host's history is not recording, so it records no events and answers no activity; the Host that alphalattice serve starts records its history or refuses to start.", "zh-CN": "这个 Host 的历史没有在记录，因此不记录事件，也不回答活动；alphalattice serve 启动的 Host 会记录它的历史，否则拒绝启动。"}
@@ -101,6 +105,108 @@
         "en": "For ACHIEVED, fill a declared slot with verified references; if none was declared, use result.",
         "zh-CN": "标记为 ACHIEVED 时，请在已声明的交付项中填写已验证的引用；若未声明交付项，请使用 result。"
       }
+    },
+    "goal.time.title": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Time", "zh-CN": "时间"}
+    },
+    "goal.time.why": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Where this goal's time went, read from its traces: each command its agents ran, the Host's steps under it, and the agent's own time between one session's commands.", "zh-CN": "这个目标的时间花在哪里，从它的追踪读取：智能体运行的每条命令、其下 Host 的各步骤，以及同一会话两条命令之间智能体自己的时间。"}
+    },
+    "goal.time.read": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Read its time", "zh-CN": "读取时间"}
+    },
+    "goal.time.unread": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Its time is read from the Host's history on request.", "zh-CN": "按需从 Host 的历史读取它的时间。"}
+    },
+    "goal.time.none": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "No command of this goal is recorded yet.", "zh-CN": "这个目标还没有记录任何命令。"}
+    },
+    "goal.time.live": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "running", "zh-CN": "进行中"}
+    },
+    "goal.time.agent": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Agent", "zh-CN": "智能体"}
+    },
+    "goal.time.inferred": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "inferred from the command times", "zh-CN": "由命令时间推断"}
+    },
+    "goal.time.unattributed": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "no session named", "zh-CN": "未指明会话"}
+    },
+    "goal.time.untraced": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["s"],
+      "words": {"en": "{s} outside its steps", "zh-CN": "{s} 在其步骤之外"}
+    },
+    "goal.time.split": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["model", "tools", "person", "rest"],
+      "words": {"en": "model {model} · tools {tools} · waiting on you {person} · unattributed {rest}", "zh-CN": "模型 {model} · 工具 {tools} · 等待你 {person} · 未归属 {rest}"}
+    },
+    "goal.time.calls": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Commands", "zh-CN": "命令"}
+    },
+    "goal.time.untraced_total": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {"en": "Outside the Host's steps", "zh-CN": "Host 步骤之外"}
+    },
+    "goal.time.flagged": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["n", "bound"],
+      "words": {"en": "{n} commands over {bound}% untraced", "zh-CN": "{n} 条命令未追踪超过 {bound}%"}
+    },
+    "goal.time.steps": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["n"],
+      "words": {"en": "{n} steps", "zh-CN": "{n} 个步骤"}
+    },
+    "activity.call": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["command"],
+      "words": {"en": "via `{command}`", "zh-CN": "经由 `{command}`"}
+    },
+    "activity.call_running": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": ["command"],
+      "words": {"en": "via `{command}`, still running", "zh-CN": "经由 `{command}`，仍在运行"}
     },
     "doctor.windows_long_paths.enables": {
       "owner": "alphalattice.interface.local_application",
