@@ -265,7 +265,7 @@ def test_active_profile_window_keeps_background_work_after_the_last_rpc(live, mo
 
 @pytest.mark.parametrize("language", ["en", "zh"])
 @pytest.mark.parametrize("fault", ["stages", "unreadable"])
-@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True)
+@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True, ids=["fixed-host-clock"])
 def test_cli_profile_bounds_stdout_but_keeps_complete_output(
     live, monkeypatch, tmp_path, language, fault
 ):
@@ -275,6 +275,7 @@ def test_cli_profile_bounds_stdout_but_keeps_complete_output(
     )
     if fault == "unreadable":
         path = stage_spans_path(runtime, registry.tasks()[0].task_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{\n" * 1000, encoding="utf-8")
     complete = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
     saved = tmp_path / "profile.json"

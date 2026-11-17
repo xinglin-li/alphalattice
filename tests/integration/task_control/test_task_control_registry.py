@@ -1081,6 +1081,7 @@ def test_runner_checkpoints_stages_and_recovers_from_verified_prefix(
             )
             """
         )
+    connection.close()  # SQLite's transaction context does not close its Windows file handle.
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
@@ -1102,6 +1103,11 @@ def test_runner_checkpoints_stages_and_recovers_from_verified_prefix(
     assert heartbeats[-1].task_id == task.task_id
     assert heartbeats[-1].execution_id == completed.latest_execution_id
     assert runner.heartbeat_signal(completed.latest_execution_id) == heartbeats[-1]
+    assert not (tmp_path / "task-runtime-heartbeats.sqlite").exists()
+    assert history.held().read(
+        "SELECT 1 FROM wait WHERE task_id = ? AND purpose = 'task.heartbeat'",
+        (str(task.task_id),),
+    )
 
     second_envelope, second_goal, second_plan = task_contract(salt="recovery")
     recovering = registry.admit(

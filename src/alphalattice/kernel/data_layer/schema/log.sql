@@ -263,6 +263,9 @@ CREATE TABLE wait (
   CHECK ((kind = 'event' AND event_type_id IS NOT NULL) OR (kind = 'time' AND fires_us IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX wait_open ON wait(kind, fires_us) WHERE resolved_seq IS NULL;
+CREATE INDEX wait_heartbeat ON wait(
+  json_extract(match_attrs, '$.source'), json_extract(match_attrs, '$.signal.execution_id'), started_seq
+) WHERE purpose = 'task.heartbeat';
 
 -- Task Control's records (task_control.registry), each row the projection of the event that carries its sealed
 -- record. They keep the registry's own model: a Task's version, its work items, executions, notes, commands bound

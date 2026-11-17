@@ -60,6 +60,7 @@ MACHINE_TEXT: Final = frozenset(
         "task.saved",
         "work_item.saved",
         "task.noted",
+        "task.telemetry",
         "execution.started",
         "stage.verified",
         "command.accepted",
@@ -542,9 +543,12 @@ def _wait(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             e["seq"],
         ),
     )
-    con.execute(
-        "UPDATE task SET state = 'waiting' WHERE task_id = ? AND state = 'running'", (a["task_id"],)
-    )
+    # A watchdog's lease waits for its deadline, not the Task: its work is still running.
+    if a["purpose"] != "task.heartbeat":
+        con.execute(
+            "UPDATE task SET state = 'waiting' WHERE task_id = ? AND state = 'running'",
+            (a["task_id"],),
+        )
 
 
 @on("wait.resolved")
@@ -555,8 +559,10 @@ def _wait_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     )
     con.execute(  # a task resumes only when its last wait resolves
         "UPDATE task SET state = 'running' WHERE state = 'waiting' AND task_id ="
-        " (SELECT task_id FROM wait WHERE wait_id = ?) AND NOT EXISTS (SELECT 1 FROM wait w"
-        " WHERE w.task_id = task.task_id AND w.resolved_seq IS NULL)",
+        " (SELECT task_id FROM wait WHERE wait_id = ? AND purpose <> 'task.heartbeat')"
+        " AND NOT EXISTS (SELECT 1 FROM wait w"
+        " WHERE w.task_id = task.task_id AND w.resolved_seq IS NULL"
+        " AND w.purpose <> 'task.heartbeat')",
         (e["subject_id"],),
     )
 

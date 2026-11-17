@@ -41,8 +41,8 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     workflow: Any = _workflow(real_risk_workspace, tmp_path)
     who = {"actor_kind": ActorKind.HUMAN, "actor_id": "researcher"}
     workflow.preflight(document, **who)
-    sealed = workflow.prepare(document, **who)
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the Host's data root
+    sealed = workflow.prepare(document, **who)
     history.open_history("w-risk", "risk", tmp_path)
     try:
         registry = DuckDbTaskControlRegistry(

@@ -1128,20 +1128,17 @@
       ]
     },
     "task-heartbeats": {
-      "summary": "a running Task's heartbeats beside its checkpoint",
+      "summary": "a running Task's lease and deadline on the held log; old sidecars are verified and set aside",
       "class": "cache-scratch",
       "tier": 3,
       "home": "log wait (a step's lease and deadline)",
       "location": "workspace-runtime",
       "bytes": 24576,
-      "covers": [
-        "table:workspace_task_heartbeat"
-      ],
       "authority_owners": [
-        "task_control.runner._SqliteHeartbeatStore"
+        "task_control.upgrade.write_heartbeat"
       ],
       "writers": [
-        "task_control.runner:_SqliteHeartbeatStore"
+        "task_control.upgrade:_runtime_switch"
       ],
       "readers": [
         "alternative_evidence.runtime.task_adapter",
@@ -3229,7 +3226,7 @@
       ]
     },
     "task-telemetry": {
-      "summary": "Task stage spans and telemetry",
+      "summary": "Task phase readouts and optional progress as local SDK spans on the held log; durable stage evidence stays with its owner",
       "class": "event-log",
       "tier": 3,
       "home": "log event (a step is one event with its start time, as a span)",
@@ -3237,7 +3234,7 @@
       "bytes": null,
       "writers": [
         "data_platform.task_telemetry:TaskTelemetry",
-        "task_control.timing:record_stage_spans"
+        "task_control.upgrade:_runtime_switch"
       ],
       "readers": [
         "product_host.composition.portfolio_research_operations",
@@ -3758,7 +3755,8 @@
     "portfolio_strategy_lab.application.calibration:_legacy_npz_digest": "writes an npz to an in-memory buffer to hash it",
     "knowledge.hybrid:_read_manifest": "opens the index's SQLite file to read its manifest",
     "knowledge.hybrid:_verify_projection": "opens the index's SQLite file to verify it",
-    "task_control.runner:TaskHeartbeatReader": "opens the heartbeat SQLite file to read it",
+    "task_control.runner:TaskHeartbeatReader": "opens an unswitched heartbeat SQLite file read-only; otherwise queries the held log or a mode=ro attach",
+    "task_control.upgrade:_stored_heartbeats": "opens the old heartbeat SQLite file with mode=ro for equality verification before retiring it",
     "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "portfolio_strategy_lab.publication.finalization_ledger:PortfolioFinalizationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "model_validation.protected_gate:ProtectedValidationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",

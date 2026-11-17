@@ -94,7 +94,9 @@ def _envelope(attributes: Mapping[str, Any] | None, scope: Any) -> dict[str, Any
     }
 
 
-def step_event(span: ReadableSpan, *, started: bool = False) -> dict[str, Any]:
+def step_event(
+    span: ReadableSpan, *, started: bool = False, text: str | None = None
+) -> dict[str, Any]:
     """The step event an ended span is recorded as; with `started`, the event a live span writes
     as it starts, so a reader sees the step before it ends."""
     context, parent = span.get_span_context(), span.parent
@@ -105,6 +107,7 @@ def step_event(span: ReadableSpan, *, started: bool = False) -> dict[str, Any]:
         span.name,
         fields.pop("subject"),
         fields.pop("attrs"),
+        text=text,
         phase=(
             "started"
             if started

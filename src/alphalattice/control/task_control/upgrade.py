@@ -12,19 +12,23 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import closing, contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
 from alphalattice.control.workspace_runtime.database import open_workspace_database
-from alphalattice.kernel.data_layer.history import data_root, holding
-from alphalattice.kernel.data_layer.log import attach
+from alphalattice.kernel.data_layer.chain import canonical
+from alphalattice.kernel.data_layer.history import data_root, held, holding
+from alphalattice.kernel.data_layer.log import attach, uuid7
+from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
     TaskExecution,
+    TaskHeartbeatSignal,
     TaskLifecycle,
     TaskRecord,
     WorkItemLifecycle,
@@ -566,3 +570,333 @@ def _verify_import(
         return unequal
 
     return list(registry._read(read))
+
+
+HEARTBEAT_LEASE_SECONDS = 30.0
+"""The runner's existing default stale threshold; readers may still ask for another threshold."""
+
+
+def read_heartbeat(path: Path, execution_id: object) -> TaskHeartbeatSignal | None:
+    """The latest signal for this runner and execution, from its wait projection, read-only."""
+    with log_of(path) as (connection, _):
+        if connection is None:
+            return None
+        row = connection.execute(
+            "SELECT match_attrs FROM wait WHERE purpose = 'task.heartbeat'"
+            " AND json_extract(match_attrs, '$.source') = ?"
+            " AND json_extract(match_attrs, '$.signal.execution_id') = ?"
+            " ORDER BY started_seq DESC LIMIT 1",
+            [str(path.resolve()), str(execution_id)],
+        ).fetchone()
+    return None if row is None else TaskHeartbeatSignal.model_validate(json.loads(row[0])["signal"])
+
+
+def write_heartbeat(path: Path, signal: TaskHeartbeatSignal) -> None:
+    """Renew a step's time wait in the held log's unit; the sealed signal is its match data.
+
+    The latest signal remains readable after the wait resolves. Expiry readers retain their
+    existing business/operational max and caller threshold, including the strict greater-than
+    boundary. This deadline records that default; it does not create a scheduler or a new clock.
+    """
+    log = held()
+    with log.unit() as connection:
+        row = connection.execute(
+            "SELECT workspace_id FROM workspace_task WHERE task_id = ?", [str(signal.task_id)]
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"task_control.heartbeat_task_unbound:{signal.task_id}")
+        source = str(path.resolve())
+        previous = connection.execute(
+            "SELECT wait_id, match_attrs FROM wait WHERE purpose = 'task.heartbeat'"
+            " AND json_extract(match_attrs, '$.source') = ?"
+            " AND json_extract(match_attrs, '$.signal.execution_id') = ?"
+            " AND resolved_seq IS NULL ORDER BY started_seq DESC LIMIT 1",
+            [source, str(signal.execution_id)],
+        ).fetchone()
+        if previous is not None:
+            if json.loads(previous[1])["signal"] == signal.model_dump(mode="json"):
+                return
+            log.record(
+                "wait.resolved", ("wait", previous[0]), workspace=row[0], node="task_control"
+            )
+        observed_us = int(signal.observed_at.timestamp() * 1_000_000)
+        log.record(
+            "wait.started",
+            ("wait", uuid7()),
+            {
+                "task_id": str(signal.task_id),
+                "kind": "time",
+                "purpose": "task.heartbeat",
+                "fires_us": observed_us + int(HEARTBEAT_LEASE_SECONDS * 1_000_000),
+                "match": {"source": source, "signal": signal.model_dump(mode="json")},
+            },
+            workspace=row[0],
+            occurred_us=observed_us,
+            node="task_control",
+        )
+
+
+def _stored_heartbeats(path: Path) -> tuple[TaskHeartbeatSignal, ...]:
+    """Read every old signal without changing or repairing the old SQLite file."""
+    if not path.is_file():
+        return ()
+    try:
+        with closing(
+            sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5)
+        ) as con:
+            if not con.execute("SELECT 1 FROM workspace_task_heartbeat LIMIT 1").fetchall():
+                return ()  # an older empty schema has no signal_json column
+            rows = con.execute("SELECT signal_json FROM workspace_task_heartbeat").fetchall()
+        return tuple(TaskHeartbeatSignal.model_validate_json(row[0]) for row in rows)
+    except (OSError, sqlite3.Error, ValueError) as error:
+        raise ValueError("task_control.heartbeat_store_unreadable") from error
+
+
+def _heartbeat_step(path: Path, _runner: object = None) -> None:
+    """A live old lease is refused by execution id, before any signal is copied."""
+    signals, log = _stored_heartbeats(path), held()
+    with log.unit() as connection:
+        for signal in signals:
+            row = connection.execute(
+                "SELECT lifecycle FROM workspace_task WHERE task_id = ?", [str(signal.task_id)]
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"task_control.heartbeat_task_unbound:{signal.task_id}")
+            if row[0] in ("RUNNING", "CANCEL_REQUESTED"):
+                raise ValueError(f"task_control.live_lease_present:{signal.execution_id}")
+        for signal in signals:
+            write_heartbeat(path, signal)
+
+
+def _heartbeat_verify(path: Path, _runner: object = None) -> bool:
+    """ALL EQUAL for every old execution, including its worker, sequence, seal and instant."""
+    return all(
+        read_heartbeat(path, signal.execution_id) == signal for signal in _stored_heartbeats(path)
+    )
+
+
+def _runtime_switch(paths: tuple[Path, ...], reader: str) -> None:
+    """Select one reader by setting verified old files aside; rollback restores their names.
+
+    No file is deleted. A kill between renames leaves each file at its old or retired name;
+    the next step checks whichever old files remain and never replaces a retired generation.
+    """
+    held().flush()  # the conversion is durable before the old reader is set aside
+    files = tuple(
+        file
+        for path in paths
+        for file in (
+            (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm"))
+            if path.suffix == ".sqlite"
+            else (path,)
+        )
+    )
+    # New reader first, then its abandoned WAL side files; rollback restores the WAL before
+    # publishing the old main file, so neither direction selects an incomplete old store.
+    for path in files if reader == "new" else reversed(files):
+        retired = path.parent / RETIRED_DIRECTORY / path.name
+        source, target = (path, retired) if reader == "new" else (retired, path)
+        if not source.exists():
+            continue
+        if target.exists():
+            raise ValueError(f"task_control.runtime_retirement_conflict:{path.name}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+
+
+def heartbeat_family(path: Path) -> Family:
+    """The task-heartbeats registration in the upgrade runner's step/verify/switch form."""
+    return Family(
+        "task-heartbeats",
+        partial(_heartbeat_step, path),
+        partial(_heartbeat_verify, path),
+        partial(_runtime_switch, (path,)),
+    )
+
+
+def import_heartbeats(path: Path) -> None:
+    """The carrier's first-use import seam, using the family's same restart-safe operations."""
+    if not path.is_file():
+        return
+    _heartbeat_step(path)
+    if not _heartbeat_verify(path):
+        raise ValueError("task_control.heartbeat_import_unequal")
+    _runtime_switch((path,), "new")
+
+
+def _stored_telemetry(path: Path) -> tuple[dict[str, Any], ...]:
+    """The old reader's valid rows; an invalid source stays present and refuses the switch."""
+    if not path.is_file():
+        return ()
+    try:
+        raw = path.read_text(encoding="utf-8")
+        values = (
+            [json.loads(line) for line in raw.splitlines()]
+            if path.suffix == ".jsonl"
+            else [json.loads(raw)]
+        )
+    except (OSError, ValueError) as error:
+        raise ValueError(f"task_control.telemetry_import_unreadable:{path.name}") from error
+    expected = path.stem if path.suffix == ".jsonl" else path.parent.name
+    if any(not isinstance(row, dict) or row.get("task_id") != expected for row in values):
+        raise ValueError(f"task_control.telemetry_import_unreadable:{path.name}")
+    return tuple(values)
+
+
+def read_task_telemetry(
+    path: Path, task_id: object, *, latest: bool = False
+) -> tuple[dict[str, Any], ...]:
+    """The exact Task-bound documents carried by this source's spans, in append order."""
+    with log_of(path) as (connection, _):
+        if connection is None:
+            return ()
+        order = " ORDER BY e.seq DESC LIMIT 1" if latest else " ORDER BY e.seq"
+        rows = connection.execute(
+            "SELECT t.text FROM event e JOIN event_text t USING (seq)"
+            " WHERE e.type = 'task.telemetry' AND e.subject_id = ?"
+            " AND json_extract(e.attrs, '$.source') = ?" + order,
+            [str(task_id), str(path.resolve())],
+        ).fetchall()
+    return tuple(json.loads(row[0]) for row in rows)
+
+
+def record_task_telemetry(path: Path, row: Mapping[str, Any]) -> None:
+    """One readout is one local SDK span through the data-layer span owner.
+
+    The source's structured readout is the admitted event text, so large span summaries stay
+    intact without expanding the small attribute envelope. No runtime, exporter thread or
+    remote destination is added. Historical clocks come from the document, never from import.
+    """
+    from opentelemetry.sdk.trace import ReadableSpan  # lazy: the SDK, only while recording
+    from opentelemetry.sdk.trace.id_generator import RandomIdGenerator  # lazy: span recording
+    from opentelemetry.trace import (  # lazy: span recording, never a timing read
+        SpanContext,
+        TraceFlags,
+        get_current_span,
+    )
+
+    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, only while recording
+        PREFIX,
+        step_event,
+    )
+
+    log = held()
+    task_id = str(row["task_id"])
+    found = log.read("SELECT workspace_id FROM workspace_task WHERE task_id = ?", (task_id,))
+    if not found:
+        raise ValueError(f"task_control.telemetry_task_unbound:{task_id}")
+    with log.unit():
+        _register_telemetry(log)
+    projection = row.get("projection", row)
+    # A progress snapshot is an instantaneous observation. Only a completed phase supplies
+    # elapsed work; counting every snapshot since started_at would count that work repeatedly.
+    instant = (
+        row["started_at"]
+        if "wall_seconds" in row
+        else projection.get("updated_at", row.get("written_at"))
+    )
+    start = datetime.fromisoformat(str(instant))
+    if start.utcoffset() is None:
+        raise ValueError("task_control.telemetry_clock_naive")
+    end = start + timedelta(seconds=float(row["wall_seconds"])) if "wall_seconds" in row else start
+    ids, parent = RandomIdGenerator(), get_current_span().get_span_context()
+    context = SpanContext(
+        parent.trace_id if parent.is_valid else ids.generate_trace_id(),
+        ids.generate_span_id(),
+        False,
+        TraceFlags(TraceFlags.SAMPLED),
+    )
+    span = ReadableSpan(
+        "task.telemetry",
+        context=context,
+        parent=parent if parent.is_valid else None,
+        attributes={
+            PREFIX + "subject_kind": "task",
+            PREFIX + "subject_id": task_id,
+            PREFIX + "workspace_id": str(found[0][0]),
+            PREFIX + "node": "task_control",
+            "source": str(path.resolve()),
+            "channel": path.stem if path.suffix != ".jsonl" else "stage.phase",
+        },
+        start_time=int(start.timestamp() * 1_000_000) * 1000,
+        end_time=int(end.timestamp() * 1_000_000) * 1000,
+    )
+    text = json.dumps(dict(row), sort_keys=True, separators=(",", ":"))
+    log.append(step_event(span, text=text), text)
+
+
+def _register_telemetry(log: Any) -> None:
+    """Register once in the caller's log unit, including concurrent first phase completions."""
+    if not log.read(
+        "SELECT 1 FROM definition WHERE family = 'event_type' AND name = 'task.telemetry'"
+    ):
+        definition = {"family": "event_type", "name": "task.telemetry", "version": 1}
+        log.record(
+            "definition.registered",
+            ("definition", "event_type/task.telemetry"),
+            definition,
+            text=canonical(
+                definition
+                | {
+                    "status": "standard",
+                    "text": "A Task phase readout or optional progress observation.",
+                    "spec": {
+                        "work": True,
+                        "subject": "task",
+                        "required": ["channel", "source"],
+                        "text": "required",
+                        "durable": False,
+                    },
+                }
+            ).decode(),
+            node="task_control",
+        )
+
+
+def _telemetry_step(paths: tuple[Path, ...], _runner: object = None) -> None:
+    """Copy every old phase/snapshot once, retaining its exact readout and source clock."""
+    # Parse all sources first: a bad source cannot retire another file or leave half a source.
+    sources = [(path, _stored_telemetry(path)) for path in paths]
+    with held().unit():
+        for path, rows in sources:
+            if not rows:
+                continue
+            logged = read_task_telemetry(path, rows[0]["task_id"])
+            if logged != rows[: len(logged)]:
+                raise ValueError(f"task_control.telemetry_import_conflict:{path.name}")
+            for row in rows[len(logged) :]:
+                record_task_telemetry(path, row)
+
+
+def _telemetry_verify(paths: tuple[Path, ...], _runner: object = None) -> bool:
+    """ALL EQUAL for every stored phase and snapshot, without a missing-field default."""
+    for path in paths:
+        rows = _stored_telemetry(path)
+        if rows and read_task_telemetry(path, rows[0]["task_id"]) != rows:
+            return False
+    return True
+
+
+def telemetry_family(paths: tuple[Path, ...]) -> Family:
+    """The task-telemetry registration in the upgrade runner's step/verify/switch form.
+
+    Paths name only stage phase JSONL and work-progress/listing-activity snapshots. Durable
+    preparation stage evidence sharing TaskTelemetry's JSON utility is outside this family.
+    """
+    return Family(
+        "task-telemetry",
+        partial(_telemetry_step, paths),
+        partial(_telemetry_verify, paths),
+        partial(_runtime_switch, paths),
+    )
+
+
+def import_telemetry(paths: tuple[Path, ...]) -> None:
+    """First-use import through the carrier's seam, with the registered family's operations."""
+    existing = tuple(path for path in paths if path.is_file())
+    if not existing:
+        return
+    _telemetry_step(existing)
+    if not _telemetry_verify(existing):
+        raise ValueError("task_control.telemetry_import_unequal")
+    _runtime_switch(existing, "new")

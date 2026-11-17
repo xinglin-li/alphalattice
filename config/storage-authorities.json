@@ -377,18 +377,6 @@
     },
     {
       "tables": [
-        "workspace_task_heartbeat"
-      ],
-      "database": "task-heartbeats",
-      "semantic_role": "a running Task's heartbeats, beside its checkpoint",
-      "generation_model": "OPERATIONAL_PROJECTION",
-      "authority_owner": "task_control.runner._SqliteHeartbeatStore",
-      "retention_owner": "task_control",
-      "rebuildability": "DISPOSABLE_WHEN_NO_TASK_RUNS",
-      "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
         "action_audit_chain_receipt",
         "data_remediation_failure_receipt",
         "workspace_data_update_receipt",

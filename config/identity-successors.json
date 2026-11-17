@@ -15345,6 +15345,13 @@
    "successor": "47fa63e23c088760068f81130e9565461d6eae1d8053147c574be58e11e36d51",
    "change": "Market prices are read from the shared store by default",
    "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "dda37bce47e671a77c8ae5279bfefa669f5a5e4de09548cfa3a2c3066ba912f2",
+   "successor": "3df0e687b1ae0171e7bd420f919fb91801c18bbb740e8f002458be235daf7bc1",
+   "change": "Keep task heartbeats and progress in the machine's history log",
+   "reason": "equal-value change: workspace preparation's heartbeats renew a wait on the data root's log and its phase and progress telemetry become spans; the preparation's results, its stale threshold and its task lifecycle are unchanged, and every available QA heartbeat signal and wait replays ALL EQUAL"
   }
  ]
 }

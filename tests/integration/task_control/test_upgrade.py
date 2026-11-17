@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -13,6 +14,7 @@ from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.task_control.contracts import (
+    TaskHeartbeatSignal,
     TaskLifecycle,
     WorkItemLifecycle,
 )
@@ -37,6 +39,153 @@ from tests.workspace_task_runner.task_control_support import (
 )
 
 TEST_SOURCE = "src/alphalattice/control/task_control/upgrade.py"
+
+
+def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family_name: str,
+) -> None:
+    """Integration: real legacy files, committed log waits and SDK spans cross a failed rename
+    and a reopened log; an in-memory unit cannot prove the reader/retirement boundary."""
+    from alphalattice.control.task_control import upgrade as owner
+    from alphalattice.control.task_control.runner import TaskControlRunner, TaskHeartbeatReader
+    from alphalattice.control.task_control.timing import read_task_telemetry
+    from alphalattice.kernel.data_layer.log import replay
+
+    now = datetime(2026, 8, 5, 15, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt=family_name)
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    worker = uuid4()
+    started = registry.start_next(
+        compatibility=compatibility(plan), worker_instance_id=worker, observed_at=now
+    )
+    assert started is not None
+    _, execution = started
+    signal = TaskHeartbeatSignal.from_identity(
+        task_id=task.task_id,
+        execution_id=execution.execution_id,
+        worker_instance_id=worker,
+        sequence=1,
+        observed_at=now,
+    )
+    runtime = tmp_path / "runtime" / "old.sqlite"
+    path = runtime.with_name("old-heartbeats.sqlite")
+    path.parent.mkdir(exist_ok=True)
+    if family_name == "task-heartbeats":
+        with sqlite3.connect(path) as con:
+            con.execute("CREATE TABLE workspace_task_heartbeat (signal_json TEXT)")
+            con.execute(
+                "INSERT INTO workspace_task_heartbeat VALUES (?)", [signal.model_dump_json()]
+            )
+        con.close()
+        family = owner.heartbeat_family(path)
+        with pytest.raises(ValueError, match=f"live_lease_present:{execution.execution_id}"):
+            family.step(None)
+        assert path.is_file() and owner.read_heartbeat(path, execution.execution_id) is None
+        expected = signal
+    else:
+        path = runtime.parent / "execution" / "spans" / f"{task.task_id}.jsonl"
+        path.parent.mkdir(parents=True)
+        expected = (
+            {
+                "task_id": str(task.task_id),
+                "execution_id": str(execution.execution_id),
+                "stage_id": "resolve_inputs",
+                "phase": "execute",
+                "started_at": now.isoformat(),
+                "wall_seconds": 0.25,
+                "spans": [],
+            },
+        )
+        path.write_text("".join(json.dumps(row) + "\n" for row in expected), encoding="utf-8")
+        from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
+        from alphalattice.control.observation_runtime.telemetry.progress import (
+            WorkProgressUpdate,
+            WorkspaceProgressPublisher,
+        )
+        from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+        progress = tmp_path / "runtime" / "preparation" / str(task.task_id) / "work-progress.json"
+        projection = WorkspaceProgressPublisher(tmp_path / "artifacts").publish(
+            WorkProgressUpdate(
+                operation_id="fixture",
+                stage_id="resolve_inputs",
+                status="RUNNING",
+                completed_units=3,
+                total_units=10,
+                unit_name="rows",
+            )
+        )
+        snapshot = {
+            "task_id": str(task.task_id),
+            "execution_id": str(execution.execution_id),
+            "input_hash": task.input.input_hash,
+            "stage": "resolve_inputs",
+            "projection": projection.model_dump(mode="json"),
+        }
+        snapshot["content_hash"] = canonical_hash(snapshot)
+        TaskTelemetry.replace_json(progress, snapshot)
+        family = owner.telemetry_family((path, progress))
+    registry.mark_recovery_required(
+        task_id=task.task_id, failure_code="fixture.stop", observed_at=now + timedelta(seconds=1)
+    )
+    family.step(None)
+    assert family.verify(None) is True
+    with monkeypatch.context() as patch:
+
+        def killed(*_paths: object) -> None:
+            raise _Killed
+
+        patch.setattr(owner.os, "replace", killed)
+        with pytest.raises(_Killed):
+            family.switch("new")
+    assert path.is_file()  # the selected old reader was never lost
+    history.close_history()
+    family.step(None)
+    assert family.verify(None) is True
+    family.switch("new")
+    assert not path.exists() and (path.parent / RETIRED_DIRECTORY / path.name).is_file()
+    if family_name == "task-heartbeats":
+        assert TaskHeartbeatReader(runtime).read(execution.execution_id).signals == (expected,)
+        clock = [now + timedelta(seconds=31)]
+        runner = TaskControlRunner(
+            registry=registry, adapters={}, runtime_path=str(runtime), clock=lambda: clock[0]
+        )
+        state_sql = "SELECT state FROM task WHERE task_id = ?"
+        state_before = history.held().read(state_sql, (str(task.task_id),))[0][0]
+        # Renewals under load keep the old strict expiry boundary and latest sealed reading.
+        for sequence in range(2, 52):
+            signal = TaskHeartbeatSignal.from_identity(
+                task_id=task.task_id,
+                execution_id=execution.execution_id,
+                worker_instance_id=worker,
+                sequence=sequence,
+                observed_at=now + timedelta(seconds=1),
+            )
+            owner.write_heartbeat(path, signal)
+        assert history.held().read(state_sql, (str(task.task_id),))[0][0] == state_before
+        assert runner.stale_active_tasks() == ()
+        clock[0] += timedelta(microseconds=1)
+        assert tuple(row.task_id for row in runner.stale_active_tasks()) == (task.task_id,)
+        assert runner.heartbeat_signal(execution.execution_id) == signal
+    else:
+        assert read_task_telemetry(path, task.task_id) == expected
+        assert TaskTelemetry.read_json(progress, task.task_id) == snapshot
+        assert not progress.exists()
+    log = history.held()
+    log.flush()
+    with log.reading() as source:
+        rebuilt = replay(source, tmp_path / "replayed.sqlite")
+        try:
+            assert [
+                tuple(row) for row in rebuilt.execute("SELECT * FROM wait ORDER BY wait_id")
+            ] == [tuple(row) for row in source.execute("SELECT * FROM wait ORDER BY wait_id")]
+        finally:
+            rebuilt.close()
 
 
 @pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
@@ -232,12 +381,17 @@ class _Killed(BaseException):
 
 
 @pytest.mark.proves("task_control.a_killed_import_resumes_with_nothing_lost")
+@pytest.mark.parametrize("family_name", ["task-control", "task-heartbeats", "task-telemetry"])
 def test_a_kill_between_the_import_and_the_retirement_resumes_with_nothing_lost(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family_name: str
 ) -> None:
-    """requirement: a 0.2.7 workspace killed after its Tasks reached the log and before its store
-    was set aside opens again with every Task once, verified, and the store set aside; a set killed
-    after its store moved, with no requests left, completes when the registry opens."""
+    """An interrupted ledger move resumes ALL EQUAL without lost or duplicate rows."""
+
+    if family_name != "task-control":
+        _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
+            tmp_path, monkeypatch, family_name
+        )
+        return
 
     import alphalattice.control.task_control.upgrade as owner
 

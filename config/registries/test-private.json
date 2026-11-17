@@ -91,7 +91,6 @@
     "tests/integration/local_application/test_research_delivery.py::patch _foundation": 1,
     "tests/integration/local_application/test_research_delivery.py::patch _of": 1,
     "tests/integration/local_application/test_research_delivery.py::patch _portfolio_report": 1,
-    "tests/integration/product_host/test_task_recovery_view.py::import _SqliteHeartbeatStore": 1,
     "tests/integration/product_host/test_workspace_activity.py::patch _execute": 3,
     "tests/integration/alpha_research/test_alpha_development_execution.py::import _assert_admissible_base_axis": 1,
     "tests/integration/alpha_research/test_alpha_development_execution.py::patch _resolve_development_chunk": 2,

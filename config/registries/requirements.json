@@ -1465,7 +1465,7 @@
     },
     "task_control.a_killed_import_resumes_with_nothing_lost": {
       "description": "If a kill between a 0.2.7 workspace's move onto the log and the retirement of its store lost or repeated a Task, its history would be wrong the next time it opened.",
-      "lower_layer": "It reads a real DuckDB 0.2.7 store and a real SQLite log across a process's end, which no single function holds.",
+      "lower_layer": "It reads real DuckDB, SQLite and JSONL sources, SDK spans and the durable log across reader retirement and reopening, which an in-memory function cannot prove.",
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5

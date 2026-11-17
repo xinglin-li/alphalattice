@@ -377,6 +377,9 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ("control/task_control/runner.py", "TaskControlRunner._step", "CANCEL_REQUESTED,RUNNING"): (
         "the runner steps on while executing"
     ),
+    ("control/task_control/upgrade.py", "_heartbeat_step", "CANCEL_REQUESTED,RUNNING"): (
+        "a running or cancelling worker may still write the old lease; refuse its live import"
+    ),
     (
         "control/task_control/timing.py",
         "_ENDED",

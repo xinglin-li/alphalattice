@@ -23,6 +23,7 @@ from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.kernel.data_layer.history import held
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
@@ -43,6 +44,7 @@ from .contracts import (
 )
 from .registry import DuckDbTaskControlRegistry, TaskTransitionRejected
 from .timing import record_stage_spans
+from .upgrade import import_heartbeats, read_heartbeat, write_heartbeat
 
 _LOG = logging.getLogger(__name__)
 
@@ -365,7 +367,7 @@ class TaskHeartbeatReader:
         # and nothing else is caught here.
         try:
             if not path.is_file():
-                return None
+                return read_heartbeat(path, execution_id)
             with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=5.0) as conn:
                 row = conn.execute(
                     "SELECT signal_json FROM workspace_task_heartbeat WHERE execution_id = ?",
@@ -373,6 +375,8 @@ class TaskHeartbeatReader:
                 ).fetchone()
         except (OSError, sqlite3.Error) as error:
             raise _StoreUnreadable("task_control.heartbeat_store_unreadable") from error
+        except ValueError as error:
+            raise _StoreUnreadable("task_control.heartbeat_signal_invalid") from error
         if row is None or row[0] is None:
             return None
         try:
@@ -435,7 +439,7 @@ class TaskControlRunner:
         # The runtime file's name names the heartbeat sidecar beside it; its folder keeps the
         # stages' spans.
         self._runtime_path = Path(runtime_path)
-        self._heartbeat_store = _SqliteHeartbeatStore(heartbeat_store_path(self._runtime_path))
+        self._heartbeat_store = _LogHeartbeatStore(heartbeat_store_path(self._runtime_path))
 
     def close(self) -> None:
         """Release what the runner holds between executions: nothing since W10's loop."""
@@ -936,80 +940,27 @@ def _declared_width(adapter: TaskDomainAdapter, task: TaskRecord, width: int | N
     return max(1, min(int(declared(task)), width or os.cpu_count() or 1))
 
 
-class _SqliteHeartbeatStore:
-    """Operational liveness sidecar; it never owns task lifecycle."""
+class _LogHeartbeatStore:
+    """Operational lease on the process's held log; it never owns task lifecycle."""
 
     def __init__(self, path: Path) -> None:
         self.path = path.resolve()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
+
+        # Older roots acquire the same derived index as fresh roots at this first use.
+        with held().unit() as connection:
             connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workspace_task_heartbeat (
-                    execution_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL,
-                    worker_instance_id TEXT NOT NULL,
-                    heartbeat_at TEXT NOT NULL,
-                    sequence INTEGER NOT NULL,
-                    signal_json TEXT NOT NULL
-                )
-                """
+                "CREATE INDEX IF NOT EXISTS wait_heartbeat ON wait("
+                "json_extract(match_attrs, '$.source'),"
+                "json_extract(match_attrs, '$.signal.execution_id'), started_seq)"
+                " WHERE purpose = 'task.heartbeat'"
             )
-            columns = {
-                str(row[1])
-                for row in connection.execute(
-                    "PRAGMA table_info(workspace_task_heartbeat)"
-                ).fetchall()
-            }
-            for name, definition in (
-                ("task_id", "TEXT"),
-                ("sequence", "INTEGER"),
-                ("signal_json", "TEXT"),
-            ):
-                if name not in columns:
-                    connection.execute(
-                        f"ALTER TABLE workspace_task_heartbeat ADD COLUMN {name} {definition}"
-                    )
+        import_heartbeats(self.path)
 
     def touch(self, signal: TaskHeartbeatSignal) -> None:
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
-            connection.execute(
-                """
-                INSERT INTO workspace_task_heartbeat (
-                    execution_id, task_id, worker_instance_id, heartbeat_at,
-                    sequence, signal_json
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(execution_id) DO UPDATE SET
-                    task_id = excluded.task_id,
-                    worker_instance_id = excluded.worker_instance_id,
-                    heartbeat_at = excluded.heartbeat_at,
-                    sequence = excluded.sequence,
-                    signal_json = excluded.signal_json
-                """,
-                (
-                    str(signal.execution_id),
-                    str(signal.task_id),
-                    str(signal.worker_instance_id),
-                    signal.observed_at.isoformat(),
-                    signal.sequence,
-                    signal.model_dump_json(),
-                ),
-            )
+        write_heartbeat(self.path, signal)
 
     def read(self, execution_id: UUID) -> TaskHeartbeatSignal | None:
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
-            row = connection.execute(
-                """
-                SELECT signal_json FROM workspace_task_heartbeat
-                WHERE execution_id = ?
-                """,
-                (str(execution_id),),
-            ).fetchone()
-        return (
-            None
-            if row is None or row[0] is None
-            else TaskHeartbeatSignal.model_validate_json(row[0])
-        )
+        return read_heartbeat(self.path, execution_id)
 
 
 __all__ = [

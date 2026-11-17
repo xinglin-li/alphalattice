@@ -34,7 +34,6 @@ from alphalattice.control.data_platform.readiness import (
     build_workspace_readiness,
 )
 from alphalattice.control.data_platform.task_telemetry import (
-    TELEMETRY_REPLACE_DELAYS,
     TaskTelemetry,
 )
 from alphalattice.control.observation_runtime.telemetry.progress import (
@@ -127,7 +126,10 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.kernel.data.universe import FROZEN_UNIVERSE_SOURCES
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+from alphalattice.kernel.shared_kernel.domain.errors import (
+    AlphaLatticeError,
+    WorkspaceConflictError,
+)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -259,13 +261,12 @@ _LISTING_BINDING_KEYS = frozenset({"content_hash", "task_id", "input_hash"})
 
 class _ListingActivityDelivery:
     """Optional, bounded and coalesced: the recent listing-unit transitions of one stage
-    execution and their counts, written beside the Task's stage records as one atomically
-    replaced snapshot.
+    execution and their counts, recorded as one Task-bound span per delivery on the held log.
 
     Bounds: at most `RETAIN` rows are kept; one delivery attempt per `COALESCE_UNITS`
     observations or `COALESCE_SECONDS` of the product clock -- whether the last attempt
-    succeeded or not -- plus one at each chunk boundary (`flush`); each attempt waits at
-    most the telemetry replace budget (`TELEMETRY_REPLACE_DELAYS`, about 30 ms). The
+    succeeded or not -- plus one at each chunk boundary (`flush`); each attempt appends one
+    observation, with no delivery retry. The
     observer is synchronous in the runner's thread, so those bounds are the cost the
     runner pays: a few milliseconds per unit on average, never a wait per unit and never
     a stop, a retry or a change of the work. A failed attempt is counted with its typed
@@ -397,8 +398,8 @@ class _ListingActivityDelivery:
         data["content_hash"] = canonical_hash(data)
         self.delivery["attempts"] += 1
         try:
-            self.owner.telemetry.replace_json(self.path, data, delays=TELEMETRY_REPLACE_DELAYS)
-        except (OSError, ValueError, RuntimeError) as error:
+            self.owner.telemetry.record_json(self.path, data)
+        except (OSError, ValueError, RuntimeError, AlphaLatticeError) as error:
             self.owner.telemetry.delivery_failed(self.delivery, "LISTING_ACTIVITY", error)
             return
         self.sequence += 1
@@ -1576,15 +1577,11 @@ class WorkspacePreparationApplication:
 
         path = self._path(task.task_id, "listing-activity")
         try:
-            present = path.exists()
-        except OSError as error:
-            return unreadable(type(error).__name__)
-        if not present:
-            return {"availability": "NONE", **report} if report else None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = self.telemetry.read_json(path, task.task_id)
         except (OSError, ValueError) as error:
             return unreadable(type(error).__name__)
+        if data is None:
+            return {"availability": "NONE", **report} if report else None
         if not isinstance(data, dict) or data.get("content_hash") != canonical_hash(
             {k: v for k, v in data.items() if k != "content_hash"}
         ):
