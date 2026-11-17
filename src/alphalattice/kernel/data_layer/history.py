@@ -26,17 +26,20 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
-from alphalattice.kernel.data_layer.log import HostLog, uuid7
+from alphalattice.kernel.data_layer.log import HostLog, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import experience, goal_notes, reading_session
 from alphalattice.kernel.data_layer.root import create_data_root
 from alphalattice.kernel.shared_kernel.environment import offline
@@ -48,11 +51,57 @@ EVIDENCE_TYPE: Final = "research_evidence"
 """The artifact type of a trial's execution evidence, registered by the Host as its own."""
 _EVIDENCE_TEXT: Final = "What one research trial's Desk run did: its program, inputs and artifacts."
 STEPS: Final = {
-    "host.request": (["operation"], "One request a client sent the Host: its operation and route."),
-    "worker.call": (["call"], "One call a Host worker ran for the step that sent it."),
+    "host.request": (
+        ["operation"],
+        "none",
+        "One request a client sent the Host: its operation and route.",
+    ),
+    "worker.call": (["call"], "none", "One call a Host worker ran for the step that sent it."),
+    "product.operation": (
+        ["operation", "caller"],
+        "optional",
+        "One product operation the Host served; a record past the attributes' bound is the text.",
+    ),
 }
-"""The Host's own step types: each span `step` and a worker open is one of these events."""
+"""The Host's own step types, by required attributes and text: each span `step`, `begin` and a
+worker open is one of these events."""
+FACTS: Final = {
+    "task.transition": (
+        "task",
+        [],
+        "optional",
+        "A Task Control transition: a wake or a command's return.",
+    ),
+    "artifact.verified": ("artifact", [], "optional", "A result's artifact, verified."),
+    "agent.activity": (
+        "agent_event",
+        ["event_kind"],
+        "optional",
+        "What an agent's client reported; its summary is the text.",
+    ),
+    "person.question": (
+        None,
+        ["code", "state"],
+        "none",
+        "A question asked of the person, or answered.",
+    ),
+    "clock.correlated": (
+        None,
+        [],
+        "optional",
+        "One correlation of a source's clock with the Host's.",
+    ),
+    "request.refused": (
+        None,
+        ["operation", "failure_code", "caller"],
+        "none",
+        "A request the Host refused.",
+    ),
+}
+"""The Host's own fact types, by subject kind, required attributes and text: each log record `fact`
+emits is one of these events."""
 
+_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _lock = threading.RLock()
 _once = threading.Lock()
 _open: dict[str, Any] = {}
@@ -167,15 +216,20 @@ def open_history(
                     code="data_layer.history_unavailable",
                 ) from error
             from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, a Host's alone
+                ExternalSpanProcessor,
+                LogFactExporter,
                 LogSpanExporter,
+                logger_provider,
                 tracer_provider,
             )
 
             _open["exporter"] = LogSpanExporter(_open["log"])
-            remote = _remote_exporter(can_export)
+            remote = _remote(ExternalSpanProcessor, can_export)
             _open["tracer"] = tracer_provider(_open["exporter"], remote=remote)
             if remote is not None:
                 _open["remote"] = remote
+            _open["facts"] = LogFactExporter(_open["exporter"])
+            _open["logger"] = logger_provider(_open["facts"])
         _open["workspace"] = workspace_on_log(folder, name, workspace_id, root)
         _open["hosts"] = _open.get("hosts", 0) + 1
         spec: dict[str, Any] = {
@@ -185,9 +239,12 @@ def open_history(
             "keep": "while_active",
         }
         define("artifact_type", EVIDENCE_TYPE, _EVIDENCE_TEXT, spec)
-        for step_name, (required, text) in STEPS.items():
-            kind = {"work": True, "subject": None, "required": required, "text": "none"}
+        for step_name, (required, words, text) in STEPS.items():
+            kind = {"work": True, "subject": None, "required": required, "text": words}
             define("event_type", step_name, text, kind | {"durable": False})
+        for fact_name, (about, required, words, text) in FACTS.items():
+            kind = {"work": False, "subject": about, "required": required, "text": words}
+            define("event_type", fact_name, text, kind | {"durable": False})
         define(
             "event_type",
             "experience.read",
@@ -202,17 +259,12 @@ def open_history(
         )
 
 
-def _remote_exporter(can_export: Callable[[], bool] | None) -> Any:
-    """The opt-in OTLP span processor `OTLP_ENDPOINT_ENV` names, or None: off with a warning when
-    the endpoint is not a plain HTTP URL, the Host is offline, or the exporter is unavailable;
-    each export is sent only while `can_export` allows the workspace's network."""
+def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
+    """The opted-in OTLP export (`ALPHALATTICE_OTLP_ENDPOINT`), scrubbed by `processor` and sent
+    only while the workspace's network control allows it; None when it is off, with why logged."""
     endpoint = os.environ.get(OTLP_ENDPOINT_ENV, "").strip()
     if not endpoint:
         return None
-    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, a Host's alone
-        ExternalSpanProcessor,
-    )
-
     try:
         address = urlsplit(endpoint)
         if (
@@ -251,7 +303,7 @@ def _remote_exporter(can_export: Callable[[], bool] | None) -> Any:
                     return SpanExportResult.FAILURE
                 return super().export(spans)
 
-        return ExternalSpanProcessor(
+        return processor(
             NetworkBoundExporter(endpoint=endpoint),
             include_content=os.environ.get(OTLP_CONTENT_ENV) == "1",
         )
@@ -310,7 +362,11 @@ def close_history() -> None:
         _open.pop("workspace", None)
         _open.pop("root", None)
         provider = _open.pop("tracer", None)
+        logger = _open.pop("logger", None)
         _open.pop("exporter", None)
+        _open.pop("facts", None)
+    if logger is not None:
+        logger.shutdown()
     if provider is not None:
         provider.shutdown()  # every span ended before the log closes
     if reading is not None:
@@ -336,6 +392,19 @@ def record(
 def recording() -> bool:
     """Whether this process is a Host whose history records."""
     return "workspace" in _open
+
+
+def flush() -> None:
+    """Commit the Host's open batch, so a reply never names an event a crash could still lose;
+    nothing when this process holds no log."""
+    log = _open.get("log")
+    if log is not None:
+        log.flush()
+
+
+def opened_log() -> tuple[HostLog, str] | None:
+    """The Host's log and its workspace while its history records; None outside a Host."""
+    return (_open["log"], str(_open["workspace"])) if recording() else None
 
 
 def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:
@@ -465,6 +534,101 @@ def step(name: str, headers: Mapping[str, str], **attributes: str) -> Iterator[N
             yield
     finally:
         context.detach(token)
+
+
+def begin(
+    name: str,
+    attributes: Mapping[str, Any],
+    text: str | None = None,
+    *,
+    workspace: str | None = None,
+) -> dict[str, Any] | None:
+    """Start one step the Host ends later (`finish`), a child of the current step, and record its
+    started row now with exactly `attributes`, so a reader sees it live; None outside a Host.
+    The Host writes both rows itself, so no attributes merge or flatten; a row the log refuses
+    raises its refusal (`DataError`), so the writer never counts it kept."""
+    exporter = _open.get("exporter")
+    if exporter is None:
+        return None
+    step = _new_step(name, workspace)
+    row = envelope(name, attrs=attributes, text=text, phase="started", **_step_fields(step))
+    exporter.append(row | {"occurred_us": step["started_us"]}, text, raising=True)
+    return step
+
+
+def finish(
+    step: Mapping[str, Any] | None,
+    name: str,
+    attributes: Mapping[str, Any],
+    text: str | None = None,
+    *,
+    failed: bool,
+    workspace: str | None = None,
+) -> None:
+    """Record the ended row of a step `begin` started, with exactly `attributes`; failed is its
+    phase. A step this Host did not begin (None) is a new one, ended now, of type `name`. A row
+    the log refuses raises its refusal (`DataError`)."""
+    exporter = _open.get("exporter")
+    if exporter is None:
+        return
+    step = step or _new_step(name, workspace)
+    phase = "failed" if failed else "completed"
+    fields = _step_fields(step) | {"started_us": step["started_us"]}
+    row = envelope(step["name"], attrs=attributes, text=text, phase=phase, **fields)
+    exporter.append(row, text, raising=True)
+
+
+def _new_step(name: str, workspace: str | None) -> dict[str, Any]:
+    """A step of type `name` starting now, a child of the current step (a new trace outside one),
+    in `workspace` (the Host's by default)."""
+    from opentelemetry import trace  # lazy: the SDK, once open
+
+    current = trace.get_current_span().get_span_context()
+    return {
+        "name": name,
+        "trace": f"{current.trace_id:032x}" if current.is_valid else secrets.token_hex(16),
+        "span": secrets.token_hex(8),
+        "parent_span": f"{current.span_id:016x}" if current.is_valid else None,
+        "workspace": workspace or _open["workspace"],
+        "node": "host",
+        "started_us": time.time_ns() // 1000,
+    }
+
+
+def _step_fields(step: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: step[key] for key in ("trace", "span", "parent_span", "workspace", "node")}
+
+
+def fact(
+    name: str,
+    attributes: Mapping[str, Any],
+    *,
+    subject: tuple[str, str] | None = None,
+    text: str | None = None,
+    actor: tuple[str, str] | None = None,
+    at: datetime | None = None,
+    workspace: str | None = None,
+) -> None:
+    """Emit one log record, a fact in the span current here (a new trace outside one), in the
+    Host's workspace, with `attributes` as they are (nested values kept); `text` is its body, `at`
+    when it happened (now by default). Nothing outside a Host; a record the log refuses raises its
+    refusal, so the writer never counts it kept."""
+    provider = _open.get("logger")
+    if provider is None:
+        return
+    own = {"workspace_id": workspace or _open["workspace"]}
+    if subject is not None:
+        own |= {"subject_kind": subject[0], "subject_id": subject[1]}
+    if actor is not None:
+        own |= {"actor_kind": actor[0], "actor_id": actor[1]}
+    provider.get_logger("host").emit(
+        event_name=name,
+        body=text,
+        attributes={**attributes, **{f"alphalattice.{key}": value for key, value in own.items()}},
+        timestamp=None if at is None else (at - _EPOCH) // timedelta(microseconds=1) * 1000,
+    )
+    if (refused := _open["facts"].refusal()) is not None:
+        raise refused
 
 
 def traced(rows: Iterable[Mapping[str, Any]] | None) -> None:

@@ -61,6 +61,8 @@ BATCH_SECONDS: Final = 0.2
 COMMIT_TIMER: Final = "host-log-commit"
 """The name of the thread that commits an open batch once it is `BATCH_SECONDS` old."""
 LOCK_NAME: Final = "host.lock"
+ATTRS_CHARACTERS: Final = 4096
+"""The most characters an event's attributes hold (log.sql's CHECK on `attrs`)."""
 LOCK_AT: Final = 1 << 30
 """The byte a Windows Host locks: past any name the lock file holds."""
 

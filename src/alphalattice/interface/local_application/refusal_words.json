@@ -112,7 +112,8 @@
   "next_action": "READ_CAPABILITIES_SCHEMA"
  },
  "activity.storage_unavailable": {
-  "detail": "This Host was composed without its activity ledger, so it records no events and answers no activity; the Host `alphalattice serve` starts keeps one.",
+  "message_id": "activity.storage_unavailable",
+  "detail": "activity.storage_unavailable",
   "next_action": "SERVE_THE_WORKSPACE_HOST"
  },
  "actor_execution.specialist_answer_problems": {

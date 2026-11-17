@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import socket
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,14 +26,14 @@ TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
 def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement: a Host records its workspace once by its folder, its history closes with
-    the last Host of its process, and a Host that cannot hold or open its log is refused by
-    name, recording nothing and holding no lock."""
+    """requirement: a Host records its workspace once by its folder, its steps and facts as given,
+    and closes its history with its process's last Host; a Host that cannot hold or open its log is
+    refused by name, recording nothing and holding no lock."""
     history.close_history()  # the process's own root, if a test before this one took it
     root = tmp_path / "o'brien" / "data"  # a quote in the path is text in DuckDB's ATTACH
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the data root this process names
-    monkeypatch.delenv("ALPHALATTICE_OTLP_ENDPOINT", raising=False)
     folder = tmp_path / "workspace"
+    monkeypatch.delenv("ALPHALATTICE_OTLP_ENDPOINT", raising=False)
     with monkeypatch.context() as no_network:
 
         def no_socket(*args, **kwargs):
@@ -77,6 +79,15 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             with ThreadPoolExecutor(8) as pool:  # one Host's workers record the same goal at once
                 seqs = list(pool.map(lambda _: history.record_new(exists, (), *goal), range(8)))
             assert sum(seq is not None for seq in seqs) == 1
+            attrs = {"operation": "STATUS", "caller": "HUMAN", "subject": {"goal_id": "g1"}}
+            assert history.begin("product.operation", attrs | {"request_fields": ["task_id"]})
+            failed = history.begin("product.operation", attrs)
+            history.finish(
+                failed, "product.operation", attrs | {"failure_code": "x.refused"}, failed=True
+            )
+            at = datetime(2026, 11, 15, 12, tzinfo=UTC)
+            with history.step("host.request", {}, operation="STATUS"):
+                history.fact("agent.activity", {"event_kind": "n"}, text="Read it.", at=at)
             history.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g"}, text="H")
             issued = history.record_hypothesis("g", "claim", "Claim", "researcher")
             assert history.record_hypothesis("g", "claim", "Claim", "researcher") == issued
@@ -94,9 +105,8 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             ):
                 with pytest.raises(ValueError, match=reason):
                     history.hypothesis_goal(hypothesis, expected_goal=expected)
-            with history.step("host.request", {}, operation="read"):
-                pass
-            history.open_history("w2", "two", tmp_path / "second", root)  # a second Host
+            # a second Host, same process
+            history.open_history("w3", "three", tmp_path / "second", root)
             history.release_history()
             assert history.recording()  # the first Host still records
             history.release_history()
@@ -107,9 +117,33 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"
         ).fetchone() == (5,)
-        rows = con.execute("SELECT workspace_id, name, folder FROM workspace").fetchall()
+        rows = con.execute(
+            "SELECT workspace_id, name, folder FROM workspace ORDER BY workspace_id"
+        ).fetchall()
         second = str((tmp_path / "second").resolve())
-        assert rows == [("w1", "one", str(folder.resolve())), ("w2", "two", second)]
+        assert rows == [
+            ("w1", "one", str(folder.resolve())),
+            ("w2", "two", None),  # recorded for the hypothesis in another workspace
+            ("w3", "three", second),
+        ]
+        rows = con.execute(
+            "SELECT type, phase, span_id, started_us IS NOT NULL, attrs FROM event"
+            " WHERE type IN ('product.operation', 'host.request') ORDER BY seq"
+        ).fetchall()
+        assert [row[:2] + row[3:4] for row in rows] == [
+            ("product.operation", "started", False),  # the open one, logged before any end
+            ("product.operation", "started", False),
+            ("product.operation", "failed", True),
+            ("host.request", "completed", True),
+        ]
+        assert json.loads(rows[1][4]) == attrs  # nested, as given
+        assert json.loads(rows[2][4]) == attrs | {"failure_code": "x.refused"}  # its own, as given
+        assert rows[1][2] == rows[2][2]
+        fact = con.execute(
+            "SELECT e.span_id, e.occurred_us, t.text FROM event e JOIN event_text t USING (seq)"
+            " WHERE e.type = 'agent.activity'"
+        ).fetchone()
+        assert fact == (rows[3][2], int(at.timestamp() * 1_000_000), "Read it.")
         owned = (
             "SELECT name, owner FROM definition WHERE family = 'artifact_type' AND owner = 'host'"
         )

@@ -1056,41 +1056,23 @@
       "summary": "public-safe operational assertions and replay checkpoints",
       "class": "event-log",
       "tier": 1,
-      "home": "log event",
+      "retire": "moved to the Host log: each record is one event written whole, its envelope an attribute, and the activity reads it there; the upgrade's backup keeps the old file",
       "location": "workspace-runtime",
       "bytes": 385024,
-      "covers": [
-        "table:unified_observation"
-      ],
-      "authority_owners": [
-        "observation_runtime.ObservationLedger"
-      ],
-      "writers": [
-        "observation_runtime.ledger:ObservationLedger"
-      ],
-      "readers": [
-        "product_host.composition.workspace_activity"
-      ]
+      "authority_owners": [],
+      "writers": [],
+      "readers": []
     },
     "refusal-counts": {
       "summary": "counts of refused requests by day, operation, failure code, caller kind and agent vendor",
       "class": "event-log",
       "tier": 3,
-      "home": "log measure",
+      "retire": "moved to the Host log: each refusal is a request.refused fact, counted on read by day, operation, code, caller and vendor; the upgrade's backup keeps the old file",
       "location": "workspace-runtime",
       "bytes": 4096,
-      "covers": [
-        "table:refusal_count"
-      ],
-      "authority_owners": [
-        "observation_runtime.ObservationLedger"
-      ],
-      "writers": [
-        "observation_runtime.ledger:ObservationLedger"
-      ],
-      "readers": [
-        "product_host.composition.workspace_activity"
-      ]
+      "authority_owners": [],
+      "writers": [],
+      "readers": []
     },
     "observation-store-metadata": {
       "summary": "the observation store's schema and legacy-migration marker",
@@ -1099,18 +1081,9 @@
       "retire": "the log's schema version is its own SQLite user_version; no reader needs a separate marker",
       "location": "workspace-runtime",
       "bytes": 4096,
-      "covers": [
-        "table:observation_store_metadata"
-      ],
-      "authority_owners": [
-        "observation_runtime.ObservationLedger"
-      ],
-      "writers": [
-        "observation_runtime.ledger:ObservationLedger"
-      ],
-      "readers": [
-        "product_host.composition.workspace_activity"
-      ]
+      "authority_owners": [],
+      "writers": [],
+      "readers": []
     },
     "task-control": {
       "summary": "Task Control's Tasks: records, work items, executions, events, commands, stage receipts and their listing projection",
@@ -3142,7 +3115,6 @@
         "local_application.cli_contract",
         "local_application.client",
         "local_application.native_setup",
-        "observation_runtime.ledger",
         "product_host.composition.application_session",
         "product_host.composition.evidence_authority_setup",
         "product_host.composition.evidence_review_application",
@@ -3175,7 +3147,7 @@
       "bytes": 1106792,
       "writers": [
         "task_control.upgrade:carry_tasks",
-        "task_control.upgrade:import_ledgers"
+        "task_control.upgrade:set_aside"
       ],
       "readers": [
         "task_control.upgrade"
@@ -3226,15 +3198,11 @@
       "summary": "the record written when the observation ledger cannot store",
       "class": "event-log",
       "tier": 3,
-      "home": "log event",
+      "retire": "the ledger that wrote it retired: a record the log refuses is counted by the log's exporter and logged",
       "location": "workspace-runtime",
       "bytes": null,
-      "writers": [
-        "observation_runtime.ledger:_write_storage_failure"
-      ],
-      "readers": [
-        "product_host.composition.workspace_activity"
-      ]
+      "writers": [],
+      "readers": []
     },
     "content-store": {
       "summary": "the content-addressed store: blobs by digest, its committed index and shared files",

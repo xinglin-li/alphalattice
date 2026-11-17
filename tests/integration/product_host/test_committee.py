@@ -1465,7 +1465,7 @@ def test_a_members_request_counts_toward_its_floors_open_goal_and_never_override
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
-    tmp_path: Path, readback: dict[str, Any]
+    tmp_path: Path, readback: dict[str, Any], recording_history: str
 ) -> None:
     """Floor rows retain member, session and reply-recipient identities for Team."""
     store, now = _floor(tmp_path, readback)
@@ -1500,7 +1500,7 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     assert floor is not None
     observer = WorkspaceActivity(
         workspace=tmp_path,
-        workspace_id="committee-fixture",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="committee-fixture",
         clock=lambda: now[0],

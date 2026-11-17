@@ -1499,9 +1499,10 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/observation_runtime/test_unified_observation.py*",
+      "pattern": "tests/integration/observation_runtime/test_log_reads.py*",
       "owner": "tests.unified_observation",
-      "size": "medium"
+      "size": "medium",
+      "reason": "The reads open the Host's history, its log file and its DuckDB reading views, in setup: 2.74 seconds for the first case on Windows."
     },
     {
       "pattern": "tests/integration/market_data_ops/test_adjusted_precision.py*",

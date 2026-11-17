@@ -14,10 +14,7 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationRetentionClass,
 )
-from alphalattice.control.observation_runtime.ledger import (
-    ObservationLedger,
-    UnifiedObservationPort,
-)
+from alphalattice.control.observation_runtime.log_reads import LogObservations
 from alphalattice.control.observation_runtime.policy import (
     PRODUCT_OPERATION_SCHEMA,
     default_observation_policies,
@@ -839,24 +836,21 @@ def test_selected_product_return_rejects_malformed_owner_binding(product_answer_
     elif case == "goal":
         subject["goal_id"] = "invalid-goal"
     policies = default_observation_policies()
-    with ObservationLedger(
-        scene.live.workspace / "runtime/observations.sqlite", gate=scene.live.session.mutation_gate
-    ) as ledger:
-        receipt = UnifiedObservationPort(ledger=ledger, policies=policies).emit(
-            safe_observation_draft(
-                policies=policies,
-                schema_kind=PRODUCT_OPERATION_SCHEMA,
-                occurred_at=datetime(2026, 10, 6, tzinfo=UTC),
-                source_kind=source_kind,
-                source_id=source_id,
-                source_sequence=0,
-                payload=payload,
-                authority=authority,
-                retention_class=ObservationRetentionClass.TRANSIENT_OPERATIONAL,
-                task_id=task_id,
-                run_id=run_id,
-            )
+    _, receipt = scene.live.activity._keep(
+        safe_observation_draft(
+            policies=policies,
+            schema_kind=PRODUCT_OPERATION_SCHEMA,
+            occurred_at=datetime(2026, 10, 6, tzinfo=UTC),
+            source_kind=source_kind,
+            source_id=source_id,
+            source_sequence=0,
+            payload=payload,
+            authority=authority,
+            retention_class=ObservationRetentionClass.TRANSIENT_OPERATIONAL,
+            task_id=task_id,
+            run_id=run_id,
         )
+    )
     detail = LocalResearchClient(scene.live.workspace).read_external(
         observation_id=receipt.observation_id
     )["accepted_answer"]
@@ -1015,7 +1009,7 @@ def test_generic_specialist_doors_seal_exact_references_without_scientific_admis
         pytest.fail("A selected answer must not scan external observation pages.")
 
     with monkeypatch.context() as selected_read:
-        selected_read.setattr(ObservationLedger, "observations_of_kind", refuse_page_scan)
+        selected_read.setattr(LogObservations, "observations_of_kind", refuse_page_scan)
         selected = _json(live, f"/api/activity/external?observation_id={row['observation_id']}")
     assert selected["observation_id"] == row["observation_id"]
     assert "items" not in selected

@@ -1,4 +1,5 @@
 from tests._support.content_memo_fixtures import kept_here as kept_here
+from tests._support.history_fixtures import recording_history as recording_history
 from tests._support.project_discovery import project_discovery as project_discovery
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace as real_risk_workspace,

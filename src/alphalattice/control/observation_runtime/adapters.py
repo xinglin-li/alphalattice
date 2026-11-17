@@ -29,8 +29,6 @@ def safe_observation_draft(
     task_id: str | None = None,
     run_id: str | None = None,
     stage_id: str | None = None,
-    span_id: str | None = None,
-    parent_span_id: str | None = None,
     correlation_ids: tuple[str, ...] = (),
     supersedes_observation_id: str | None = None,
 ) -> ObservationDraft:
@@ -52,8 +50,6 @@ def safe_observation_draft(
         task_id=task_id,
         run_id=run_id,
         stage_id=stage_id,
-        span_id=span_id,
-        parent_span_id=parent_span_id,
         correlation_ids=tuple(sorted(set(correlation_ids))),
         authority=authority,
         sensitivity=ObservationSensitivity.PUBLIC_SAFE,

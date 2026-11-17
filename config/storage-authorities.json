@@ -345,43 +345,6 @@
     },
     {
       "tables": [
-        "unified_observation",
-        "observation_projection_checkpoint"
-      ],
-      "database": "observation",
-      "semantic_role": "bounded public-safe operational assertions and replay checkpoints in runtime/observations.sqlite; same-named DuckDB tables are legacy-migration-only",
-      "generation_model": "BY_REVISION",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationRetentionPolicy",
-      "rebuildability": "ASSERTIONS_REPLAYABLE_WHILE_AVAILABLE_SOURCE_AUTHORITIES_REMAIN_SEPARATE",
-      "artifact_relationship": "PUBLIC_OBSERVATION_AND_HOT_PROJECTION_INDEX"
-    },
-    {
-      "tables": [
-        "refusal_count"
-      ],
-      "database": "observation",
-      "semantic_role": "durable counts of refused requests by day, operation, failure code, caller kind and agent vendor; no session, request or text (AC, OP14)",
-      "generation_model": "SINGLE_CURRENT",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationLedger",
-      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
-      "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "observation_store_metadata"
-      ],
-      "database": "observation",
-      "semantic_role": "active SQLite UOL schema and verified legacy-migration marker",
-      "generation_model": "SINGLE_CURRENT",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationStoreMigrator",
-      "rebuildability": "MIGRATION_RECEIPT_AND_SCHEMA_READBACK_REQUIRED",
-      "artifact_relationship": "STORAGE_PROVENANCE_ONLY"
-    },
-    {
-      "tables": [
         "workspace_task",
         "workspace_task_command",
         "workspace_task_event",

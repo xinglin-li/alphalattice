@@ -463,6 +463,11 @@
 "owner": "activity",
 "category": "FAILED_PRECONDITION"
 },
+"activity.observer_failed": {
+"owner": "activity",
+"category": "UNAVAILABLE",
+"classification_note": "The Host's history did not keep an activity record; the observer counts it missing and the operation's answer is unchanged."
+},
 "activity.cursor_invalid": {
 "owner": "activity",
 "category": "INVALID_ARGUMENT"

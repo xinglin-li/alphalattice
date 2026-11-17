@@ -3978,7 +3978,6 @@
           ".claude/skills/alphalattice-research/references/operating.md:48",
           ".claude/skills/alphalattice-research/references/operating.md:54",
           "scripts/release/public_outputs.py:327",
-          "src/alphalattice/control/observation_runtime/ledger.py:464",
           "src/alphalattice/control/product_host/composition/evidence_review_application.py:3805",
           "src/alphalattice/control/product_host/composition/local_web_session.py:2038",
           "src/alphalattice/control/product_host/composition/native_usage_reader.py:147",

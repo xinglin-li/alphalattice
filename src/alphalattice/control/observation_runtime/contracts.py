@@ -210,8 +210,6 @@ class ObservationDraft(_Contract):
         task_id: Optional task correlation.
         run_id: Optional run correlation.
         stage_id: Optional stage correlation.
-        span_id: Optional span handle.
-        parent_span_id: Optional enclosing span handle.
         correlation_ids: Sorted unique correlation handles.
         authority: Declared assertion or decision owner category.
         sensitivity: Declared exposure class, excluding PROHIBITED.
@@ -232,8 +230,6 @@ class ObservationDraft(_Contract):
     task_id: str | None = None
     run_id: str | None = None
     stage_id: str | None = None
-    span_id: str | None = None
-    parent_span_id: str | None = None
     correlation_ids: tuple[str, ...] = ()
     authority: ObservationAuthority
     sensitivity: ObservationSensitivity
@@ -297,8 +293,6 @@ class ObservationEnvelope(_Contract):
     task_id: str | None = None
     run_id: str | None = None
     stage_id: str | None = None
-    span_id: str | None = None
-    parent_span_id: str | None = None
     correlation_ids: tuple[str, ...] = ()
     authority: ObservationAuthority
     sensitivity: ObservationSensitivity
@@ -332,228 +326,6 @@ class ObservationEnvelope(_Contract):
             raise ValueError("unavailable observation cannot retain inline payload")
         if self.observation_id != observation_identity(self):
             raise ValueError("observation envelope identity is invalid")
-        return self
-
-
-class ObservationAppendResult(_Contract):
-    """Report a new append or exact reuse without changing source identity.
-
-    Attributes:
-        disposition: APPENDED for a new record or REUSED_EXACT for the same observation.
-        observation_id: Identity of the appended or reused observation.
-        source_sequence: Nonnegative source-local sequence.
-        availability: Resulting payload availability.
-        result_hash: Canonical identity of the other result fields.
-    """
-
-    kind: Literal["ObservationAppendResult"] = "ObservationAppendResult"
-    disposition: Literal["APPENDED", "REUSED_EXACT"]
-    observation_id: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    source_sequence: int = Field(ge=0)
-    availability: ObservationAvailability
-    result_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_result(self) -> Self:
-        """Require the canonical append-result identity.
-
-        Returns:
-            This validated result.
-
-        Raises:
-            ValueError: The result hash differs from its fields.
-        """
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"result_hash"}))
-        if self.result_hash != expected:
-            raise ValueError("observation append result hash is invalid")
-        return self
-
-
-class ObservationRetentionPolicy(_Contract):
-    """Seal the workspace-relative observation retention budget.
-
-    New ledger caps are one percent of the operator workspace cap. Historical receipts
-    retain their original 64-256 MiB clamp. Cleanup starts at 90 percent and targets 80 percent.
-    These are
-    operational retention bounds; they do not change scientific artifact identities.
-
-    Attributes:
-        workspace_managed_cap_bytes: Positive managed workspace capacity.
-        ledger_cap_bytes: Derived observation ledger capacity.
-        high_water_bytes: Derived cleanup trigger.
-        cleanup_target_bytes: Derived target after cleanup.
-        transient_ring_size: Positive number of transient in-memory observations.
-        policy_hash: Canonical policy identity excluding this hash.
-    """
-
-    kind: Literal["ObservationRetentionPolicy"] = "ObservationRetentionPolicy"
-    workspace_managed_cap_bytes: int = Field(gt=0)
-    ledger_cap_bytes: int = Field(gt=0)
-    high_water_bytes: int = Field(ge=0)
-    cleanup_target_bytes: int = Field(ge=0)
-    transient_ring_size: int = Field(default=128, ge=1)
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    cap_basis: Literal["BOUNDED_LEGACY", "WORKSPACE_SHARE"] = "BOUNDED_LEGACY"
-    """Historical receipts retain their exact clamp; new execution uses a workspace share."""
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_policy(self) -> Self:
-        """Require the fixed capacity formula, watermarks and policy hash.
-
-        Returns:
-            This validated policy.
-
-        Raises:
-            ValueError: A derived budget, watermark or identity differs from policy.
-        """
-        expected_cap = min(
-            256 * 1024 * 1024,
-            max(64 * 1024 * 1024, self.workspace_managed_cap_bytes // 100),
-        )
-        if self.cap_basis == "WORKSPACE_SHARE":
-            expected_cap = max(1, self.workspace_managed_cap_bytes // 100)
-        if self.ledger_cap_bytes != expected_cap:
-            raise ValueError("observation retention cap is invalid")
-        if self.high_water_bytes != int(expected_cap * 0.9):
-            raise ValueError("observation retention high water is invalid")
-        if self.cleanup_target_bytes != int(expected_cap * 0.8):
-            raise ValueError("observation retention cleanup target is invalid")
-        payload = self.model_dump(mode="json", exclude={"policy_hash"})
-        if self.cap_basis == "BOUNDED_LEGACY":
-            payload.pop("cap_basis")
-        expected_hash = canonical_hash(payload)
-        if self.policy_hash != expected_hash:
-            raise ValueError("observation retention policy hash is invalid")
-        return self
-
-
-class ObservationProjectionCheckpoint(_Contract):
-    """Bind a projection to the observations and source cursors it consumed.
-
-    Attributes:
-        projection_kind: Named projection type.
-        projection_key: Projection-specific scope handle.
-        through_observation_id: Last observation identity included in this checkpoint.
-        observation_count: Number of consumed observations.
-        source_cursors: Nonnegative source-local sequence cursors.
-        policy_hash: Policy used to derive this projection.
-        projection_hash: Identity of the resulting projection.
-        checkpoint_hash: Canonical identity of the checkpoint fields.
-    """
-
-    kind: Literal["ObservationProjectionCheckpoint"] = "ObservationProjectionCheckpoint"
-    projection_kind: str = Field(min_length=1)
-    projection_key: str = Field(min_length=1)
-    through_observation_id: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    observation_count: int = Field(ge=0)
-    source_cursors: dict[str, int]
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    projection_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    checkpoint_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_checkpoint(self) -> Self:
-        """Require nonnegative source cursors and the checkpoint identity.
-
-        Returns:
-            This validated checkpoint.
-
-        Raises:
-            ValueError: A cursor is negative or the checkpoint hash differs.
-        """
-        if any(value < 0 for value in self.source_cursors.values()):
-            raise ValueError("observation projection cursor is invalid")
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"checkpoint_hash"}))
-        if self.checkpoint_hash != expected:
-            raise ValueError("observation projection checkpoint hash is invalid")
-        return self
-
-
-class ObservationRunSummary(_Contract):
-    """Retain compacted-run counts and commitments without the removed payloads.
-
-    Attributes:
-        run_id: Run whose operational observations were compacted.
-        compacted_observation_count: Positive number represented by the summary.
-        retained_decision_ids: Decision observation identities preserved by retention.
-        source_ranges: Nonnegative inclusive first/last sequences grouped by source.
-        compacted_payload_digest: Commitment to the compacted payloads.
-        summary_hash: Canonical identity of the summary fields.
-    """
-
-    kind: Literal["ObservationRunSummary"] = "ObservationRunSummary"
-    run_id: str = Field(min_length=1)
-    compacted_observation_count: int = Field(ge=1)
-    retained_decision_ids: tuple[Hash, ...]
-    source_ranges: dict[str, tuple[int, int]]
-    compacted_payload_digest: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    summary_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_summary(self) -> Self:
-        """Validate source-range ordering and the compacted-run summary hash.
-
-        Returns:
-            This validated summary.
-
-        Raises:
-            ValueError: A range is negative or reversed, or the summary hash differs.
-        """
-        if any(first < 0 or last < first for first, last in self.source_ranges.values()):
-            raise ValueError("observation run source range is invalid")
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"summary_hash"}))
-        if self.summary_hash != expected:
-            raise ValueError("observation run summary hash is invalid")
-        return self
-
-
-class ObservationRetentionReport(_Contract):
-    """Record retention effects separately from physical storage measurements.
-
-    Logical payload bytes cannot increase during retention. The report does not
-    require physical file bytes to shrink; compaction and filesystem allocation are
-    distinct from logical payload removal.
-
-    Attributes:
-        policy_hash: Retention policy identity used for this pass.
-        bytes_before: Logical payload size before cleanup.
-        bytes_after: Logical payload size after cleanup.
-        physical_bytes_before: Observed physical storage size before cleanup.
-        physical_bytes_after: Observed physical storage size after cleanup.
-        compacted_count: Number of observations compacted.
-        evicted_count: Number of observations evicted by retention.
-        protected_run_ids: Runs protected from this cleanup pass.
-        run_summaries: Commitments retained for compacted runs.
-        report_hash: Canonical identity of all report fields except this hash.
-    """
-
-    kind: Literal["ObservationRetentionReport"] = "ObservationRetentionReport"
-    policy_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-    bytes_before: int = Field(ge=0)
-    bytes_after: int = Field(ge=0)
-    physical_bytes_before: int = Field(ge=0)
-    physical_bytes_after: int = Field(ge=0)
-    compacted_count: int = Field(ge=0)
-    evicted_count: int = Field(ge=0)
-    protected_run_ids: tuple[str, ...]
-    run_summaries: tuple[ObservationRunSummary, ...]
-    report_hash: Hash = Field(pattern=r"^[0-9a-f]{64}$")
-
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
-    def validate_report(self) -> Self:
-        """Require nonincreasing logical bytes and a matching report hash.
-
-        Returns:
-            This validated report.
-
-        Raises:
-            ValueError: Logical payload bytes increased or the report hash differs.
-        """
-        if self.bytes_after > self.bytes_before:
-            raise ValueError("observation retention increased logical payload bytes")
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"report_hash"}))
-        if self.report_hash != expected:
-            raise ValueError("observation retention report hash is invalid")
         return self
 
 
@@ -658,32 +430,6 @@ class ObservationReadPage(_Contract):
         )
 
 
-def build_retention_policy(*, workspace_managed_cap_bytes: int) -> ObservationRetentionPolicy:
-    """Derive and seal the fixed workspace-relative retention policy.
-
-    Args:
-        workspace_managed_cap_bytes: Positive workspace-managed storage budget in bytes.
-
-    Returns:
-        The validated ledger cap, watermarks, transient ring size and policy identity.
-
-    Raises:
-        ValueError: The resulting policy fields do not satisfy the retention contract.
-    """
-    cap = max(1, workspace_managed_cap_bytes // 100)
-    values = {
-        "workspace_managed_cap_bytes": workspace_managed_cap_bytes,
-        "ledger_cap_bytes": cap,
-        "high_water_bytes": int(cap * 0.9),
-        "cleanup_target_bytes": int(cap * 0.8),
-        "transient_ring_size": 128,
-        "cap_basis": "WORKSPACE_SHARE",
-    }
-    provisional = ObservationRetentionPolicy.model_construct(**values, policy_hash="")
-    identity = provisional.model_dump(mode="json", exclude={"policy_hash"})
-    return ObservationRetentionPolicy(**identity, policy_hash=canonical_hash(identity))
-
-
 def build_observation_authority_reference(
     *,
     owner_kind: str,
@@ -693,7 +439,7 @@ def build_observation_authority_reference(
     run_id: str | None = None,
     subject_id: str | None = None,
 ) -> ObservationAuthorityReference:
-    """Seal a scoped pointer to a record owned outside the observation ledger.
+    """Seal a scoped pointer to a record owned outside the Host's history.
 
     Args:
         owner_kind: Named external authority owner.
@@ -757,6 +503,34 @@ def build_observation_authority_readback(
     return ObservationAuthorityReadback(**identity, readback_hash=canonical_hash(identity))
 
 
+def envelope_of(draft: ObservationDraft, observed_at: datetime) -> ObservationEnvelope:
+    """The envelope a validated draft is kept as, observed at `observed_at`: its payload's hash,
+    available, and its identity over its content.
+
+    Raises:
+        ValueError: The clock is naive, or the draft carries no payload.
+    """
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observation clock must be timezone-aware")
+    if draft.inline_safe_payload is not None:
+        payload: Any = draft.inline_safe_payload
+    elif draft.payload_ref is not None:
+        payload = draft.payload_ref.model_dump(mode="json")
+    else:
+        raise ValueError("observation.payload_not_admitted")
+    provisional = ObservationEnvelope.model_construct(
+        **draft.model_dump(mode="python", exclude={"kind"}),
+        observed_at=observed_at.astimezone(UTC),
+        payload_hash=canonical_hash(payload),
+        availability=ObservationAvailability.AVAILABLE,
+        observation_id="",
+    )
+    return ObservationEnvelope(
+        **provisional.model_dump(mode="python", exclude={"observation_id"}),
+        observation_id=observation_identity(provisional),
+    )
+
+
 def observation_identity(value: ObservationEnvelope) -> Hash:
     """Hash immutable source, scope, payload and policy fields of an envelope.
 
@@ -779,8 +553,9 @@ def observation_identity(value: ObservationEnvelope) -> Hash:
                 "task_id": value.task_id,
                 "run_id": value.run_id,
                 "stage_id": value.stage_id,
-                "span_id": value.span_id,
-                "parent_span_id": value.parent_span_id,
+                # Retired fields, kept null in the hash so every kept identity stays the same.
+                "span_id": None,
+                "parent_span_id": None,
                 "correlation_ids": value.correlation_ids,
                 "authority": value.authority,
                 "sensitivity": value.sensitivity,
@@ -800,7 +575,6 @@ def _require_aware(value: datetime, label: str) -> None:
 
 
 __all__ = [
-    "ObservationAppendResult",
     "ObservationAuthority",
     "ObservationAuthorityReadback",
     "ObservationAuthorityReader",
@@ -809,17 +583,12 @@ __all__ = [
     "ObservationDraft",
     "ObservationEnvelope",
     "ObservationPayloadRef",
-    "ObservationProjectionCheckpoint",
     "ObservationReadCursor",
     "ObservationReadItem",
     "ObservationReadPage",
     "ObservationRetentionClass",
-    "ObservationRetentionPolicy",
-    "ObservationRetentionReport",
-    "ObservationRunSummary",
     "ObservationSensitivity",
     "build_observation_authority_readback",
     "build_observation_authority_reference",
-    "build_retention_policy",
     "observation_identity",
 ]

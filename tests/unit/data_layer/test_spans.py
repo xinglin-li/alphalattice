@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
 from opentelemetry import context as current
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import Event, ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -13,7 +15,15 @@ from opentelemetry.sdk.util.instrumentation import InstrumentationScope
 from opentelemetry.trace import SpanContext, Status, StatusCode, TraceFlags, TraceState
 
 from alphalattice.kernel.data_layer import spans
-from alphalattice.kernel.data_layer.spans import RowsExporter, carrier, context_of, tracer_provider
+from alphalattice.kernel.data_layer.spans import (
+    RowsExporter,
+    carrier,
+    context_of,
+    fact_event,
+    logger_provider,
+    step_event,
+    tracer_provider,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
 TRACE, CLIENT_SPAN = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"
@@ -98,21 +108,27 @@ def test_the_external_exporter_scrubs_secrets_and_respects_content_choice(
 
 @pytest.mark.proves("data_layer.baggage_attributes_every_span")
 def test_a_span_below_w3c_headers_is_their_child_and_works_for_their_baggage():
-    """A span started in the context W3C headers carry is the client span's child and works for
-    the trial the baggage names and the workspace its caller binds, whatever workspace the
-    baggage claims; the span's own context writes back out as headers in the same trace."""
-    exporter = RowsExporter()
+    """A span under W3C headers is the client span's child, works for their baggage and the bound
+    workspace, writes its context back out, and is logged live as started; a log record is a fact
+    in the span current where it is emitted (its text the body), or in no span outside one."""
+    exporter, kept = RowsExporter(), InMemoryLogRecordExporter()
     tracer = tracer_provider(exporter).get_tracer("worker")
+    logger = logger_provider(kept).get_logger("host")
     headers = {
         "traceparent": f"00-{TRACE}-{CLIENT_SPAN}-01",
         "baggage": "alphalattice.trial_id=t7,alphalattice.workspace_id=w2",
     }
+    own = {"alphalattice.actor_kind": "agent", "alphalattice.actor_id": "a1"}
     token = current.attach(context_of(headers, workspace_id="w1", selection_id=None))
     try:
-        with tracer.start_as_current_span("worker.call", attributes={"call": "m:f"}):
+        with tracer.start_as_current_span("worker.call", attributes={"call": "m:f"}) as opened:
             sent = carrier()
+            span = cast(ReadableSpan, opened)  # the SDK's span, read as the exporter reads it
+            live = step_event(span, started=True)
+            logger.emit(event_name="agent.activity", body="Read it.", attributes=own | {"k": 1})
     finally:
         current.detach(token)
+    logger.emit(event_name="request.refused", attributes={"operation": "S"}, timestamp=5_000)
     (row,) = exporter.rows
     assert (row["trace_id"], row["parent_span_id"]) == (TRACE, CLIENT_SPAN)
     assert row["workspace_id"] == "w1"
@@ -121,3 +137,19 @@ def test_a_span_below_w3c_headers_is_their_child_and_works_for_their_baggage():
     assert {"alphalattice.trial_id=t7", "alphalattice.workspace_id=w1"} <= set(
         sent["baggage"].split(",")
     )
+    started_at = cast(int, span.start_time) // 1000
+    assert (live["phase"], live["span_id"], live["started_us"], live["occurred_us"]) == (
+        "started",
+        row["span_id"],
+        None,
+        started_at,
+    )
+    (inside, inside_text), (outside, outside_text) = map(fact_event, kept.get_finished_logs())
+    assert (inside["phase"], inside["span_id"], inside["actor_id"], inside_text) == (
+        None,
+        row["span_id"],
+        "a1",
+        "Read it.",
+    )
+    assert json.loads(inside["attrs"]) == {"k": 1}
+    assert (outside["span_id"], outside["occurred_us"], outside_text) == (None, 5, None)

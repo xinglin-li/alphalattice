@@ -97,18 +97,15 @@ def ten_sector(tmp_path_factory):
 
 
 def _bytes(root: Path):
-    """Every workspace file's bytes, except the writer lease, the activity observer's own
-    ledger under `runtime/` (`observations.sqlite` and its WAL/SHM) and the sealed plan
-    previews (`runtime/plan-previews`): the observer records each observed
-    operation and a plan seals its preview, planning included, so those files move with the
-    request itself and say nothing about what the update wrote."""
+    """Every workspace file's bytes, except the writer lease and the sealed plan previews
+    (`runtime/plan-previews`): a plan seals its preview, planning included, so those files move
+    with the request itself and say nothing about what the update wrote."""
     previews = root / "runtime" / "plan-previews"
     return {
         str(path.relative_to(root)): sha256(path.read_bytes()).hexdigest()
         for path in root.rglob("*")
         if path.is_file()
         and path.name != ".alphalattice-writer.lock"
-        and not path.name.startswith("observations.sqlite")
         and previews not in path.parents
     }
 

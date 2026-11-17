@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -315,11 +315,14 @@ def import_ledgers(registry: _Registry) -> list[str]:
     or none; a Task already on the log is not imported again, so a kill after the unit resumes
     at verify.
     Verify reads every imported record and frozen text back from the log. The switch then sets
-    the store and the requests aside under `retired-0.2.7/`; nothing is deleted.
+    the store and the requests aside under `retired-0.2.7/`; nothing is deleted. A switch a kill
+    interrupted completes first, into its recorded directory, even when the store has moved.
     """
     store, runtime = registry.database_path, registry.database_path.parent
     requests = runtime / REQUESTS_DIRECTORY
+    retired = (store, store.with_name(f"{store.name}.wal"), requests)
     if not store.is_file() and not requests.is_dir():
+        set_aside(runtime, retired)  # the rest of a set a kill left part-way, if any
         return []
     rows = _read_0_2_7(store) if store.is_file() else {}
     frozen = read_frozen(runtime)
@@ -327,16 +330,40 @@ def import_ledgers(registry: _Registry) -> list[str]:
     unequal = _verify_import(registry, rows, frozen)
     if unequal:
         return unequal
-    moved = [p for p in (store, store.with_name(f"{store.name}.wal"), requests) if p.exists()]
-    retired = runtime / RETIRED_DIRECTORY
-    if any((retired / path.name).exists() for path in moved):
-        # Set aside before (a carried copy of a workspace that moved once): this set goes
-        # beside it, dated, and nothing set aside is replaced.
-        retired = retired / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    retired.mkdir(parents=True, exist_ok=True)
-    for path in moved:
-        os.replace(path, retired / path.name)
+    set_aside(runtime, retired)
     return []
+
+
+def set_aside(runtime: Path, paths: Iterable[Path]) -> None:
+    """Move one set of a 0.2.7 workspace's retired files (a database with its -wal and -shm, a
+    store with its requests) out of its live root, under `retired-0.2.7/`, the upgrade's keeping
+    of them: nothing is deleted, checkpointed or rewritten.
+
+    The set's directory is chosen and recorded before its first move: `retired-0.2.7/` itself,
+    or a dated directory beside a set kept there before (a carried copy of a workspace that moved
+    once), so nothing is replaced. A move interrupted part-way resumes into the recorded
+    directory, so the set is never split; the record goes once the set has moved."""
+    paths = list(paths)
+    kept = runtime / RETIRED_DIRECTORY
+    record = kept / f"{paths[0].name}.set.json"
+    if record.is_file():
+        retired = runtime / json.loads(record.read_text("utf-8"))["directory"]
+    else:
+        moved = [path for path in paths if path.exists()]
+        if not moved:
+            return
+        retired = kept
+        if any((kept / path.name).exists() for path in moved):
+            retired = kept / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        retired.mkdir(parents=True, exist_ok=True)
+        chosen = record.with_name(f"{record.name}.tmp")
+        where = retired.relative_to(runtime).as_posix()
+        chosen.write_text(json.dumps({"directory": where}), "utf-8")
+        os.replace(chosen, record)
+    for path in paths:
+        if path.exists():
+            os.replace(path, retired / path.name)
+    record.unlink()
 
 
 def _import(

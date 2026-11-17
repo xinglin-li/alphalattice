@@ -1415,7 +1415,6 @@
       "identity_basis": "Network permission or storage-cap control is outside sealed computation method identities; no method parameter is changed.",
       "readers": {
         "literal": [
-          "src/alphalattice/control/observation_runtime/ledger.py:176",
           "src/alphalattice/control/product_host/storage/input_references.py:576",
           "src/alphalattice/control/product_host/storage/input_references.py:578",
           "src/alphalattice/control/product_host/storage/input_references.py:585",
@@ -1451,9 +1450,6 @@
           "tests/integration/local_application/test_native_bridge.py:538",
           "tests/integration/product_host/test_strategy_activation.py:1901",
           "tests/integration/product_host/test_strategy_activation.py:1905",
-          "tests/integration/observation_runtime/test_unified_observation.py:495",
-          "tests/integration/observation_runtime/test_unified_observation.py:511",
-          "tests/integration/observation_runtime/test_unified_observation.py:532",
           "tests/integration/product_host/test_current_state_storage.py:109",
           "tests/integration/product_host/test_current_state_storage.py:94",
           "tests/integration/product_host/test_current_state_storage.py:95"

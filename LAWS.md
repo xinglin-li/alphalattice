@@ -639,8 +639,7 @@ One operator cap, automatically sized from managed data/free space, governs capa
 *Held by:*
 `test: tests/integration/product_host/test_current_state_storage.py::test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator`,
 `test: tests/integration/product_host/test_current_state_storage.py::test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity`,
-`test: tests/integration/local_application/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/integration/product_host/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
-`test: tests/integration/observation_runtime/test_unified_observation.py::test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records`.
+`test: tests/integration/local_application/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/integration/product_host/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`.
 
 
 ## DA. Data and formats

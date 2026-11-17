@@ -741,7 +741,6 @@ class LocalPortfolioWebSession:
             gate=session.mutation_gate,
             instance=secrets.token_hex(16),
             clock=self.clock,
-            storage_cap_reader=self.operations.storage.capacity_cap_bytes,
         )
         self.activity = activity
         self.operations.observer = activity

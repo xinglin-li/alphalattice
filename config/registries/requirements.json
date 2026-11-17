@@ -232,6 +232,13 @@
       "seconds": 1,
       "lower_layer": "The Goal composition owner imports Host facilities that the unit layer cannot load."
     },
+    "composition.records_map_to_spans_and_log_records": {
+      "description": "Each record the Host keeps is written whole into its history, an operation as one started-then-ended span and every other record as a fact, and each activity read is answered from it.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The mapping runs in a live Host's composition, and only its history's SQLite file shows what a reader reads."
+    },
     "composition.replay_refuses_a_tampered_input": {
       "description": "If a replay ran from a tampered input bundle, it would claim to reproduce a result from bytes that were never bound.",
       "owner": "alphalattice.control.product_host.composition",
@@ -311,7 +318,7 @@
       "owner": "alphalattice.kernel.data_layer"
     },
     "data_layer.baggage_attributes_every_span": {
-      "description": "A span started below W3C headers is their trace's child and carries the trial and selection its baggage names and the workspace its caller binds, whatever workspace the baggage claims.",
+      "description": "A span below W3C headers is their trace's child, carries its baggage's trial and selection and its caller's workspace, is logged live as started, and has its log records as facts inside it.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -377,7 +384,7 @@
       "seconds": 5
     },
     "data_layer.host_history_records_or_defers": {
-      "description": "A Host's history records its workspace and the Host's own definitions, and records nothing while another Host holds the data root.",
+      "description": "A Host's history records its workspace, its own definitions, begun spans as started then ended with flattened attributes, and facts with their text in their span, and nothing while another Host holds the data root.",
       "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
@@ -940,41 +947,59 @@
       "layer": "integration",
       "seconds": 10
     },
+    "observation_runtime.history_reads_answer_exactly_or_refuse": {
+      "description": "If a correlated read followed another run, schema or a partial handle, or picked one of two matches, callers would credit evidence the history does not hold.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Its proof reads events the Host's log really admitted, so it needs the log's SQLite and a written workspace."
+    },
     "observation_runtime.ledger_has_one_sqlite_writer": {
       "description": "If two writers shared the store or a reader blocked the writer, ledger rows could interleave or the Host would stall recording.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "retired": "2026-11-16: the observation ledger retired; the activity's records are written by the Host log's one writer, whose lock and batches the data layer proves."
     },
     "observation_runtime.ledger_reads_answer_exactly_or_refuse": {
       "description": "If a bounded or correlated read followed a wrong run or hid a tampered row, callers would credit evidence the ledger does not hold.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-16: the observation ledger retired; its reads are answered from the Host's history, proved by observation_runtime.history_reads_answer_exactly_or_refuse."
     },
     "observation_runtime.ledger_records_each_event_once_and_keeps_history": {
       "description": "If a repeated, corrected or failed append changed the observation ledger, its record of what happened could no longer be replayed or trusted.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-16: the observation ledger retired; an agent event's replay is reused once from the history, proved by the external-document test, and corrections were never written."
     },
     "observation_runtime.ledger_refuses_what_it_must_never_hold": {
       "description": "If secrets, private cognition or unbacked decisions reached an append, the ledger would keep them durably or claim authority nobody gave.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-16: the observation ledger retired; the recording policy that refuses those records stays, proved by observation_runtime.records_refuse_what_they_must_never_hold."
     },
     "observation_runtime.ledger_stays_inside_its_storage_cap": {
       "description": "If retention ignored the workspace cap or compacted protected rows partially, the ledger would fill the disk or silently lose records it promised to keep.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-16: the observation ledger and its retention retired; the activity's records live in the Host log, whose retention is the data layer's."
     },
     "observation_runtime.process_is_held_to_half_the_machine_or_its_narrower_allowance": {
       "description": "A runner binds its process to at most half the machine's logical processors, or to the narrower allowance it already inherited, and reads the bound back from the operating system.",
       "owner": "alphalattice.control.observation_runtime",
       "layer": "integration",
       "seconds": 4.0
+    },
+    "observation_runtime.records_refuse_what_they_must_never_hold": {
+      "description": "If secrets, private cognition or unbacked decisions passed the recording policy, the Host's history would keep them durably or claim authority nobody gave.",
+      "owner": "alphalattice.control.observation_runtime",
+      "layer": "unit",
+      "seconds": 1
     },
     "observation_runtime.usage_recording_exposes_only_safe_health": {
       "description": "If a usage callback's failure or free text reached owner health, recording could break or private native paths and prose could leak to readers.",
@@ -1342,6 +1367,12 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.a_set_aside_set_stays_in_one_directory": {
+      "description": "If a 0.2.7 database and its WAL were set aside into different directories when a move was interrupted, the kept copy would lose the database's committed writes.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
     },
     "task_control.a_wedged_worker_is_ended_by_name": {
       "description": "If the Host waited on a worker that stopped running with no bound, a wedged call would hold its Task forever.",

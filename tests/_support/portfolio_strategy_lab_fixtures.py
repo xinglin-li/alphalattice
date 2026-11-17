@@ -70,7 +70,7 @@ def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPo
     workspace = tmp_path_factory.mktemp("cli-read")
     host = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_manifest("qa-cli-read"),
+        workspace_manifest=_manifest(f"qa-cli-read-{uuid4().hex[:12]}"),
         resolver=_Resolver(_resolved()),
     )
     host.start()

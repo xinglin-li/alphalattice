@@ -41,7 +41,7 @@ AT = datetime(2026, 10, 6, tzinfo=UTC)
 
 
 @pytest.fixture(params=["codex", "claude-code"])
-def lead_scene(request, tmp_path, monkeypatch):
+def lead_scene(request, tmp_path, monkeypatch, recording_history):
     """Real session parser, observation and Goal owners; a public local transport seam."""
     host = request.param
     parent = "synthetic-lead-" + uuid4().hex
@@ -118,7 +118,7 @@ def lead_scene(request, tmp_path, monkeypatch):
     session.write_text("\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8")
     observer = WorkspaceActivity(
         workspace=workspace,
-        workspace_id="synthetic-lead-usage",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="synthetic-instance",
         clock=lambda: AT,

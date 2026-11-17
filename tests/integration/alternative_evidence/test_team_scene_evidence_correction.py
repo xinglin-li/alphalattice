@@ -1018,7 +1018,7 @@ def _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outco
             responses[0] = first.result(timeout=10)
         assert not late, "other keyed submissions waited for the held packet read"
         assert len(responses) == 15
-        ledger = service.session.activity._ledger
+        ledger = service.session.activity._reads
         assert ledger is not None
         recorded = ledger.observations_of_kind("ProductOperationObserved", limit=500)
         holds = [
@@ -1269,7 +1269,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
         "activity": {"operation": "ACTIVITY_RECENT"},
         "tasks": {"operation": "TASKS"},
     }
-    assert service.session.activity is not None and service.session.activity._ledger is not None
+    assert service.session.activity is not None and service.session.activity._reads is not None
     # The same-Goal observation is the Host's, not the member's transcript.
     page = client.activity(limit=200)
     stalls = [
@@ -1287,7 +1287,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
         "AGENT_BUNDLE_PREPARE",
     )
     assert abs(subject["review_stall_wait_us"] / 1_000_000 - refused["waited_seconds"]) < 0.001
-    rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+    rows = service.session.activity._reads.refusal_counts(since_day="2000-01-01")
     assert (
         next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")["count"]
         == 1
@@ -1461,7 +1461,7 @@ def _held_answer_turn_returns_busy_then_allows_retry(host, monkeypatch, *, same_
             assert first_result["status"] == "CORRECT" and retried == first_result
         else:
             assert retried["status"] in {"ACCEPTED", "DONE", "REFUSED"}
-        rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+        rows = service.session.activity._reads.refusal_counts(since_day="2000-01-01")
         assert (
             next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")[
                 "count"

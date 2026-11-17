@@ -267,7 +267,7 @@ class GoalStore:
     def event_goal(self, key: str, decide: Callable[[], UUID | None]) -> UUID | None:
         """The goal an external event was filed under at its first receipt, or none.
 
-        The event's row records this, and the activity ledger answers a replay of the same
+        The event's row records this, and the activity history answers a replay of the same
         producer sequence only with the same content, so a replay reads the first receipt's
         answer rather than deciding again after its session took another goal.
         """

@@ -2,6 +2,10 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "activity.storage_unavailable": {
+      "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "This Host's history is not recording, so it records no events and answers no activity; the Host that alphalattice serve starts records its history or refuses to start.", "zh-CN": "这个 Host 的历史没有在记录，因此不记录事件，也不回答活动；alphalattice serve 启动的 Host 会记录它的历史，否则拒绝启动。"}
+    },
     "experience.label.trials": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial experience", "zh-CN": "试验经验"}},
     "experience.label.hypothesis": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Hypothesis", "zh-CN": "假设"}},
     "experience.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's research history is unavailable, so its trial experience could not be read.", "zh-CN": "Host 的研究历史不可用，因此无法读取试验经验。"}},

@@ -235,7 +235,8 @@ def test_a_kill_between_the_import_and_the_retirement_resumes_with_nothing_lost(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """requirement: a 0.2.7 workspace killed after its Tasks reached the log and before its store
-    was set aside opens again with every Task once, verified, and the store set aside."""
+    was set aside opens again with every Task once, verified, and the store set aside; a set killed
+    after its store moved, with no requests left, completes when the registry opens."""
 
     import alphalattice.control.task_control.upgrade as owner
 
@@ -276,6 +277,28 @@ def test_a_kill_between_the_import_and_the_retirement_resumes_with_nothing_lost(
     assert not registry.database_path.exists()
     runtime = registry.database_path.parent
     assert (runtime / RETIRED_DIRECTORY / registry.database_path.name).is_file()
+
+    store = registry.database_path  # a later copy's store and WAL, set aside beside the first
+    wal = store.with_name(f"{store.name}.wal")
+    for path in (store, wal):
+        path.write_bytes(path.name.encode())
+    real, done = owner.os.replace, []
+
+    def after_the_store(source: object, target: object) -> None:
+        if len(done) == 2:  # the set's record, then the store: the WAL is left behind
+            raise _Killed
+        real(source, target)
+        done.append(target)
+
+    monkeypatch.setattr(owner.os, "replace", after_the_store)
+    with pytest.raises(_Killed):
+        owner.set_aside(runtime, (store, wal, runtime / owner.REQUESTS_DIRECTORY))
+    monkeypatch.setattr(owner.os, "replace", real)
+    DuckDbTaskControlRegistry(store, gate=gate)
+    assert not store.exists() and not wal.exists()
+    kept = (runtime / RETIRED_DIRECTORY).iterdir()  # the first set's requests are a directory
+    (dated,) = [path for path in kept if path.is_dir() and path.name != owner.REQUESTS_DIRECTORY]
+    assert sorted(path.name for path in dated.iterdir()) == sorted((store.name, wal.name))
 
 
 @pytest.mark.proves("task_control.a_0_2_7_store_moves_in_admission_order")

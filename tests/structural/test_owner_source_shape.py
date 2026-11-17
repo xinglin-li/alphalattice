@@ -1040,7 +1040,7 @@ def test_seam_fixture_round_trips_one_native_shaped_event_and_one_product_event_
             "control/product_host/composition/workspace_activity.py",
             "control/product_host/composition/local_web_session.py",
             "control/product_host/composition/portfolio_research_operations.py",
-            "control/observation_runtime/ledger.py",
+            "control/observation_runtime/log_reads.py",
             "control/observation_runtime/policy.py",
         )
     )

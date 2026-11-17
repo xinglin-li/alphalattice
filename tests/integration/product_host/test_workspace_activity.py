@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import threading
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,7 +28,7 @@ from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationRetentionClass,
 )
-from alphalattice.control.observation_runtime.ledger import ObservationStorageError
+from alphalattice.control.observation_runtime.log_reads import ObservationStorageError
 from alphalattice.control.observation_runtime.policy import (
     EXTERNAL_ACTIVITY_FIELDS,
     EXTERNAL_ACTIVITY_MAX_INLINE_BYTES,
@@ -67,15 +69,18 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.interface.local_application.questions import person_question
+from alphalattice.kernel.data_layer import history
 from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
 from tests.workspace_task_runner.task_control_support import task_log
 
 
 @pytest.mark.proves("composition.observation_writes_do_not_wait_for_workspace_mutations")
-def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(tmp_path: Path) -> None:
+def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(
+    tmp_path: Path, recording_history: str
+) -> None:
     """The Host can record a busy refusal while another workspace mutation is held."""
     gate = WorkspaceMutationGate()
-    activity = WorkspaceActivity(tmp_path, "held-gate", gate, "held-gate")
+    activity = WorkspaceActivity(tmp_path, recording_history, gate, "held-gate")
     request = PortfolioResearchRequestDocument(
         operation="AGENT_ANSWER_SUBMIT",
         bundle_directory=str(tmp_path / "bundle"),
@@ -103,8 +108,7 @@ def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(tmp_p
     try:
         assert completed_while_held and not errors
         assert activity.read(ActivityReadQuery())["items"][0]["payload"]["phase"] == "REQUESTED"
-        assert activity._ledger is not None
-        counts = activity._ledger.refusal_counts(since_day="2000-01-01")
+        counts = activity.refusals(days=1)["refusals"]
         assert counts[0]["failure_code"] == "workspace.mutation_busy"
         entered = threading.Event()
         acquired = threading.Event()
@@ -140,18 +144,6 @@ def test_observation_entry_and_refusal_do_not_wait_for_workspace_mutations(tmp_p
             release.set()
             waiter.join(timeout=5)
         assert not waiter.is_alive()
-        closed = threading.Event()
-
-        def close() -> None:
-            activity.close()
-            closed.set()
-
-        with activity._ledger.gate.hold():
-            closer = threading.Thread(target=close)
-            closer.start()
-            closed_while_writer_held = closed.wait(0.25)
-        closer.join(timeout=5)
-        assert not closed_while_writer_held and closed.is_set()
     finally:
         activity.close()
 
@@ -236,8 +228,14 @@ def test_answer_receipt_preserves_sealed_refs_without_creating_a_scientific_task
     assert (page["observer"]["status"], page["observer"]["missing_observations"]) == ("OK", 0)
 
 
+@pytest.mark.proves("composition.records_map_to_spans_and_log_records")
 def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path, monkeypatch):
-    """Session receipts share its span and paging, independently of the feed tail."""
+    """Session receipts share its span and paging, independently of the feed tail; the history
+    holds the operation as one span, started then ended, a return with no start as its own ended
+    span, and each agent event as a fact; a refusal is counted from its fact."""
+    log = history.data_root() / "machine" / "log.sqlite"
+    with closing(sqlite3.connect(log)) as con:
+        (before,) = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()
     observer = live.activity
     monkeypatch.setattr(observer, "clock", lambda: datetime(2026, 9, 14, 12, 0, 1, tzinfo=UTC))
     client = LocalResearchClient(live.workspace)
@@ -251,7 +249,8 @@ def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path
         client.publish_event(_event(0, subject={"native_session_id": "session-a"}))
         span = observer.entered(request, caller="EXTERNAL_AUTOMATION")
         observer.returned(span, {"status": "ACCEPTED"})
-        client.publish_event(_event(2, subject={"native_session_id": "session-a"}))
+        usage = {"native_session_id": "session-a", "input_tokens": "5", "cache_read_tokens": "3"}
+        client.publish_event(_event(2, subject=usage))
         page = _json(live, "/api/activity/external?native_session_id=session-a&limit=2")
         assert page["epoch"] == client.activity(limit=1)["epoch"] and page["more"]
         assert len(page["items"]) == len(page["product_items"]) == 1
@@ -265,8 +264,26 @@ def test_selected_session_product_facts_share_its_span_and_paging(live, tmp_path
         observer.returned(span, {"status": "ACCEPTED"})
         assert len(client.read_external(native_session_id="session-a")["product_items"]) == 3
         assert client.read_external(native_session_id="session-b")["product_items"] == []
+        observer.refused("AGENT_ANSWER_SUBMIT", "local_web.fixture_refusal", caller="HUMAN")
+        (refusal,) = observer.refusals(days=1)["refusals"]
+        assert (refusal["count"], refusal["vendor"]) == (1, "codex")
     finally:
         REQUEST_PROVENANCE.reset(token)
+    history.close_history()  # commits the Host's batch
+    with closing(sqlite3.connect(log)) as con:
+        traced = con.execute(
+            "SELECT e.type, e.phase, e.actor_id, t.text, e.attrs FROM event e"
+            " LEFT JOIN event_text t USING (seq)"
+            " WHERE e.seq > ? AND e.type IN ('product.operation', 'agent.activity')"
+            " ORDER BY e.seq",
+            (before,),
+        ).fetchall()
+    fact = ("agent.activity", None, "codex-adapter", _event(0)["summary"])
+    phases = ("started", "completed", "completed")
+    operation = [("product.operation", phase, "host", None) for phase in phases]
+    assert [row[:4] for row in traced] == [fact, *operation[:2], fact, operation[2]]
+    genai = {"gen_ai.conversation.id": "session-a", "gen_ai.usage.cache_read.input_tokens": 3}
+    assert json.loads(traced[3][4]).items() >= (genai | {"gen_ai.usage.input_tokens": 8}).items()
 
 
 def _two_bound(tmp_path, monkeypatch, receipts):
@@ -426,7 +443,9 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
 
 @pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")
 @pytest.mark.parametrize("status", ["NOT_BOUND", "OFF", "OBSERVING", "STOPPED", "UNAVAILABLE"])
-def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_path, status):
+def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(
+    tmp_path, status, recording_history
+):
     """Usage health exposes no callback identity, native path, content or supplied prose."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -467,7 +486,7 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
 
     observer = WorkspaceActivity(
         workspace=workspace,
-        workspace_id="synthetic-usage-state",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="synthetic-usage-state",
         native_usage_state=usage_state,
@@ -515,14 +534,14 @@ def test_native_usage_callback_exposes_only_owner_status_and_safe_reason(tmp_pat
     ],
 )
 def test_native_usage_callback_refuses_unknown_status_or_untyped_reason(
-    tmp_path, status, reason, expected_reason
+    tmp_path, status, reason, expected_reason, recording_history
 ):
     """Unknown states and arbitrary reasons cannot become owner health or private text."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     observer = WorkspaceActivity(
         workspace=workspace,
-        workspace_id="synthetic-usage-state",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="synthetic-usage-state",
         native_usage_state=lambda: {"status": status, "reason": reason},
@@ -542,7 +561,9 @@ def test_native_usage_callback_refuses_unknown_status_or_untyped_reason(
 
 @pytest.mark.proves("observation_runtime.usage_recording_exposes_only_safe_health")
 @pytest.mark.untyped_failure
-def test_native_usage_callback_failure_is_isolated_from_recording_health(tmp_path):
+def test_native_usage_callback_failure_is_isolated_from_recording_health(
+    tmp_path, recording_history
+):
     """A failed health read reveals its safe code without changing recording or counters."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -552,7 +573,7 @@ def test_native_usage_callback_failure_is_isolated_from_recording_health(tmp_pat
 
     observer = WorkspaceActivity(
         workspace=workspace,
-        workspace_id="synthetic-usage-state",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="synthetic-usage-state",
         native_usage_state=failed_state,
@@ -847,14 +868,16 @@ def test_external_events_carry_the_boundary_assigned_trust_and_refuse_spoofing(
 def test_observer_failure_degrades_visibly_without_failing_or_repeating_work(
     live: LocalPortfolioWebSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from alphalattice.control.product_host.composition import workspace_activity
+
     activity = live.activity
     assert activity is not None
-    healthy_emit = activity._port.emit
+    healthy_trace = workspace_activity.trace_record
 
-    def broken_emit(_draft: object) -> None:
+    def broken_trace(*_args: object) -> None:
         raise ObservationStorageError("observation.storage_busy", "fixture: store locked")
 
-    monkeypatch.setattr(activity._port, "emit", broken_emit)
+    monkeypatch.setattr(workspace_activity, "trace_record", broken_trace)
     spec = tmp_path / "spec.yaml"
     spec.write_text("{}", encoding="utf-8")
     code, sent = _cli(live, "strategy-book", "run", "--file", str(spec))
@@ -881,7 +904,7 @@ def test_observer_failure_degrades_visibly_without_failing_or_repeating_work(
     )
 
     # An unexpected hook failure stays on the dispatcher, never on the Task.
-    monkeypatch.setattr(activity._port, "emit", healthy_emit)
+    monkeypatch.setattr(workspace_activity, "trace_record", healthy_trace)
     monkeypatch.setattr(
         live.dispatcher, "on_command_returned", lambda *_a: (_ for _ in ()).throw(RuntimeError("x"))
     )
@@ -942,20 +965,22 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     assert type(original).read(live.workspace) == original
 
     # A client that missed pages continues from where it stopped, in order, once.
-    early = f"{epoch}:1"
+    ordinals = [i["ordinal"] for i in _json(live, "/api/activity?limit=50")["items"]]
+    assert len(ordinals) == 3 and ordinals == sorted(ordinals)  # positions, not counts
+    early = f"{epoch}:{ordinals[0]}"
     page = _json(live, f"/api/activity?after={early}&limit=1")
     assert page["disposition"] == "CONTINUED" and page["more"]
-    assert [i["ordinal"] for i in page["items"]] == [2]
+    assert [i["ordinal"] for i in page["items"]] == ordinals[1:2]
     again = _json(live, f"/api/activity?after={early}&limit=1")
     assert again["items"] == page["items"]  # idempotent: the same cursor, the same rows
     rest = _json(live, f"/api/activity?after={page['cursor']}&limit=50")
-    assert [i["ordinal"] for i in rest["items"]] == [3] and not rest["more"]
+    assert [i["ordinal"] for i in rest["items"]] == ordinals[2:] and not rest["more"]
 
     # A cursor from another store is reset with a fresh tail, not continued.
     reset = _json(live, f"/api/activity?after={'f' * 32}:1")
     assert reset["disposition"] == "RESET" and reset["epoch"] == epoch
-    assert [i["ordinal"] for i in reset["items"]] == [1, 2, 3]
-    beyond = _json(live, f"/api/activity?after={epoch}:99")
+    assert [i["ordinal"] for i in reset["items"]] == ordinals
+    beyond = _json(live, f"/api/activity?after={epoch}:{ordinals[-1] + 10**6}")
     assert beyond["disposition"] == "RESET"
 
     for query, code in (
@@ -1425,11 +1450,24 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
             )
 
 
-def test_unopenable_activity_store_degrades_observation_not_the_product(tmp_path: Path) -> None:
+def test_unopenable_activity_store_degrades_observation_not_the_product(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alphalattice.control.product_host.composition import local_web_session
     from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 
     workspace = tmp_path / "workspace"
-    (workspace / "runtime" / "observations.sqlite").mkdir(parents=True)  # a directory, not a store
+    runtime = workspace / "runtime"
+    runtime.mkdir(parents=True)
+    for name in ("observations.sqlite", "observations.sqlite-wal"):  # a 0.2.7 ledger, retired
+        (runtime / name).write_bytes(b"0.2.7")
+    # A Host whose history stops recording while it serves: its activity keeps nothing.
+    monkeypatch.setattr(
+        local_web_session.WorkspaceApplicationSession, "open_history", lambda *_: None
+    )
+    monkeypatch.setattr(local_web_session, "release_history", lambda: None)
+    monkeypatch.setattr(history, "recording", lambda: False)
+    monkeypatch.setattr(history, "opened_log", lambda: None)
     session = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=_manifest("qa-degraded"),
@@ -1438,7 +1476,10 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(tmp_path
     session.start()
     try:
         assert session.activity is not None and not session.activity.available
-        assert session.activity.store_failure == "observation.storage_open_failed"
+        assert not list(runtime.glob("observations.sqlite*"))  # set aside, never imported
+        kept = sorted(path.name for path in (runtime / "retired-0.2.7").iterdir())
+        assert kept == ["observations.sqlite", "observations.sqlite-wal"]
+        assert session.activity.store_failure == "activity.storage_unavailable"
         spec = tmp_path / "spec.yaml"
         spec.write_text("{}", encoding="utf-8")
         code, sent = _cli(session, "strategy-book", "run", "--file", str(spec))
@@ -1454,7 +1495,7 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(tmp_path
         assert page["disposition"] == "UNAVAILABLE" and page["items"] == []
         assert page["cursor"] is None and page["epoch"] is None
         assert page["observer"]["status"] == "UNAVAILABLE"
-        assert page["observer"]["store_failure"] == "observation.storage_open_failed"
+        assert page["observer"]["store_failure"] == "activity.storage_unavailable"
         assert page["tasks"][task_id]["lifecycle"] == "SUCCEEDED"  # Task truth is still served
         event = LocalResearchClient(session.workspace).publish_event(_event(0))
         assert (

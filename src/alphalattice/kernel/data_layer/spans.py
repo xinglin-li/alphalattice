@@ -23,13 +23,20 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from opentelemetry import baggage
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import Context
+from opentelemetry.sdk._logs import LoggerProvider, ReadableLogRecord
+from opentelemetry.sdk._logs.export import (
+    LogRecordExporter,
+    LogRecordExportResult,
+    SimpleLogRecordProcessor,
+)
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -61,29 +68,67 @@ _CONTENT = re.compile(
 )
 
 
-def step_event(span: ReadableSpan) -> dict[str, Any]:
-    """The step event an ended span is recorded as."""
-    attrs = dict(span.attributes or {})
+def _envelope(attributes: Mapping[str, Any] | None, scope: Any) -> dict[str, Any]:
+    """The event fields a span's or a log record's attributes give: those under PREFIX name its
+    actor, node, workspace and subject, and every other attribute (a sequence as a list) is kept."""
+    attrs = {key: list(v) if isinstance(v, tuple) else v for key, v in (attributes or {}).items()}
     own = {key[len(PREFIX) :]: str(attrs.pop(key)) for key in list(attrs) if key.startswith(PREFIX)}
     attrs |= {key: value for key, value in own.items() if key not in _ENVELOPE}
+    return {
+        "subject": (own.get("subject_kind"), own.get("subject_id")),
+        "attrs": attrs,
+        "workspace": own.get("workspace_id"),
+        "actor": (own.get("actor_kind", "host"), own.get("actor_id", "host")),
+        "node": own.get("node", scope.name if scope is not None else "host"),
+    }
+
+
+def step_event(span: ReadableSpan, *, started: bool = False) -> dict[str, Any]:
+    """The step event an ended span is recorded as; with `started`, the event a live span writes
+    as it starts, so a reader sees the step before it ends."""
     context, parent = span.get_span_context(), span.parent
-    assert context is not None and span.start_time is not None and span.end_time is not None
-    return envelope(
+    assert context is not None and span.start_time is not None
+    assert started or span.end_time is not None
+    fields = _envelope(span.attributes, span.instrumentation_scope)
+    row: dict[str, Any] = envelope(
         span.name,
-        (own.get("subject_kind"), own.get("subject_id")),
-        attrs,
-        phase="failed" if span.status.status_code is StatusCode.ERROR else "completed",
-        workspace=own.get("workspace_id"),
-        actor=(own.get("actor_kind", "host"), own.get("actor_id", "host")),
-        node=own.get(
-            "node", span.instrumentation_scope.name if span.instrumentation_scope else "host"
+        fields.pop("subject"),
+        fields.pop("attrs"),
+        phase=(
+            "started"
+            if started
+            else "failed"
+            if span.status.status_code is StatusCode.ERROR
+            else "completed"
         ),
         trace=f"{context.trace_id:032x}",
         span=f"{context.span_id:016x}",
         parent_span=None if parent is None else f"{parent.span_id:016x}",
-        started_us=span.start_time // 1000,
-        occurred_us=span.end_time // 1000,
+        started_us=None if started else span.start_time // 1000,
+        occurred_us=span.start_time // 1000 if started else cast(int, span.end_time) // 1000,
+        **fields,
     )
+    return row
+
+
+def fact_event(record: ReadableLogRecord) -> tuple[dict[str, Any], str | None]:
+    """The fact a log record is recorded as, and its text: its event name is the event's type, a
+    text body the event's text, its trace and span the span it happened in (a new trace outside
+    one)."""
+    log = record.log_record
+    fields = _envelope(log.attributes, record.instrumentation_scope)
+    text = log.body if isinstance(log.body, str) else None
+    row: dict[str, Any] = envelope(
+        cast(str, log.event_name),
+        fields.pop("subject"),
+        fields.pop("attrs"),
+        text=text,
+        trace=f"{log.trace_id:032x}" if log.trace_id else None,
+        span=f"{log.span_id:016x}" if log.span_id else None,
+        occurred_us=None if log.timestamp is None else log.timestamp // 1000,
+        **fields,
+    )
+    return row, text
 
 
 class LogSpanExporter(SpanExporter):
@@ -104,20 +149,63 @@ class LogSpanExporter(SpanExporter):
 
     def write(self, rows: Iterable[Mapping[str, Any]]) -> SpanExportResult:
         """Append step events another process's spans became, as `export` appends its own."""
-        result = SpanExportResult.SUCCESS
-        for row in rows:
-            try:
-                self._log.append(row)
-            except (DataError, sqlite3.Error) as error:
-                code = error.failure.code if isinstance(error, DataError) else type(error).__name__
-                self.refused[code] += 1
-                _LOG.warning("span %s not recorded: %s (%s)", row.get("type"), code, error)
-                result = SpanExportResult.FAILURE
-        return result
+        ok = all([self.append(row) for row in rows])
+        return SpanExportResult.SUCCESS if ok else SpanExportResult.FAILURE
+
+    def append(
+        self, row: Mapping[str, Any], text: str | None = None, *, raising: bool = False
+    ) -> bool:
+        """Append one event; one the log refuses is counted by its code and logged, and raised
+        only to a writer that asks (`raising`): the Host's own rows, whose writer must know."""
+        try:
+            self._log.append(row, text)
+        except (DataError, sqlite3.Error) as error:
+            code = error.failure.code if isinstance(error, DataError) else type(error).__name__
+            self.refused[code] += 1
+            _LOG.warning("event %s not recorded: %s (%s)", row.get("type"), code, error)
+            if raising:
+                raise
+            return False
+        return True
 
     def shutdown(self) -> None:
         """Commit what the spans wrote."""
         self._log.flush()
+
+
+class LogFactExporter(LogRecordExporter):
+    """Appends each log record to the Host's log as a fact, through the span exporter's append, so
+    a refused record is counted beside a refused span."""
+
+    def __init__(self, spans: LogSpanExporter) -> None:
+        """Write through `spans`, the Host log's exporter."""
+        self._spans = spans
+        self._here = threading.local()
+
+    def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
+        """Append each record as its fact; FAILURE when the log refused any, whose refusal the
+        emitting thread reads back (`refusal`)."""
+        self._here.refused = None
+        for record in batch:
+            try:
+                self._spans.append(*fact_event(record), raising=True)
+            except (DataError, sqlite3.Error) as error:
+                self._here.refused = error
+        failed = self._here.refused is not None
+        return LogRecordExportResult.FAILURE if failed else LogRecordExportResult.SUCCESS
+
+    def refusal(self) -> DataError | sqlite3.Error | None:
+        """The log's refusal of the last record this thread emitted, once; None when it was kept.
+        A record is exported as it is emitted, on the emitting thread."""
+        refused, self._here.refused = getattr(self._here, "refused", None), None
+        return cast("DataError | sqlite3.Error | None", refused)
+
+    def shutdown(self) -> None:
+        """Nothing of its own: the span exporter commits the log."""
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Nothing waits: each record is appended as it is emitted."""
+        return True
 
 
 class RowsExporter(SpanExporter):
@@ -315,6 +403,14 @@ def tracer_provider(
     provider.add_span_processor(
         SimpleSpanProcessor(exporter) if remote is None else RecordedSpanProcessor(exporter, remote)
     )
+    return provider
+
+
+def logger_provider(exporter: LogRecordExporter) -> LoggerProvider:
+    """A logger provider whose one exporter is `exporter`: each record a fact in the Host's log as
+    it is emitted. Nothing leaves the machine."""
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     return provider
 
 
