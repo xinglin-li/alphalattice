@@ -504,6 +504,45 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.array_bodies_settle_after_a_refused_placement_or_rollback": {
+      "description": "A body whose event rolled back, or whose rename after its commit was refused, is settled by the next start in the same process, and the commit's later bodies are placed.",
+      "lower_layer": "A rollback and a commit are a real log's; the refused rename is a real file move.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 3
+    },
+    "data_layer.array_digest_names_one_array": {
+      "description": "A digest kept again with another dtype or shape is refused by name, and the array it names stays readable.",
+      "lower_layer": "The refusal reads the profile the log holds for the digest.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.array_door_holds_one_body_per_machine": {
+      "description": "Two workspaces citing one lane hold one body under blobs/, each by its own live_ref, however often each keeps it.",
+      "lower_layer": "Holds are live_ref rows the log projects; the body is a file under the data root.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.array_door_keeps_every_lane_kind_bit_exact": {
+      "description": "Every lane kind (float with NaN payloads and signed zeros, integer, boolean, several columns, a 2-D shape, legacy packed bytes) kept through the array door reads back bit-exact as columns and as packed bytes, under the digest documents cite.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.array_door_refuses_a_wrong_dtype_or_shape_by_name": {
+      "description": "A body whose dtype, shape or bytes differ from its profile is refused by name, and equal bytes of another dtype or shape are another array.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.array_start_places_only_a_committed_staged_body": {
+      "description": "Start moves a body a crash left staged into place when the log holds its profile, and collects it when it does not.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.backup_copies_only_new_files": {
       "description": "A machine backup copies newly referenced immutable files into its shared pool, reuses unchanged held files and refuses a changed sealed name or a path outside its roots.",
       "layer": "unit",
@@ -838,12 +877,26 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.workspace_copy_carries_its_lanes": {
+      "description": "A workspace copy opened on its own data root reads every lane its source held, carried in the old lane form and moved onto its own log when its Host opens.",
+      "lower_layer": "The copy opens a second real data root and log in the same process.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.write_order_recovers_from_a_kill_at_each_point": {
-      "description": "A Host killed after an observed, legacy or results admission's files, catalog commit or event leaves no half snapshot: the next start finds all its rows or none, its event once, and no staging.",
+      "description": "A Host killed at each write-order point of an observed, results or array write leaves no half write: the next start finds all of it or none, its event once, and no staging.",
       "lower_layer": "A kill is a real process's death between a real DuckLake commit and a real log append.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
-      "seconds": 60
+      "seconds": 41,
+      "exception": {
+        "kinds": [
+          "over_budget"
+        ],
+        "why": "a real process killed at each write-order point of the observed, results and array writers; a kill needs a real process",
+        "decided": "2026-11-18: T1: over the medium admission seconds as on develop; its process cases fall 9 -> 8 and its seconds stay at or below 60"
+      }
     },
     "data_platform.session_authority_is_content_addressed": {
       "description": "The Host resolves one trading calendar: weekends are covered but are not sessions, and one range always seals the same axis while a narrower range seals another.",
@@ -1685,6 +1738,26 @@
       "seconds": 1,
       "lower_layer": "The finalization store's real dependencies include Host facilities that the unit layer cannot load."
     },
+    "portfolio_strategy_lab.lane_files_are_the_stores_lanes_alone": {
+      "description": "A workspace's Strategy Lab lane files are its Parquet and legacy packed lanes named by a digest, never the ledger's namespaces, the carried lanes or the documents' category.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "portfolio_strategy_lab.lane_files_move_into_the_door_all_equal": {
+      "description": "The upgrade moves every Strategy Lab lane file of a workspace into the array door, its ledger's lanes, carried lanes and documents left out, reads each back equal to its file, and stops naming the workspace as holding old lanes.",
+      "lower_layer": "The family reads real lane files and writes a real log and data root.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "portfolio_strategy_lab.lane_reader_switch_reads_old_files_for_rollback": {
+      "description": "ALPHALATTICE_ARRAY_STORE=legacy reads the lane files the Strategy Lab store wrote before the door, the upgrade's old switch selects it, and any value but door or legacy is refused by name.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The legacy reader is the old content store reading real lane files, its own file facts included."
+    },
     "portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering": {
       "description": "If a persisted ledger index could not tell a lost child from a bad index, recovery would rerun tampered work or refuse honest loss.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
@@ -1693,6 +1766,13 @@
     },
     "portfolio_strategy_lab.listing_axis_order_is_part_of_a_path": {
       "description": "If reordered listings hashed the same, two different portfolio paths would share one identity and advancement could reuse the wrong one.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "portfolio_strategy_lab.unmoved_workspace_reads_its_own_lane_files": {
+      "description": "With ALPHALATTICE_ARRAY_STORE unset, a workspace that holds lane files the door lacks reads them, the lanes a copy carries in place among them, until the upgrade moves them; the rule is decided once per process per workspace.",
+      "lower_layer": "The rule reads the workspace's real lane files and asks the data root's log which lanes the door lacks.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
       "seconds": 5

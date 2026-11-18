@@ -18,7 +18,7 @@ from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
-from alphalattice.kernel.data_layer.history import data_root, own_root
+from alphalattice.kernel.data_layer.history import carry_arrays, data_root, own_root
 
 
 def _request(
@@ -201,6 +201,7 @@ def _read_saved(
             shutil.rmtree(work / f"w{index - 1:03d}", ignore_errors=True)
         _copy(root, copy)
         carry_tasks(root, copy, root=source)
+        carry_arrays(root, copy, root=source)
         opened = _open_copy(copy, name, rows, fallback, opener)
         if opened is None:
             continue

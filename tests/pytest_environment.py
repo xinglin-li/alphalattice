@@ -250,9 +250,11 @@ def serve_apart(workspace: Path) -> Path:
     the Tasks this process's log holds for the workspace are carried into it, so that Host finds
     them."""
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a served Host's only
+    from alphalattice.kernel.data_layer.history import carry_arrays
 
     workspace.mkdir(parents=True, exist_ok=True)
     carry_tasks(workspace, workspace)
+    carry_arrays(workspace, workspace)
     return served_root(workspace)
 
 
@@ -273,8 +275,34 @@ def released(root: Path) -> None:
 def with_its_tasks(workspace: Path) -> Path:
     """`workspace`, its served Host's Tasks carried into it, so they are sealed with it."""
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a golden seal's only
+    from alphalattice.kernel.data_layer.history import carry_arrays
 
     carry_tasks(workspace, workspace, root=served_root(workspace))
+    carry_arrays(workspace, workspace, root=served_root(workspace))
+    return workspace
+
+
+def upgraded(workspace: Path) -> Path:
+    """`workspace`, an old workspace's copy, as its acknowledged first start leaves it on this
+    test's data root: every family run on it (its Strategy Lab lanes moved through the array
+    door among them) in its own Host's history, its backups the copy's source, so a Host serves
+    it at once. The history closes after, as that Host's does when it stops."""
+    from alphalattice.control.product_host.composition.first_start import FAMILIES
+    from alphalattice.control.product_host.composition.research_workspace import (
+        named_workspace_id,
+    )
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+
+    copy = workspace.resolve()
+    history.open_history(str(named_workspace_id(copy)), copy.name, copy)
+    try:
+        backups = {"workspaces": [{"workspace": str(copy)}]}
+        families = tuple(make() for make in FAMILIES)
+        log = history.held()
+        UpgradeRunner(history.data_root(), log, (copy,), families, lambda *_: backups).run()
+    finally:
+        history.close_history()
     return workspace
 
 

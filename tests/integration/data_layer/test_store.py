@@ -272,7 +272,16 @@ from alphalattice.kernel.data_layer import store
 from alphalattice.kernel.data_layer.log import HostLog
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
 lag = batch["lag"] and tuple(batch["lag"])
-if batch.get("owner"):
+if batch.get("array"):
+    import numpy as np
+    from alphalattice.kernel.data_layer import arrays
+    log = HostLog.open(root)
+    if point == "commit":  # the body staged, its profile not committed
+        log.flush = lambda: os._exit(9)
+    else:  # the profile committed, the body staged
+        arrays.os.replace = lambda *a: os._exit(9)
+    arrays.keep(root, log, {"value": np.array(batch["rows"])}, workspace=None)
+elif batch.get("owner"):
     from datetime import date, datetime
     from alphalattice.kernel.data_layer import history
     rows = batch["rows"]
@@ -307,46 +316,56 @@ BATCHES = {
         None,
         [{"listing_id": LISTING, "session_date": d} | WRITTEN for d in DAYS],
     ),
-    "legacy": (
-        "raw_bar",
-        ["yf-close", 1],
-        [{"listing_id": LISTING, "session_date": d} | WRITTEN for d in DAYS],
-    ),
     "results": (
         "execution_outcome",
         None,
         [outcome(d, None if i % 3 else 0.1) for i, d in enumerate(DAYS)],
     ),
+    "array": ("array", None, [1.0, -0.0]),
 }
 
 
 @pytest.mark.proves("data_layer.write_order_recovers_from_a_kill_at_each_point")
-@pytest.mark.parametrize("batch", list(BATCHES), ids=list(BATCHES))
 @pytest.mark.parametrize(
-    ("point", "rows", "repaired"),
+    ("batch", "point", "rows", "repaired"),
     [
-        pytest.param("commit", 0, False, id="after the files"),
-        pytest.param("repair", 1500, True, id="after the catalog commit"),
-        pytest.param("delete", 1500, False, id="after the event"),
+        pytest.param("observed", "commit", 0, False, id="observed after the files"),
+        pytest.param("observed", "repair", 1500, True, id="observed after the catalog commit"),
+        pytest.param("observed", "delete", 1500, False, id="observed after the event"),
+        pytest.param("results", "commit", 0, False, id="results after the files"),
+        pytest.param("results", "repair", 1500, True, id="results after the catalog commit"),
+        pytest.param("results", "delete", 1500, False, id="results after the event"),
+        pytest.param("array", "commit", 0, False, id="array after its staged body"),
+        pytest.param("array", "repair", 1, False, id="array after its profile commit"),
     ],
 )
 def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     root, batch, point, rows, repaired, monkeypatch
 ):
-    """A Host killed at each point of an observed, legacy or results write order leaves no half
-    snapshot: the next start finds all its rows or none, its event once, and no staging left."""
+    """A Host killed at each write-order point of an observed, results or array write leaves no
+    half write: the next start finds all of it or none, its event once, and no staging left."""
+    # A legacy batch takes observed's kill path: its lag enters only inside the catalog commit,
+    # and its rows are the lag-rule test's. After an array's rename nothing is left to repair.
     table, lag, given = BATCHES[batch]
-    if lag:
-        with HostLog.open(root) as log:
-            seed(root, log, [("2005-01-03", "21:00:00", False)]).close()
     sent = root.parent / "batch.json"  # a file: 1,500 rows exceed a Windows command line
     sent.write_text(
-        json.dumps({"table": table, "lag": lag, "rows": given, "owner": batch == "results"})
+        json.dumps(
+            {
+                "table": table,
+                "lag": lag,
+                "rows": given,
+                "owner": batch == "results",
+                "array": batch == "array",
+            }
+        )
     )
     child = subprocess.run(
         [sys.executable, "-c", KILL, str(root), point, str(sent)], **CHILD, timeout=120
     )
     assert child.returncode == 9
+    if batch == "array":
+        _an_array_after_a_kill(root, point, given)
+        return
     assert len(list((root / "staging").iterdir())) == 2  # the folder and its dead producer's lock
     schema = "world" if table in WORLD_KEYS else "results"
     with HostLog.open(root) as log:
@@ -431,6 +450,32 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
             )
         finally:
             history.close_history()
+
+
+def _an_array_after_a_kill(root, point, given):
+    """Start after a kill in an array's write: a body whose profile never committed is collected,
+    one whose profile committed is placed, and the lane reads back whole or is missing by name."""
+    import numpy as np
+
+    from alphalattice.kernel.data_layer import arrays
+
+    lane = {"value": np.array(given)}
+    artifact, kept = arrays.describe(lane).artifact_id, point != "commit"
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        port.close()
+        assert port.started["placed"] == ([f"blobs/{artifact}"] if point == "repair" else [])
+        collected = [handle.split("/")[1].startswith(".") for handle in port.started["collected"]]
+        assert (collected, port.started["waiting"]) == ([] if kept else [True], [])
+        assert [path.name for path in (root / "blobs").iterdir()] == ([artifact] if kept else [])
+        if kept:
+            assert (
+                arrays.read_packed(root, log.read, arrays.digest(lane)) == lane["value"].tobytes()
+            )
+        else:
+            with pytest.raises(DataError) as refused:
+                arrays.read_packed(root, log.read, arrays.digest(lane))
+            assert refused.value.failure.code == "data_layer.array_missing"
 
 
 @pytest.mark.proves("data_layer.start_collects_what_no_write_owns")

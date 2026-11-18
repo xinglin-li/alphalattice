@@ -611,6 +611,15 @@
       "description": "A book was retired."
     },
     {
+      "name": "artifact.held",
+      "work": false,
+      "subject": "artifact",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "A workspace keeps an artifact's body: its live_ref until the workspace lets it go."
+    },
+    {
       "name": "publication.released",
       "work": false,
       "subject": "artifact",
@@ -827,6 +836,14 @@
       ],
       "keep": "7d",
       "description": "A score per listing and date."
+    },
+    {
+      "name": "array",
+      "storage": "blob",
+      "table": null,
+      "measures": [],
+      "keep": "while_active",
+      "description": "An array with no coordinates (a numerical lane's columns), its body kept once per machine."
     },
     {
       "name": "holding",

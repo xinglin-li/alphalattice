@@ -31,7 +31,7 @@ import psutil
 import yaml  # type: ignore[import-untyped]
 
 from alphalattice.control.task_control.upgrade import carry_tasks
-from alphalattice.kernel.data_layer.history import own_root
+from alphalattice.kernel.data_layer.history import carry_arrays, own_root
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
 from .saved_object_readback import probe
@@ -283,6 +283,7 @@ def run_sandbox(
         folder.mkdir(parents=True)
         _copy(workspace, copy)
         carry_tasks(workspace, copy)  # the copy opens with the workspace's Tasks
+        carry_arrays(workspace, copy)  # and its lanes
         with own_root(folder / "data-root"):  # the copy's Tasks stay out of the machine's log
             before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
             registry = ModelExtensionRegistry.read(copy)

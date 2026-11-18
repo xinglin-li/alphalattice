@@ -13,7 +13,9 @@ once, with the batch before it. Every commit is under synchronous FULL, so what 
 survives a lost machine, not only a killed process. A crash loses at most the open batch, never
 part of an event, and the chain verifies after it. `append` returns before an ordinary event's
 batch commits, so the Host calls `flush` before it returns anything to an agent: a reply never
-names an event a crash could still lose.
+names an event a crash could still lose. An event may carry what its writer does once its fate is
+known (`committed`): called with True after the commit that holds it, with False when it is rolled
+back. Every action of a commit runs, though one raises; the first error is raised after them.
 
 The log keeps its own clock (`clock`): a live event's recorded_us is the larger of the wall clock
 and the last value plus one microsecond, so it never steps back when the wall clock does.
@@ -139,6 +141,7 @@ class HostLog:
         self._units = 0  # how many `unit`s hold the transaction open; none commits inside one
         self._owed = False  # a durable event was appended inside a unit: commit when it ends
         self._timer: threading.Timer | None = None
+        self._committed: list[Callable[[bool], None]] = []  # each open-batch event's, in order
         last = con.execute("SELECT recorded_us FROM event ORDER BY seq DESC LIMIT 1").fetchone()
         self._last_us = -1 if last is None else int(last[0])
 
@@ -207,8 +210,10 @@ class HostLog:
         body: bytes | None = None,
         *,
         live: bool = True,
+        committed: Callable[[bool], None] | None = None,
     ) -> int:
-        """Admit one event and write it as one unit; returns its seq.
+        """Admit one event and write it as one unit; returns its seq. `committed` is called under
+        the log's guard with True once the event has committed, or False once it is rolled back.
 
         The unit is the event, its text, the chain, its projection and an inline artifact's body.
         A durable type is committed on return; an ordinary one with its batch, so a caller that
@@ -238,6 +243,8 @@ class HostLog:
                 raise
             con.execute("RELEASE event")
             self._pending += 1
+            if committed is not None:
+                self._committed.append(committed)
             if self._units:
                 self._owed = self._owed or durable
             elif durable or self._pending >= self._batch:
@@ -258,7 +265,7 @@ class HostLog:
             if not con.in_transaction:
                 con.execute("BEGIN IMMEDIATE")
                 self._arm()
-            pending = self._pending
+            pending, actions = self._pending, len(self._committed)
             con.execute("SAVEPOINT unit")
             self._units += 1
             try:
@@ -267,7 +274,9 @@ class HostLog:
                 con.execute("ROLLBACK TO unit")
                 con.execute("RELEASE unit")
                 self._pending = pending
+                dropped, self._committed = self._committed[actions:], self._committed[:actions]
                 self._units -= 1
+                _run(dropped, committed=False)
                 if not self._units:
                     self._owed = False
                     if self._pending == 0:
@@ -302,10 +311,12 @@ class HostLog:
         *,
         text: str | None = None,
         body: bytes | None = None,
+        committed: Callable[[bool], None] | None = None,
         **more: Any,
     ) -> int:
         """Append a new event of `type_`, its envelope made by `envelope`."""
-        return self.append(envelope(type_, subject, attrs, text=text, **more), text, body)
+        row = envelope(type_, subject, attrs, text=text, **more)
+        return self.append(row, text, body, committed=committed)
 
     def flush(self) -> None:
         """Commit the open batch, if any; the Host's reply waits for it."""
@@ -447,6 +458,21 @@ class HostLog:
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
+        actions, self._committed = self._committed, []
+        _run(actions, committed=statement == "COMMIT")
+
+
+def _run(actions: list[Callable[[bool], None]], *, committed: bool) -> None:
+    """Each event's action, told its event's fate; one that raises stops none after it, and the
+    first error is raised once all have run."""
+    failed: Exception | None = None
+    for action in actions:
+        try:
+            action(committed)
+        except Exception as error:
+            failed = failed or error
+    if failed is not None:
+        raise failed
 
 
 def attach(root: Path) -> sqlite3.Connection:

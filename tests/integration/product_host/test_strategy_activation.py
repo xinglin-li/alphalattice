@@ -55,6 +55,7 @@ from tests.portfolio_strategy_lab.activation_review_support import (
     publish_activation_review,
 )
 from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.pytest_environment import upgraded
 from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
 from u0_probe import _copy
 
@@ -158,6 +159,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
     workspace = tmp_path / "workspace"
     _copy(root, workspace)
+    upgraded(workspace)  # the lanes its first start moves
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     live = LocalPortfolioWebSession.from_workspace(workspace, clock=lambda: HELD_DATA_CLOCK)
     live.data_provider = _NoFetch()
@@ -560,6 +562,7 @@ def test_installed_book_controls_saves_the_flat_declaration_its_preview_reads(
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     workspace = tmp_path / "workspace"
     _copy(root, workspace)
+    upgraded(workspace)  # the lanes its first start moves
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     live = LocalPortfolioWebSession.from_workspace(workspace)
     live.start()
@@ -1124,6 +1127,7 @@ def _forward_copy(
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(backup_root))
     workspace = tmp_path / "workspace"
     _copy(root, workspace)
+    upgraded(workspace)  # the lanes its first start moves
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     if provider_from is not None:
         provider = provider_from(workspace)

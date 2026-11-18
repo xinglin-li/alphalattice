@@ -227,7 +227,7 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (103, {(1, 1)})  # experience.recorded
+    assert (len(rows), {row[3:5] for row in rows}) == (105, {(1, 1)})  # experience.recorded
     assert later == {("event_type", "task.requested")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
@@ -403,8 +403,8 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
     con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
-    con.execute("PRAGMA user_version = 9")
+    con.execute("PRAGMA user_version = 10")
     con.close()
-    with pytest.raises(DataError, match="schema version 9") as refused:
+    with pytest.raises(DataError, match="schema version 10") as refused:
         create_data_root(tmp_path)
     assert refused.value.failure.code == "data_layer.schema_mismatch"

@@ -16024,6 +16024,48 @@
    "successor": "e94f27facb37ebbc2204a2012e09f3ef72777b67515633e64fb0482432f8ddbe",
    "change": "A workspace written by this version opens on a new machine",
    "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "b507c7acc8c5bdf6bbe57e4bccf30e03330f19a50e74b793f59a3b84aebea411",
+   "successor": "e668d9bb4d8d714cace7b51757d9e940ef32e78a99ccd5148d5b810c6db801d8",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1fba10d066fba720f622bdc544e17410df3ef1f7aecea597e7f030325600ad32",
+   "successor": "6b51a6089fb9b4b2af57b9da49c559411c10c5487021c69b5f6866feec65c36b",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "33c76e7547866958d80754c49cfb777cca23eada88751c495ef2d6878327b827",
+   "successor": "ba42fc7c063a66fac4d83c5c84de65fa7c33f778aee532812e64c6b433b99832",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "efdaa1c567de1d213a906b8d9e42096e0a0ac0c207ac2644d2c3b7d1ac2ca6db",
+   "successor": "62a66dff96c6bb4174a9ca2b6a786bd559921d8c09746d4ff6fe26a3fdc7ccd0",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "6f69f9757b2f1d3040cf1c897bb8604b12174c04d96236b3d9173f3dec0f3216",
+   "successor": "5bbc444a049d222f33cf004463e68ad2c0ebbafd3df33538cb2db5c406a6235c",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "e94f27facb37ebbc2204a2012e09f3ef72777b67515633e64fb0482432f8ddbe",
+   "successor": "bbfd148457aae7f22f13c12763f01ec2bc312a014af3ddbfda0b6b6050b38884",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
   }
  ]
 }

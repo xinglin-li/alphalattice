@@ -34,6 +34,14 @@
 "data_layer.outcome_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected outcome body cannot be reused as present."},
 "data_layer.outcome_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The recorded outcome's catalog body is incomplete."},
 "data_layer.outcome_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested outcome body is not present in the catalog."},
+"data_layer.array_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "An array is one or more columns of one shape."},
+"data_layer.array_digest_reused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A digest names one array; the same bytes as another dtype or shape are not kept under it."},
+"data_layer.array_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
+"data_layer.array_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No array, or no body for its profile, is held for the digest; restore the data root from its backup."},
+"data_layer.array_profile_mismatch": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body's columns, dtype or shape differ from its profile; restore the data root from its backup."},
+"data_layer.array_tampered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body does not prove its digest; restore the data root from its backup."},
+"data_layer.artifact_holder_unnamed": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A hold on an artifact names the workspace that keeps it."},
+"data_layer.artifact_held_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A workspace holds an artifact only after its profile is recorded."},
 "causal_outcomes.outcome_store_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the explicit legacy rollback reader."},
 "upgrade.refused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Upgrade cannot serve before its backups, declared family order, immutable ID mapping and ALL EQUAL family verification are satisfied."},
 "upgrade.in_progress": {"owner": "alphalattice.control.product_host", "category": "UNAVAILABLE", "classification_note": "The Host serves only its upgrade's plan, progress and acknowledgement until the upgrade completes."},
@@ -365,6 +373,11 @@
 "owner": "portfolio_strategy_lab",
 "category": "NOT_FOUND",
 "classification_note": "A sealed study child is missing from content-addressed storage; damaged artifacts remain a separate tampering refusal with backup recovery unchanged."
+},
+"portfolio_strategy_lab.array_store_invalid": {
+"owner": "portfolio_strategy_lab",
+"category": "INVALID_ARGUMENT",
+"classification_note": "ALPHALATTICE_ARRAY_STORE names the lanes' reader: door, the default, or legacy for rollback."
 },
 "portfolio_strategy_lab.eligible_pool_short": {
 "owner": "portfolio_strategy_lab",

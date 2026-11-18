@@ -95,6 +95,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     admit_research_workspace,
     initialize_research_workspace,
     manifest_fields_hash,
+    named_workspace_id,
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.strategy_calibration import (
@@ -245,7 +246,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
     PortfolioFinalizationStore,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.history import data_root, held, release_history
+from alphalattice.kernel.data_layer.history import data_root, held, move_carried, release_history
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
@@ -624,6 +625,8 @@ class LocalPortfolioWebSession:
         `official_source` replaces that admission with a fixed one, a rehearsal's own.
         """
         initialize_research_workspace(workspace)
+        if (named := named_workspace_id(workspace)) is not None:
+            move_carried(workspace.resolve(), named)  # a copy's lanes, before admission reads them
         admitted = admit_research_workspace(workspace)
         value = cls(
             workspace=admitted.root,

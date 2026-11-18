@@ -1020,6 +1020,8 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             " WHERE trial_id = ? AND kept = 1",
             (e["subject_id"], e["seq"], trial),
         )
+    if a.get("held"):  # the workspace that keeps it holds it from its first write
+        _hold(con, e)
 
 
 @on("result.recorded")
@@ -1150,6 +1152,24 @@ def _book_retired(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         (e["seq"], e["subject_id"]),
     )
     con.execute("DELETE FROM live_ref WHERE root_kind = 'book' AND root_id = ?", (e["subject_id"],))
+
+
+@on("artifact.held")
+def _held(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A workspace keeps an artifact's body: one live_ref per workspace, however often it holds."""
+    known = con.execute("SELECT 1 FROM artifact WHERE artifact_id = ?", (e["subject_id"],))
+    if known.fetchone() is None:
+        raise _refuse("artifact_held_unknown", "a hold follows its artifact's profile")
+    _hold(con, e)
+
+
+def _hold(con: Con, e: Row) -> None:
+    if e["workspace_id"] is None:
+        raise _refuse("artifact_holder_unnamed", "a workspace holds an artifact; name it")
+    con.execute(
+        "INSERT OR IGNORE INTO live_ref VALUES (?, 'workspace', ?, ?)",
+        (e["subject_id"], e["workspace_id"], e["seq"]),
+    )
 
 
 @on("publication.released")

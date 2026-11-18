@@ -215,7 +215,7 @@
   "tests/integration/data_layer/test_store.py::test-child-unbounded::test_a_kill_at_each_point_of_the_write_order_recovers_at_start": 1,
   "tests/integration/data_layer/test_store.py::test-child-unbounded::test_an_append_waits_no_longer_while_a_large_admission_is_staged": 1,
   "tests/integration/data_layer/test_store.py::test-child-visible-window": 2,
-  "tests/integration/data_layer/test_store.py::test-parametrized-process::test_a_kill_at_each_point_of_the_write_order_recovers_at_start": 9,
+  "tests/integration/data_layer/test_store.py::test-parametrized-process::test_a_kill_at_each_point_of_the_write_order_recovers_at_start": 8,
   "tests/integration/factor_research/test_factor_actor_neutral_submission.py::test-child-unbounded::test_factor_submission_boundary_has_no_agent_runtime_import_closure": 1,
   "tests/integration/factor_research/test_factor_actor_neutral_submission.py::test-child-visible-window": 1,
   "tests/integration/feature_engine/test_feature_observation_clock.py::test-child-unbounded::test_process_resource_monitor_reports_a_time_aligned_live_child_tree": 1,

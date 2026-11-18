@@ -599,7 +599,7 @@ CREATE TABLE artifact (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX artifact_recipe ON artifact(recipe_key);
 CREATE INDEX artifact_trial ON artifact(trial_id);
-CREATE INDEX artifact_content ON artifact(content_digest);
+CREATE INDEX artifact_content ON artifact(content_digest);  -- an array's profile by the digest a document cites (arrays.py)
 CREATE TRIGGER artifact_no_delete BEFORE DELETE ON artifact BEGIN SELECT RAISE(ABORT, 'an artifact profile is kept forever'); END;
 
 -- [4] A small body (at most 64 KiB). Larger ones are files under blobs/ or rows in results.*. It is opaque storage, not a
@@ -652,10 +652,11 @@ CREATE TABLE tag (
 CREATE INDEX tag_lookup ON tag(key_id, value, subject_kind);
 
 -- What keeps an artifact's body from collection: a running task, an active book, a publication, a kept trial, a
--- backup. A body no row holds is collected 7 days after it was produced. A crash may over-retain, never under-retain.
+-- backup, a workspace that keeps it (an array it cites). A body no row holds is collected 7 days after it was
+-- produced. A crash may over-retain, never under-retain.
 CREATE TABLE live_ref (
   artifact_id TEXT NOT NULL REFERENCES artifact(artifact_id),
-  root_kind TEXT NOT NULL CHECK (root_kind IN ('task', 'book', 'publication', 'trial', 'backup')),
+  root_kind TEXT NOT NULL CHECK (root_kind IN ('task', 'book', 'publication', 'trial', 'backup', 'workspace')),
   root_id TEXT NOT NULL,
   since_seq INTEGER NOT NULL,
   PRIMARY KEY (artifact_id, root_kind, root_id)

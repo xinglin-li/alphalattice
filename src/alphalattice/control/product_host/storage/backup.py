@@ -52,6 +52,7 @@ from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -462,6 +463,16 @@ class WorkspaceBackups:
                             rows=rows,
                         )
                     )
+            # The lanes the machine holds for the workspace go as a copy carries them: a restore
+            # writes them back there, and the Host that opens it moves them onto its log.
+            history.carry_arrays(self.workspace, staging)
+            carried = staging / arrays.CARRIED
+            for path in sorted(carried.iterdir()) if carried.is_dir() else ():
+                if stop():
+                    raise _Stopped
+                digest, size = read_file(path)
+                relative = (arrays.CARRIED / path.name).as_posix()
+                entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
         for relative in COPIED:
             if stop():
                 raise _Stopped

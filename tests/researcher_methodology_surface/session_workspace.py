@@ -26,7 +26,7 @@ import portalocker
 import pytest
 
 from alphalattice.control.task_control.upgrade import carry_tasks
-from alphalattice.kernel.data_layer.history import own_root
+from alphalattice.kernel.data_layer.history import carry_arrays, own_root
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,
@@ -288,6 +288,7 @@ def session_workspace(
                     metadata = build(target / "workspace")
                     # A seed outlives the data root it was built on: it carries its Tasks.
                     carry_tasks(target / "workspace", target / "workspace")
+                    carry_arrays(target / "workspace", target / "workspace")
             finally:
                 RUNNING_TEST.update(running)
                 shutil.rmtree(machine, ignore_errors=True)
@@ -443,6 +444,7 @@ def copy_workspace(
 
     shutil.copytree(source, target, copy_function=copy_file)
     carry_tasks(Path(source), target)  # the copy opens with its source's Tasks
+    carry_arrays(Path(source), target)  # and its lanes
     return target
 
 

@@ -264,6 +264,11 @@ def open_history(
             _open["logger"] = logger_provider(_open["facts"])
         _open["workspace"] = workspace_on_log(folder, name, workspace_id, root)
         _open["hosts"] = _open.get("hosts", 0) + 1
+        from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+        # a copy's lanes move onto this log before anything reads them, its workers included
+        where, log = Path(_open["root"]), _open["log"]
+        arrays.import_carried(where, log, folder, workspace=_open["workspace"])
         spec: dict[str, Any] = {
             "storage": "none",  # the evidence stays in the workspace's store until row 8a
             "table": None,
@@ -605,6 +610,120 @@ def read_execution_outcome(content_hash: str, columns: list[str] | None = None) 
     if table.num_rows == 0:
         raise DataError("the outcome body is not in the catalog", code="data_layer.outcome_missing")
     return table if columns is None else table.select(columns)
+
+
+def keep_array(
+    columns: Mapping[str, Any] | None = None,
+    *,
+    packed: bytes | None = None,
+    durable: bool = True,
+) -> str:
+    """Keep one array through the door (`arrays`) and return the digest a document cites: in a
+    Host, on its log and held by its workspace; in another process, on the log it holds (`held`),
+    held by none. `durable=False` leaves its profile in the log's batch for the caller to commit
+    (`flush`) before it writes anything citing the digest."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _held_log() as found:
+        current = found
+    log, workspace, root = current if current is not None else (held(), None, data_root())
+    if packed is not None:
+        return arrays.keep_packed(root, log, packed, workspace=workspace, durable=durable)
+    assert columns is not None
+    return arrays.keep(root, log, columns, workspace=workspace, durable=durable)
+
+
+def read_array(content_digest: str, *, packed: bool = False) -> Any:
+    """The array a digest names, checked against its profile and proved: its flat columns, or its
+    C-order bytes with `packed`; from any process."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (root, read):
+        return (arrays.read_packed if packed else arrays.read_columns)(root, read, content_digest)
+
+
+def array_profile(content_digest: str) -> dict[str, Any] | None:
+    """The profile of the array a digest names (its kind, shape and dtypes, its artifact_id and
+    body state); None when the door holds none."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (_root, read):
+        return arrays.profile(read, content_digest)
+
+
+def arrays_lacking(digests: Iterable[str]) -> list[str]:
+    """The digests the door holds no array for, in one read of the log."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (_root, read):
+        return [digest for digest in digests if arrays.profile(read, digest) is None]
+
+
+def move_carried(folder: Path, workspace_id: str) -> int:
+    """A Host's admission of a workspace copy: the lanes it carries move onto the log this process
+    holds, held by the workspace, before admission reads them. Nothing when it carries none."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    if not (folder / arrays.CARRIED).is_dir():
+        return 0
+    log = held()
+    held_id = workspace_on_log(folder, folder.name, workspace_id)
+    return arrays.import_carried(Path(_open["root"]), log, folder, workspace=held_id)
+
+
+def carry_arrays(workspace: Path, copy: Path, *, root: Path | None = None) -> int:
+    """Write the arrays the log (`root`'s when named) holds for `workspace` into its copy `copy`,
+    in the old lane form; the Host that admits the copy (`move_carried`) moves them onto the log
+    its process holds.
+    Returns the arrays carried.
+
+    contract: carried lanes retire when a copy carries its own segment of the log, as carried
+    Tasks do (`carry_tasks`)."""
+    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    where = data_root() if root is None else root
+    log = holding()
+    if log is not None and Path(_open["root"]) == Path(where):
+        return _carry(arrays, log.read, where, workspace, copy)
+    if not (where / "machine" / "log.sqlite").is_file():
+        return 0
+    with closing(attach(where)) as con:
+        return _carry(arrays, _query(con), where, workspace, copy)
+
+
+def _carry(arrays: Any, read: Callable[..., Any], root: Path, workspace: Path, copy: Path) -> int:
+    known = read(
+        "SELECT workspace_id FROM workspace WHERE folder = ? AND status = 'active'",
+        (str(workspace.resolve()),),
+    )
+    return int(arrays.carry(read, root, str(known[0][0]), copy)) if known else 0
+
+
+def _query(con: sqlite3.Connection) -> Callable[[str, tuple[Any, ...]], list[Any]]:
+    return lambda sql, args: con.execute(sql, args).fetchall()
+
+
+@contextmanager
+def _array_reader() -> Iterator[tuple[Path, Callable[..., Any]]]:
+    """The data root and a query on its log: the log this process holds, else a read-only
+    attachment for this read."""
+    log: HostLog | None = _open.get("log")
+    if log is not None:
+        yield Path(_open["root"]), log.read
+        return
+    where = data_root()
+    if not (where / "machine" / "log.sqlite").is_file():
+        yield where, lambda _sql, _args: []  # a root with no log yet holds no array
+        return
+    try:
+        con = attach(where)
+    except sqlite3.Error as error:
+        raise DataError(
+            f"the log at {where} cannot be read ({error}); start the Host on its data root",
+            code="data_layer.history_unavailable",
+        ) from error
+    with closing(con):
+        yield where, _query(con)
 
 
 def record(

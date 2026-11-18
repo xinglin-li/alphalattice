@@ -7,6 +7,7 @@ The data root's files, by who names them:
                              that will never finish, and start collects it
     data/                    DuckLake's files, named by its catalog; any other file is collected
     blobs/<artifact_id>      an artifact's body, kept while a live_ref holds it
+    blobs/.<artifact_id>.<pid>.staging  an array's body before its profile commits (`arrays`)
 
 The write order (catalog.sql's header). `stage` mints the admission's id and writes its rows'
 Parquet under staging. It needs no log, lock or catalog, so it runs beside the writer, in the
@@ -1161,7 +1162,9 @@ def start(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
 
     It retries the deletion queue, collects the staging of every admission no producer holds,
     holding that admission's lock itself until its staging and lock are gone, so no producer can
-    take it meanwhile, and collects every file under data/ the catalog does not name.
+    take it meanwhile, settles each array body a crash left staged under blobs/ (placed when its
+    profile was committed, else collected; `arrays.settle`), and collects every file under data/
+    the catalog does not name.
     """
     report: dict[str, list[str]] = {"repaired": repair(log, lake), "collected": [], "waiting": []}
     queued = [row[0] for row in log.read("SELECT handle FROM deletion_queue ORDER BY handle")]
@@ -1179,6 +1182,12 @@ def start(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
                 report["collected" if delete(root, log, handle) else "waiting"].append(handle)
         finally:
             drop(probe, lock)
+    from alphalattice.kernel.data_layer.arrays import settle  # lazy: numpy and BLAKE3
+
+    settled = settle(root, log.read, lambda handle: delete(root, log, handle))
+    report["placed"] = settled["placed"]
+    report["collected"] += settled["collected"]
+    report["waiting"] += settled["waiting"]
     named = _named_files(lake)
     handles = [handle for handle in queued if not handle.startswith("staging/")]
     handles += sorted(
