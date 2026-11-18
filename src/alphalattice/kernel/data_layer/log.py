@@ -90,10 +90,17 @@ def envelope(
     cause: int | None = None,
     started_us: int | None = None,
     occurred_us: int | None = None,
-    version: int = 1,
+    version: int | None = None,
 ) -> dict[str, Any]:
-    """A new event's envelope, of its type's `version`, with a UUIDv7 id and, when it carries text,
-    the text's digest."""
+    """A new event's envelope, of its type's `version` as given, else the one registered when the
+    log writes it (`HostLog.append`), with a UUIDv7 id and, when it carries text, the text's
+    digest. A finished step names its start: one with none is refused by name, never counted as
+    no time."""
+    if phase in ENDED and started_us is None:
+        raise DataError(
+            f"a finished {type_} step names when it started",
+            code="data_layer.step_unstarted",
+        )
     now = time.time_ns() // 1000
     at = now if occurred_us is None else occurred_us
     return {
@@ -102,7 +109,7 @@ def envelope(
         "type_version": version,
         "phase": phase,
         "occurred_us": at,
-        "started_us": (at if started_us is None else started_us) if phase in ENDED else None,
+        "started_us": started_us if phase in ENDED else None,
         "recorded_us": now,
         "actor_kind": actor[0],
         "actor_id": actor[1],
@@ -212,6 +219,8 @@ class HostLog:
             con = self._con
             if live:
                 row = {**row, "recorded_us": self.clock()}
+            if row.get("type_version") is None:
+                row = {**row, "type_version": _current(con, row["type"])}
             spec = _spec(con, row)
             admit(row, text, spec, _superseded(con), live=live, body=body)
             durable = bool(spec.get("durable"))
@@ -532,6 +541,19 @@ def lock_byte(handle: IO[bytes]) -> None:
         import fcntl  # lazy: the module exists only on POSIX
 
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _current(con: sqlite3.Connection, type_: str) -> int:
+    """The version of event type `type_` new events are written under: its current one."""
+    found = con.execute(
+        "SELECT version FROM definition_current WHERE family = 'event_type' AND name = ?",
+        (type_,),
+    ).fetchone()
+    if found is None:
+        raise DataError(
+            f"{type_} is not a registered event type", code="data_layer.event_type_unregistered"
+        )
+    return int(found[0])
 
 
 def _spec(con: sqlite3.Connection, row: Mapping[str, Any]) -> dict[str, Any]:

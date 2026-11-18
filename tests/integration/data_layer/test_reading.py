@@ -30,10 +30,16 @@ def analytics_log(tmp_path_factory):
     root = tmp_path_factory.mktemp("analytics") / "data"
     sequence = itertools.count(1)
     ids = SimpleNamespace(UUID=uuid.UUID, uuid4=lambda: uuid.UUID(int=next(sequence) << 64))
+    minted = itertools.count(1)  # the artifact and recipe ids the history mints, in order
+
+    def uuid7():
+        return str(uuid.UUID(int=next(minted)))
+
     with (
         patch.object(log_module, "time", SimpleNamespace(time_ns=lambda: T0 * 1000)),
         patch.object(log_module, "uuid", ids),
         patch.object(project_fixture, "uuid", ids),
+        patch.object(project_fixture, "uuid7", uuid7),
     ):
         create_data_root(root)
         with HostLog.open(root, now_us=T0) as log:
@@ -165,11 +171,15 @@ def test_compare_converts_an_older_metric_version_to_the_newer(tmp_path):
         _define(
             log, "metric", "sharpe", 2, text=text, relation="convertible", conversion=conversion
         )
-        meaning = {"type": "backtest", "identity_kind": "content", "storage": "none"}
-        sides = {"a": [["sharpe", 1, "", 0.5]], "b": [["sharpe", 2, "", 1.5]]}
+        meaning = {"type": "backtest", "type_version": 1, "identity_kind": "content"}
+        meaning["storage"] = "none"
+        sides = {"a": [["sharpe", 1, {}, 0.5]], "b": [["sharpe", 2, {}, 1.5]]}
         for side, measures in sides.items():
             log.record(
-                "artifact.produced", ("artifact", side), meaning | {"meaning": side}, **AGENT
+                "artifact.produced",
+                ("artifact", side),
+                meaning | {"meaning": side, "content_digest": f"blake3:{side}"},
+                **AGENT,
             )
             log.record("result.recorded", ("artifact", side), {"measures": measures}, **AGENT)
         log.flush()

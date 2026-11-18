@@ -14,7 +14,7 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, experiences
 from alphalattice.kernel.data_layer.chain import digest
-from alphalattice.kernel.data_layer.log import HostLog, replay
+from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7
 from alphalattice.kernel.data_layer.project import definition_id, differences, recipe_key
 from alphalattice.kernel.data_layer.reading import reading_session
 
@@ -41,17 +41,21 @@ def _world(log: HostLog, trials: int = 3) -> None:
     log.record("goal.set", ("goal", "g1"), {"title": "g1"}, workspace="w1", actor=("person", "me"))
     log.record("task.requested", ("task", "k1"), REQUESTED, version=2, trace="a" * 32, **AGENT)
     log.record("task", ("task", "k1"), phase="started", trace="a" * 32, span="1" * 16, **AGENT)
-    spec = {"family": "method", "name": "momentum", "version": 1, "spec": {}, "status": "standard"}
-    text = json.dumps(spec | {"text": "Past return over a lookback."}, sort_keys=True)
-    named = {"family": "method", "name": "momentum", "version": 1}
-    log.record(
-        "definition.registered", ("definition", "method/momentum"), named, text=text, **AGENT
-    )
+    for family, name, said in (
+        ("method", "momentum", "Past return over a lookback."),
+        ("universe", "sp500", "The S&P 500's members."),
+    ):
+        named = {"family": family, "name": name, "version": 1}
+        spec = named | {"spec": {}, "status": "standard", "text": said}
+        text = json.dumps(spec, sort_keys=True)
+        log.record(
+            "definition.registered", ("definition", f"{family}/{name}"), named, text=text, **AGENT
+        )
     log.record(
         "selection.made", ("selection", "s1"), {"cutoff_us": 1, "universe": "sp500"}, **AGENT
     )
-    defined = {"method": "momentum", "method_version": 1, "params": {}}
-    log.record("recipe.defined", ("recipe", RECIPE), defined, **AGENT)
+    defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": RECIPE}
+    log.record("recipe.defined", ("recipe", uuid7()), defined, **AGENT)
     for n in range(trials):
         trial, trace = f"t{n}", f"{n + 1:032x}"
         registered = {
@@ -70,6 +74,7 @@ def _world(log: HostLog, trials: int = 3) -> None:
         artifact = digest(f"{trial}/result".encode())
         produced = {
             "type": "backtest",
+            "type_version": 1,
             "meaning": "Does momentum pay?",
             "recipe_key": RECIPE,
             "selection_id": "s1",
@@ -80,7 +85,7 @@ def _world(log: HostLog, trials: int = 3) -> None:
         log.record("artifact.produced", ("artifact", artifact), produced, **AGENT)
         measures = {
             "trial_id": trial,
-            "measures": [["sharpe", 1, "", 0.5 + n], ["ic_mean", 1, "horizon=21d", 0.03]],
+            "measures": [["sharpe", 1, {}, 0.5 + n], ["ic_mean", 1, {"horizon_days": 21}, 0.03]],
         }
         log.record("result.recorded", ("artifact", artifact), measures, **AGENT)
         log.record(
@@ -95,7 +100,14 @@ def _world(log: HostLog, trials: int = 3) -> None:
             **AGENT,
         )
     log.record(
-        "task", ("task", "k1"), USAGE, phase="completed", trace="a" * 32, span="1" * 16, **AGENT
+        "task",
+        ("task", "k1"),
+        USAGE,
+        phase="completed",
+        trace="a" * 32,
+        span="1" * 16,
+        started_us=T0,
+        **AGENT,
     )
 
 
@@ -121,7 +133,9 @@ def _review_task(log: HostLog, task: str, trials: list[str]) -> int:
     requested, trace = REQUESTED | {"type": "review", "input_hash": task}, "b" * 32
     log.record("task.requested", ("task", task), requested, version=2, trace=trace, **AGENT)
     for phase in ("started", "completed"):
-        log.record("task", ("task", task), phase=phase, trace=trace, span="2" * 16, **AGENT)
+        log.record(
+            "task", ("task", task), phase=phase, trace=trace, span="2" * 16, started_us=T0, **AGENT
+        )
     return experiences.record_note(
         log, "task", task, "success", NOTE, workspace="w1", actor=("agent", "claude"), trials=trials
     )
@@ -228,7 +242,7 @@ def test_the_host_renders_a_note_into_an_experience_it_versions_and_replaces(
         other = {"workspace": "w2", "actor": AGENT["actor"], "trace": "c" * 32}
         log.record("task.requested", ("task", "r2"), elsewhere, version=2, **other)
         for phase in ("started", "completed"):
-            log.record("task", ("task", "r2"), phase=phase, span="3" * 16, **other)
+            log.record("task", ("task", "r2"), phase=phase, span="3" * 16, started_us=T0, **other)
         with pytest.raises(DataError) as refused:  # another workspace's trial is not its to name
             experiences.record_note(
                 log,

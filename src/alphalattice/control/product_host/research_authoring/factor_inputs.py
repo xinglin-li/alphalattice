@@ -79,7 +79,6 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -906,16 +905,11 @@ def select_research_inputs(
     sessions = (bundle.sessions[0].isoformat(), bundle.sessions[-1].isoformat())
     recipes = {"feature_panel": bundle.panel_snapshot_hash}
     recipes["execution_outcome"] = bundle.outcome_snapshot_hash
-    history.record(
-        "selection.made",
-        ("selection", uuid7()),
-        {
-            "cutoff_us": cutoff,
-            "universe": universe,
-            "valid_from": sessions[0],
-            "valid_to": sessions[1],
-            "spec": {"binding_hash": bundle.binding_hash, "recipes": recipes},
-        },
+    window = {"cutoff_us": cutoff, "universe": universe, "valid_from": sessions[0]}
+    window |= {"valid_to": sessions[1]}
+    history.selection(
+        window | {"spec": {"binding_hash": bundle.binding_hash, "recipes": recipes}},
+        actor=("host", "host"),
     )
 
 

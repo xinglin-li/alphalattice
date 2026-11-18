@@ -28,7 +28,8 @@ def test_a_path_is_a_sql_literal_with_forward_slashes_and_quotes_doubled(spelled
 
 
 @pytest.mark.proves("data_layer.an_event_names_its_type_version")
-def test_an_event_is_of_its_types_first_version_unless_it_names_another():
-    """A new event's envelope carries version 1 of its type, or the version its writer names."""
-    assert envelope("task.saved")["type_version"] == 1
+def test_an_event_is_of_its_types_current_version_unless_it_names_another():
+    """A new event's envelope names no version, the log writing its type's current one, or the
+    version its writer names."""
+    assert envelope("task.saved")["type_version"] is None
     assert envelope("task.requested", version=2)["type_version"] == 2

@@ -53,7 +53,9 @@ def template(tmp_path_factory):
     create_data_root(root)
     with HostLog.open(root, now_us=T0) as log:
         _define(log, "probe", **RESEARCH)
-        log.record("tool.call", attrs={"tool": "grep"}, phase="completed", **RESEARCH)
+        log.record(
+            "tool.call", attrs={"tool": "grep"}, phase="completed", started_us=T0, **RESEARCH
+        )
     return root
 
 
@@ -80,6 +82,8 @@ REFUSED = {
                 "meaning": "m",
                 "storage": "inline",
                 "identity_kind": "content",
+                "type_version": 1,
+                "content_digest": "blake3:r1",
             }
         },
     ),
@@ -95,7 +99,7 @@ def test_a_refused_event_leaves_no_trace_and_its_batch_whole(root, args, more):
     tables = ("event", "definition", "event_text")
     with HostLog.open(root, now_us=T0) as log:
         before = {table: log.read(f"SELECT count(*) FROM {table}")[0][0] for table in tables}
-        log.record("tool.call", attrs={"tool": "ls"}, phase="completed", **RESEARCH)
+        log.record("tool.call", attrs={"tool": "ls"}, phase="completed", started_us=T0, **RESEARCH)
         with pytest.raises((DataError, sqlite3.DatabaseError)):
             log.record(*args, **more)
     with closing(attach(root)) as con:
@@ -132,7 +136,7 @@ def test_an_inline_artifact_writes_its_profile_and_body_together(root):
         seq = log.record(
             "artifact.produced",
             ("artifact", "r1"),
-            report | {"identity_kind": "content"},
+            report | {"identity_kind": "content", "type_version": 1, "content_digest": "blake3:r1"},
             body=b"# Report\n",
         )
     with closing(attach(root)) as con:
@@ -225,6 +229,7 @@ def test_a_kill_inside_an_append_leaves_the_log_whole(root, point):
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no window on Windows
     )
@@ -232,7 +237,7 @@ def test_a_kill_inside_an_append_leaves_the_log_whole(root, point):
     with HostLog.open(root, now_us=T0) as log:
         assert log.read("SELECT count(*) FROM event")[0][0] == events
         assert not log.read("SELECT 1 FROM definition WHERE name = 'killed'")
-        log.record("tool.call", attrs={"tool": "after"}, phase="completed")
+        log.record("tool.call", attrs={"tool": "after"}, phase="completed", started_us=T0)
     with closing(attach(root)) as con:
         assert verify_whole(con)
     assert _events(root) == events + 1
@@ -259,7 +264,7 @@ import os, sys
 from pathlib import Path
 from alphalattice.kernel.data_layer.log import HostLog
 log = HostLog.open(Path(sys.argv[1]), batch=1000, seconds=60, now_us=int(sys.argv[2]))
-log.record("tool.call", attrs={"tool": "replied"}, phase="completed")
+log.record("tool.call", attrs={"tool": "replied"}, phase="completed", started_us=int(sys.argv[2]))
 log.flush()  # a reply waits for its commit
 os._exit(9)
 """
@@ -273,16 +278,16 @@ def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root
         log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
     base = _events(root)
     with HostLog.open(root, batch=2, seconds=60, now_us=T0) as log:
-        log.record("tool.call", attrs={"tool": "a"}, phase="completed")
+        log.record("tool.call", attrs={"tool": "a"}, phase="completed", started_us=T0)
         assert _events(root) == base
         goal = {"title": "durable"}
         log.record("goal.set", ("goal", "g1"), goal, workspace="w1", actor=("person", "me"))
         assert _events(root) == base + 2
-        log.record("tool.call", attrs={"tool": "b"}, phase="completed")
-        log.record("tool.call", attrs={"tool": "c"}, phase="completed")
+        log.record("tool.call", attrs={"tool": "b"}, phase="completed", started_us=T0)
+        log.record("tool.call", attrs={"tool": "c"}, phase="completed", started_us=T0)
         assert _events(root) == base + 4
     with HostLog.open(root, seconds=0.01, now_us=T0) as log:
-        log.record("tool.call", attrs={"tool": "d"}, phase="completed")
+        log.record("tool.call", attrs={"tool": "d"}, phase="completed", started_us=T0)
         deadline = log._timer  # None once it has already fired
         if deadline is not None:
             deadline.join(timeout=10)

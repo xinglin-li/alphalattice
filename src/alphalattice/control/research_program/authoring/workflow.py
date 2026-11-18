@@ -335,8 +335,11 @@ class TrialRecorder(Protocol):
     def started(self, sealed: SealedSubmission) -> object:
         """Record the run's start; what it returns is handed to `ended`."""
 
-    def ended(self, trial: object, evidence: ResearchExecutionEvidence | None) -> None:
-        """Record the run's end: its evidence, or None when the Desk raised."""
+    def ended(
+        self, trial: object, evidence: ResearchExecutionEvidence | None, *, reused: bool = False
+    ) -> None:
+        """Record the run's end: its evidence, or None when the Desk raised; `reused` when the
+        evidence is an earlier run's, read back rather than produced by this one."""
 
 
 class _NoTrials:
@@ -345,7 +348,9 @@ class _NoTrials:
     def started(self, sealed: SealedSubmission) -> object:
         return None
 
-    def ended(self, trial: object, evidence: ResearchExecutionEvidence | None) -> None:
+    def ended(
+        self, trial: object, evidence: ResearchExecutionEvidence | None, *, reused: bool = False
+    ) -> None:
         return None
 
 
@@ -809,7 +814,7 @@ class ResearchProgramWorkflow:
             readback = self._verified_readback(
                 program=program, stored=previous, authority=sealed.authority, outputs=outputs
             )
-            self._trials.ended(trial, previous)
+            self._trials.ended(trial, previous, reused=True)
             return readback, sealed.binding
         outputs.evidence.publish(evidence)
         self._trials.ended(trial, evidence)

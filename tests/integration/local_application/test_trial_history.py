@@ -35,8 +35,8 @@ TEST_SOURCE = "src/alphalattice/interface/local_application/trial_history.py"
 def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     real_risk_workspace: RealRiskWorkspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The first run's evidence is its trial's artifact; a rerun reusing it is a second trial
-    with no artifact of its own; the history replays ALL EQUAL."""
+    """A rerun reusing a run's evidence is a trial without an artifact, and another run producing
+    equal evidence is a trial with its own."""
     root = tmp_path / "data"
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))
     workflow: Any = _workflow(real_risk_workspace, tmp_path)
@@ -114,23 +114,27 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
         history.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="A claim")
         first = workflow.execute_prepared(attributed)
         again, _ = workflow.run_sealed(document, **who)
+        trial_history.ended(trial_history.started(attributed), first)  # equal bytes, produced
     finally:
         history.close_history()
     assert (first.disposition, again.numerical_call_count) == ("COMPUTED", 0)
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         trials = con.execute(
-            "SELECT state, result_artifact, seeds, s.goal_id, hypothesis_id, recipe_key, task_id "
-            "FROM trial JOIN trial_scope s USING (trial_id) ORDER BY registered_seq"
+            "SELECT state, (SELECT a.content_digest FROM artifact a"
+            " WHERE a.artifact_id = result_artifact)"
+            ", seeds, s.goal_id, hypothesis_id, recipe_key, task_id"
+            " FROM trial JOIN trial_scope s USING (trial_id) ORDER BY registered_seq"
         ).fetchall()
         assert [row[:5] for row in trials] == [
             ("completed", first.evidence_hash, "[0]", "g1", "h1"),
             ("completed", None, "[0]", None, None),
+            ("completed", first.evidence_hash, "[0]", "g1", "h1"),
         ]
         assert trials[0][5] == trials[1][5]
         sums = con.execute(
             "SELECT attrs FROM event WHERE type = 'trial' AND phase = 'completed' ORDER BY seq"
         ).fetchall()
-        assert [json.loads(row[0])["agent_telemetry"] for row in sums] == [
+        assert [json.loads(row[0])["agent_telemetry"] for row in sums[:2]] == [
             {
                 "status": "MEASURED",
                 "model_seconds": None,
@@ -141,10 +145,10 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
                 "output_tokens": 5,
             }
         ] * 2
-        assert [row[6] for row in trials] == [str(task.task_id), None]
+        assert [row[6] for row in trials] == [str(task.task_id), None, str(task.task_id)]
         (trace_id,) = con.execute(
             "SELECT e.trace_id FROM trial t JOIN event e ON e.seq=t.registered_seq "
-            "WHERE t.hypothesis_id='h1'"
+            "WHERE t.hypothesis_id='h1' ORDER BY t.registered_seq"
         ).fetchone()
         assert trace_id
         assert con.execute("SELECT task_id FROM task").fetchall() == [(str(task.task_id),)]
@@ -161,11 +165,11 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
             "SELECT l.name, a.storage, a.trial_id IS NOT NULL FROM artifact a"
             " JOIN definition_lineage l ON l.definition_id = a.type_id"
         )
-        assert artifact.fetchall() == [("research_evidence", "none", 1)]
+        assert artifact.fetchall() == [("research_evidence", "none", 1)] * 2
         with closing(replay(con, tmp_path / "replayed.sqlite")) as target:
             assert differences(con, target) == []
     with closing(reading_session(root)) as view:
         assert view is not None
-        (row,) = experience(view, hypothesis="h1")
-        assert row["trial_id"] and row["trace_id"] == trace_id
+        row = next(r for r in experience(view, hypothesis="h1") if r["trace_id"] == trace_id)
+        assert row["trial_id"] and len(experience(view, hypothesis="h1")) == 2
         assert row["task_id"] == str(task.task_id)

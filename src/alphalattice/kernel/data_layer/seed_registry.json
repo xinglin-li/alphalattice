@@ -348,7 +348,8 @@
       "required": [
         "method",
         "method_version",
-        "params"
+        "params",
+        "recipe_key"
       ],
       "text": "none",
       "durable": false,
@@ -403,6 +404,7 @@
       "subject": "artifact",
       "required": [
         "type",
+        "type_version",
         "meaning",
         "storage",
         "identity_kind"

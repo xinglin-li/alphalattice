@@ -101,9 +101,10 @@ CREATE VIEW goal_note AS
 SELECT e.event_id AS note_id, e.workspace_id, e.subject_id AS goal_id, e.type, x.text,
        json_extract_string(e.attrs, '$.hypothesis_id') AS hypothesis_id,
        json_extract_string(e.attrs, '$.method') AS method,
-       make_timestamptz(e.occurred_us) AS recorded_at
+       make_timestamptz(e.recorded_us) AS recorded_at
 FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
-WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorded');
+JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded')
+WHERE e.subject_kind = 'goal';
 
 -- One row per trial, as state, action, effect and new state: what an agent studies before it tries something.
 -- It reads profiles and measures only, so it is whole whether or not any artifact body still exists.
@@ -112,7 +113,7 @@ SELECT t.trial_id, t.task_id, reg.trace_id, ts.workspace_id,
        -- state
        ts.goal_id, t.hypothesis_id, json_extract_string(he.attrs, '$.statement_id') AS hypothesis_name,
        ht.text AS hypothesis_text, s.cutoff_us, make_timestamptz(s.cutoff_us) AS knowledge_cutoff,
-       s.universe, s.valid_from, s.valid_to,
+       ul.name AS universe, s.universe_id, s.valid_from, s.valid_to,
        t.product_version, t.model, t.context, t.reads_legacy,
        -- action
        rl.name AS method, r.method_version, t.recipe_key, r.params, t.seeds,
@@ -125,10 +126,11 @@ SELECT t.trial_id, t.task_id, reg.trace_id, ts.workspace_id,
        -- its review: an ended trial with no note awaits one; its experience, the current one its review made
        CASE WHEN t.reviewed_seq IS NOT NULL THEN 'reviewed' WHEN t.ended_seq IS NOT NULL THEN 'awaiting' END AS review,
        t.experience_id,
-       make_timestamptz(reg.occurred_us) AS registered_at
+       make_timestamptz(reg.recorded_us) AS registered_at
 FROM log.trial t
 JOIN log.trial_scope ts ON ts.trial_id = t.trial_id
 JOIN log.selection s ON s.selection_id = t.selection_id
+LEFT JOIN log.definition_lineage ul ON ul.definition_id = s.universe_id
 JOIN log.recipe r ON r.recipe_key = t.recipe_key
 JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
 JOIN log.event reg ON reg.seq = t.registered_seq
@@ -143,27 +145,31 @@ LEFT JOIN log.event he ON he.seq = h.stated_seq
 LEFT JOIN log.event_text ht ON ht.seq = h.stated_seq
 -- adopted is the person's newest word; deployed: a book followed one of the trial's artifacts, at activation or a rebalance
 LEFT JOIN (SELECT e.subject_id AS trial_id,
-                  list(x.text) FILTER (WHERE e.type = 'conclusion.drawn') AS conclusions,
-                  list(x.text) FILTER (WHERE e.type = 'lesson.recorded') AS lessons,
-                  arg_max(CAST(json_extract_string(e.attrs, '$.adopted') AS BOOLEAN), e.seq) FILTER (WHERE e.type = 'feedback.given') AS adopted
+                  list(x.text) FILTER (WHERE k.named = 'conclusion.drawn') AS conclusions,
+                  list(x.text) FILTER (WHERE k.named = 'lesson.recorded') AS lessons,
+                  arg_max(CAST(json_extract_string(e.attrs, '$.adopted') AS BOOLEAN), e.seq) FILTER (WHERE k.named = 'feedback.given') AS adopted
            FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
-           WHERE e.subject_kind = 'trial' AND e.type IN ('conclusion.drawn', 'lesson.recorded', 'feedback.given')
+           JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded', 'feedback.given')
+           WHERE e.subject_kind = 'trial'
            GROUP BY e.subject_id) n ON n.trial_id = t.trial_id
 LEFT JOIN (SELECT e.subject_id AS hypothesis_id,
-                  list(x.text) FILTER (WHERE e.type = 'conclusion.drawn') AS conclusions,
-                  list(x.text) FILTER (WHERE e.type = 'lesson.recorded') AS lessons
+                  list(x.text) FILTER (WHERE k.named = 'conclusion.drawn') AS conclusions,
+                  list(x.text) FILTER (WHERE k.named = 'lesson.recorded') AS lessons
            FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
-           WHERE e.subject_kind = 'hypothesis' AND e.type IN ('conclusion.drawn', 'lesson.recorded')
+           JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded')
+           WHERE e.subject_kind = 'hypothesis'
            GROUP BY e.subject_id) hn ON hn.hypothesis_id = t.hypothesis_id
 LEFT JOIN (SELECT e.subject_id AS goal_id,
-                  list(x.text) FILTER (WHERE e.type = 'conclusion.drawn') AS conclusions,
-                  list(x.text) FILTER (WHERE e.type = 'lesson.recorded') AS lessons
+                  list(x.text) FILTER (WHERE k.named = 'conclusion.drawn') AS conclusions,
+                  list(x.text) FILTER (WHERE k.named = 'lesson.recorded') AS lessons
            FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
-           WHERE e.subject_kind = 'goal' AND e.type IN ('conclusion.drawn', 'lesson.recorded')
+           JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded')
+           WHERE e.subject_kind = 'goal'
            GROUP BY e.subject_id) gn ON gn.goal_id = ts.goal_id
 LEFT JOIN (SELECT DISTINCT a.trial_id FROM log.event e
            JOIN log.artifact a ON a.artifact_id = json_extract_string(e.attrs, '$.holding_artifact')
-           WHERE e.type IN ('book.activated', 'book.rebalanced') AND a.trial_id IS NOT NULL) d ON d.trial_id = t.trial_id;
+           JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('book.activated', 'book.rebalanced')
+           WHERE a.trial_id IS NOT NULL) d ON d.trial_id = t.trial_id;
 
 -- Code is deterministic; the world is random. One approach's results are draws: this is their spread, so a new
 -- result is read against it and a redo outside it stands out. One draw is one trial: its headline artifact alone.
@@ -198,20 +204,23 @@ GROUP BY ts.workspace_id, t.selection_id;
 
 -- ===== Scoreboards =====
 CREATE VIEW decision_scorecard AS
-SELECT p.prediction_id, p.trial_id, p.workspace_id, e.actor_kind, e.actor_id,
-       make_timestamptz(e.occurred_us) AS registered_at, make_timestamptz(p.horizon_us) AS horizon,
+SELECT p.prediction_id, p.trial_id, coalesce(p.workspace_id, ts.workspace_id) AS workspace_id, e.actor_kind,
+       e.actor_id, make_timestamptz(e.recorded_us) AS registered_at, make_timestamptz(p.horizon_us) AS horizon,
        p.confidence, p.score, sl.name AS score_metric, p.score_metric_version
 FROM log.prediction p JOIN log.event e ON e.seq = p.registered_seq
+LEFT JOIN log.trial_scope ts ON ts.trial_id = p.trial_id
 LEFT JOIN log.definition_lineage sl ON sl.definition_id = p.score_metric_id;
 
 -- The scoreboards read the log's daily totals, never the whole history.
 CREATE VIEW agent_daily AS
 SELECT CAST(day AS DATE) AS day, actor_id,
-       sum(n) FILTER (WHERE ty.name = 'agent.turn') AS turns,
+       sum(n) FILTER (WHERE turn) AS turns,
        sum(tokens_in) AS tokens_in, sum(tokens_out) AS tokens_out, sum(cost_microusd) / 1e6 AS cost_usd,
-       sum(n) FILTER (WHERE ty.name = 'agent.turn' AND outcome = 'completed') AS completed,
-       sum(n) FILTER (WHERE ty.name = 'agent.turn' AND outcome = 'failed') AS failed
-FROM log.daily_span d JOIN log.definition_lineage ty ON ty.definition_id = d.type_id WHERE actor_kind = 'agent'
+       sum(n) FILTER (WHERE turn AND outcome = 'completed') AS completed,
+       sum(n) FILTER (WHERE turn AND outcome = 'failed') AS failed
+FROM (SELECT d.*, d.type_id IS NOT DISTINCT FROM (SELECT definition_id FROM log.definition_name
+                 WHERE family = 'event_type' AND name = 'agent.turn') AS turn  -- the lineage, not its name now
+      FROM log.daily_span d WHERE actor_kind = 'agent')
 GROUP BY ALL;
 
 CREATE VIEW node_io AS

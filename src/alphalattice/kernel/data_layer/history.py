@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import experiences
+from alphalattice.kernel.data_layer import experiences, project
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
@@ -478,8 +478,13 @@ def write_execution_outcome(
         if profile and profile[1] != "present":
             raise DataError("the outcome body was collected", code="data_layer.outcome_collected")
         if not profile:
+            current = log.read(
+                "SELECT max(version) FROM definition WHERE family = 'artifact_type' AND name = ?",
+                (type_name,),
+            )
             attrs = {
                 "type": type_name,
+                "type_version": int(current[0][0]),  # the registered one: no version defaults
                 "identity_kind": "content",
                 "storage": "table",
                 "meaning": "The realized execution outcomes for a sealed chunk.",
@@ -528,7 +533,7 @@ def write_execution_outcome(
             log.record(
                 "result.recorded",
                 ("artifact", artifact),
-                {"measures": [["n_obs", 1, "", table.num_rows]]},
+                {"measures": [["n_obs", 1, {}, table.num_rows]]},
                 workspace=_open["workspace"],
                 node="host",
             )
@@ -828,6 +833,70 @@ def define(family: str, name: str, text: str, spec: Mapping[str, Any] | None = N
     record_new(
         exists, (family, name), "definition.registered", subject, key, text=words, node="host"
     )
+
+
+def version(family: str, name: str) -> int | None:
+    """The registered version of `family/name` new work is made under, its current one; None
+    outside a Host, while deferred, or when nothing registers it."""
+    log = _open.get("log")
+    found = (
+        None
+        if log is None
+        else log.read(
+            "SELECT version FROM definition_current WHERE family = ? AND name = ?", (family, name)
+        )
+    )
+    return int(found[0][0]) if found else None
+
+
+def selection(window: Mapping[str, Any], *, actor: tuple[str, str]) -> str | None:
+    """The id of the Host workspace's selection of `window` (its cutoff_us, universe name,
+    valid_from, valid_to and spec): the one it made of an equal window, compared column by column,
+    else a new one, named by a UUIDv7. Its universe is registered as a lineage first. None outside
+    a Host, or while deferred."""
+    if window.get("universe") is not None:
+        define("universe", str(window["universe"]), "A set of listings research reads, as named.")
+    with _once:
+        if not recording():
+            return None
+        with _open["log"].unit() as con:
+            same = project.window(con, _open["workspace"], window)
+            held = con.execute(project.SAME_WINDOW, same).fetchone()
+            if held is not None:
+                return str(held[0])
+            made = uuid7()
+            record("selection.made", ("selection", made), window, actor=actor)
+            return made
+
+
+def recipe(
+    method: str, params: Mapping[str, Any], reads: Iterable[str] = (), *, actor: tuple[str, str]
+) -> str | None:
+    """The key of the recipe of `method`, at its registered version, with `params`, reading the
+    artifacts `reads` names: the Host fills its upstream from their recipes. Defined, with a
+    UUIDv7, at its first use. None outside a Host, or while deferred."""
+    with _once:
+        if not recording():
+            return None
+        with _open["log"].unit() as con:
+            found = con.execute(
+                "SELECT definition_id, version FROM definition_current"
+                " WHERE family = 'method' AND name = ?",
+                (method,),
+            ).fetchone()
+            if found is None:
+                raise DataError(
+                    f"no method definition is named {method}",
+                    code="data_layer.method_unregistered",
+                )
+            read = sorted(set(reads))
+            key = project.recipe_key(found[0], found[1], params, project.upstream(con, read))
+            if con.execute("SELECT 1 FROM recipe WHERE recipe_key = ?", (key,)).fetchone():
+                return key
+            attrs = {"method": method, "method_version": found[1], "params": dict(params)}
+            attrs |= {"recipe_key": key} | ({"reads": read} if read else {})
+            record("recipe.defined", ("recipe", uuid7()), attrs, actor=actor)
+            return key
 
 
 def definition_id(family: str, name: str) -> str | None:

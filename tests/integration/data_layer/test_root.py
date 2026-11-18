@@ -86,27 +86,27 @@ def log(tmp_path_factory):
     note = _event(con, "lesson.recorded", ("goal", "g0"), text="Check the calendar first.")
     con.execute("INSERT INTO workspace VALUES ('w1', 'main', NULL, 'active', 1, NULL)")
     made = _event(con, "selection.made", ("selection", "s1"), attrs={"cutoff_us": 1})
-    selection = ("s1", "w1", T0, "sp500", "2015-01-01", "2024-12-31", "{}", made)
+    selection = ("s1", "w1", T0, None, "2015-01-01", "2024-12-31", "{}", made)
     con.execute(f"INSERT INTO selection VALUES ({', '.join('?' * 8)})", selection)
     register(con, "method", "momentum", 1, *MOMENTUM, None)
     recipe = _event(con, "recipe.defined", ("recipe", "r1"))
-    con.execute("INSERT INTO recipe VALUES ('r1', ?, 1, '{}', ?)", (METHOD, recipe))
+    con.execute("INSERT INTO recipe VALUES ('r1', 'k1', ?, 1, '{}', ?)", (METHOD, recipe))
     registered = _event(con, "trial.registered", ("trial", "t1"))
-    trial = {"trial_id": "t1", "selection_id": "s1", "recipe_key": "r1"}
+    trial = {"trial_id": "t1", "selection_id": "s1", "recipe_key": "k1"}
     trial |= {"seeds": "[7]", "product_version": "0.2.8", "state": "registered"}
     con.execute(*_insert("trial", **trial, registered_seq=registered))
     produced = _event(con, "artifact.produced", ("artifact", "a1"), attrs={"type": "backtest"})
     artifact = {"artifact_id": "a1", "identity_kind": "recipe", "type_id": BACKTEST}
-    artifact |= {"type_version": 1, "meaning": "A fixture backtest.", "recipe_key": "r1"}
+    artifact |= {"type_version": 1, "meaning": "A fixture backtest.", "recipe_key": "k1"}
     artifact |= {"selection_id": "s1", "trial_id": "t1", "storage": "table"}
     con.execute(*_insert("artifact", **artifact, body_state="present", produced_seq=produced))
     result = _event(con, "result.recorded", ("artifact", "a1"))
-    con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '', 0.9, ?)", (METRIC, result))
+    con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '{}', 0.9, ?)", (METRIC, result))
     active = _event(con, "book.activated", ("book", "b1"))
     con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
     fill = _event(con, "ledger.posted", ("book", "b1"))
     con.executemany(
-        "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, ?, ?)",
+        "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, 'listing', ?, ?)",
         [(fill, 1, "book", "AAPL", 10 * N), (fill, 2, "market", "AAPL", -10 * N)],
     )
     yield con, {"first": first, "note": note, "registered": registered, "metric": METRIC}
@@ -119,7 +119,7 @@ SHARPE |= {"spec": '{"unit": "ratio", "params": {"periods": 365}}', "text": "Ann
 SHARPE |= {"owner": "kernel", "registered_seq": 1, "status_seq": 1}
 LATE_TRIAL = (
     "INSERT INTO trial (trial_id, selection_id, recipe_key, product_version, state,"
-    " registered_seq, ended_seq) VALUES ('bad', 's1', 'r1', '0.2.8', 'completed',"
+    " registered_seq, ended_seq) VALUES ('bad', 's1', 'k1', '0.2.8', 'completed',"
     " :registered, :registered - 1)"
 )
 REFUSALS = {
@@ -182,16 +182,16 @@ REFUSALS = {
     ),
     "a selection is never edited": ("UPDATE selection SET cutoff_us = 0", "never edited"),
     "a recipe names a registered method": (
-        "INSERT INTO recipe VALUES ('r0', 'reversal', 1, '{}', 1)",
+        "INSERT INTO recipe VALUES ('r0', 'k0', 'reversal', 1, '{}', 1)",
         "FOREIGN KEY",
     ),
     "a recipe reads registered recipes": (
-        "INSERT INTO recipe_upstream VALUES ('r1', 0, 'no-such-recipe')",
+        "INSERT INTO recipe_upstream VALUES ('k1', 0, 'no-such-recipe')",
         "FOREIGN KEY",
     ),
     "a trial ends after its registration": (LATE_TRIAL, "ended_seq > registered_seq"),
     "a measure names a registered metric version": (
-        "INSERT INTO measure VALUES ('a1', :metric, 9, '', 1.0, 1)",
+        "INSERT INTO measure VALUES ('a1', :metric, 9, '{}', 1.0, 1)",
         "FOREIGN KEY",
     ),
     "a recorded measure never moves": ("UPDATE measure SET value = 9", "never moves"),
@@ -253,14 +253,14 @@ def settled(tmp_path_factory):
     active = _event(con, "book.activated", ("book", "b1"))
     con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
     fill = _event(con, "ledger.posted", ("book", "b1"))
-    legs = [("book", "AAPL", 10), ("market", "AAPL", -10)]
-    legs += [("book", "CASH:USD", -1500), ("market", "CASH:USD", 1500)]
+    legs = [("book", "listing", "AAPL", 10), ("market", "listing", "AAPL", -10)]
+    legs += [("book", "cash", "USD", -1500), ("market", "cash", "USD", 1500)]
     con.executemany(
-        "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, ?, ?)",
-        [(fill, line, account, asset, n * N) for line, (account, asset, n) in enumerate(legs, 1)],
+        "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, ?, ?, ?)",
+        [(fill, line, *leg[:3], leg[3] * N) for line, leg in enumerate(legs, 1)],
     )
     fee = _event(con, "ledger.posted", ("book", "b1"))
-    con.execute("INSERT INTO ledger_entry VALUES (?, 1, 'b1', 'fees', 'CASH:USD', ?)", (fee, N))
+    con.execute("INSERT INTO ledger_entry VALUES (?, 1, 'b1', 'fees', 'cash', 'USD', ?)", (fee, N))
     lesson = _event(con, "lesson.recorded", ("goal", "g0"), text="Check the calendar first.")
     con.execute("DELETE FROM event_text WHERE seq = ?", (lesson,))
     yield con, fee
@@ -280,7 +280,7 @@ PLANS = {
         f"measure WHERE metric_id = '{METRIC}' AND metric_version = 2",
         "measure_by_metric",
     ),
-    "a recipe's trials": ("trial WHERE recipe_key = 'r1'", "trial_recipe"),
+    "a recipe's trials": ("trial WHERE recipe_key = 'k1'", "trial_recipe"),
 }
 READS = {
     "the current definition is the newest standing version": (
@@ -301,12 +301,12 @@ READS = {
         [("blake3:t", 0)],
     ),
     "a position sums the book's legs": (
-        "SELECT quantity_n FROM position WHERE asset = 'AAPL'",
+        "SELECT quantity_n FROM position WHERE asset_kind = 'listing' AND asset_id = 'AAPL'",
         [(10 * N,)],
     ),
     "only the unbalanced posting shows": (
-        "SELECT seq, asset, off_n FROM ledger_unbalanced",
-        [("fee", "CASH:USD", N)],
+        "SELECT seq, asset_kind, asset_id, off_n FROM ledger_unbalanced",
+        [("fee", "cash", "USD", N)],
     ),
 }
 

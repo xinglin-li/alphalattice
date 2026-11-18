@@ -172,6 +172,7 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
         attrs={"call": "probe", "note": secret, "prompt": "private prompt"},
         phase="completed",
         workspace="w1",
+        started_us=int(now.timestamp() * 1_000_000),
     )
     history.traced([worker_probe])
     jar = http.cookiejar.CookieJar()

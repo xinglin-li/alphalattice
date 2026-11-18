@@ -375,6 +375,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_number_has_one_typed_form": {
+      "description": "A number has one typed form, so 5 and 5.0 are one recipe parameter and one measure dimension, and a value with none is refused.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_rename_moves_no_key": {
       "description": "A renamed method, metric or feature set keeps its lineage's id, so no recipe key, measure, cache entry or derived partition moves, and every old name still finds it.",
       "lower_layer": "A rename is an event projected inside the log's own SQLite transaction; only a real log shows the rows it leaves.",
@@ -737,6 +743,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
+    },
+    "data_layer.research_records_are_named_by_ids": {
+      "description": "Every research record is named by an id, so equal facts never collide or split across workspaces, trials, versions, renames or number forms.",
+      "lower_layer": "Each record is written by the log's own projection inside its SQLite transaction and read back by its tables and views; only a real log shows the rows.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 15
     },
     "data_layer.root_created_twice_is_all_equal": {
       "description": "Creating a data root with installed data dependencies creates the SQLite DuckLake catalog and runs its views and macros offline; repeating creation leaves every file byte-identical, and another schema version is refused by name.",

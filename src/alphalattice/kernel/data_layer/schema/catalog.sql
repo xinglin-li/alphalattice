@@ -372,6 +372,6 @@ CREATE TABLE results.breakdown (
   artifact_id VARCHAR NOT NULL,
   metric_id VARCHAR NOT NULL,      -- the metric's lineage
   metric_version INTEGER NOT NULL,
-  dims VARCHAR NOT NULL,
+  dims VARCHAR NOT NULL,           -- the measure's form: canonical JSON of typed dimensions (project.dims)
   value DOUBLE
 );

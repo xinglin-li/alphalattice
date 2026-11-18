@@ -126,7 +126,7 @@
     "artifact_id": "link",
     "metric_id": "link",
     "metric_version": "link",
-    "dims": "packed: an uncanonical 'k=v|k=v' string"
+    "dims": "standard: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
    },
    "up": "artifact_id",
    "links": [
@@ -485,7 +485,7 @@
     "artifact_id"
    ],
    "id": {
-    "artifact_id": "digest: blake3 of its content, or of its recipe and producing span"
+    "artifact_id": "uuid7"
    },
    "links": [
     "type_id",
@@ -1015,7 +1015,7 @@
     "artifact_id": "link",
     "metric_id": "link",
     "metric_version": "link",
-    "dims": "packed: an uncanonical 'k=v|k=v' string"
+    "dims": "standard: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
    },
    "up": "artifact_id",
    "links": [
@@ -1040,7 +1040,8 @@
    "up": "trial_id",
    "links": [
     "workspace_id",
-    "score_metric_id"
+    "score_metric_id",
+    "score_metric_version"
    ],
    "times": {
     "horizon_us": "utc_us",
@@ -1049,15 +1050,18 @@
    },
    "versions": {
     "score_metric_version": "definition"
+   },
+   "edges": {
+    "workspace_id": "the parent of a prediction with no trial: a CHECK keeps exactly one of the two"
    }
   },
   "log.recipe": {
    "home": "projection",
    "key": [
-    "recipe_key"
+    "recipe_id"
    ],
    "id": {
-    "recipe_key": "digest: blake3 of the canonical method, version, parameters and upstream keys"
+    "recipe_id": "uuid7"
    },
    "links": [
     "method_id",
@@ -1094,7 +1098,7 @@
     "selection_id"
    ],
    "id": {
-    "selection_id": "digest: a digest of its window, without its workspace"
+    "selection_id": "uuid7"
    },
    "up": "workspace_id",
    "times": {
@@ -1102,7 +1106,10 @@
     "valid_from": "market_date",
     "valid_to": "market_date",
     "made_seq": "log_seq"
-   }
+   },
+   "links": [
+    "universe_id"
+   ]
   },
   "log.setting": {
    "home": "projection",
@@ -1124,14 +1131,12 @@
     "subject_kind",
     "subject_id",
     "key_id",
-    "tag_version",
     "value"
    ],
    "id": {
     "subject_kind": "standard: the kind of thing tagged",
     "subject_id": "link",
     "key_id": "link",
-    "tag_version": "link",
     "value": "standard: the vocabulary's value"
    },
    "links": [
@@ -1455,22 +1460,6 @@
   }
  },
  "known": {
-  "research-digest-ids": {
-   "says": "A selection, a recipe and an artifact are named by digests, and a measure's dimensions by a packed string.",
-   "problems": [
-    "id: catalog.results.breakdown.dims: a packed id",
-    "id: log.artifact.artifact_id: a digest id",
-    "id: log.measure.dims: a packed id",
-    "id: log.recipe.recipe_key: a digest id",
-    "id: log.selection.selection_id: a digest id"
-   ]
-  },
-  "tag-version-default": {
-   "says": "A tag's vocabulary version defaults to 1 instead of the version given or current.",
-   "problems": [
-    "version: log.tag.tag_version: a version with a default"
-   ]
-  },
   "status-moves-unenforced": {
    "says": "The projected statuses of workspaces, goals, tasks, trials, definition versions and books follow no enforced move table.",
    "problems": [
@@ -1493,13 +1482,6 @@
    "says": "A definition's id is a digest of its family and first name, not an id the Host mints.",
    "problems": [
     "id: log.definition_lineage.definition_id: a digest id"
-   ]
-  },
-  "prediction-links": {
-   "says": "A prediction stores the workspace its trial already reaches, and its score's metric version has no link to a registered version.",
-   "problems": [
-    "up: log.prediction.workspace_id: a second upward link, to workspace, which its upward chain already reaches",
-    "version: log.prediction.score_metric_version: a definition version with no link to definition_version"
    ]
   }
  }

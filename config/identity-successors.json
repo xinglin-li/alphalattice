@@ -15856,6 +15856,48 @@
    "successor": "17e4176a078f9edd0f7347de8953a989184d651e6ae0378b1f5e7bc6709cfd9b",
    "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
    "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6250a34921163a07afd73a70c6d7068695167925192f73d5f488d8149c3aeeef",
+   "successor": "6fdcdeb0474c03a9a1235161806f734ce7482fc22bc9b7202b174e17e04a0d9d",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "559441365172d497e589632cca32a97432b58b54579de78237c97fd15c0554b7",
+   "successor": "592213e783cd9e2cf04be0d814e868be7df0291c791e6e4b182f5a5d19055285",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "successor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "successor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "b999ccbbb74a1562c6a84b309266e8fb1a838950f601bb92124855818f388fb3",
+   "successor": "a431f234c2cb9a67ad74081b80f56f782d6c7d7326f5022db23b815b787a33f8",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "3a9ac45eff67d6193325f8e7e12a0dcf6cf5ae2172afe65da78cd6ea1285a230",
+   "successor": "ebf697d4847ae44b74ac5fabd7181b0e8b00144d907e94841576238bff1728be",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
   }
  ]
 }

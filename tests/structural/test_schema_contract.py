@@ -500,8 +500,8 @@ PLANTED: dict[str, tuple[DdlPlant, list[RegistryPlant], str]] = {
                _set((*BOOK, "id", "workspace_id"), "link")],
         "key: log.book: the DDL keys ['book_id'], the registry ['book_id', 'workspace_id']"),
     "digest declared meaningless": (
-        None, [_set(("tables", "log.recipe", "id", "recipe_key"), "uuid7")],
-        "id: log.recipe.recipe_key: a digest-named part declared as uuid7"),
+        None, [_set(("tables", "log.recipe_upstream", "id", "recipe_key"), "uuid7")],
+        "id: log.recipe_upstream.recipe_key: a digest-named part declared as uuid7"),
     "id without its reason": (
         None, [_set(("tables", "log.task_step", "id", "step"), "standard")],
         "id: log.task_step.step: 'standard' is not a source with its reason"),

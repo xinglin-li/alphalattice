@@ -508,11 +508,13 @@ def test_a_held_file_waits_in_the_queue_and_goes_at_a_later_start(root):
 @pytest.mark.proves("data_layer.live_ref_bodies_are_never_collected")
 def test_a_body_a_live_ref_holds_is_never_deleted(root):
     """A blob whose artifact a live_ref holds is refused by name and stays; an unheld one goes."""
-    profile = {"type": "model", "meaning": "a fitted model", "storage": "blob"}
+    profile = {"type": "model", "type_version": 1, "meaning": "a fitted model", "storage": "blob"}
     with HostLog.open(root) as log:
         for artifact in ("held", "free"):
             log.record(
-                "artifact.produced", ("artifact", artifact), profile | {"identity_kind": "content"}
+                "artifact.produced",
+                ("artifact", artifact),
+                profile | {"identity_kind": "content", "content_digest": f"blake3:{artifact}"},
             )
         seq = log.read("SELECT max(seq) FROM event")[0][0]
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con, con:

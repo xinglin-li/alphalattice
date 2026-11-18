@@ -15,9 +15,7 @@ from typing import Any
 
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.data_layer.project import recipe_key
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import ResearchExecutionEvidence
@@ -41,7 +39,10 @@ def started(sealed: SealedSubmission) -> Trial | None:
     envelope, program, binding = sealed.envelope, sealed.program, sealed.binding
     actor = (_ACTORS.get(binding.actor_kind, "agent"), binding.actor_id)
     cutoff = envelope.sessions.as_of
+    if not history.recording():
+        return None
     window = {
+        "cutoff_us": cutoff.selection_cutoff_us,
         "universe": envelope.universe_handle,
         "valid_from": envelope.sessions.start.isoformat(),
         "valid_to": envelope.sessions.end.isoformat(),
@@ -50,26 +51,16 @@ def started(sealed: SealedSubmission) -> Trial | None:
             "as_of": cutoff.model_dump(mode="json"),
         },
     }
-    selection = digest(canonical(window))
-    if not history.recording():
-        return None
-    attrs = window | {"cutoff_us": cutoff.selection_cutoff_us}
-    exists = "SELECT 1 FROM selection WHERE selection_id = ?"
-    history.record_new(
-        exists, (selection,), "selection.made", ("selection", selection), attrs, actor=actor
-    )
+    selection = history.selection(window, actor=actor)
     params = {
         "method_binding": program.method_binding_hash,
         "parameter_domain": program.parameter_domain_hash,
         "desk_program": program.desk_program_hash,
     }
     history.define("method", program.kind, f"The {program.kind} Desk's sealed research program.")
-    method = history.definition_id("method", program.kind)
-    if method is None:  # deferred between the two calls: the history records nothing
+    recipe = history.recipe(program.kind, params, actor=actor)
+    if selection is None or recipe is None:  # deferred between the calls: nothing records
         return None
-    recipe = recipe_key(method, 1, params)
-    defined = {"method": program.kind, "method_version": 1, "params": params}
-    history.record("recipe.defined", ("recipe", recipe), defined, actor=actor)
     trial = uuid7()
     registered = {
         "selection_id": selection,
@@ -94,8 +85,13 @@ def started(sealed: SealedSubmission) -> Trial | None:
     return Trial(trial, span, actor, now, trace)
 
 
-def ended(trial: object, evidence: ResearchExecutionEvidence | None) -> None:
-    """Record the trial's end: completed with its evidence as its artifact, or failed."""
+def ended(
+    trial: object, evidence: ResearchExecutionEvidence | None, *, reused: bool = False
+) -> None:
+    """Record the trial's end: completed with its evidence as its artifact, or failed. Evidence
+    this run produced is its own artifact, whatever its bytes; evidence `reused`, an earlier
+    run's read back (or a Desk's reuse disposition), stays the artifact of the trial that
+    produced it, named here only when none in this workspace holds it."""
     if not isinstance(trial, Trial):  # no Host: `started` recorded nothing
         return
     subject = ("trial", trial.trial_id)
@@ -108,24 +104,35 @@ def ended(trial: object, evidence: ResearchExecutionEvidence | None) -> None:
     if evidence is None:
         history.record("trial", subject, phase="failed", **ending)
         return
-    artifact = evidence.evidence_hash
-    headline = None
-    exists = "SELECT 1 FROM artifact WHERE artifact_id = ?"
+    digest = evidence.evidence_hash
+    exists = (  # in this trial's workspace: another workspace's equal evidence is its own draw
+        "SELECT 1 FROM artifact a JOIN trial_scope t ON t.trial_id = a.trial_id"
+        " WHERE a.content_digest = ?"
+        " AND t.workspace_id = (SELECT workspace_id FROM trial_scope WHERE trial_id = ?)"
+    )
     produced = {
         "type": history.EVIDENCE_TYPE,
+        "type_version": history.version("artifact_type", history.EVIDENCE_TYPE),
         "identity_kind": "content",
         "storage": "none",  # its body is the workspace's evidence store's, not the data root's
         "meaning": f"{evidence.kind} evidence of program {evidence.program_hash[:12]}",
         "trial_id": trial.trial_id,
-        "content_digest": artifact,
+        "content_digest": digest,
         "row_count": len(evidence.artifact_uris),
     }
-    subject_artifact = ("artifact", artifact)
-    # A reused run's evidence stays its first trial's: this trial names it only when it produced it.
-    new = history.record_new(
-        exists, (artifact,), "artifact.produced", subject_artifact, produced, actor=trial.actor
-    )
-    headline = artifact if new is not None else None
+    artifact = ("artifact", uuid7())
+    if reused or evidence.disposition != "COMPUTED":
+        new = history.record_new(
+            exists,
+            (digest, trial.trial_id),
+            "artifact.produced",
+            artifact,
+            produced,
+            actor=trial.actor,
+        )
+    else:  # equal bytes from two runs are two artifacts: equality is never reuse
+        new = history.record("artifact.produced", artifact, produced, actor=trial.actor)
+    headline = artifact[1] if new is not None else None
     completed: dict[str, Any] = {"disposition": evidence.disposition}
     completed |= {"numerical_calls": evidence.numerical_call_count}
     if headline is not None:

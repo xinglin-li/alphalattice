@@ -142,7 +142,7 @@ def _uses(row: Mapping[str, Any], attrs: Mapping[str, Any]) -> list[tuple[str, A
     if row["type"] == "result.recorded":
         uses += [("metric", measure[0], measure[1]) for measure in attrs.get("measures", ())]
     elif row["type"] == "artifact.produced":
-        uses.append(("artifact_type", attrs.get("type"), attrs.get("type_version", 1)))
+        uses.append(("artifact_type", attrs.get("type"), attrs.get("type_version")))
     elif row["type"] == "recipe.defined":
         uses.append(("method", attrs.get("method"), attrs.get("method_version")))
     return uses

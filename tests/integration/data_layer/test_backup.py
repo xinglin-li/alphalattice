@@ -18,8 +18,8 @@ import sqlite_vec
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import backup, create_data_root
 from alphalattice.kernel.data_layer.chain import canonical, digest
-from alphalattice.kernel.data_layer.log import HostLog, verify_whole
-from alphalattice.kernel.data_layer.project import definition_id
+from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
+from alphalattice.kernel.data_layer.project import definition_id, recipe_key
 from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
@@ -95,6 +95,7 @@ def sample(tmp_path_factory):
             ("artifact", "result"),
             {
                 "type": "report",
+                "type_version": 1,
                 "meaning": "synthetic result",
                 "identity_kind": "content",
                 "storage": "blob",
@@ -128,13 +129,25 @@ def sample(tmp_path_factory):
         (root / "staging/transport.json").write_bytes(b"unadmitted transport")
         first = backup.backup_data_root(root, repository)
         (root / "blobs/later").write_bytes(b"second retained result")
+        method = {"family": "method", "name": "synthetic", "version": 1}
         log.record(
+            "definition.registered",
+            ("definition", "method/synthetic"),
+            method,
+            text=canonical(method | {"text": "A synthetic method."}).decode(),
+        )
+        later = recipe_key(definition_id("method", "synthetic"), 1, {})
+        defined = {"method": "synthetic", "method_version": 1, "params": {}, "recipe_key": later}
+        log.record("recipe.defined", ("recipe", uuid7()), defined)
+        log.record(  # a recipe's blob: its row records no digest, so the backup proves its own
             "artifact.produced",
             ("artifact", "later"),
             {
                 "type": "report",
+                "type_version": 1,
                 "meaning": "second synthetic result",
-                "identity_kind": "content",
+                "identity_kind": "recipe",
+                "recipe_key": later,
                 "storage": "blob",
             },
         )
@@ -295,7 +308,9 @@ def test_a_write_burst_finishes_between_log_and_catalog_backup_and_restore_repai
                 assert copied.wait(5), "backup did not copy its log"
                 _admit(root, port, close=2.0, count=3)
                 for _ in range(128):
-                    log.record("tool.call", attrs={"tool": "synthetic"}, phase="completed")
+                    log.record(
+                        "tool.call", attrs={"tool": "synthetic"}, phase="completed", started_us=0
+                    )
                 log.flush()
             except BaseException as error:
                 errors.append(error)

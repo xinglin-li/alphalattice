@@ -223,8 +223,8 @@ CREATE TABLE goal (
 
 -- One execution of a task is one trace. A task stores one parent, the nearest: its parent task, else its goal, else
 -- (a task under neither) its workspace. Each lies in the task's workspace, which task_workspace reads. Task Control's
--- record of it (task_kind to submitted_by_json) is kept on the same row, in the registry's own model and clock (UTC
--- ISO text); workspace_task reads it with its workspace.
+-- record of it (input_hash to submitted_by_json) is kept on the same row, in the registry's own model and clock (UTC
+-- ISO text); its kind is type_id's lineage, never a name; workspace_task reads it with its workspace and kind's name.
 CREATE TABLE task (
   task_id TEXT PRIMARY KEY,
   parent_task_id TEXT REFERENCES task(task_id),
@@ -240,7 +240,6 @@ CREATE TABLE task (
   started_seq INTEGER,
   ended_seq INTEGER,
   reviewed_seq INTEGER,  -- its first review's note, which closes it; NULL while it awaits review
-  task_kind TEXT NOT NULL,
   input_hash TEXT NOT NULL,
   plan_hash TEXT NOT NULL,
   lifecycle TEXT NOT NULL CHECK (lifecycle IN ('QUEUED', 'RUNNING', 'DEFERRED', 'REVIEW_PENDING', 'CANCEL_REQUESTED',
@@ -339,9 +338,9 @@ CREATE INDEX wait_heartbeat ON wait(
 -- whose event carries its receipt. The registry's clock stays its own: each view reads it from the event's attrs, as
 -- the registry wrote it (UTC ISO text, or a 0.2.7 store's naive UTC), in integer microseconds.
 CREATE VIEW workspace_task AS
-SELECT t.task_id, w.workspace_id, t.task_kind, t.input_hash, t.plan_hash, t.lifecycle, t.record_json, t.admitted_us,
-       t.updated_us, t.admission_sequence, t.submitted_by_json
-FROM task t JOIN task_workspace w USING (task_id);
+SELECT t.task_id, w.workspace_id, k.name AS task_kind, t.input_hash, t.plan_hash, t.lifecycle, t.record_json,
+       t.admitted_us, t.updated_us, t.admission_sequence, t.submitted_by_json
+FROM task t JOIN task_workspace w USING (task_id) JOIN definition_lineage k ON k.definition_id = t.type_id;
 
 -- A work item: its first save names its place; its latest save is its state.
 CREATE VIEW workspace_task_work_item AS
@@ -395,11 +394,12 @@ SELECT json_extract(e.attrs, '$.receipt_hash') AS receipt_hash, json_extract(x.t
 FROM task_step s JOIN event e ON e.seq = s.completed_seq AND e.type = 'stage.verified' JOIN event_text x ON x.seq = e.seq;
 
 -- ===== [1] Research: state, action, effect, new state =====
--- The action's definition. Its identity holds the method's lineage, its version, the parameters and the upstream
--- recipes, and nothing else: no name, no code build and no seed, so one approach keeps one key across releases, trials
--- and renames.
+-- The action's definition. Its key holds the method's lineage, its version, the parameters and the upstream recipes,
+-- and nothing else: no name, no code build and no seed, so one approach keeps one key across releases, trials and
+-- renames. The key finds a recipe already defined; the row is named by its id.
 CREATE TABLE recipe (
-  recipe_key TEXT PRIMARY KEY,  -- blake3 of the canonical (method_id, method_version, params, sorted upstream keys)
+  recipe_id TEXT PRIMARY KEY,       -- UUIDv7, minted at its first definition
+  recipe_key TEXT NOT NULL UNIQUE,  -- blake3 over project.recipe_key's versioned typed encoding, never JSON text
   method_id TEXT NOT NULL,
   method_version INTEGER NOT NULL,
   params TEXT NOT NULL CHECK (json_valid(params)),
@@ -418,16 +418,21 @@ CREATE TABLE recipe_upstream (
 ) STRICT, WITHOUT ROWID;
 
 -- What a piece of research was allowed to see. The knowledge cutoff is what makes it point-in-time; no snapshot is pinned.
+-- Named by a UUIDv7 minted when it is made. A workspace makes one selection of one window: an equal window, compared
+-- column by column, is the selection it already has.
 CREATE TABLE selection (
   selection_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
   cutoff_us INTEGER NOT NULL,   -- nothing known after this moment is read
-  universe TEXT,
+  universe_id TEXT REFERENCES definition_lineage(definition_id),  -- the universe's lineage, never its name
   valid_from TEXT,              -- the span of market dates read, ISO dates
   valid_to TEXT,
-  spec TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(spec)),  -- [3] the rest: sources preferred, filters
+  spec TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(spec)),  -- [3] the rest: sources preferred, filters; canonical
   made_seq INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
+CREATE UNIQUE INDEX selection_window ON selection(
+  workspace_id, cutoff_us, ifnull(universe_id, ''), ifnull(valid_from, ''), ifnull(valid_to, ''), spec
+);
 CREATE TRIGGER selection_no_update BEFORE UPDATE ON selection BEGIN SELECT RAISE(ABORT, 'a selection is never edited'); END;
 
 CREATE TABLE hypothesis (  -- one parent: its goal, else (a goal the log holds in no workspace of its) its workspace
@@ -479,10 +484,10 @@ SELECT t.trial_id, s.workspace_id, coalesce(h.goal_id, g.goal_id) AS goal_id
 FROM trial t JOIN selection s ON s.selection_id = t.selection_id LEFT JOIN hypothesis h ON h.hypothesis_id = t.hypothesis_id
 LEFT JOIN task_scope g ON g.task_id = t.task_id;
 
--- Registered first, scored at its horizon.
+-- Registered first, scored at its horizon. Its one parent is its trial, else its workspace.
 CREATE TABLE prediction (
   prediction_id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
+  workspace_id TEXT REFERENCES workspace(workspace_id),
   trial_id TEXT REFERENCES trial(trial_id),
   target TEXT NOT NULL CHECK (json_valid(target)),  -- [3] what is predicted and how it is judged
   horizon_us INTEGER NOT NULL,
@@ -490,25 +495,33 @@ CREATE TABLE prediction (
   registered_seq INTEGER NOT NULL,  -- its statement is that event's text
   outcome_seq INTEGER,
   score REAL,
-  score_metric_id TEXT REFERENCES definition_lineage(definition_id),
+  score_metric_id TEXT,
   score_metric_version INTEGER,
+  CHECK ((trial_id IS NULL) <> (workspace_id IS NULL)),
   CHECK (outcome_seq IS NULL OR outcome_seq > registered_seq),
-  CHECK ((score IS NULL) = (score_metric_id IS NULL))
+  CHECK ((score IS NULL) = (score_metric_id IS NULL) AND (score IS NULL) = (score_metric_version IS NULL)),
+  FOREIGN KEY (score_metric_id, score_metric_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX prediction_due ON prediction(horizon_us) WHERE outcome_seq IS NULL;
 
+-- Every name an event type's lineage held, beside each name it held: a view names the types it reads as the code
+-- names them, and reads every event of their lineages, under whichever name each was written.
+CREATE VIEW event_type_name AS
+SELECT f.name AS named, n.name AS type FROM definition_name f
+JOIN definition_name n ON n.definition_id = f.definition_id AND n.family = f.family
+WHERE f.family = 'event_type';
 -- Facts made once and never changed are views over the log, served by event_type_subject.
 CREATE VIEW decision AS
 SELECT e.subject_id AS decision_id, e.workspace_id, json_extract(e.attrs, '$.kind') AS kind,
        json_extract(e.attrs, '$.chosen') AS chosen, json_extract(e.attrs, '$.alternatives') AS alternatives,
        t.text AS reasons, e.actor_kind, e.actor_id, e.seq AS made_seq
-FROM event e LEFT JOIN event_text t ON t.seq = e.seq WHERE e.type = 'decision.made';
+FROM event e LEFT JOIN event_text t ON t.seq = e.seq WHERE e.type IN (SELECT type FROM event_type_name WHERE named IN ('decision.made'));
 -- Conclusions, lessons, reviews and proposals: each is about its subject, and its body is its text.
 CREATE VIEW research_note AS
 SELECT e.seq, e.event_id AS note_id, e.type, e.subject_kind, e.subject_id, e.workspace_id, t.text,
        e.actor_kind, e.actor_id, e.occurred_us
 FROM event e LEFT JOIN event_text t ON t.seq = e.seq
-WHERE e.type IN ('conclusion.drawn', 'lesson.recorded', 'review.completed', 'proposal.made');
+WHERE e.type IN (SELECT type FROM event_type_name WHERE named IN ('conclusion.drawn', 'lesson.recorded', 'review.completed', 'proposal.made'));
 -- An experience: a review's note rendered with its metadata into one markdown body, under an experience_id the Host
 -- mints once. Its parent is the task that made it (the reviewed task, or the reviewed trial's task); a goal's review
 -- has none. The goal, task or trial reviewed points at its current experience (experience_id); a later experience of
@@ -546,7 +559,7 @@ CREATE INDEX trial_experience_by_experience ON trial_experience(experience_id);
 -- The person's feedback: adopted or not, read from what they did, and an optional remark.
 CREATE VIEW feedback AS
 SELECT e.seq, e.subject_kind, e.subject_id, json_extract(e.attrs, '$.adopted') AS adopted, t.text AS remark, e.occurred_us
-FROM event e LEFT JOIN event_text t ON t.seq = e.seq WHERE e.type = 'feedback.given';
+FROM event e LEFT JOIN event_text t ON t.seq = e.seq WHERE e.type IN (SELECT type FROM event_type_name WHERE named IN ('feedback.given'));
 -- One admission of outside data. World rows carry its admission_id, minted before the write. `parts` lists each
 -- partition it touched as {part, min_known_asof_us, max_known_asof_us}, the knowledge times of its rows there.
 CREATE VIEW admission AS
@@ -554,14 +567,14 @@ SELECT subject_id AS admission_id, seq AS admission_seq, json_extract(attrs, '$.
        json_extract(attrs, '$.dataset') AS dataset, json_extract(attrs, '$.row_count') AS row_count,
        json_extract(attrs, '$.catalog_snapshot') AS catalog_snapshot, json_extract(attrs, '$.known_us') AS known_us,
        json_extract(attrs, '$.parts') AS parts  -- a cache's input digest reads these, never the data
-FROM event WHERE type = 'admission.committed';
+FROM event WHERE type IN (SELECT type FROM event_type_name WHERE named = 'admission.committed');
 
 -- ===== [1] Artifacts: the profile stays, the body may go =====
 -- What an artifact is, what it means, and where its body is or was. The profile is kept forever; the body may be
 -- collected, or never stored at all. Its measures are in `measure`.
 CREATE TABLE artifact (
-  artifact_id TEXT PRIMARY KEY,     -- blake3: of the content (small final artifacts), or of the recipe and the producing span
-  identity_kind TEXT NOT NULL CHECK (identity_kind IN ('content', 'recipe')),
+  artifact_id TEXT PRIMARY KEY,     -- UUIDv7, minted at its artifact.produced: two equal results are two artifacts
+  identity_kind TEXT NOT NULL CHECK (identity_kind IN ('content', 'recipe')),  -- found by content_digest, or by recipe
   type_id TEXT NOT NULL,            -- the artifact type's lineage
   type_version INTEGER NOT NULL,
   meaning TEXT NOT NULL CHECK (length(meaning) BETWEEN 1 AND 1000),  -- the question it answers, in a sentence or two
@@ -579,12 +592,14 @@ CREATE TABLE artifact (
   produced_seq INTEGER NOT NULL,
   collected_seq INTEGER,
   CHECK (identity_kind = 'content' OR recipe_key IS NOT NULL),
+  CHECK (identity_kind = 'recipe' OR content_digest IS NOT NULL),
   CHECK ((storage = 'none') = (body_state = 'never_stored')),
   CHECK ((body_state = 'collected') = (collected_seq IS NOT NULL)),
   FOREIGN KEY (type_id, type_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX artifact_recipe ON artifact(recipe_key);
 CREATE INDEX artifact_trial ON artifact(trial_id);
+CREATE INDEX artifact_content ON artifact(content_digest);
 CREATE TRIGGER artifact_no_delete BEFORE DELETE ON artifact BEGIN SELECT RAISE(ABORT, 'an artifact profile is kept forever'); END;
 
 -- [4] A small body (at most 64 KiB). Larger ones are files under blobs/ or rows in results.*. It is opaque storage, not a
@@ -603,7 +618,8 @@ CREATE TABLE measure (
   artifact_id TEXT NOT NULL REFERENCES artifact(artifact_id),
   metric_id TEXT NOT NULL,
   metric_version INTEGER NOT NULL,
-  dims TEXT NOT NULL DEFAULT '',   -- canonical 'k=v|k=v', such as 'horizon=5d'; '' for the whole artifact
+  dims TEXT NOT NULL CHECK (json_type(dims) = 'object'),  -- canonical JSON of a map of typed values, such as
+                                                         -- '{"horizon":5}' (project.dims); '{}' for the whole artifact
   value REAL,                      -- NULL: computed, and undefined for this artifact
   recorded_seq INTEGER NOT NULL,
   PRIMARY KEY (artifact_id, metric_id, metric_version, dims),
@@ -626,11 +642,11 @@ CREATE INDEX event_artifact_by_artifact ON event_artifact(artifact_id, role);
 CREATE TABLE tag (
   subject_kind TEXT NOT NULL,
   subject_id TEXT NOT NULL,
-  key_id TEXT NOT NULL,                    -- the tag vocabulary's lineage
-  tag_version INTEGER NOT NULL DEFAULT 1,  -- the vocabulary's version: as given, else the key's current one; an unregistered key is refused
+  key_id TEXT NOT NULL,           -- the tag vocabulary's lineage
+  tag_version INTEGER NOT NULL,   -- the version it was put on under: as given, else the key's current one
   value TEXT NOT NULL,
   seq INTEGER NOT NULL,
-  PRIMARY KEY (subject_kind, subject_id, key_id, tag_version, value),
+  PRIMARY KEY (subject_kind, subject_id, key_id, value),  -- one tag, whichever version it was put on under
   FOREIGN KEY (key_id, tag_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX tag_lookup ON tag(key_id, value, subject_kind);
@@ -677,24 +693,27 @@ CREATE TABLE book (
 
 -- Double entry: the lines of one event sum to zero for each asset. Quantities are integers in nano-units (1e-9 of a
 -- share or a currency unit), so sums are exact. A fill moves the asset from `market` to `book` and cash the other way.
+-- An asset is a kind and an id: a listing by its listing id, cash by its ISO 4217 currency code.
 CREATE TABLE ledger_entry (
   seq INTEGER NOT NULL REFERENCES event(seq),
   line INTEGER NOT NULL,
   book_id TEXT NOT NULL REFERENCES book(book_id),
   account TEXT NOT NULL CHECK (account IN ('book', 'market', 'fees', 'owner')),
-  asset TEXT NOT NULL,            -- a listing id, or 'CASH:USD'
+  asset_kind TEXT NOT NULL CHECK (asset_kind IN ('listing', 'cash')),
+  asset_id TEXT NOT NULL CHECK (asset_kind = 'listing' OR asset_id GLOB '[A-Z][A-Z][A-Z]'),
   quantity_n INTEGER NOT NULL CHECK (quantity_n <> 0),
   PRIMARY KEY (seq, line)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX ledger_by_book ON ledger_entry(book_id, account, asset);
+CREATE INDEX ledger_by_book ON ledger_entry(book_id, account, asset_kind, asset_id);
 CREATE TRIGGER ledger_no_update BEFORE UPDATE ON ledger_entry BEGIN SELECT RAISE(ABORT, 'the ledger is append-only'); END;
 CREATE TRIGGER ledger_no_delete BEFORE DELETE ON ledger_entry BEGIN SELECT RAISE(ABORT, 'the ledger is append-only'); END;
 CREATE VIEW position AS
-SELECT book_id, asset, sum(quantity_n) AS quantity_n FROM ledger_entry
-WHERE account = 'book' GROUP BY book_id, asset HAVING sum(quantity_n) <> 0;
+SELECT book_id, asset_kind, asset_id, sum(quantity_n) AS quantity_n FROM ledger_entry
+WHERE account = 'book' GROUP BY book_id, asset_kind, asset_id HAVING sum(quantity_n) <> 0;
 -- Must be empty; the Host checks it in the posting transaction, and the scrub checks it whole.
 CREATE VIEW ledger_unbalanced AS
-SELECT seq, asset, sum(quantity_n) AS off_n FROM ledger_entry GROUP BY seq, asset HAVING sum(quantity_n) <> 0;
+SELECT seq, asset_kind, asset_id, sum(quantity_n) AS off_n FROM ledger_entry
+GROUP BY seq, asset_kind, asset_id HAVING sum(quantity_n) <> 0;
 
 -- ===== [1] The person's settings =====
 -- The current value; history is in the log. A key's value is in the OS keychain, never here.

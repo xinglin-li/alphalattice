@@ -15,8 +15,8 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, experiences
 from alphalattice.kernel.data_layer import project as projections
-from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, digest
-from alphalattice.kernel.data_layer.log import HostLog, replay, verify_whole
+from alphalattice.kernel.data_layer.chain import CHAIN_VERSION
+from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7, verify_whole
 from alphalattice.kernel.data_layer.project import (
     PROJECTED,
     definition_id,
@@ -66,12 +66,13 @@ def _trial(log, trial, recipe, sharpe, storage):
     )
     span = uuid.uuid4().hex[:16]
     log.record("trial", ("trial", trial), phase="started", span=span, cause=registered, **AGENT)
-    artifact = digest(f"{recipe}/{span}".encode())
+    artifact = uuid7()
     log.record(
         "artifact.produced",
         ("artifact", artifact),
         {
             "type": "backtest",
+            "type_version": 1,
             "meaning": "Does 12-1 momentum earn a premium on the S&P 500, 2015 to 2024?",
             "recipe_key": recipe,
             "selection_id": "s1",
@@ -82,8 +83,8 @@ def _trial(log, trial, recipe, sharpe, storage):
         span=span,
         **AGENT,
     )
-    measures = [["sharpe", 1, "", sharpe], ["max_drawdown", 1, "", 0.2]]
-    measures.append(["ic_mean", 1, "horizon=21d", 0.03])
+    measures = [["sharpe", 1, {}, sharpe], ["max_drawdown", 1, {}, 0.2]]
+    measures.append(["ic_mean", 1, {"horizon_days": 21}, 0.03])
     log.record(
         "result.recorded",
         ("artifact", artifact),
@@ -97,17 +98,20 @@ def _trial(log, trial, recipe, sharpe, storage):
         {"result_artifact": artifact},
         phase="completed",
         span=span,
+        started_us=T0,
         **AGENT,
     )
     return artifact
 
 
 def _research(log):
-    """A goal, a hypothesis, a selection, two recipes and three trials."""
+    """A goal, a hypothesis, a selection of a registered universe, two recipes and three
+    trials."""
     log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
     log.record("goal.set", ("goal", "g1"), {"title": "Find a momentum signal"}, **PERSON)
     claim = "12-1 momentum predicts next-month returns."
     log.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text=claim, **AGENT)
+    _define(log, "universe", "sp500", text="The S&P 500's members.", **AGENT)
     window = {"cutoff_us": 1_767_225_600_000_000, "universe": "sp500"}
     window |= {"valid_from": "2015-01-01", "valid_to": "2024-12-31"}
     log.record("selection.made", ("selection", "s1"), window, **AGENT)
@@ -117,7 +121,8 @@ def _research(log):
     for lookback in (12, 6):
         keys[lookback] = recipe_key(MOMENTUM, 1, {"lookback": lookback})
         attrs = {"method": "momentum", "method_version": 1, "params": {"lookback": lookback}}
-        log.record("recipe.defined", ("recipe", keys[lookback]), attrs, **AGENT)
+        attrs["recipe_key"] = keys[lookback]
+        log.record("recipe.defined", ("recipe", uuid7()), attrs, **AGENT)
     trials = (("t1", 12, 0.9, "table"), ("t2", 12, 1.3, "none"), ("t3", 6, 0.4, "table"))
     made = {t: _trial(log, t, keys[lookback], s, storage) for t, lookback, s, storage in trials}
     note = experiences.note_text(claim, "12-1 momentum", "It paid in 2015-2024.", ["Costs matter."])
@@ -147,14 +152,15 @@ def _aftermath(root, log, artifacts):
         OUTCOME, 1, {"horizon": "63d"}, [recipe_key(MOMENTUM, 1, {"lookback": 12})]
     )
     attrs = {"method": "realized_outcome", "method_version": 1, "params": {"horizon": "63d"}}
-    attrs["upstream"] = [recipe_key(MOMENTUM, 1, {"lookback": 12})]  # the signal it scores
-    log.record("recipe.defined", ("recipe", horizon), attrs)
-    outcome = digest(f"{horizon}/t1".encode())
+    attrs |= {"recipe_key": horizon, "reads": [artifacts["t1"]]}  # the signal it scores
+    log.record("recipe.defined", ("recipe", uuid7()), attrs)
+    outcome = uuid7()
     meaning = "What the t1 signal earned over the 63 sessions after its cutoff."
-    produced = {"type": "outcome", "identity_kind": "recipe", "recipe_key": horizon}
+    produced = {"type": "outcome", "type_version": 1, "identity_kind": "recipe"}
+    produced |= {"recipe_key": horizon}
     produced |= {"trial_id": "t1", "storage": "none", "meaning": meaning}
     log.record("artifact.produced", ("artifact", outcome), produced)
-    measures = [["sharpe", 1, "horizon=63d", 0.7]]
+    measures = [["sharpe", 1, {"horizon_days": 63}, 0.7]]
     log.record("result.recorded", ("artifact", outcome), {"trial_id": "t1", "measures": measures})
     log.record("tag.added", ("trial", "t3"), {"key": "theme", "value": "reversal"}, **AGENT)
     log.record("tag.removed", ("trial", "t3"), {"key": "instrument", "value": "MSFT"}, **AGENT)
@@ -173,10 +179,10 @@ def _aftermath(root, log, artifacts):
     wait = {"task_id": "k1", "kind": "event", "event_type": "decision.made", "purpose": "approval"}
     log.record("wait.started", ("wait", "q1"), wait, span=span, **AGENT)
     log.record("wait.resolved", ("wait", "q1"), {}, span=span, **AGENT)
-    log.record("task", ("task", "k1"), phase="completed", span=span, **AGENT)
+    log.record("task", ("task", "k1"), phase="completed", span=span, started_us=T0, **AGENT)
     log.record("book.activated", ("book", "b1"), {"mode": "paper"}, **PERSON)
-    lines = [["book", "AAPL", 10 * N], ["market", "AAPL", -10 * N]]
-    lines += [["book", "CASH:USD", -1500 * N], ["market", "CASH:USD", 1500 * N]]
+    lines = [["book", "listing", "AAPL", 10 * N], ["market", "listing", "AAPL", -10 * N]]
+    lines += [["book", "cash", "USD", -1500 * N], ["market", "cash", "USD", 1500 * N]]
     log.record("ledger.posted", ("book", "b1"), {"lines": lines})
     setting = {"scope": "machine", "key": "provider", "value": "yfinance"}
     log.record("setting.changed", ("setting", "machine/provider"), setting, **PERSON)
@@ -200,7 +206,9 @@ def _aftermath(root, log, artifacts):
     review = requested | {"type": "review", "input_hash": "r"}  # a review of two trials
     log.record("task.requested", ("task", "k-review"), review, **AGENT)
     for phase in ("started", "completed"):
-        log.record("task", ("task", "k-review"), phase=phase, span=f"{2:016x}", **AGENT)
+        log.record(
+            "task", ("task", "k-review"), phase=phase, span=f"{2:016x}", started_us=T0, **AGENT
+        )
     note = experiences.note_text("Momentum pays", "Both lookbacks", "The 12-1 one paid.", [])
     experiences.record_note(
         log,
@@ -246,7 +254,8 @@ def _task_control(log):
 
 def _renames(root, log):
     """A feature set over momentum, its cache entry and derived partition, then a method, a metric
-    and that feature set renamed; momentum is defined again under its new name: the same recipe."""
+    and that feature set renamed; momentum defined again under its new name is the same recipe,
+    so the log refuses it as a split."""
     spec = {"method": "momentum", "method_version": 1, "factors": ["mom_12_1"]}
     _define(log, "feature_set", "momentum_set", text="Momentum factors.", spec=spec, **AGENT)
     _cached(root, log, recipe_key(definition_id("method", "momentum"), 1, {"lookback": 12}))
@@ -258,9 +267,10 @@ def _renames(root, log):
         renamed = {"family": family, "name": name, "to": to}
         log.record("definition.renamed", ("definition", f"{family}/{name}"), renamed, **who)
     again = {"method": "price_momentum", "method_version": 1, "params": {"lookback": 12}}
-    log.record(
-        "recipe.defined", ("recipe", recipe_key(MOMENTUM, 1, {"lookback": 12})), again, **AGENT
-    )
+    again["recipe_key"] = recipe_key(MOMENTUM, 1, {"lookback": 12})
+    with pytest.raises(DataError) as split:
+        log.record("recipe.defined", ("recipe", uuid7()), again, **AGENT)
+    assert split.value.failure.code == "data_layer.recipe_split"
 
 
 def _cached(root, log, key):
@@ -395,9 +405,7 @@ def test_a_projection_that_reads_the_clock_fails_replay_by_name(tmp_path, monkey
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
 def test_a_projection_refusal_leaves_no_event(tmp_path):
-    """An unbalanced posting, a recipe under another key or reading an unknown one, an untagged
-    key, a trial or task whose parent, selection or goal is another workspace's or hypothesis's,
-    and a rename onto a name another lineage holds leave no trace."""
+    """Each event the table's projections refuse by its code leaves no trace."""
     copy = tmp_path / "data"
     create_data_root(copy)
     with HostLog.open(copy, now_us=T0) as log:
@@ -405,7 +413,7 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             log.record("workspace.created", ("workspace", workspace), {"name": workspace})
         log.record("book.activated", ("book", "b1"), {"mode": "paper"}, **PERSON)
         _define(log, "method", "momentum", text="Past return over a lookback.", **AGENT)
-        window = {"cutoff_us": 1, "universe": "sp500"}
+        window = {"cutoff_us": 1, "valid_from": "2015-01-01"}
         there = AGENT | {"workspace": "w2"}
         log.record("selection.made", ("selection", "s2"), window, **there)
         log.record(
@@ -437,37 +445,45 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             {"lifecycle": "VERIFIED"},
             {"text": "{}"},
         )  # PENDING never VERIFIED
-        before = log.read("SELECT count(*) FROM event")[0][0]
-        reads = recipe_key(MOMENTUM, 1, {}, ["no-such-recipe"])
+        bare = {"method": "momentum", "method_version": 1, "params": {}}
+        bare["recipe_key"] = recipe_key(MOMENTUM, 1, {})
+        log.record("recipe.defined", ("recipe", uuid7()), bare, **AGENT)
         mine = {"selection_id": "s2", "recipe_key": "r", "seeds": [], "product_version": "0.2.8"}
+        theirs = mine | {"recipe_key": bare["recipe_key"], "hypothesis_id": "h2", "goal_id": "g2"}
+        log.record("trial.registered", ("trial", "t2"), theirs, **there)
+        before = log.read("SELECT count(*) FROM event")[0][0]
+        bet = {"target": {"what": "up"}, "horizon_us": 1, "confidence": 0.5, "trial_id": "t2"}
         renamed = {"family": "metric", "name": "sharpe", "to": "ann_return"}
         for code, type_, subject, attrs, who in (
             (
                 "ledger_unbalanced",
                 "ledger.posted",
                 ("book", "b1"),
-                {"lines": [["fees", "USD", N]]},
+                {"lines": [["fees", "cash", "USD", N]]},
                 AGENT,
             ),
             (
                 "recipe_key_mismatch",
                 "recipe.defined",
-                ("recipe", "not-its-digest"),
-                {"method": "momentum", "method_version": 1, "params": {}},
+                ("recipe", uuid7()),
+                bare | {"recipe_key": "not-its-digest"},
                 AGENT,
             ),
             (
-                "recipe_upstream_unknown",
+                "recipe_upstream_given",
                 "recipe.defined",
-                ("recipe", reads),
-                {
-                    "method": "momentum",
-                    "method_version": 1,
-                    "params": {},
-                    "upstream": ["no-such-recipe"],
-                },
+                ("recipe", uuid7()),
+                bare | {"upstream": [bare["recipe_key"]]},
                 AGENT,
             ),
+            (
+                "recipe_reads_unknown",
+                "recipe.defined",
+                ("recipe", uuid7()),
+                bare | {"reads": ["no-such-artifact"]},
+                AGENT,
+            ),
+            ("selection_split", "selection.made", ("selection", "s3"), window, there),
             (
                 "tag_unregistered",
                 "tag.added",
@@ -493,6 +509,13 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
                 ("trial", "t9"),
                 mine | {"goal_id": "g1"},
                 there,
+            ),
+            (
+                "prediction_workspace_disagrees",
+                "prediction.registered",
+                ("prediction", "p9"),
+                bet,
+                AGENT | {"text": "It closes higher."},
             ),
             (
                 "definition_name_taken",
@@ -552,18 +575,19 @@ def units(tmp_path_factory):
         sub = REQUESTED | {"parent_task_id": "k-goal"}
         log.record("task.requested", ("task", "k-sub"), sub, version=2, **w1)
         log.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="H", **w1)
-        window = {"cutoff_us": 1, "universe": "sp500"}
-        log.record("selection.made", ("selection", "s1"), window, **w1)
+        log.record("selection.made", ("selection", "s1"), {"cutoff_us": 1}, **w1)
         _define(log, "method", "momentum", text="Past return over a lookback.")
-        defined = {"method": "momentum", "method_version": 1, "params": {}}
-        log.record("recipe.defined", ("recipe", RECIPE), defined, **w1)
+        defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": RECIPE}
+        log.record("recipe.defined", ("recipe", uuid7()), defined, **w1)
         trial = {"selection_id": "s1", "recipe_key": RECIPE, "seeds": [], "product_version": "x"}
         tested = trial | {"task_id": "k-sub", "hypothesis_id": "h1"}
         log.record("trial.registered", ("trial", "t-task"), tested, **w1)
         log.record("trial.registered", ("trial", "t-sub"), trial | {"task_id": "k-sub"}, **w1)
         log.record("trial.registered", ("trial", "t-free"), trial, **w1)
         for phase in ("started", "completed"):
-            log.record("trial", ("trial", "t-task"), phase=phase, span="1" * 16, **w1)
+            log.record(
+                "trial", ("trial", "t-task"), phase=phase, span="1" * 16, started_us=T0, **w1
+            )
         for _ in range(2):  # the first review closes the trial; the second keeps that
             log.record("review.completed", ("trial", "t-task"), {"verdict": "ok"}, text="R", **w1)
         log.flush()
@@ -596,3 +620,146 @@ def test_a_review_closes_its_trial_and_the_history_replays_equal(units, tmp_path
         assert reviewed.fetchone() == notes[0]
         with closing(replay(con, tmp_path / "replayed.sqlite")) as again:
             assert differences(con, again) == []
+
+
+# One row per research-record defect, each on a log of its own.
+W2 = AGENT | {"workspace": "w2"}
+WINDOW = {"cutoff_us": 1, "universe": "sp500"}
+CONTENT = {"type": "backtest", "type_version": 1, "meaning": "m", "storage": "none"}
+CONTENT |= {"identity_kind": "content", "content_digest": "blake3:same"}
+
+
+def _code(code, write):
+    with pytest.raises(DataError) as refused:
+        write()
+    assert refused.value.failure.code == f"data_layer.{code}"
+
+
+def _made(log, attrs):
+    log.record("artifact.produced", ("artifact", made := uuid7()), attrs, **AGENT)
+    return made
+
+
+def _recipe(log, version, params, reads=()):
+    with log.reading() as con:
+        key = recipe_key(MOMENTUM, version, params, projections.upstream(con, reads))
+    attrs = {"method": "momentum", "method_version": version, "params": params, "recipe_key": key}
+    log.record("recipe.defined", ("recipe", uuid7()), attrs | {"reads": list(reads)}, **AGENT)
+    return key
+
+
+def _selection_per_workspace(log, read, root):
+    for who in (AGENT, W2):
+        log.record("selection.made", ("selection", uuid7()), WINDOW, **who)
+    assert read("SELECT count(DISTINCT workspace_id) FROM selection") == [(2,)]
+
+
+def _artifact_per_event(log, read, root):
+    _made(log, CONTENT), _made(log, CONTENT)
+    assert read("SELECT count(*), count(DISTINCT content_digest) FROM artifact") == [(2, 1)]
+
+
+def _recipe_typed_numbers(log, read, root):
+    assert _recipe(log, 1, {"lookback": 5}).startswith("blake3:")  # 5.0 is 5: one recipe
+    _code("recipe_split", lambda: _recipe(log, 1, {"lookback": 5.0}))
+
+
+def _no_version_default(log, read, root):
+    bare = {k: v for k, v in CONTENT.items() if k != "type_version"}
+    _code("event_attrs_missing", lambda: _made(log, bare))
+    log.record("selection.made", ("selection", uuid7()), WINDOW, **AGENT)  # names no version
+    sql = "SELECT e.type_version, c.version FROM event e JOIN definition_current c"
+    sql += " ON c.family = 'event_type' AND c.name = e.type WHERE e.type = 'selection.made'"
+    assert [(given, given) for given, _ in read(sql)] == read(sql)
+
+
+def _dims_canonical(log, read, root):
+    made = _made(log, CONTENT)
+    dims = [["sharpe", 1, {"side": "long", "h": 21.0}, 0.1], ["sharpe", 1, {}, 0.2]]
+    log.record("result.recorded", ("artifact", made), {"measures": dims}, **AGENT)
+    assert read("SELECT dims FROM measure ORDER BY dims") == [('{"h":21,"side":"long"}',), ("{}",)]
+
+
+def _tag_without_version(log, read, root):
+    tag = {"key": "theme", "value": "momentum"}
+    log.record("tag.added", ("trial", "t1"), tag, **AGENT)
+    _define(log, "tag", "theme", 2, text="Again.", relation="not_comparable", **AGENT)
+    log.record("tag.added", ("trial", "t1"), tag, **AGENT)
+    assert read("SELECT tag_version FROM tag") == [(1,)]
+    log.record("tag.removed", ("trial", "t1"), tag, **AGENT)
+    assert read("SELECT count(*) FROM tag") == [(0,)]
+
+
+def _ledger_asset(log, read, root):
+    log.record("book.activated", ("book", "b1"), {"mode": "paper"}, **PERSON)
+    lines = [["book", "listing", "L1", N], ["market", "listing", "L1", -N]]
+    lines += [["book", "cash", "USD", -N], ["market", "cash", "USD", N]]
+    log.record("ledger.posted", ("book", "b1"), {"lines": lines}, **AGENT)
+    assets = read("SELECT DISTINCT asset_kind, asset_id FROM ledger_entry ORDER BY 1")
+    assert assets == [("cash", "USD"), ("listing", "L1")]
+    old = {"lines": [["book", "cash", "CASH:USD", N], ["market", "cash", "CASH:USD", -N]]}
+    with pytest.raises(sqlite3.IntegrityError, match="asset_id GLOB"):
+        log.record("ledger.posted", ("book", "b1"), old, **AGENT)
+
+
+def _names_give_way_to_lineages(log, read, root):
+    log.record("selection.made", ("selection", uuid7()), WINDOW, **AGENT)
+    moved = {"family": "universe", "name": "sp500", "to": "spx"}
+    log.record("definition.renamed", ("definition", "universe/sp500"), moved, **AGENT)
+    assert read("SELECT universe_id FROM selection") == [(definition_id("universe", "sp500"),)]
+    log.record("task.requested", ("task", uuid7()), REQUESTED, version=2, **AGENT)
+    assert "task_kind" not in {row[1] for row in read("PRAGMA table_info(task)")}
+    assert read("SELECT task_kind FROM workspace_task") == [("factor.run",)]
+
+
+def _recorded_at(log, read, root):
+    log.record("goal.set", ("goal", "g1"), {"title": "t"}, **PERSON)
+    log.record("conclusion.drawn", ("goal", "g1"), {}, text="Yes.", occurred_us=T0, **AGENT)
+    [(recorded,)] = read("SELECT max(recorded_us) FROM event")
+    log.close()
+    with closing(reading_session(root)) as reading:
+        noted = reading.execute("SELECT epoch_us(recorded_at) FROM goal_note").fetchall()
+    assert noted == [(recorded,)] and recorded > T0
+
+
+def _step_unstarted(log, read, root):
+    _code("step_unstarted", lambda: log.record("trial", ("trial", "t1"), phase="completed"))
+
+
+def _upstream_from_reads(log, read, root):
+    source = _recipe(log, 1, {"lookback": 12})
+    made = _made(log, CONTENT | {"identity_kind": "recipe", "recipe_key": source})
+    derived = _recipe(log, 1, {"lookback": 6}, [made])
+    assert read("SELECT recipe_key, upstream_key FROM recipe_upstream") == [(derived, source)]
+    given = {"method": "momentum", "method_version": 1, "params": {}, "upstream": [source]}
+    given["recipe_key"] = recipe_key(MOMENTUM, 1, {}, [source])
+    _code("recipe_upstream_given", lambda: log.record("recipe.defined", ("recipe", "r9"), given))
+
+
+def _prediction_one_parent(log, read, root):
+    bet = {"target": {"what": "up"}, "horizon_us": 1, "confidence": 0.5}
+    log.record("prediction.registered", ("prediction", "p1"), bet, text="Up.", **AGENT)
+    assert read("SELECT workspace_id, trial_id FROM prediction") == [("w1", None)]
+    score = {"score": 1.0, "metric": "brier", "metric_version": 9}  # no such definition version
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        log.record("prediction.scored", ("prediction", "p1"), score, **AGENT)
+
+
+DEFECTS = [_selection_per_workspace, _artifact_per_event, _recipe_typed_numbers]
+DEFECTS += [_no_version_default, _dims_canonical, _tag_without_version]
+DEFECTS += [_ledger_asset, _names_give_way_to_lineages, _recorded_at, _step_unstarted]
+DEFECTS += [_upstream_from_reads, _prediction_one_parent]
+
+
+@pytest.mark.proves("data_layer.research_records_are_named_by_ids")
+@pytest.mark.parametrize("defect", DEFECTS, ids=lambda d: d.__name__.strip("_").replace("_", "-"))
+def test_each_research_record_is_named_by_an_id(tmp_path, defect):
+    """Each defect's facts, written through the Host's log, read back fixed and never split."""
+    root = tmp_path / "data"
+    create_data_root(root)
+    with HostLog.open(root, now_us=T0) as log:
+        for workspace in ("w1", "w2"):
+            log.record("workspace.created", ("workspace", workspace), {"name": workspace})
+        _define(log, "universe", "sp500", text="The S&P 500's members.", **AGENT)
+        _define(log, "method", "momentum", text="Past return over a lookback.", **AGENT)
+        defect(log, lambda sql: [tuple(row) for row in log.read(sql)], root)

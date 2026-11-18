@@ -138,11 +138,11 @@ def _place(con: Any, trial: str) -> list[dict[str, Any]]:
     rows = con.execute(
         "SELECT l.name, m.metric_version, m.value, count(o.value), avg(o.value),"
         " avg(o.value * o.value)"
-        " FROM trial t JOIN measure m ON m.artifact_id = t.result_artifact AND m.dims = ''"
+        " FROM trial t JOIN measure m ON m.artifact_id = t.result_artifact AND m.dims = '{}'"
         " JOIN definition_lineage l ON l.definition_id = m.metric_id"
         " JOIN trial ot ON ot.recipe_key = t.recipe_key"
         " JOIN measure o ON o.artifact_id = ot.result_artifact AND o.metric_id = m.metric_id"
-        " AND o.metric_version = m.metric_version AND o.dims = ''"
+        " AND o.metric_version = m.metric_version AND o.dims = '{}'"
         " WHERE t.trial_id = ? AND m.value IS NOT NULL"
         " GROUP BY m.metric_id, m.metric_version ORDER BY l.name, m.metric_version LIMIT ?",
         (trial, PLACES),

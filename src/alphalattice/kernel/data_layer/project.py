@@ -10,6 +10,7 @@ schemas/project.py); a refusal here rolls the event back with everything else of
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 import struct
@@ -21,6 +22,9 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, digest
 
 ENDED: Final = ("completed", "failed", "cancelled")
+RECIPE_ENCODING: Final = 1
+"""The version of recipe_key's typed binary encoding, its first byte; a new encoding is a new
+version, so a key never changes meaning."""
 PROJECTED: Final = (
     "definition_lineage",
     "definition_name",
@@ -125,9 +129,58 @@ def project(con: sqlite3.Connection, event: sqlite3.Row, text: str | None) -> No
 
 
 def recipe_key(method_id: str, version: int, params: Any, upstream: Iterable[str] = ()) -> str:
-    """An action's identity: its method's lineage and version, its parameters, the recipes it
-    reads; never a name, so a renamed method keeps every recipe's key."""
-    return digest(canonical([method_id, version, params, sorted(upstream)]))
+    """The key that finds an action already defined: BLAKE3 over RECIPE_ENCODING's typed binary
+    form of its method's lineage and registered version, its parameters and the keys of the
+    recipes it reads, sorted. Never a name, so a renamed method keeps every recipe's key, and
+    never JSON text, so 5 and 5.0 are one parameter."""
+    value = [method_id, version, params, sorted(upstream)]
+    return digest(bytes([RECIPE_ENCODING]) + _typed(value))
+
+
+def _typed(value: Any) -> bytes:
+    """One value's tagged binary form: an integral number is its integer, any other float its
+    IEEE-754 double; a map's names are sorted; each string and number is length-prefixed."""
+    if value is None:
+        return b"N"
+    if isinstance(value, bool):
+        return b"T" if value else b"F"
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise _refuse("value_not_finite", f"a recipe or a dimension holds no {value}")
+        if not value.is_integer():
+            return b"D" + struct.pack(">d", value)
+        value = int(value)
+    if isinstance(value, int):
+        return b"I" + _sized(value.to_bytes(value.bit_length() // 8 + 1, "big", signed=True))
+    if isinstance(value, str):
+        return b"S" + _sized(value.encode())
+    if isinstance(value, list | tuple):
+        return b"L" + struct.pack(">I", len(value)) + b"".join(map(_typed, value))
+    if isinstance(value, Mapping) and all(isinstance(name, str) for name in value):
+        named = (_typed(name) + _typed(value[name]) for name in sorted(value))
+        return b"M" + struct.pack(">I", len(value)) + b"".join(named)
+    raise _refuse("value_untyped", f"a recipe or a dimension holds no {type(value).__name__}")
+
+
+def _sized(data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + data
+
+
+def dims(value: Any) -> str:
+    """A measure's dimensions in their one form: the canonical JSON of a map of names to strings,
+    booleans or numbers, an integral number as its integer; '{}' for the whole artifact."""
+    if not isinstance(value, Mapping):
+        raise _refuse("measure_dims_untyped", f"a measure's dims are a map of names, not {value!r}")
+    for named in value.values():
+        if not isinstance(named, str | bool | int | float):
+            raise _refuse("value_untyped", f"a dimension holds no {type(named).__name__}")
+        _typed(named)  # a value with no typed form, such as NaN, is refused here
+    return canonical(
+        {
+            name: int(v) if isinstance(v, float) and v.is_integer() else v
+            for name, v in value.items()
+        }
+    ).decode()
 
 
 INPUT_ENCODING: Final = 1
@@ -423,9 +476,9 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         raise _refuse("task_workspace_disagrees", "a task's goal is of its workspace")
     con.execute(  # its record follows in the same unit (`task.saved`)
         "INSERT INTO task (task_id, parent_task_id, goal_id, workspace_id, type_id, state,"
-        " trace_id, product_version, requested_seq, task_kind, input_hash, plan_hash, lifecycle,"
+        " trace_id, product_version, requested_seq, input_hash, plan_hash, lifecycle,"
         " admitted_us, updated_us, admission_sequence, submitted_by_json)"
-        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             task,
             *home,
@@ -433,7 +486,6 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             e["trace_id"],
             a["product_version"],
             e["seq"],
-            a["type"],
             a["input_hash"],
             a["plan_hash"],
             a.get("lifecycle", "QUEUED"),
@@ -634,51 +686,79 @@ def _wait_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     )
 
 
+SAME_WINDOW: Final = (
+    "SELECT selection_id FROM selection WHERE workspace_id = ? AND cutoff_us = ?"
+    " AND universe_id IS ? AND valid_from IS ? AND valid_to IS ? AND spec = ?"
+)
+"""The workspace's selection of an equal window, column by column."""
+
+
+def window(con: sqlite3.Connection, workspace: str | None, a: Mapping[str, Any]) -> tuple[Any, ...]:
+    """A selection's window as its columns, SAME_WINDOW's arguments: the universe by its lineage."""
+    universe = a.get("universe")
+    universe_id = None if universe is None else _named(con, "universe", universe)
+    spec = _json(a.get("spec", {}))
+    return (workspace, a["cutoff_us"], universe_id, a.get("valid_from"), a.get("valid_to"), spec)
+
+
 @on("selection.made")
 def _selection(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    columns = window(con, e["workspace_id"], a)
+    held = con.execute(SAME_WINDOW, columns).fetchone()
+    if held is not None:
+        raise _refuse(
+            "selection_split", f"the workspace already made selection {held[0]} of this window"
+        )
     con.execute(
         "INSERT INTO selection VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            e["subject_id"],
-            e["workspace_id"],
-            a["cutoff_us"],
-            a.get("universe"),
-            a.get("valid_from"),
-            a.get("valid_to"),
-            _json(a.get("spec", {})),
-            e["seq"],
-        ),
+        (e["subject_id"], *columns, e["seq"]),
     )
+
+
+def upstream(con: sqlite3.Connection, reads: Iterable[str]) -> list[str]:
+    """The recipes a recipe reads: those of the artifacts it reads, sorted; an artifact the log
+    does not hold is refused by name."""
+    reads = sorted(set(reads))
+    found = dict(
+        con.execute(
+            f"SELECT artifact_id, recipe_key FROM artifact WHERE artifact_id IN"
+            f" ({', '.join('?' * len(reads))})",
+            reads,
+        ).fetchall()
+    )
+    if unknown := [artifact for artifact in reads if artifact not in found]:
+        raise _refuse(
+            "recipe_reads_unknown", f"a recipe reads artifacts the log holds, not {unknown}"
+        )
+    return sorted({key for key in found.values() if key is not None})
 
 
 @on("recipe.defined")
 def _recipe(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    upstream = sorted(a.get("upstream", ()))
+    if "upstream" in a:
+        raise _refuse(
+            "recipe_upstream_given",
+            "the Host fills a recipe's upstream from the artifacts it reads",
+        )
+    reads = upstream(con, a.get("reads", ()))
     method = _named(con, "method", a["method"])
-    if e["subject_id"] != recipe_key(method, a["method_version"], a["params"], upstream):
+    key = recipe_key(method, a["method_version"], a["params"], reads)
+    if a.get("recipe_key") != key:
         raise _refuse(
             "recipe_key_mismatch",
             "a recipe's key is the digest of its method's lineage, version, parameters and"
             " upstream",
         )
-    unknown = [
-        k
-        for k in upstream
-        if not con.execute("SELECT 1 FROM recipe WHERE recipe_key = ?", (k,)).fetchone()
-    ]
-    if unknown:
-        raise _refuse(
-            "recipe_upstream_unknown", f"a recipe reads only registered recipes, not {unknown}"
-        )
-    if con.execute("SELECT 1 FROM recipe WHERE recipe_key = ?", (e["subject_id"],)).fetchone():
-        return  # one approach, defined again: the same key, nothing new
+    held = con.execute("SELECT recipe_id FROM recipe WHERE recipe_key = ?", (key,)).fetchone()
+    if held is not None:
+        raise _refuse("recipe_split", f"recipe {held[0]} already defines this approach")
     con.execute(
-        "INSERT INTO recipe VALUES (?, ?, ?, ?, ?)",
-        (e["subject_id"], method, a["method_version"], _json(a["params"]), e["seq"]),
+        "INSERT INTO recipe VALUES (?, ?, ?, ?, ?, ?)",
+        (e["subject_id"], key, method, a["method_version"], _json(a["params"]), e["seq"]),
     )
     con.executemany(
         "INSERT INTO recipe_upstream VALUES (?, ?, ?)",
-        [(e["subject_id"], position, key) for position, key in enumerate(upstream)],
+        [(key, position, read) for position, read in enumerate(reads)],
     )
 
 
@@ -739,8 +819,8 @@ def _reviewed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     trials = a.get("trials", [])
     if trials and (
         kind != "task"
-        or con.execute("SELECT task_kind FROM task WHERE task_id = ?", (unit,)).fetchone()[0]
-        != "review"
+        or con.execute("SELECT type_id FROM task WHERE task_id = ?", (unit,)).fetchone()[0]
+        != lineage(con, "event_type", "review")
     ):
         raise _refuse("review_trials_need_a_review_task", "only a review task's note names trials")
     for trial in trials:
@@ -922,7 +1002,7 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             "artifact_trial_unregistered", "a trial's artifact follows the trial's registration"
         )
     kind = _named(con, "artifact_type", a["type"])
-    values = [e["subject_id"], a["identity_kind"], kind, a.get("type_version", 1)]
+    values = [e["subject_id"], a["identity_kind"], kind, a["type_version"]]
     values += [a["meaning"], a.get("recipe_key"), a.get("selection_id"), trial]
     values += [_json(a.get("shape")), a.get("valid_from"), a.get("valid_to")]
     values += [a.get("row_count"), a.get("size_bytes"), a.get("content_digest")]
@@ -944,10 +1024,10 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("result.recorded")
 def _result(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    for metric, version, dims, value in a["measures"]:
+    for metric, version, named, value in a["measures"]:
         con.execute(
             "INSERT INTO measure VALUES (?, ?, ?, ?, ?, ?)",
-            (e["subject_id"], _named(con, "metric", metric), version, dims, value, e["seq"]),
+            (e["subject_id"], _named(con, "metric", metric), version, dims(named), value, e["seq"]),
         )
     owner = con.execute(
         "SELECT trial_id FROM artifact WHERE artifact_id = ?", (e["subject_id"],)
@@ -974,13 +1054,23 @@ def _collected(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("prediction.registered")
 def _prediction(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A prediction's one parent: its trial, of the event's workspace, else that workspace."""
+    trial = a.get("trial_id")
+    if trial is not None:
+        held = con.execute(
+            "SELECT workspace_id FROM trial_scope WHERE trial_id = ?", (trial,)
+        ).fetchone()
+        if held is None or held[0] != e["workspace_id"]:
+            raise _refuse(
+                "prediction_workspace_disagrees", "a prediction names a trial of its workspace"
+            )
     con.execute(
         "INSERT INTO prediction (prediction_id, workspace_id, trial_id, target, horizon_us,"
         " confidence, registered_seq) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             e["subject_id"],
-            e["workspace_id"],
-            a.get("trial_id"),
+            None if trial is not None else e["workspace_id"],
+            trial,
             _json(a["target"]),
             a["horizon_us"],
             a["confidence"],
@@ -1072,10 +1162,10 @@ def _publication(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("ledger.posted")
 def _ledger(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    for line, (account, asset, quantity_n) in enumerate(a["lines"], 1):
+    for line, (account, asset_kind, asset_id, quantity_n) in enumerate(a["lines"], 1):
         con.execute(
-            "INSERT INTO ledger_entry VALUES (?, ?, ?, ?, ?, ?)",
-            (e["seq"], line, e["subject_id"], account, asset, quantity_n),
+            "INSERT INTO ledger_entry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (e["seq"], line, e["subject_id"], account, asset_kind, asset_id, quantity_n),
         )
     if con.execute("SELECT 1 FROM ledger_unbalanced WHERE seq = ?", (e["seq"],)).fetchone():
         raise _refuse("ledger_unbalanced", "the lines of one posting sum to zero for each asset")
@@ -1088,16 +1178,10 @@ def _tag_added(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("tag.removed")
 def _tag_removed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    key_id, _version = _tag_key(con, a["key"], a.get("version"))
     con.execute(
-        "DELETE FROM tag WHERE subject_kind = ? AND subject_id = ? AND key_id = ?"
-        " AND tag_version = ?"
-        " AND value = ?",
-        (
-            e["subject_kind"],
-            e["subject_id"],
-            *_tag_key(con, a["key"], a.get("version")),
-            str(a["value"]),
-        ),
+        "DELETE FROM tag WHERE subject_kind = ? AND subject_id = ? AND key_id = ? AND value = ?",
+        (e["subject_kind"], e["subject_id"], key_id, str(a["value"])),
     )
 
 

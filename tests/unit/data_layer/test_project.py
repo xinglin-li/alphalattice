@@ -10,6 +10,7 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import (
     definition_id,
+    dims,
     input_digest,
     recipe_key,
     registry_us,
@@ -18,6 +19,24 @@ from alphalattice.kernel.data_layer.project import (
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
 MOMENTUM = definition_id("method", "momentum")
+
+
+@pytest.mark.proves("data_layer.a_number_has_one_typed_form")
+def test_a_number_has_one_typed_form_in_a_recipe_key_and_in_dims():
+    """5 and 5.0 are one parameter and one dimension; a value with no typed form is refused."""
+    assert recipe_key(MOMENTUM, 1, {"lookback": 5}) == recipe_key(MOMENTUM, 1, {"lookback": 5.0})
+    assert (
+        dims({"side": "long", "h": 21.0})
+        == dims({"h": 21, "side": "long"})
+        == '{"h":21,"side":"long"}'
+    )
+    for code, value in (
+        ("value_not_finite", {"h": float("nan")}),
+        ("measure_dims_untyped", "h=21"),
+    ):
+        with pytest.raises(DataError) as refused:
+            dims(value)
+        assert refused.value.failure.code == f"data_layer.{code}"
 
 
 def _admitted(admission, *parts, dataset="raw_bar", rule=None, version=None):
