@@ -15,6 +15,7 @@ from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.backup import backup_data_root
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.shared_kernel import spawn
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/upgrade.py"
 PROGRAM = """
@@ -168,7 +169,7 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
     ]
 
     def upgrade(argv: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+        return spawn.run(
             argv,
             stdin=subprocess.DEVNULL,
             capture_output=True,

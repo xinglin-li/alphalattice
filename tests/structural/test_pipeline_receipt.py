@@ -1,7 +1,6 @@
 import contextlib
 import json
 import shutil
-import subprocess
 import sys
 import time
 from datetime import UTC
@@ -12,6 +11,7 @@ from typing import Any
 import pytest
 from scripts import pipeline as cli
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import receipt
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -290,7 +290,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
             "sys.argv=['scripts/pipeline.py','show']\n"
             "runpy.run_path(sys.argv[0], run_name='__main__')\n"
         )
-        done = subprocess.run(
+        done = spawn.run(
             [sys.executable, "-c", code],
             cwd=ROOT,
             capture_output=True,
@@ -585,7 +585,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
                     digest,
                     str(source_receipt),
                 ]
-                completed = subprocess.run(
+                completed = spawn.run(
                     command, capture_output=True, text=True, encoding="utf-8", timeout=30
                 )
                 assert completed.returncode == 0, completed.stderr
@@ -593,7 +593,7 @@ def test_a_receipt_verifies_only_complete_and_as_asked(
                     json.loads(completed.stdout)["cost_standing"][target_node]["source_node"]
                     == old_node
                 )
-                duplicate = subprocess.run(
+                duplicate = spawn.run(
                     [*command, "--cost-source", digest, str(source_receipt)],
                     capture_output=True,
                     text=True,
@@ -1944,7 +1944,7 @@ def test_every_red_is_classed_from_its_own_evidence_and_unknown_is_never_a_defec
 
 
 def _git(root: Path, *args: str) -> str:
-    done = subprocess.run(
+    done = spawn.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", *args],
         cwd=root,
         check=True,

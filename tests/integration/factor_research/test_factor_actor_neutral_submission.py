@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +55,7 @@ from alphalattice.foundation.factor_research.research_loop.decisions import (
     seal_factor_research_review_decision,
     verify_factor_research_curation,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from tests.factor_research_pipeline_correctness.case_program import (
     CASE_REVIEW_BINDING_HASH,
@@ -348,7 +348,7 @@ def test_factor_submission_boundary_has_no_agent_runtime_import_closure() -> Non
             "print(json.dumps(loaded))",
         )
     )
-    probe = subprocess.run(
+    probe = spawn.run(
         [
             sys.executable,
             "-c",

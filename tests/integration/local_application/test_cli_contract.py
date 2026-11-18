@@ -12,7 +12,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 import tempfile
 from io import BytesIO, TextIOWrapper
@@ -46,6 +45,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.evaluation.forms import Scenario
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
@@ -452,7 +452,7 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
     asked = ("--request-timeout", "700", "task", "list")
 
     def launch(*arguments: str, env: dict[str, str] = environment) -> dict[str, Any]:
-        result = subprocess.run(
+        result = spawn.run(
             [sys.executable, str(SCRIPT), "--workspace", str(empty), *arguments],
             capture_output=True,
             text=True,
@@ -582,7 +582,7 @@ def test_an_empty_document_file_is_refused_by_its_own_code(
 
 def test_a_nouns_help_names_every_verbs_flags() -> None:
     """Object and top-level help show registered actions, flags, person-only doors and order."""
-    result = subprocess.run(
+    result = spawn.run(
         [sys.executable, str(SCRIPT), "feature", "--help"],
         capture_output=True,
         text=True,
@@ -610,7 +610,7 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
     assert "FEATURE_ACTIVATE" in table["person_only"] and "person" in rows["activate"]
     assert "--from (a saved answer)" in text
 
-    shown = subprocess.run(
+    shown = spawn.run(
         [sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, timeout=60
     )
     words = " ".join(shown.stdout.split())

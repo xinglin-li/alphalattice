@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import ast
 import os
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+
+from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -125,7 +126,7 @@ def test_every_script_starts_without_an_inherited_import_path(module: ScriptModu
     """requirement: a supported command runs under this workspace and nothing else."""
 
     with TemporaryDirectory(prefix="entry-point-startup-") as directory:
-        completed = subprocess.run(
+        completed = spawn.run(
             _startup_command(module),
             cwd=directory,
             env=_startup_environment(),

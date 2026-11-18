@@ -24,6 +24,7 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     entry,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 from tests.structural.refusal_support import door_words, fill_subject
 
@@ -464,7 +465,7 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(
         + "{ throw 'The output encoding changed' }\n",
         encoding="utf-8-sig",
     )
-    ran = subprocess.run(
+    ran = spawn.run(
         ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
         capture_output=True,
         text=True,
@@ -487,7 +488,7 @@ def test_a_command_printed_for_powershell_sends_the_request_it_came_from(
     script.write_text(
         join([sys.executable, str(echo), "--output", output], "powershell"), encoding="utf-8-sig"
     )
-    read = subprocess.run(
+    read = spawn.run(
         ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
         capture_output=True,
         text=True,

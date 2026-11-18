@@ -36,6 +36,7 @@ from alphalattice.kernel.data_layer.store import (
     stage,
 )
 from alphalattice.kernel.data_layer.telemetry import decode
+from alphalattice.kernel.shared_kernel import spawn
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
@@ -359,7 +360,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
             }
         )
     )
-    child = subprocess.run(
+    child = spawn.run(
         [sys.executable, "-c", KILL, str(root), point, str(sent)], **CHILD, timeout=120
     )
     assert child.returncode == 9
@@ -1211,12 +1212,14 @@ def test_an_append_waits_no_longer_while_a_large_admission_is_staged(root):
             return perf_counter() - began
 
         ordinary = [wait() for _ in range(100)]
-        child = subprocess.Popen([sys.executable, "-c", STAGE, str(root)], **CHILD, stdout=-1)
-        assert child.stdout.readline() == "hashing\n"
-        during = []
-        while child.poll() is None:
-            during.append(wait())
-        assert child.stdout.read() == "100000\n"
+        with spawn.InteractiveSession(timeout=120, stop_scope="tree") as session:
+            child = session.start([sys.executable, "-c", STAGE, str(root)], **CHILD, stdout=-1)
+            assert child.stdout.readline() == "hashing\n"
+            during = []
+            while child.poll() is None:
+                during.append(wait())
+            session.check()
+            assert child.stdout.read() == "100000\n"
     assert len(during) > 20
     assert statistics.median(during) <= 2 * statistics.median(ordinary) + 0.002
     assert statistics.quantiles(during, n=10)[-1] <= 2 * max(ordinary) + 0.005

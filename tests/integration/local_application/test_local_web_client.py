@@ -28,6 +28,7 @@ from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
 )
 from alphalattice.interface.local_application.retrieval_environment import interpreter_path
+from alphalattice.kernel.shared_kernel import spawn
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import (
     _json,
@@ -234,41 +235,42 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
     # Its Host is another process: a data root of its own, never one a module Host here holds.
     environment["ALPHALATTICE_DATA_ROOT"] = str(served_root(workspace))
     interpreter = interpreter_path()
-    output = (tmp_path / "startup.log").open("wb")
-    child = subprocess.Popen(
-        [
-            str(interpreter) if interpreter.is_file() else sys.executable,
-            str(root / "scripts/run_alphalattice.py"),
-            "--workspace",
-            str(workspace),
-            "serve",
-            "--no-browser",
-        ],
-        cwd=tmp_path,
-        env=environment,
-        stdout=output,
-        stderr=subprocess.STDOUT,
-    )
-    try:
-        started = time.monotonic()
-        deadline = started + 120
-        while not LocalResearchConnection.path(workspace).exists():
-            if child.poll() is not None or time.monotonic() >= deadline:
-                pytest.fail("CLI did not start its own Host")
-            time.sleep(0.05)
-        output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
-        output.flush()
-        client = LocalResearchClient(workspace)
-        assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
-        instance = client.connection.instance
-    finally:
-        family = psutil.Process(child.pid)
-        family = [*family.children(recursive=True), family]
-        for process in family:
-            process.terminate()
-        child.communicate(timeout=20)
-        assert not psutil.wait_procs(family, timeout=20)[1]
-        output.close()
+    with (
+        (tmp_path / "startup.log").open("wb") as output,
+        spawn.InteractiveSession(timeout=180, stop_scope="tree") as session,
+    ):
+        child = session.start(
+            [
+                str(interpreter) if interpreter.is_file() else sys.executable,
+                str(root / "scripts/run_alphalattice.py"),
+                "--workspace",
+                str(workspace),
+                "serve",
+                "--no-browser",
+            ],
+            cwd=tmp_path,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            started = time.monotonic()
+            deadline = started + 120
+            while not LocalResearchConnection.path(workspace).exists():
+                if child.poll() is not None or time.monotonic() >= deadline:
+                    pytest.fail("CLI did not start its own Host")
+                time.sleep(0.05)
+            output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
+            output.flush()
+            client = LocalResearchClient(workspace)
+            assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
+            instance = client.connection.instance
+        finally:
+            family = psutil.Process(child.pid)
+            family = [*family.children(recursive=True), family]
+            session.stop()
+            assert not psutil.wait_procs(family, timeout=20)[1]
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 
     lease = WorkspaceWriterLease.acquire(workspace)

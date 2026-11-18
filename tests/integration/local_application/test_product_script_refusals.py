@@ -27,6 +27,7 @@ from zipfile import ZipFile
 import pytest
 
 from alphalattice.interface.local_application.cli_contract import refusal_words, worded
+from alphalattice.kernel.shared_kernel import spawn
 
 
 def _blocked(tmp_path: Path) -> Path:
@@ -70,6 +71,8 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
         pointer.parent.mkdir(parents=True)
         pointer.write_text("{", encoding="utf-8")
         patch.setattr(Path, "home", classmethod(lambda cls: home))
+        patch.setenv("LOCALAPPDATA", str(home))
+        patch.setenv("XDG_DATA_HOME", str(home))
         patch.delenv("ALPHALATTICE_MODEL_STORE", raising=False)
         assert installer.main(["--status"]) == 2
         refused = _refusal(capsys)
@@ -90,7 +93,7 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     for view in (("--vie", "summary"), ("--vie=summary",)):
         assert installer.main(["--status", "--store", str(tmp_path / "missing"), *view]) == 0
         command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
-        replay = subprocess.run(command, capture_output=True, check=False)
+        replay = spawn.run(command, capture_output=True, check=False)
         assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
     monkeypatch.setattr(
         installer.model_store, "hub_fetcher", lambda **_: pytest.fail("unexpected install")
@@ -121,7 +124,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         }.items():
             wheel.writestr(name, content)
     with monkeypatch.context() as local:
-        subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+        spawn.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
         python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         pins = tmp_path / "requirements-retrieval.lock"
         pins.write_text("click==8.5.0\n", encoding="utf-8")
@@ -132,7 +135,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         local.setenv("UV_FIND_LINKS", str(tmp_path))
         local.setattr(sys, "argv", setup.fill_command()[2:])
         assert setup.main() == 0
-        subprocess.run([str(python), "-c", "import click"], check=True)
+        spawn.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
     calls: list[dict[str, Any]] = []
@@ -910,7 +913,7 @@ def _pw_stub_npm(tmp_path: Path, env: dict[str, str], operation: str = "") -> Pa
 
 
 def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return spawn.run(
         [
             "powershell.exe",
             "-NoProfile",

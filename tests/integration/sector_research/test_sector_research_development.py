@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -67,6 +66,7 @@ from alphalattice.investment.sector_research.targets.execution import (
     compile_sector_target_surface,
     seal_sector_target_evidence,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind
 from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
@@ -665,7 +665,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
     environment = dict(os.environ)
     environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
 
-    published = subprocess.run(
+    published = spawn.run(
         [
             sys.executable,
             str(script),
@@ -699,7 +699,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
     assert result["current_pointer_writes"] == 0
     assert result["alpha_model_fits"] == 0
 
-    inspected = subprocess.run(
+    inspected = spawn.run(
         [
             sys.executable,
             str(script),

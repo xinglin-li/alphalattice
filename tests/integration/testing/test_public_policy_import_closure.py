@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
+
 ROOT = Path(__file__).resolve().parents[3]
 SOLVERS = ("cvxpy", "osqp", "optuna")
 OPTIMIZER = "alphalattice.investment.portfolio_strategy_lab.optimizer.service"
@@ -43,7 +45,7 @@ EXCLUDED_PACKAGES = (
 
 
 def _probe(body: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return spawn.run(
         [sys.executable, "-c", body],
         cwd=ROOT,
         env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "ALPHALATTICE_NETWORK_DISABLED": "1"},

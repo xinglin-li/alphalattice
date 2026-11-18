@@ -15,7 +15,7 @@ from devtools.testing import os_marks
 from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
-_REAL_RUN = subprocess.run
+_REAL_RUN = spawn.run
 
 
 def _antipattern_cases(monkeypatch) -> None:
@@ -895,7 +895,7 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
     same_file = source + "def copy():\n" + body
     assert shape.clone_problems(original, source, same_file, {original: same_file})
     assert shape.clone_problems(workbench, None, body, {original: source})
-    real_run, commands = shape.subprocess.run, []
+    real_run, commands = spawn.run, []
 
     def run(command, **kwargs):
         commands.append(command)

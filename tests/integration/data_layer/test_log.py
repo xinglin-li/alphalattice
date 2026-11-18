@@ -18,6 +18,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer import log as host
 from alphalattice.kernel.data_layer.log import HostLog, attach, verify_from_checkpoint, verify_whole
+from alphalattice.kernel.shared_kernel import spawn
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/log.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC: every open here is in this month
@@ -223,7 +224,7 @@ def test_a_kill_inside_an_append_leaves_the_log_whole(root, point):
     Host opens it, the chain verifies, and the killed event left no row anywhere."""
     events = _events(root)
     source = Path(host.__file__).parents[3]
-    child = subprocess.run(
+    child = spawn.run(
         [sys.executable, "-c", KILL, str(root), point, str(T0)],
         env=os.environ | {"PYTHONPATH": str(source)},
         stdin=subprocess.DEVNULL,
@@ -293,7 +294,7 @@ def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root
             deadline.join(timeout=10)
         assert _events(root) == base + 5
     kwargs = {"stdin": subprocess.DEVNULL, "capture_output": True, "timeout": 60}
-    child = subprocess.run(
+    child = spawn.run(
         [sys.executable, "-c", REPLY, str(root), str(T0)],
         env=os.environ | {"PYTHONPATH": str(Path(host.__file__).parents[3])},
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no window on Windows

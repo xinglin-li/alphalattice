@@ -26,6 +26,7 @@ from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     _process_tree_ids,
 )
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.shared_kernel import spawn
 from tests.pytest_environment import released, serve_apart, with_its_tasks
 
 
@@ -222,70 +223,74 @@ def forced_process(
     apart = history.holding() is not None
     if apart:
         env[history.DATA_ROOT_ENV] = str(serve_apart(workspace))
-    child = subprocess.Popen(
-        [sys.executable, "-u", "-c", command, str(workspace), phase],
-        cwd=workspace.parent,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        start_new_session=os.name != "nt",
-    )
-    messages = queue.Queue()
-    child_output = []
+    with spawn.InteractiveSession(
+        timeout=boundary_timeout_seconds + 120, stop_scope="tree"
+    ) as session:
+        child = session.start(
+            [sys.executable, "-u", "-c", command, str(workspace), phase],
+            cwd=workspace.parent,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=os.name != "nt",
+        )
+        messages = queue.Queue()
+        child_output = []
 
-    def read():  # type: ignore[no-untyped-def]
-        assert child.stdout is not None
-        for line in child.stdout:
-            child_output.append(line)
-            if len(child_output) > 40:
-                child_output.pop(0)
-            if line.startswith("CRASH_BOUNDARY:"):
-                messages.put(json.loads(line.removeprefix("CRASH_BOUNDARY:")))
-        messages.put(None)
+        def read():  # type: ignore[no-untyped-def]
+            assert child.stdout is not None
+            for line in child.stdout:
+                child_output.append(line)
+                if len(child_output) > 40:
+                    child_output.pop(0)
+                if line.startswith("CRASH_BOUNDARY:"):
+                    messages.put(json.loads(line.removeprefix("CRASH_BOUNDARY:")))
+            messages.put(None)
 
-    reader = Thread(target=read, daemon=True)
-    reader.start()
-    try:
-        observed = messages.get(timeout=boundary_timeout_seconds)
-        if observed is None:
-            # Keep the POSIX leader unreaped until its group has been stopped:
-            # its reserved PID prevents an unrelated group reusing that identity.
-            if os.name != "nt":
+        reader = Thread(target=read, daemon=True)
+        reader.start()
+        try:
+            observed = messages.get(timeout=boundary_timeout_seconds)
+            if observed is None:
+                # Keep the POSIX leader unreaped until its group has been stopped:
+                # its reserved PID prevents an unrelated group reusing that identity.
+                if os.name != "nt":
+                    with suppress(ProcessLookupError):
+                        os.killpg(child.pid, signal.SIGKILL)
+                # stdout EOF can precede the Windows venv launcher's exit by a few
+                # milliseconds. Reap the owned handle before trying to kill its PID.
+                with suppress(subprocess.TimeoutExpired):
+                    child.wait(timeout=5)
+            assert observed is not None, (
+                f"child exited before boundary: {child.poll()} {''.join(child_output)}"
+            )
+            descendants, limitation = _process_tree_ids(child.pid)
+            assert observed["pid"] in descendants and (
+                limitation is None or (os.name != "nt" and observed["pid"] == child.pid)
+            )
+            yield observed
+        finally:
+            # Its workers, to wait for once the tree is ended: one still exiting holds the log.
+            family: list[psutil.Process] = []
+            with suppress(psutil.NoSuchProcess):
+                family = psutil.Process(child.pid).children(recursive=True)
+            if os.name == "nt":
+                if child.poll() is None:
+                    _terminate_windows_owned_tree(child)
+            elif child.returncode is None:  # the unreaped leader still reserves its group ID
                 with suppress(ProcessLookupError):
                     os.killpg(child.pid, signal.SIGKILL)
-            # stdout EOF can precede the Windows venv launcher's exit by a few
-            # milliseconds. Reap the owned handle before trying to kill its PID.
-            with suppress(subprocess.TimeoutExpired):
-                child.wait(timeout=5)
-        assert observed is not None, (
-            f"child exited before boundary: {child.poll()} {''.join(child_output)}"
-        )
-        descendants, limitation = _process_tree_ids(child.pid)
-        assert observed["pid"] in descendants and (
-            limitation is None or (os.name != "nt" and observed["pid"] == child.pid)
-        )
-        yield observed
-    finally:
-        # Its workers, to wait for once the tree is ended: one still exiting holds the log.
-        family: list[psutil.Process] = []
-        with suppress(psutil.NoSuchProcess):
-            family = psutil.Process(child.pid).children(recursive=True)
-        if os.name == "nt":
-            if child.poll() is None:
-                _terminate_windows_owned_tree(child)
-        elif child.returncode is None:  # the unreaped leader still reserves its group ID
-            with suppress(ProcessLookupError):
-                os.killpg(child.pid, signal.SIGKILL)
-        child.wait(timeout=30)
-        reader.join(timeout=5)
-        assert not reader.is_alive()
-        assert child.stdout is not None
-        child.stdout.close()
-        psutil.wait_procs(family, timeout=30)
-        released(Path(env[history.DATA_ROOT_ENV]))
-        if apart:
-            with_its_tasks(workspace)
+            child.wait(timeout=30)
+            reader.join(timeout=5)
+            assert not reader.is_alive()
+            assert child.stdout is not None
+            child.stdout.close()
+            psutil.wait_procs(family, timeout=30)
+            released(Path(env[history.DATA_ROOT_ENV]))
+            if apart:
+                with_its_tasks(workspace)
 
 
 __all__ = ["child_import_paths", "crash", "forced_process"]

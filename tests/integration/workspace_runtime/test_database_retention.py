@@ -15,7 +15,6 @@ retention -- instead of meeting DuckDB's configuration refusal.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import textwrap
 import threading
@@ -36,6 +35,7 @@ from alphalattice.control.workspace_runtime.database import (
     retain_workspace_database,
     retained_workspace_database,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 
 def _prepared(tmp_path: Path) -> WorkspaceDatabase:
@@ -1010,7 +1010,7 @@ def test_another_process_in_the_other_mode_is_refused_by_name(tmp_path: Path) ->
     )
 
     def other_process(mode: str) -> str:
-        result = subprocess.run(
+        result = spawn.run(
             [sys.executable, "-c", script, mode], capture_output=True, text=True, timeout=120
         )
         assert result.returncode == 0, result.stderr

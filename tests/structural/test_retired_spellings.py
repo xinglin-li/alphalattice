@@ -9,9 +9,9 @@ roots' retired reasons, the plans, the census) keep the spellings they recorded.
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.retired_spellings import RETIRED_SPELLINGS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +20,7 @@ SUFFIXES = (".py", ".json", ".yaml", ".yml")
 
 
 def _tracked(*folders: str) -> dict[str, str]:
-    listed = subprocess.run(
+    listed = spawn.run(
         ["git", "ls-files", "--", *folders],
         cwd=ROOT,
         capture_output=True,

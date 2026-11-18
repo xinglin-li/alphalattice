@@ -85,6 +85,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
@@ -156,7 +157,7 @@ class InstalledAgent:
 
 
 def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -754,7 +755,7 @@ def run_node(
         if directory.is_absolute():
             environment["PLAYWRIGHT_BROWSERS_PATH"] = str(directory.resolve())
     kwargs["env"] = environment
-    return subprocess.run([node, *arguments], **kwargs)
+    return spawn.run([node, *arguments], **kwargs)
 
 
 def _run_badge_browser(

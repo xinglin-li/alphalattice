@@ -92,6 +92,7 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     build_installed_factor_formula_specifications,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
@@ -979,21 +980,19 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
         include_live_descendants=True,
     )
     monitor.start()
-    child = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import time; payload = bytearray(4 * 1024 * 1024); time.sleep(0.35)",
-        ],
-        stdin=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
     try:
-        child.wait(timeout=10)
-    finally:
-        if child.poll() is None:
-            child.kill()
+        with spawn.InteractiveSession(timeout=10, stop_scope="tree") as session:
+            child = session.start(
+                [
+                    sys.executable,
+                    "-c",
+                    "import time; payload = bytearray(4 * 1024 * 1024); time.sleep(0.35)",
+                ],
+                stdin=subprocess.DEVNULL,
+            )
             child.wait(timeout=10)
+            session.check()
+    finally:
         usage = monitor.finish()
 
     observed = psutil.Process().memory_info().rss

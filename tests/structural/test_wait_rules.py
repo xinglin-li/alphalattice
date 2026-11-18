@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import type_ignores, waits
 
 TEST_SCOPE = "whole-tree"
@@ -90,15 +91,15 @@ def test_the_commit_refuses_a_new_case_and_a_raised_baseline(tmp_path, monkeypat
     (tmp_path / "src/a.py").write_text(
         "import time\ntime.sleep(period)\ntime.sleep(period)\n", "utf-8"
     )
-    subprocess.run([*git, "add", "-A"], check=True, timeout=30)
+    spawn.run([*git, "add", "-A"], check=True, timeout=30)
     assert check_counts.main(["--staged"]) == 1
     assert "src/a.py:3: sleep-outside-wait" in capsys.readouterr().err
-    subprocess.run([*git, "reset", "-q", "--hard"], check=True, timeout=30)
+    spawn.run([*git, "reset", "-q", "--hard"], check=True, timeout=30)
     baseline = tmp_path / check_counts.WAITS.baseline
     raised = json.loads(baseline.read_text(encoding="utf-8"))
     raised["counts"]["src/a.py::sleep-outside-wait"] = 2
     baseline.write_text(json.dumps(raised), encoding="utf-8")
-    subprocess.run([*git, "add", "-A"], check=True, timeout=30)
+    spawn.run([*git, "add", "-A"], check=True, timeout=30)
     assert check_counts.main(["--staged"]) == 1
     assert "rose above its base's count" in capsys.readouterr().err
 
@@ -137,12 +138,12 @@ def _counted_repo(root, files):
     for name, text in {**files, "config/.keep": ""}.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(text, encoding="utf-8")
-    subprocess.run([*git, "init", "-q"], check=True, timeout=30)
-    subprocess.run([*git, "add", "-A"], check=True, timeout=30)
-    subprocess.run([*git, "commit", "-qm", "files"], check=True, timeout=30)
+    spawn.run([*git, "init", "-q"], check=True, timeout=30)
+    spawn.run([*git, "add", "-A"], check=True, timeout=30)
+    spawn.run([*git, "commit", "-qm", "files"], check=True, timeout=30)
     assert check_counts.main(["--all", "--update"]) == 0
-    subprocess.run([*git, "add", "-A"], check=True, timeout=30)
-    subprocess.run([*git, "commit", "-qm", "baselines"], check=True, timeout=30)
+    spawn.run([*git, "add", "-A"], check=True, timeout=30)
+    spawn.run([*git, "commit", "-qm", "baselines"], check=True, timeout=30)
     return git
 
 
@@ -253,10 +254,10 @@ def test_a_type_ignore_count_only_falls(
     _counted(monkeypatch, root)
     git = _git(root)
     if move:
-        subprocess.run([*git, "mv", *move], check=True, timeout=30)
+        spawn.run([*git, "mv", *move], check=True, timeout=30)
     for name, text in writes.items():
         (root / name).write_text(text, encoding="utf-8")
-    subprocess.run([*git, "add", "-A"], check=True, timeout=30)
+    spawn.run([*git, "add", "-A"], check=True, timeout=30)
     args = ["--staged", "--update"] if update else ["--staged"]
     assert check_counts.main(args) == code
     seen = capsys.readouterr()
@@ -264,7 +265,7 @@ def test_a_type_ignore_count_only_falls(
     if after is not None:  # the written baseline is the one the next commit holds
         baseline = root / check_counts.TYPE_IGNORES.baseline
         assert json.loads(baseline.read_text("utf-8"))["counts"] == after
-        subprocess.run([*git, "add", "-A"], check=True, timeout=30)
+        spawn.run([*git, "add", "-A"], check=True, timeout=30)
         assert check_counts.main(["--staged"]) == 0
 
 

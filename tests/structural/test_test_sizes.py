@@ -13,6 +13,7 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from tests.structural.pytest_support import child_environment, descriptor_provenance
 from tests.structural.size_fixture_support import (
     _CASES,
@@ -60,7 +61,7 @@ def _layer_child(root, cwd, target, extra=(), timeout=20, **given):
         "ALPHALATTICE_PIPELINE_STAGE": "",
         "ALPHALATTICE_PIPELINE_EVENTS": "",
     } | given
-    return subprocess.run(
+    return spawn.run(
         [
             *(sys.executable, "-B", "-m", "pytest", "-p", "devtools.testing.collection"),
             *("-p", "pytest_timeout", *extra, "--junitxml", str(cwd / "child.xml")),
@@ -241,7 +242,7 @@ def _memory_checks_read_no_host():
             )
             lines[offset:offset] = fault
             target.write_text("".join(lines), encoding="utf-8")
-        result = subprocess.run(
+        result = spawn.run(
             [
                 sys.executable,
                 "-B",
@@ -850,7 +851,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             (repo / "tests").mkdir(parents=True)
 
             def git(*words):
-                return subprocess.run(
+                return spawn.run(
                     ["git", "-C", str(repo), *words],
                     check=True,
                     capture_output=True,
@@ -1380,7 +1381,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     command += ["--no-cov", str(target)]
     if lane:
         command += ["--keep-duplicates", str(target), str(mandatory)]
-    result = subprocess.run(
+    result = spawn.run(
         command,
         cwd=root,
         env=child_environment(

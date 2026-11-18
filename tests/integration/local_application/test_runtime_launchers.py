@@ -75,15 +75,18 @@ def _can_escape():
     if sys.platform != "win32":
         return True
     try:
-        with subprocess.Popen(
-            [_PYTHON, "-c", "import sys; sys.stdin.read()"],
-            stdin=subprocess.PIPE,
-            creationflags=_FLAGS | subprocess.CREATE_BREAKAWAY_FROM_JOB,
-        ) as child:
-            inside = ctypes.c_int()
-            handle = ctypes.c_void_p(int(child._handle))
-            proven = ctypes.windll.kernel32.IsProcessInJob(handle, None, ctypes.byref(inside))
-            return bool(proven) and not inside.value
+        probe = (
+            "import ctypes; inside=ctypes.c_int(); k=ctypes.windll.kernel32; "
+            "k.GetCurrentProcess.restype=ctypes.c_void_p; "
+            "k.IsProcessInJob.argtypes=[ctypes.c_void_p,ctypes.c_void_p,"
+            "ctypes.POINTER(ctypes.c_int)]; "
+            "ok=k.IsProcessInJob(k.GetCurrentProcess(),None,ctypes.byref(inside)); "
+            "print(int(bool(ok) and not inside.value))"
+        )
+        result = spawn.ambient_job_probe(
+            [_PYTHON, "-c", probe], creationflags=_FLAGS | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        )
+        return result.returncode == 0 and result.stdout.strip() == "1"
     except PermissionError:
         return False
 
@@ -230,69 +233,70 @@ raise SystemExit(entry.main(sys.argv[1:]))
     environment = dict(os.environ, PYTHONPATH=os.pathsep.join(sources))
     arguments = ["--workspace", str(workspace), "serve", "--no-browser", "--stop-on-stdin"]
     output = (tmp_path / "host-output.log").open("w", encoding="utf-8")
-    parent = subprocess.Popen(
-        [_PYTHON, "-c", script, *arguments],
-        stdin=subprocess.PIPE,
-        stdout=output,
-        stderr=subprocess.STDOUT,
-        env=environment,
-        cwd=tmp_path,
-        creationflags=_FLAGS,
-    )
-    assert parent.stdin is not None
-    ready, lines = threading.Event(), []
-    finished = threading.Event()
+    with spawn.InteractiveSession(timeout=120, stop_scope="tree") as process_owner:
+        parent = process_owner.start(
+            [_PYTHON, "-c", script, *arguments],
+            stdin=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            env=environment,
+            cwd=tmp_path,
+            creationflags=_FLAGS,
+        )
+        assert parent.stdin is not None
+        ready, lines = threading.Event(), []
+        finished = threading.Event()
 
-    def read_ready():
-        with (tmp_path / "host-output.log").open(encoding="utf-8") as stream:
-            while not finished.is_set():
-                line = stream.readline()
-                if line:
-                    lines.append(line)
-                    if OPEN_THE_WORKBENCH in line:
-                        ready.set()
-                        return
-                else:
-                    finished.wait(0.05)
+        def read_ready():
+            with (tmp_path / "host-output.log").open(encoding="utf-8") as stream:
+                while not finished.is_set():
+                    line = stream.readline()
+                    if line:
+                        lines.append(line)
+                        if OPEN_THE_WORKBENCH in line:
+                            ready.set()
+                            return
+                    else:
+                        finished.wait(0.05)
 
-    reader = threading.Thread(target=read_ready, daemon=True)
-    reader.start()
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.OpenProcess.restype = ctypes.c_void_p
-    owned = []
+        reader = threading.Thread(target=read_ready, daemon=True)
+        reader.start()
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        owned = []
 
-    def capture():
-        for child in psutil.Process(parent.pid).children(recursive=True):
-            handle = ctypes.c_void_p(kernel.OpenProcess(0x100001, False, child.pid))
-            assert handle
-            owned.append((child.pid, handle))
+        def capture():
+            for child in psutil.Process(parent.pid).children(recursive=True):
+                handle = ctypes.c_void_p(kernel.OpenProcess(0x100001, False, child.pid))
+                assert handle
+                owned.append((child.pid, handle))
 
-    try:
-        assert ready.wait(45), "".join(lines)
-        host = LocalResearchClient(workspace).activity(limit=1)["observer"]["host"]
-        capture()
-        assert host["pid"] in {pid for pid, _ in owned}
-        parent.terminate()
-        assert not parent.stdin.closed
-        parent.communicate(input=b"", timeout=5)
-        for _, handle in owned:
-            assert kernel.WaitForSingleObject(handle, 5000) == 0
-    finally:
-        if not owned:
-            with contextlib.suppress(psutil.NoSuchProcess):
-                capture()
-        with contextlib.suppress(OSError):
+        try:
+            assert ready.wait(45), "".join(lines)
+            host = LocalResearchClient(workspace).activity(limit=1)["observer"]["host"]
+            capture()
+            assert host["pid"] in {pid for pid, _ in owned}
             parent.terminate()
-        if parent.poll() is None:
+            assert not parent.stdin.closed
             parent.communicate(input=b"", timeout=5)
-        for _, handle in owned:
-            kernel.TerminateProcess(handle, 1)
-            kernel.WaitForSingleObject(handle, 5000)
-            kernel.CloseHandle(handle)
-        parent.stdin.close()
-        finished.set()
-        reader.join(timeout=5)
-        output.close()
+            for _, handle in owned:
+                assert kernel.WaitForSingleObject(handle, 5000) == 0
+        finally:
+            if not owned:
+                with contextlib.suppress(psutil.NoSuchProcess):
+                    capture()
+            with contextlib.suppress(OSError):
+                parent.terminate()
+            if parent.poll() is None:
+                parent.communicate(input=b"", timeout=5)
+            for _, handle in owned:
+                kernel.TerminateProcess(handle, 1)
+                kernel.WaitForSingleObject(handle, 5000)
+                kernel.CloseHandle(handle)
+            parent.stdin.close()
+            finished.set()
+            reader.join(timeout=5)
+            output.close()
 
 
 @WINDOWS
@@ -357,7 +361,7 @@ with open(sys.argv[1], 'rb') as stray:
     command = [sys.executable, '-c', {child!r}, str(handle), probe, str(os.getpid())]
     raise SystemExit(call(command, env=dict(os.environ)))
 """
-    result = subprocess.run(
+    result = spawn.run(
         [sys.executable, "-c", program, str(stray), method, str(noninheritable)],
         input="owned-input\n",
         capture_output=True,
@@ -463,26 +467,29 @@ def _end_turn_after(command: list[str], root: Path, temp: Path) -> str:
         ),
         "ALPHALATTICE_TEST_JOB_MODE": "escaped" if escaped else "denied",
     }
-    turn = subprocess.Popen(
-        [_PYTHON, "-c", _TURN, *command],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        start_new_session=sys.platform != "win32",
-        creationflags=_FLAGS
-        | (subprocess.CREATE_BREAKAWAY_FROM_JOB if escaped and os.name == "nt" else 0),
-    )
-    try:
-        output, error = turn.communicate(timeout=180)
-        assert turn.returncode == (0 if escaped else 2), error or output
-        assert output, error
-        return output
-    finally:
-        if sys.platform != "win32":
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(turn.pid, signal.SIGKILL)
+    with spawn.InteractiveSession(timeout=180, stop_scope="root") as session:
+        turn = session.start(
+            [_PYTHON, "-c", _TURN, *command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            start_new_session=sys.platform != "win32",
+            creationflags=_FLAGS
+            | (subprocess.CREATE_BREAKAWAY_FROM_JOB if escaped and os.name == "nt" else 0),
+        )
+        try:
+            output, error = turn.communicate(timeout=180)
+            session.check()
+            assert turn.returncode == (0 if escaped else 2), error or output
+            assert output, error
+            return output
+        finally:
+            if sys.platform != "win32":
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(turn.pid, signal.SIGKILL)
 
 
 @pytest.mark.parametrize("workspace_state", ["cp1252", "timeout", "attached"])
@@ -838,7 +845,7 @@ def test_the_launchers_module_loads_no_numerical_library() -> None:
         "print(sorted({'numpy', 'scipy', 'lightgbm', 'sklearn'} & set(sys.modules)))"
     )
     env = {**os.environ, "PYTHONPATH": str(root / "src")}
-    loaded = subprocess.run(
+    loaded = spawn.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
@@ -887,7 +894,7 @@ def test_a_token_count_needs_no_network_and_writes_no_temporary_file(tmp_path: P
         "from alphalattice.protocols.actor_execution.projections import _cl100k; "
         "print(_cl100k().encode('hello world'))"
     )
-    counted = subprocess.run(
+    counted = spawn.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
@@ -904,7 +911,7 @@ def _access(path: Path) -> list[str]:
     """A file's access entries as Windows lists them, or its POSIX mode."""
     if sys.platform != "win32":
         return [oct(path.stat().st_mode & 0o777)]
-    listed = subprocess.run(
+    listed = spawn.run(
         ["icacls", str(path)], capture_output=True, text=True, encoding="utf-8", check=True
     )
     lines = listed.stdout.splitlines()
@@ -922,7 +929,7 @@ def test_a_staged_publication_keeps_the_workspace_access(tmp_path: Path) -> None
     workspace.mkdir()
     if sys.platform == "win32":  # the workspace grants another principal, as the person's own
         grant = ["icacls", str(workspace), "/grant", "*S-1-5-32-545:(OI)(CI)(RX)"]
-        subprocess.run(grant, capture_output=True, check=True)
+        spawn.run(grant, capture_output=True, check=True)
     (workspace / "direct.json").write_text("{}", encoding="utf-8")
     with staging_directory(workspace, ".binding-") as staged:
         (staged / "manifest.json").write_text("{}", encoding="utf-8")

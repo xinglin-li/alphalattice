@@ -29,6 +29,7 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_VARIABLES,
     TRACE_VARIABLES,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
@@ -605,7 +606,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     def run(*flags: str) -> subprocess.CompletedProcess[str]:
         phase = "check" if flags else "build"
         try:
-            result = subprocess.run(
+            result = spawn.run(
                 [*command, *flags],
                 cwd=checkout,
                 capture_output=True,

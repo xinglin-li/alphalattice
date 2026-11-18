@@ -6,7 +6,6 @@ import json
 import os
 import shlex
 import sqlite3
-import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -56,6 +55,7 @@ from alphalattice.interface.local_application.goals import (
     target_sessions,
 )
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.shared_kernel import spawn
 from tests._support.history_fixtures import native_first_use
 from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
@@ -85,7 +85,7 @@ def _cli(
 ) -> tuple[int, dict[str, Any]]:
     """One agent session's command, as its CLI sends it; `traced`, under the caller's PASSED."""
     passed = {"TRACEPARENT": f"00-{PASSED[0]}-{PASSED[1]}-01"} if traced else {}
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             str(SCRIPT),

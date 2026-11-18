@@ -8,7 +8,6 @@ import os
 import re
 import shlex
 import shutil
-import subprocess
 import sys
 import tomllib
 import zipfile
@@ -26,7 +25,7 @@ from alphalattice.control.product_host.composition import (
     retrieval_pack_setup,
 )
 from alphalattice.interface.local_application import cli_contract, native_bridge, native_setup
-from alphalattice.kernel.shared_kernel import project_layout
+from alphalattice.kernel.shared_kernel import project_layout, spawn
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "config/release/runtime-resources.json"
@@ -103,7 +102,7 @@ def test_every_shipped_instruction_link_reaches_its_checkout_target() -> None:
 
     roots = {"AGENTS.md", "CLAUDE.md", "README.md"}
     scopes = ("docs/public-source/", ".agents/", ".claude/", ".codex/")
-    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+    tracked = spawn.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
     names = sorted(
         name
         for name in tracked
@@ -188,23 +187,39 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
 
 def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> None:
     """requirement: actual wheel entries and bytes hold every declared runtime resource."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    patterns = project["tool"]["setuptools"]["package-data"]["alphalattice"]
+    package = ROOT / "src/alphalattice"
     wheel_value = os.environ.get("ALPHALATTICE_TEST_WHEEL")
     if wheel_value:
         wheel = Path(wheel_value)
     else:
-        stale = ROOT / "build/lib/alphalattice/retired_v429_module.py"
+        source = tmp_path / "source"
+        tracked = spawn.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+        names = (
+            set(filter(None, tracked))
+            | {path.relative_to(ROOT).as_posix() for path in package.rglob("*.py")}
+            | {
+                path.relative_to(ROOT).as_posix()
+                for pattern in patterns
+                for path in package.glob(pattern)
+                if path.is_file()
+            }
+        )
+        for name in sorted(names):
+            target = source / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, target)
+        stale = source / "build/lib/alphalattice/retired_v429_module.py"
         stale.parent.mkdir(parents=True, exist_ok=True)
         stale.write_text("raise RuntimeError('retired staging file')\n", encoding="utf-8")
-        subprocess.run(
+        spawn.run(
             ["uv", "build", "--wheel", "--offline", "--out-dir", str(tmp_path)],
-            cwd=ROOT,
+            cwd=source,
             check=True,
             capture_output=True,
         )
         wheel = next(tmp_path.glob("*.whl"))
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    patterns = project["tool"]["setuptools"]["package-data"]["alphalattice"]
-    package = ROOT / "src/alphalattice"
     expected = {path.relative_to(ROOT / "src").as_posix() for path in package.rglob("*.py")}
     expected.update(
         path.relative_to(ROOT / "src").as_posix()

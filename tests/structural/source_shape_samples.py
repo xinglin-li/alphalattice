@@ -3,9 +3,9 @@ from __future__ import annotations
 import ast
 import inspect
 import re
-import subprocess
 from pathlib import Path
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.structural import file_text
 
 _OPTION_CASES = {
@@ -350,7 +350,7 @@ def tracked_python_files(root: Path) -> tuple[Path, ...]:
     """Read the current Python files for package-cutover consumers."""
     return tuple(
         root / value
-        for value in subprocess.run(
+        for value in spawn.run(
             ("git", "ls-files", "--cached", "--others", "--exclude-standard", "*.py"),
             cwd=root,
             check=True,

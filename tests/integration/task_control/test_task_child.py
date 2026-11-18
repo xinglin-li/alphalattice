@@ -22,6 +22,7 @@ from alphalattice.control.task_control.child import (
     child_calls,
     run_in_child,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 HERE = __spec__.name if __spec__ else __name__
 
@@ -328,7 +329,7 @@ if environment.os.name == "nt":
     assert not built
 threadpoolctl.ThreadpoolController = original
 """
-    result = subprocess.run(
+    result = spawn.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,

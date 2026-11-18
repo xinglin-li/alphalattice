@@ -7,7 +7,6 @@ import json
 import os
 import shlex
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +21,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -85,7 +85,7 @@ def _task(live, salt: str):  # type: ignore[no-untyped-def]
 
 def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,type-arg]
     """The lead's call: a real CLI process that answers and exits before the Task ends."""
-    done = subprocess.run(
+    done = spawn.run(
         [
             sys.executable,
             str(SCRIPT),

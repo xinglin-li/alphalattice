@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -38,6 +37,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
@@ -1702,7 +1702,7 @@ def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not
 
 
 def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             str(SCRIPT),

@@ -38,6 +38,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
@@ -1546,41 +1547,43 @@ def _stop_alpha(root: Path, tmp_path: Path, request: dict, boundary: str, rule: 
     marker = tmp_path / "boundary.json"
     payload = tmp_path / "request.json"
     payload.write_text(json.dumps(request), encoding="utf-8")
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            _STOPPED_ALPHA,
-            str(root),
-            str(payload),
-            str(marker),
-            boundary,
-            rule,
-        ],
-        cwd=Path(__file__).resolve().parents[3],
-        # The interrupted run computes on one BLAS thread and the recovery on two: a sealed
-        # fold must be reused as sealed, whatever thread count or host resumes it (OpenBLAS
-        # splits a long dot product by thread count, so a recomputed metric differs).
-        env={
-            **os.environ,
-            "PYTHONPATH": "src",
-            "ALPHALATTICE_NETWORK_DISABLED": "1",
-            "OPENBLAS_NUM_THREADS": "1",
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    try:
-        if not _wait_for_boundary(process, marker, 180):
-            process.terminate()
-            pytest.fail(f"Alpha did not reach {boundary}: {process.communicate(timeout=15)!r}")
-        task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        crash(process)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.communicate(timeout=15)
+    with spawn.InteractiveSession(timeout=240, stop_scope="tree") as session:
+        process = session.start(
+            [
+                sys.executable,
+                "-c",
+                _STOPPED_ALPHA,
+                str(root),
+                str(payload),
+                str(marker),
+                boundary,
+                rule,
+            ],
+            cwd=Path(__file__).resolve().parents[3],
+            # The interrupted run computes on one BLAS thread and the recovery on two: a sealed
+            # fold must be reused as sealed, whatever thread count or host resumes it (OpenBLAS
+            # splits a long dot product by thread count, so a recomputed metric differs).
+            env={
+                **os.environ,
+                "PYTHONPATH": "src",
+                "ALPHALATTICE_NETWORK_DISABLED": "1",
+                "OPENBLAS_NUM_THREADS": "1",
+            },
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        try:
+            if not _wait_for_boundary(process, marker, 180):
+                process.terminate()
+                pytest.fail(f"Alpha did not reach {boundary}: {process.communicate(timeout=15)!r}")
+            task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
+            crash(process)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=15)
     return str(task_id)
 
 
@@ -2384,25 +2387,29 @@ with LocalPortfolioWebSession(workspace=root,
     assert run['task_id'], run
     threading.Event().wait()
 """
-    process = subprocess.Popen(
-        [sys.executable, "-c", script, str(inputs), str(marker)],
-        cwd=Path(__file__).resolve().parents[3],
-        env={**os.environ, "PYTHONPATH": "src", "ALPHALATTICE_NETWORK_DISABLED": "1"},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    try:
-        if not _wait_for_boundary(process, marker, 120):
-            process.terminate()
-            out, error = process.communicate(timeout=15)
-            pytest.fail(f"worker did not reach the committed evidence boundary: {out!r} {error!r}")
-        task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        crash(process)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.communicate(timeout=15)
+    with spawn.InteractiveSession(timeout=180, stop_scope="tree") as session:
+        process = session.start(
+            [sys.executable, "-c", script, str(inputs), str(marker)],
+            cwd=Path(__file__).resolve().parents[3],
+            env={**os.environ, "PYTHONPATH": "src", "ALPHALATTICE_NETWORK_DISABLED": "1"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        try:
+            if not _wait_for_boundary(process, marker, 120):
+                process.terminate()
+                out, error = process.communicate(timeout=15)
+                pytest.fail(
+                    f"worker did not reach the committed evidence boundary: {out!r} {error!r}"
+                )
+            task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
+            crash(process)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=15)
     from alphalattice.foundation.factor_research.experiments.execution import (
         FactorExperimentExecutor,
     )
@@ -2620,7 +2627,7 @@ def test_cli_and_web_compile_the_same_bound_document(inputs: Path, tmp_path: Pat
     document = tmp_path / "experiment.yaml"
     document.write_text(controls["yaml"], encoding="utf-8")
     root = Path(__file__).resolve().parents[3]
-    run = subprocess.run(
+    run = spawn.run(
         [
             sys.executable,
             "scripts/run_research_experiment.py",
@@ -2767,7 +2774,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         trial_id = started["feature_trial_id"]
         # The real CLI waits while the Host's idle hook advances the reopened chain.
         answer_path = root / "trial-wait-answer.json"
-        waited = subprocess.run(
+        waited = spawn.run(
             [
                 sys.executable,
                 "scripts/run_alphalattice.py",

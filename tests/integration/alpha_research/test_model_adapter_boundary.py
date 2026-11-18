@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from dataclasses import replace
 from datetime import date
@@ -77,6 +76,7 @@ from alphalattice.investment.alpha_research.scores.refit import (
     fit_and_assess_current_model,
     fit_and_assess_current_regularized_linear,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alpha_research.fixtures import _ArrayWorkspace as _ArrayWorkspace
 from tests.alpha_research.fixtures import _bound_fold as _bound_fold
@@ -283,7 +283,7 @@ def test_regularized_linear_adapter_refuses_parameters_outside_its_schema(
 
 def test_parity_cli_rejects_shared_baseline_and_output_workspace(tmp_path: Path) -> None:
     script = Path(__file__).resolve().parents[3] / "scripts" / "run_alpha_model_adapter_parity.py"
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             str(script),

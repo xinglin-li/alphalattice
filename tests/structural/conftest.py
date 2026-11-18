@@ -4,12 +4,14 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.testing.collection import CHANGED
 from tests._support.project_discovery import project_discovery as project_discovery
 from tests.structural import source_shape_samples as samples
 
 
 def _history(root):
+    run = spawn.run  # fixture Git stays real when a test replaces its subject's runner
     config = (
         "user.name=Synthetic Author",
         "user.email=synthetic@example.test",
@@ -19,11 +21,13 @@ def _history(root):
 
     def git(*args):
         options = [part for setting in config for part in ("-c", setting)]
-        return subprocess.check_output(
+        return run(
             ["git", *options, "-C", str(root), *args],
             text=True,
+            stdout=subprocess.PIPE,
+            check=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        ).strip()
+        ).stdout.strip()
 
     def commit(message, *, advance=True):
         git("add", "--all")

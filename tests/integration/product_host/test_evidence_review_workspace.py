@@ -8,7 +8,6 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +28,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceManifest,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from tests.alternative_evidence_desk.review_package import (
     CAPABILITY_HASH,
     _package,
@@ -1218,7 +1218,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
     # Run the actual module from outside the checkout with that child's source
     # binding: dependency-only environments and hostile sibling paths both work.
-    opened = subprocess.run(
+    opened = spawn.run(
         [sys.executable, *command[1:3], "--help"],
         cwd=tmp_path,
         env=options["env"],

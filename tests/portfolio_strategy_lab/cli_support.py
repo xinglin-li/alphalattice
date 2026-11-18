@@ -6,7 +6,6 @@ import argparse
 import json
 import shlex
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, get_args
@@ -20,12 +19,13 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
 
 def _cli(workspace: Path, *arguments: str) -> tuple[int, dict[str, Any], str]:
-    result = subprocess.run(
+    result = spawn.run(
         [sys.executable, str(SCRIPT), "--workspace", str(workspace), "--view", "full", *arguments],
         capture_output=True,
         text=True,
