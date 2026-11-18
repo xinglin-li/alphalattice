@@ -569,6 +569,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.expiry_keeps_what_repair_reads": {
+      "description": "If expiry took the newest snapshot, a young one, or one from an admission whose event the log lacks on, a reader or the next start's repair would lose the commit it reads.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.goal_trace_breaks_down_a_goals_time": {
       "description": "A goal's calls read apart by session, with the agent's time between calls inferred, untraced call time flagged, unattributed calls counted and each stage summed.",
       "owner": "alphalattice.kernel.data_layer",
@@ -672,6 +678,13 @@
       "seconds": 10,
       "lower_layer": "The corruption crosses real copied SQLite/DuckLake owners, retained files and the restore publication boundary.",
       "owner": "alphalattice.kernel.data_layer"
+    },
+    "data_layer.maintenance_bounds_the_catalog": {
+      "description": "If maintenance expired a snapshot whose admission event the log lacks, the next start could not repair it; if it never expired or cleaned up, a collected partition's bytes would stay forever.",
+      "lower_layer": "Expiry and file cleanup are DuckLake's own catalog calls over real Parquet files, read against the log's events; only a real catalog and log show both.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
     },
     "data_layer.native_events_split_an_agents_gap": {
       "description": "The time between a conversation's calls splits by its native records into waits on the person, the agent's tools and model requests, each moment counted once, the remainder unattributed; with no records the whole gap stays inferred.",

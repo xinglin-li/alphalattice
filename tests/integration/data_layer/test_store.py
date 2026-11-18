@@ -11,7 +11,7 @@ import subprocess
 import sys
 import uuid
 from contextlib import closing
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from time import perf_counter
@@ -584,8 +584,8 @@ def factors(digest: str, *names: str, days=("2024-01-02", "2024-01-03")) -> pa.T
 
 
 def parts(digest: str, days=("2024-01-02", "2024-01-03")) -> pa.Table:
-    """The partitions `factors` fills on `days`, each listing's year, under `digest`."""
-    named = [f"{day[:4]}/{listing}" for listing in (LISTING, MOVED) for day in sorted(set(days))]
+    """The partitions `factors` fills on `days`, each listing's month, under `digest`."""
+    named = [f"{day[:7]}/{listing}" for listing in (LISTING, MOVED) for day in sorted(set(days))]
     named = list(dict.fromkeys(named))
     return pa.table({"part": named, "input_digest": [digest] * len(named)})
 
@@ -615,16 +615,17 @@ def test_a_derived_partition_is_written_once_and_valid_only_for_its_inputs(root)
         dropped = log.rooted("w2", FEATURES, kept, exactly=True)  # w2 reads 2024 no more
         collected = port.collect(FEATURES)
         rooted = log.read(
-            "SELECT workspace_id, input_digest FROM cache_root WHERE part = ?", (f"2024/{LISTING}",)
+            "SELECT workspace_id, input_digest FROM cache_root WHERE part = ?",
+            (f"2024-01/{LISTING}",),
         )
         held = port.lake.execute(
             f"SELECT count(*), count(value), count(DISTINCT year(session_date)),"
             f" count(*) FILTER (WHERE input_digest = 'd2'), any_value(typeof(row_hash))"
             f" FROM lake.derived.{FEATURES}"
         ).fetchall()[0]
-        hits = [log.cache_hit(FEATURES, "r1", f"2024/{LISTING}", d) for d in ("d1", "d2")]
-        hits.append(log.cache_hit(FEATURES, "r1", f"2023/{LISTING}", "d1"))
-        hits.append(log.cache_hit("factor_cov", "r1", f"2024/{LISTING}", "d2"))  # another table
+        hits = [log.cache_hit(FEATURES, "r1", f"2024-01/{LISTING}", d) for d in ("d1", "d2")]
+        hits.append(log.cache_hit(FEATURES, "r1", f"2023-12/{LISTING}", "d1"))
+        hits.append(log.cache_hit("factor_cov", "r1", f"2024-01/{LISTING}", "d2"))  # another table
         refused = []
         for table, rows, named in (
             ("feature_values", factors("d1", "momentum"), parts("d1")),
@@ -642,6 +643,34 @@ def test_a_derived_partition_is_written_once_and_valid_only_for_its_inputs(root)
     assert hits == [False, True, True, False]  # the rooted inputs, its table alone
     mixed = ["data_layer.derived_rows_mixed"] * 2
     assert refused == ["data_layer.derived_table_not_admitted", *mixed]
+
+
+@pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
+def test_maintenance_keeps_an_owed_event_s_snapshot_then_frees_a_collected_partition(root):
+    """A week on, maintenance expires no snapshot from an owed event's on, so its repair still
+    finds it; once repaired, it expires the rest and deletes the collected partition's files."""
+    later = datetime.now(UTC) + timedelta(days=8)
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        owed = owe(port)["event_id"]
+        derive = partial(port.derive, FEATURES, recipe_key="r1", compute_ms=5, rooted_by="w1")
+        derive(factors("d1", "momentum"), parts=parts("d1"))
+        derive(factors("d2", "momentum"), parts=parts("d2"))
+        files = partial(lambda: sum(f.stat().st_size for f in (root / "data").rglob("*.parquet")))
+        held = port.maintain(later)  # writes the inlined rows to files
+        before = files()
+        log.rooted("w1", FEATURES, roots(parts("d2")), exactly=True)
+        port.collect(FEATURES)  # d1's file no longer read
+        repaired = repair(log, port.lake)
+        freed = port.maintain(later)
+        after = files()
+        read = port.lake.execute(
+            f"SELECT count(*), any_value(input_digest) FROM lake.derived.{FEATURES}"
+        ).fetchone()
+        port.close()
+    assert held["expired"] > 0 and (held["deleted"], repaired) == (0, [owed])  # the DDL's alone
+    assert freed["expired"] > 0 and freed["deleted"] > 0 and after < before
+    assert read == (4, "d2")
 
 
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")

@@ -19,6 +19,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.root import create_data_root
+from alphalattice.kernel.data_layer.store import StorePort
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/storage/derived_features.py"
 DAYS = (date(2025, 12, 30), date(2025, 12, 31), date(2026, 1, 2))
@@ -107,7 +108,8 @@ def _workspace(folder, scope=SCOPE):
 def test_the_builds_writes_reach_the_catalog_and_every_read_takes_equal_values(
     tmp_path, monkeypatch
 ):
-    """Under derived, each workspace's reads equal its own table's, whatever another builds."""
+    """Under derived, each workspace's reads equal its own table's, whatever another builds; a
+    build's start maintains the catalog, its listing batches never."""
     root, folder, other = tmp_path / "data", tmp_path / "workspace", tmp_path / "other"
     create_data_root(root)
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
@@ -115,6 +117,10 @@ def test_the_builds_writes_reach_the_catalog_and_every_read_takes_equal_values(
     feature, neighbour = _workspace(folder), _workspace(other, OTHER)
     stranger = _workspace(tmp_path / "stranger", SCOPE[:1])
     history.open_history("derived-features", "derived-features", folder, root)
+    maintained, maintain = [], StorePort.maintain
+    monkeypatch.setattr(
+        StorePort, "maintain", lambda port, now=None: maintained.append(1) or maintain(port, now)
+    )
     try:
         monkeypatch.setenv("ALPHALATTICE_FEATURE_READS", "derived")
         for listing in SCOPE:
@@ -129,10 +135,15 @@ def test_the_builds_writes_reach_the_catalog_and_every_read_takes_equal_values(
                 " row_hash = sha256(row_hash)"
             )
         stopped = _reads(feature, catalog, monkeypatch, "derived")[0]
+        batches = len(maintained)  # every write so far was a listing batch
         monkeypatch.setenv("ALPHALATTICE_FEATURE_READS", "derived")
         with feature.database.transaction() as connection:  # the next build's start reconciles
             feature.retire_rows_outside_layer(_connection=connection)
         reconciled = [_reads(feature, catalog, monkeypatch, s) for s in ("stored", "derived")]
+        monkeypatch.setenv("ALPHALATTICE_FEATURE_READS", "derived")
+        with feature.database.transaction() as connection:  # a start with every batch mirrored
+            feature.retire_rows_outside_layer(_connection=connection)
+        started = len(maintained) - batches
     finally:
         history.close_history()
     history.open_history("other-features", "other-features", other, root)
@@ -170,5 +181,6 @@ def test_the_builds_writes_reach_the_catalog_and_every_read_takes_equal_values(
     assert len({partial[0][1], dropped[0][1], reconciled[0][1]}) == 3  # each its own rows
     assert not stopped.equals(reconciled[0][0])  # the stopped copy read stale until reconciled
     assert seeded[0][1] != corrected[0][1]  # the correction moved the values both read
+    assert (batches, started) == (0, 2)  # each build's start maintained, moved or not
     assert refused.value.failure.code == "feature.derived_reads_need_host"
     assert unknown.value.failure.code == "feature.derived_reads_need_workspace"

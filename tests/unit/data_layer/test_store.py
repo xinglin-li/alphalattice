@@ -4,12 +4,13 @@ cannot admit."""
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.store import admissible, as_columns, delete
+from alphalattice.kernel.data_layer.store import admissible, as_columns, delete, expirable
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 
@@ -148,3 +149,26 @@ def test_staging_keeps_a_column_only_a_later_row_carries():
         "session_date": ["2024-01-02"] * 2,
         "valid_to": [None, "2024-01-09"],
     }
+
+
+NOW = datetime(2026, 11, 17, tzinfo=UTC)
+
+
+@pytest.mark.proves("data_layer.expiry_keeps_what_repair_reads")
+@pytest.mark.parametrize(
+    ("admitted", "held", "expired"),
+    [
+        pytest.param(None, set(), [1, 2, 3], id="the old ones but the newest"),
+        pytest.param("e2", {"e2"}, [1, 2, 3], id="an admission the log holds"),
+        pytest.param("e2", set(), [1], id="an owed admission stops expiry"),
+    ],
+)
+def test_expiry_takes_old_snapshots_short_of_the_newest_and_an_owed_admission(
+    admitted, held, expired
+):
+    """Snapshots older than a week expire, never the newest or a young one, and none from an
+    admission whose event the log lacks on."""
+    old, young = NOW - timedelta(days=8), NOW - timedelta(days=1)
+    snapshots = [(1, old, None), (2, old, admitted), (3, old, None), (4, young, None)]
+    snapshots.append((5, old, None))  # the newest by id, whatever its time
+    assert expirable(snapshots, held, NOW) == expired

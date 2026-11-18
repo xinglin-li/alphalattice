@@ -26,9 +26,11 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -103,16 +105,25 @@ DERIVED_KEYS: Final = {
 its rows are written only by `StorePort.derive`, and the log's cache_entry says which are valid."""
 DERIVED_PARTS: Final = {
     "feature_set_": (
-        "CAST(year(CAST(session_date AS DATE)) AS VARCHAR) || '/' || CAST(listing_id AS VARCHAR)"
+        "strftime(CAST(session_date AS DATE), '%Y-%m') || '/' || CAST(listing_id AS VARCHAR)"
     ),
     "training_sample": "CAST(year(CAST(session_date AS DATE)) AS VARCHAR)",
     "factor_cov": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
     "factor_loading": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
     "specific_risk": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
 }
-"""Each derived table's partition of a row, as cache_entry's `part` names it: a year, a year and
-listing (a feature set's: the unit a build's batch writes and a day's append touches), or an as-of
-date."""
+"""Each derived table's partition of a row, as cache_entry's `part` names it: a year, a month and
+listing (a feature set's: a build's batch writes whole listings, and a day's append moves one
+month of each), or an as-of date."""
+KEEP_SNAPSHOTS: Final = timedelta(days=7)
+"""How long the catalog keeps a snapshot: the plan's snapshot rule (0.2.md, 0.2.8 decision 2)."""
+SETTLE_FILES: Final = timedelta(days=3)
+"""How long a file no kept snapshot names waits before it is deleted, so a read that listed it
+before its snapshot expired still finds it: DuckLake's own guidance, a few days."""
+DERIVED_REWRITE: Final = 0.5
+"""The share of a derived file's rows that must be dead before maintenance rewrites it: a
+collected partition is the derived schema's normal churn, so its dead bytes never outgrow the live
+ones. World and results keep DuckLake's own 0.95, since their rows are rarely deleted."""
 LEGACY_VALID: Final = {
     "listing": ("last_session", "first_session"),
     "provider_symbol": ("valid_to", "valid_from"),
@@ -169,6 +180,21 @@ class Committed(NamedTuple):
     rows: int
     dropped: dict[str, int]
     rewritten: int
+
+
+def expirable(
+    snapshots: list[tuple[int, datetime, str | None]], held: set[str], now: datetime
+) -> list[int]:
+    """The snapshots maintenance may expire, of (id, time, its admission's event id or None):
+    those older than KEEP_SNAPSHOTS, never the newest, and none from the oldest admission whose
+    event the log does not hold (`held`) on, since the next start's repair reads its commit."""
+    owed = min((s for s, _, event in snapshots if event and event not in held), default=None)
+    newest = max((s for s, _, _ in snapshots), default=None)
+    return sorted(
+        s
+        for s, at, _ in snapshots
+        if at < now - KEEP_SNAPSHOTS and s != newest and (owed is None or s < owed)
+    )
 
 
 class StorePort:
@@ -415,16 +441,12 @@ class StorePort:
                 self.lake.unregister("deriving_rows")
                 self.lake.unregister("deriving_parts")
             share = int(getattr(rows, "nbytes", 0)) / max(len(rows), 1)
-            for name, digest, held in filled:
-                self.log.cached(
-                    table,
-                    recipe_key,
-                    name,
-                    digest,
-                    rows=held,
-                    size_bytes=round(share * held),
-                    compute_ms=compute_ms,
-                )
+            self.log.cached(
+                table,
+                recipe_key,
+                [(name, digest, held, round(share * held)) for name, digest, held in filled],
+                compute_ms=compute_ms,
+            )
             if rooted_by is not None:
                 self.log.rooted(rooted_by, table, [(recipe_key, n, d) for n, d, _ in filled])
                 self.log.flush()
@@ -489,25 +511,85 @@ class StorePort:
     def _feature_set(self, table: str, target: str) -> None:
         """A feature set's wide table as catalog.sql declares it, made on its first partition and
         given a column for each one the rows bring that it does not hold yet, typed as the rows
-        type it: a DOUBLE per factor, and the lineage the build stamps on each row."""
+        type it: a DOUBLE per factor, and the lineage the build stamps on each row. Every change
+        is one catalog commit, so the table gains one schema version, never one per column: a
+        read scans each schema version's inlined rows, and seventy versions cost a reader's first
+        query seconds."""
         run = self.lake.execute
-        if not run(
+        made = run(
             "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake' AND schema_name = 'derived'"
             " AND table_name = ?",
             (table,),
-        ).fetchall():
+        ).fetchall()
+        held = {row[0] for row in run(f"DESCRIBE {target}").fetchall()} if made else set()
+        added = [
+            (column, kind)
+            for column, kind in run(
+                "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM deriving_rows)"
+            ).fetchall()
+            if column not in held
+        ]
+        if made and not added:
+            return
+        run("BEGIN").complete()
+        try:
+            if not made:
+                run(
+                    f"CREATE TABLE {target} (recipe_key VARCHAR NOT NULL,"
+                    " input_digest VARCHAR NOT NULL, listing_id UUID NOT NULL,"
+                    " session_date DATE NOT NULL)"
+                ).complete()
+                run(f"ALTER TABLE {target} SET PARTITIONED BY (year(session_date))").complete()
+                held = {"recipe_key", "input_digest", "listing_id", "session_date"}
+            for column, kind in added:
+                if column not in held:
+                    run(f'ALTER TABLE {target} ADD COLUMN "{column}" {kind}').complete()
+            run("COMMIT").complete()
+        except BaseException:
+            run("ROLLBACK").complete()
+            raise
+
+    def maintain(self, now: datetime | None = None) -> dict[str, int]:
+        """Keep the catalog compact and its bytes bounded, in one writer hold: flush inlined
+        rows, rewrite files past their delete threshold (DERIVED_REWRITE in the derived schema),
+        merge adjacent files, expire the snapshots older than KEEP_SNAPSHOTS, and delete the files
+        no kept snapshot names once they have waited SETTLE_FILES. Expiry never reaches the oldest
+        snapshot whose owed event the log lacks, which the next start's repair reads; when the log
+        cannot be read, nothing expires. A retained backup holds its own copy of every file
+        (backup.py, its files pool); a running one that finds a listed file deleted is refused by
+        name (backup_unreadable) and is run again. The snapshots expired and the files deleted."""
+        now = now or datetime.now(UTC)
+        run = self.lake.execute
+        with self._writer:
             run(
-                f"CREATE TABLE {target} (recipe_key VARCHAR NOT NULL,"
-                " input_digest VARCHAR NOT NULL, listing_id UUID NOT NULL,"
-                " session_date DATE NOT NULL)"
-            ).complete()
-            run(f"ALTER TABLE {target} SET PARTITIONED BY (year(session_date))").complete()
-        held = {row[0] for row in run(f"DESCRIBE {target}").fetchall()}
-        for column, kind in run(
-            "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM deriving_rows)"
-        ).fetchall():
-            if column not in held:
-                run(f'ALTER TABLE {target} ADD COLUMN "{column}" {kind}').complete()
+                "CALL lake.set_option('rewrite_delete_threshold', ?, schema => 'derived')",
+                (DERIVED_REWRITE,),
+            ).fetchall()
+            for step in ("flush_inlined_data", "rewrite_data_files", "merge_adjacent_files"):
+                run(f"CALL ducklake_{step}('lake')").fetchall()
+            snapshots = run(
+                "SELECT snapshot_id, snapshot_time, CASE WHEN commit_message = 'admission'"
+                " THEN json_extract_string(commit_extra_info, '$.event_id') END"
+                " FROM lake.snapshots()"
+            ).fetchall()
+            try:
+                held = {
+                    row[0]
+                    for row in self.log.read(
+                        "SELECT event_id FROM event WHERE event_id IN"
+                        " (SELECT value FROM json_each(?))",
+                        (json.dumps([event for _, _, event in snapshots if event]),),
+                    )
+                }
+            except sqlite3.Error:  # an unreadable log keeps every snapshot
+                return {"expired": 0, "deleted": 0}
+            expiring = expirable(snapshots, held, now)
+            if expiring:
+                run("CALL ducklake_expire_snapshots('lake', versions => ?)", (expiring,)).fetchall()
+            deleted = run(
+                "CALL ducklake_cleanup_old_files('lake', older_than => ?)", (now - SETTLE_FILES,)
+            ).fetchall()
+        return {"expired": len(expiring), "deleted": len(deleted)}
 
     def close(self) -> None:
         """Close the Host's DuckDB session; the log is the caller's."""

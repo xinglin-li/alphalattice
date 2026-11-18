@@ -35,7 +35,7 @@ def test_a_workspace_reader_takes_the_catalogs_rows_and_its_writer_the_tables(
     )
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
-        named = pa.table({"part": [f"2024/{LISTING}"], "input_digest": ["d1"]})
+        named = pa.table({"part": [f"2024-01/{LISTING}"], "input_digest": ["d1"]})
         port.derive(TABLE, rows, recipe_key="r1", parts=named, compute_ms=1)
         port.close()
     database = WorkspaceDatabase(folder)

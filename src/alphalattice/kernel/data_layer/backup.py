@@ -182,14 +182,16 @@ def _head(path: Path) -> dict[str, Any]:
 
 
 def _consistent(machine: Path) -> None:
-    """A copied log must never name a snapshot absent from its copied catalog."""
+    """A copied log must never name a snapshot newer than its copied catalog's newest: the
+    catalog would be behind the log. A snapshot older than those the catalog keeps, expired by
+    StorePort.maintain under the snapshot rule, is not missing."""
     with closing(sqlite3.connect((machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)) as con:
         con.execute(
             "ATTACH DATABASE ? AS catalog", ((machine / "catalog.sqlite").as_uri() + "?mode=ro",)
         )
         absent = con.execute(
-            "SELECT a.catalog_snapshot FROM admission a LEFT JOIN catalog.ducklake_snapshot s"
-            " ON a.catalog_snapshot = s.snapshot_id WHERE s.snapshot_id IS NULL LIMIT 1"
+            "SELECT a.catalog_snapshot FROM admission a WHERE a.catalog_snapshot >"
+            " (SELECT max(snapshot_id) FROM catalog.ducklake_snapshot) LIMIT 1"
         ).fetchone()
         if absent:
             raise _refuse(

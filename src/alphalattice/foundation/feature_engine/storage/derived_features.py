@@ -3,10 +3,11 @@ partitions of the catalog's feature set table that a derived read answers from.
 
 `ALPHALATTICE_FEATURE_READS` is `stored`, the default and the rollback, or `derived`. Under
 `derived` the Host keeps each workspace's `feature_daily_current` in the catalog's table of the
-feature set, `lake.derived.feature_set_<its lineage>`, one partition per catalog, year and listing:
-the unit a build's batch writes and a day's append touches. A partition's digest is its rows'
-content (`CONTENT`), so workspaces holding the same rows share one copy, and workspaces holding
-other rows (other listings, values or build progress) never share one. A workspace reads only the
+feature set, `lake.derived.feature_set_<its lineage>`, one partition per catalog, month and
+listing: a build's batch writes whole listings, and a day's append moves one month of each. A
+partition's digest is its rows' content (`CONTENT`), so workspaces holding the same rows share one
+copy, and workspaces holding other rows (other listings, values or build progress) never share
+one. A workspace reads only the
 partitions its own table names (`PARTS`), and roots them in the log's cache_root; a partition no
 workspace roots is collected.
 
@@ -96,10 +97,12 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
         if listing_ids and _declared(connection):
             scope, parameters = "list_contains(?::VARCHAR[], listing_id)", [sorted(listing_ids)]
         connection.execute(
-            "CREATE OR REPLACE TEMP TABLE feature_parts_now AS SELECT recipe_key, listing_id, year,"
-            " CAST(year AS VARCHAR) || '/' || CAST(CAST(listing_id AS UUID) AS VARCHAR) AS part,"
+            "CREATE OR REPLACE TEMP TABLE feature_parts_now AS"
+            " SELECT recipe_key, listing_id, month,"
+            " strftime(month, '%Y-%m') || '/' || CAST(CAST(listing_id AS UUID) AS VARCHAR) AS part,"
             " input_digest FROM (SELECT catalog_hash AS recipe_key, listing_id,"
-            f" year(session_date) AS year, {CONTENT} AS input_digest FROM feature_daily_current"
+            f" date_trunc('month', session_date) AS month, {CONTENT} AS input_digest"
+            " FROM feature_daily_current"
             f" WHERE {scope} GROUP BY ALL)",
             parameters,
         )
@@ -117,7 +120,7 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
                 " CAST(f.listing_id AS UUID) AS listing_id, f.session_date,"
                 " f.* EXCLUDE (listing_id, session_date, catalog_hash) FROM feature_daily_current f"
                 " JOIN feature_parts_moved m ON m.recipe_key = f.catalog_hash"
-                " AND m.listing_id = f.listing_id AND m.year = year(f.session_date)"
+                " AND m.listing_id = f.listing_id AND m.month = date_trunc('month', f.session_date)"
                 " WHERE m.recipe_key = ?",
                 params=[recipe],
             ).to_arrow_table()
@@ -128,11 +131,11 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
             port.derive(
                 table, rows, recipe_key=recipe, parts=parts, compute_ms=0, rooted_by=workspace
             )  # rooted under the writer, before the view reads them or a collection sees them
-        connection.execute(
+        gone = connection.execute(
             f"DELETE FROM {PARTS} h WHERE {scope} AND NOT EXISTS (SELECT 1 FROM feature_parts_now"
             " n WHERE n.recipe_key = h.recipe_key AND n.part = h.part)",
             parameters,
-        )
+        ).fetchall()[0][0]
         connection.execute(
             f"INSERT OR REPLACE INTO {PARTS} SELECT recipe_key, part, listing_id, input_digest"
             " FROM feature_parts_moved"
@@ -140,11 +143,20 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
         derived_views.declare(
             connection, VIEW, setting=SETTING, body=_body(connection, port, table)
         )
-        read = connection.execute(f"SELECT recipe_key, part, input_digest FROM {PARTS}").fetchall()
+        changed = bool(moved or gone)
+        read = (
+            connection.execute(f"SELECT recipe_key, part, input_digest FROM {PARTS}").fetchall()
+            if changed
+            else []
+        )
         connection.execute("DROP TABLE feature_parts_moved")
         connection.execute("DROP TABLE feature_parts_now")
-    if port.log.rooted(workspace, table, read, exactly=True):  # after the view stopped reading
-        port.collect(table)
+    # Nothing moved or gone: the roots already match, and a crash before them left only extra
+    # roots, which the next build that moves a value drops.
+    if changed and port.log.rooted(workspace, table, read, exactly=True):
+        port.collect(table)  # after the view stopped reading
+    if not listing_ids:  # a build's start, after its reconcile: compact, and bound the bytes
+        port.maintain()  # what the earlier builds' listing batches wrote, once per build
 
 
 def _declared(connection: Any) -> bool:

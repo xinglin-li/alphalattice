@@ -329,24 +329,24 @@ class HostLog:
         self,
         table: str,
         recipe_key: str,
-        part: str,
-        input_digest: str,
+        parts: Sequence[tuple[str, str, int, int]],
         *,
-        rows: int,
-        size_bytes: int,
         compute_ms: int,
     ) -> None:
-        """Record a derived partition of `table` written for these inputs; `cache_entry` is the
-        Host's working state, not a projection: no event writes it, and losing it loses only the
-        cache."""
-        with self._guard:
+        """Record the derived partitions of `table` written for these inputs, each (part,
+        input_digest, rows, size_bytes), in one unit; `cache_entry` is the Host's working state,
+        not a projection: no event writes it, and losing it loses only the cache."""
+        with self.unit() as con:
             now = self.clock()
-            self._con.execute(
+            con.executemany(
                 "INSERT INTO cache_entry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT DO UPDATE SET row_count = excluded.row_count,"
                 " size_bytes = excluded.size_bytes,"
                 " compute_ms = excluded.compute_ms, computed_us = excluded.computed_us",
-                (recipe_key, table, part, input_digest, rows, size_bytes, compute_ms, now, now),
+                [
+                    (recipe_key, table, part, digest, rows, size, compute_ms, now, now)
+                    for part, digest, rows, size in parts
+                ],
             )
 
     def rooted(
@@ -362,14 +362,19 @@ class HostLog:
         partition it no longer reads loses its root, and is collected once no workspace roots it.
         The roots dropped."""
         with self.unit() as con:
-            con.execute("CREATE TEMP TABLE IF NOT EXISTS rooting (recipe_key, part, input_digest)")
+            con.execute(
+                "CREATE TEMP TABLE IF NOT EXISTS rooting (recipe_key TEXT, part TEXT,"
+                " input_digest TEXT, PRIMARY KEY (recipe_key, part, input_digest)) WITHOUT ROWID"
+            )  # keyed, so the exact drop below looks each root up rather than scanning them all
             con.execute("DELETE FROM temp.rooting")
-            con.executemany("INSERT INTO temp.rooting VALUES (?, ?, ?)", parts)
+            con.executemany("INSERT OR IGNORE INTO temp.rooting VALUES (?, ?, ?)", parts)
             dropped = 0
             if exactly:
                 dropped = con.execute(
                     "DELETE FROM cache_root WHERE workspace_id = ? AND derived_table = ?"
-                    " AND (recipe_key, part, input_digest) NOT IN (SELECT * FROM temp.rooting)",
+                    " AND NOT EXISTS (SELECT 1 FROM temp.rooting t WHERE t.recipe_key ="
+                    " cache_root.recipe_key AND t.part = cache_root.part"
+                    " AND t.input_digest = cache_root.input_digest)",
                     (workspace_id, table),
                 ).rowcount
             con.execute(
