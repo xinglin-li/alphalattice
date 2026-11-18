@@ -197,6 +197,39 @@ class RoundTripObserver:
         self.trips: list[str] = []
         self.resent: set[str] = set()
         self.sending = False
+        self.scoped = False
+        self.test: str | None = None
+        self.pending: list[tuple[str | None, str, str, IssuePart]] = []
+        """Findings heard while no test was open, each with its Host's owner, routed at `begin`."""
+        self.foreign: list[str] = []
+        """Findings in answers from Hosts the open test's scopes did not start, said, not judged."""
+
+    def begin(self, test: str) -> None:
+        """Open a test's scope: it judges what the Hosts it or a wider fixture started say, and
+        what they said while no test was open; another scope's finding goes to `foreign`."""
+        self.scoped, self.test = True, test
+        pending, self.pending = self.pending, []
+        for owner, kind, line, part in pending:
+            self._record(owner, kind, line, part)
+
+    def owns(self, owner: str | None) -> bool:
+        """Whether the open test judges a Host started in `owner`'s scope: the test itself, or
+        its class, module, package or session (""). A Host whose owner is unknown is judged."""
+        test = self.test or ""
+        return owner is None or owner in ("", test) or test.startswith((owner + "::", owner + "/"))
+
+    def _record(self, owner: str | None, kind: str, line: str, part: IssuePart) -> None:
+        """Keep a finding for the open test, for the next one while closed, or as foreign."""
+        if self.scoped and self.test is None:
+            self.pending.append((owner, kind, line, part))
+        elif self.scoped and not self.owns(owner):
+            self.foreign.append(f"{line} (a Host of {owner!r}, during {self.test})")
+        elif kind == "untyped":
+            self.untyped.append(line)
+        elif kind == "unworded":
+            self.unworded.append(line)
+        else:
+            self.problems.setdefault(line, part)
 
     def truth(
         self, operation: str, body: dict[str, Any], facts: TruthFacts, **checks: Any
@@ -211,12 +244,16 @@ class RoundTripObserver:
         *,
         untyped_failure: Callable[[str], bool],
         refusal_words: Callable[[str], Any],
+        owner: str | None = None,
+        context: str | None = None,
     ) -> None:
-        """Record the public classification and wording of an operation's raised failure."""
+        """Record the public classification and wording of an operation's raised failure; each
+        line names `context` (its Task, workspace and Host) when given."""
+        said = f"{operation} raised {code}" + (f" ({context})" if context else "")
         if untyped_failure(code):
-            self.untyped.append(f"{operation} raised {code}")
+            self._record(owner, "untyped", said, "system")
         elif refusal_words(code) is None:
-            self.unworded.append(f"{operation} raised {code}")
+            self._record(owner, "unworded", said, "feedback")
 
     def answered(
         self,
@@ -228,11 +265,19 @@ class RoundTripObserver:
         untyped_failure: Callable[[str], bool],
         truth: Callable[[], Iterable[str]] | None = None,
         plan_admission: Callable[[], str | None] | None = None,
+        owner: str | None = None,
+        context: str | None = None,
     ) -> None:
-        """Observe one answer; sending a recovery offer cannot recursively send more."""
-        problem = answer_problem(operation, body, given)
-        if problem is not None:
-            self.problems.setdefault(problem, "feedback")
+        """Observe one answer; sending a recovery offer cannot recursively send more.
+
+        Each finding names `context` (its Task, workspace and Host) when given. A Host the open
+        test's scopes did not start is not judged, and its offers are not sent.
+        """
+        named = (lambda line: f"{line} ({context})") if context else (lambda line: line)
+        if (problem := answer_problem(operation, body, given)) is not None:
+            self._record(owner, "problem", named(problem), "feedback")
+        if self.scoped and self.test is not None and not self.owns(owner):
+            return
         if isinstance(body, dict) and not self.sending and truth is not None:
             self.sending = True
             try:
@@ -240,21 +285,24 @@ class RoundTripObserver:
                     self.trips.extend(truth())
                 else:
                     for problem in truth():
-                        self.problems.setdefault(problem, "feedback")
+                        self._record(owner, "problem", named(problem), "feedback")
             finally:
                 self.sending = False
         if plan_admission is not None and (problem := plan_admission()):
-            self.problems.setdefault(problem, "cli")
+            self._record(owner, "problem", named(problem), "cli")
         if isinstance(body, dict):
             code = str(body.get("failure_code") or body.get("refused") or "")
             if untyped_failure(code):
-                self.untyped.append(f"{operation} answered {code}")
+                self._record(owner, "untyped", named(f"{operation} answered {code}"), "system")
 
     def finish(
         self, *, allow_untyped: bool = False, report_unworded: bool = False
     ) -> RoundTripResult:
-        """Drain findings in their failure precedence and clear per-scope offer state."""
+        """Drain findings in their failure precedence, clear per-scope offer state and close the
+        test's scope: what its Hosts say after this waits for the next test's `begin`."""
         self.resent.clear()
+        if self.scoped:
+            self.test = None
         trips = _issues((line, "feedback") for line in self.trips)
         self.trips.clear()
         untyped = tuple(dict.fromkeys(self.untyped))

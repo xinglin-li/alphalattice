@@ -943,6 +943,19 @@
       "layer": "integration",
       "seconds": 2
     },
+    "evaluation.answer_observer_judges_its_own_hosts": {
+      "description": "A test's teardown judges the answers of the Hosts it or a wider fixture started and fails naming their Task; another scope's Host neither fails it nor goes unsaid.",
+      "owner": "devtools.evaluation",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "evaluation.answer_observer_scopes_real_hosts": {
+      "description": "A real Host records the test or fixture scope that started it before any test opens, and its stopped Task's answer fails only a test of that scope, naming the Task and the Host.",
+      "owner": "devtools.evaluation",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "Its behaviour is pytest's own fixture scopes, a real Host's construction and the wrapped operation door the root conftest installs."
+    },
     "evaluation.continuation_snapshot_integrity": {
       "description": "A native acceptance continuation admits only the exact tracked bytes written by its recorded prestart configure and refuses other tracked changes.",
       "owner": "devtools.evaluation",

@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import warnings
 from collections.abc import Iterator
 from contextlib import ExitStack, nullcontext, suppress
 from dataclasses import fields, is_dataclass
@@ -249,9 +250,89 @@ _ROUND_TRIP_REPORT = os.environ.get("ALPHALATTICE_ROUND_TRIP_REPORT")
 """Discovery: each offer is sent back whole, a preview's body included, and what it finds is
 written to this file. A sent preview records its link, so this never runs by default."""
 _observer = RoundTripObserver(report=bool(_ROUND_TRIP_REPORT))
-_HOST_TESTS: dict[str, str] = {}
-"""Each Host's workspace id and the test it first answered in. The observer hears every answer
-in the process, so a problem line names whose Host gave it."""
+_HOST_SCOPES: dict[int, str] = {}
+"""Each Host's operations, by id, and the node id of the test or fixture scope that started it.
+The observer hears every answer in the process; a test judges only its own scopes' Hosts."""
+_SCOPES: list[str] = []
+"""The node ids of the fixture scopes being set up now, then the running test's, innermost last."""
+_STAMPED: list[int] = [0]
+"""The module count last searched for the Hosts' operations, or -1 once its constructor records
+each Host's scope."""
+
+
+def _operations_class() -> type | None:
+    """The loaded `PortfolioResearchOperations`, found by its class among the loaded modules,
+    never by a quoted module path, which the impact walk reads as every test's dependency."""
+    return next(
+        (
+            found
+            for module in list(sys.modules.values())
+            if isinstance(found := getattr(module, "PortfolioResearchOperations", None), type)
+            and found.__module__ == getattr(module, "__name__", None)
+        ),
+        None,
+    )
+
+
+_RUNNING: list[pytest.Item] = []
+"""The test pytest runs now, its fixtures' setup included."""
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[Any]:
+    _RUNNING.append(item)
+    try:
+        return (yield)
+    finally:
+        _RUNNING.pop()
+
+
+def _stamp_hosts() -> None:
+    """Once its module is loaded, each Host's operations record the scope that started them, a
+    wider fixture's Host too: this runs before any fixture or test body can start one. A unit
+    test starts no Host and reads no module inventory."""
+    if _STAMPED[0] in (-1, len(sys.modules)):
+        return
+    contract = _RUNNING[-1].stash.get(LAYER_CONTRACT, None) if _RUNNING else None
+    if contract is not None and contract.layer == "unit":
+        return
+    _STAMPED[0] = len(sys.modules)
+    if (owner := _operations_class()) is None:
+        return
+    built = owner.__init__
+
+    def init(self: Any, *args: Any, **kwargs: Any) -> None:
+        built(self, *args, **kwargs)
+        if _SCOPES:
+            _HOST_SCOPES[id(self)] = _SCOPES[-1]
+        else:  # an id another Host had: its scope is unknown, so it is judged
+            _HOST_SCOPES.pop(id(self), None)
+
+    owner.__init__ = init
+    _STAMPED[0] = -1
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(fixturedef: Any, request: pytest.FixtureRequest) -> Iterator[Any]:
+    """A Host a fixture starts belongs to that fixture's scope: its test, class, module or
+    package, or the session ("")."""
+    _stamp_hosts()
+    _SCOPES.append(request.node.nodeid)
+    try:
+        return (yield)
+    finally:
+        _SCOPES.pop()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Iterator[None]:
+    """A Host a test body starts belongs to that test."""
+    _stamp_hosts()
+    _SCOPES.append(item.nodeid)
+    try:
+        return (yield)
+    finally:
+        _SCOPES.pop()
 
 
 def truth_problems(host, operation, body, admits):
@@ -427,9 +508,12 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     if _unit_contract(request):
         yield
         return
+    heard = len(_observer.foreign)
+    _observer.begin(request.node.nodeid)
     # Found by its class among the loaded modules, never by a quoted module path, which the
     # impact walk reads as every test's dependency: the wrapper reaches only the tests that run
-    # an operation, and they select themselves by their own imports.
+    # an operation, and they select themselves by their own imports. Read here, inline: the
+    # unit contract proves this fixture's own module inventory read, never a helper's.
     owner = next(
         (
             found
@@ -450,6 +534,9 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
         original = owner.execute
 
         def execute(self: Any, request: Any, **kwargs: Any) -> Any:
+            started_in = _HOST_SCOPES.get(id(self))
+            host = "an unrecorded scope" if started_in is None else started_in or "the session"
+            workspace = self.workspace_manifest.workspace_id
             try:
                 body = original(self, request, **kwargs)
             except Exception as error:
@@ -461,6 +548,9 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                     code,
                     untyped_failure=untyped_failure,
                     refusal_words=refusal_words,
+                    owner=started_in,
+                    context=f"Task {getattr(request, 'task_id', None)}, workspace {workspace}, "
+                    f"Host of {host}",
                 )
                 raise
             given = (
@@ -469,17 +559,11 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 else {}
             )
 
-            workspace = self.workspace_manifest.workspace_id
-            host_test = _HOST_TESTS.setdefault(
-                workspace, os.environ.get("PYTEST_CURRENT_TEST", "no test").split(" ")[0]
+            task = (
+                (body.get("task_id") or body.get("blocking_task_id"))
+                if isinstance(body, dict)
+                else None
             )
-
-            def named_problem(operation: str, answer: Any, *rest: Any) -> str | None:
-                problem = answer_problem(operation, answer, *rest)
-                if problem is None or not isinstance(answer, dict):
-                    return problem
-                task = answer.get("task_id") or answer.get("blocking_task_id")
-                return f"{problem} (Task {task}, workspace {workspace}, Host of {host_test})"
 
             def truth():
                 admits = self._recovery_context
@@ -491,10 +575,12 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 request.operation,
                 body,
                 given,
-                answer_problem=named_problem,
+                answer_problem=answer_problem,
                 untyped_failure=untyped_failure,
                 truth=truth,
                 plan_admission=lambda: _host_plan_admission(self, owner, request.operation, body),
+                owner=started_in,
+                context=f"Task {task}, workspace {workspace}, Host of {host}",
             )
             return body
 
@@ -506,6 +592,8 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
         allow_untyped=request.node.get_closest_marker("untyped_failure") is not None,
         report_unworded=bool(report),
     )
+    for line in _observer.foreign[heard:]:  # said where it was heard, judged by no other test
+        warnings.warn(f"another scope's Host answered during this test: {line}", stacklevel=1)
     if _ROUND_TRIP_REPORT and observed.trips:
         with open(_ROUND_TRIP_REPORT, "a", encoding="utf-8") as kept:
             kept.writelines(
