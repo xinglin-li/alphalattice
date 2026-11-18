@@ -13,6 +13,7 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
+from alphalattice.control.workspace_runtime import panel_reads
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.panels.identity import (
@@ -31,6 +32,43 @@ def configure_panel_proof_memo(*, capacity: int | None = None) -> None:
     """Set this reader owner's capacity; evicted chunks receive full validation again."""
     global _VALUES_VERIFIED
     _VALUES_VERIFIED = BoundedMemo(capacity=capacity)
+
+
+def _validate_manifest_chunk(path: object, manifest: dict[str, object], item: dict) -> None:
+    """Prove the chunk file `path` against the identity `manifest` records for its entry `item`:
+    schema hash, row count, the chunk hash over its row hashes, and its values against those row
+    hashes (FeaturePanelReader._validate_chunk_content); raises ValueError on a mismatch."""
+    summary = manifest.get("safe_summary")
+    catalog = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None
+    # A chunk is hashed with the binding of the build that wrote it. A manifest that reuses
+    # another build's partition records that origin; one written before partition reuse
+    # recorded none, and every such writer used the snapshot's own binding.
+    origin = item.get("origin_binding_hash")
+    FeaturePanelReader._validate_chunk_content(
+        path,
+        expected_chunk_hash=str(item["chunk_hash"]),
+        expected_schema_hash=str(manifest.get("schema_hash", "")),
+        panel_binding_hash=str(
+            origin if origin is not None else manifest.get("panel_binding_hash", "")
+        ),
+        year=int(item["year"]),
+        part=int(item.get("part") or 0),
+        expected_row_count=int(item["row_count"]),
+        row_hash_factor_ids=(
+            tuple(sorted(str(value) for value in catalog)) if isinstance(catalog, dict) else None
+        ),
+    )
+
+
+def chunk_content_proven(path: Path, manifest: dict[str, object], item: dict) -> bool:
+    """Whether the chunk file `path` holds the content `manifest`'s entry `item` identifies, as a
+    read proves it (`_validate_manifest_chunk`); False for a file gone, unreadable or not that
+    content. The proof panel_reads asks for before a Panel body is evicted."""
+    try:
+        _validate_manifest_chunk(path, manifest, item)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -350,13 +388,6 @@ class FeaturePanelReader:
         raw_chunks = manifest.get("chunks")
         if not isinstance(raw_chunks, list):
             raise ValueError("feature panel manifest has no chunk catalog")
-        panel_binding_hash = str(manifest.get("panel_binding_hash", ""))
-        schema_hash = str(manifest.get("schema_hash", ""))
-        summary = manifest.get("safe_summary")
-        catalog = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None
-        row_hash_factor_ids = (
-            tuple(sorted(str(value) for value in catalog)) if isinstance(catalog, dict) else None
-        )
         paths: list[str] = []
         for item in raw_chunks:
             if not isinstance(item, dict):
@@ -365,27 +396,12 @@ class FeaturePanelReader:
             last = date.fromisoformat(str(item["last_session"]))
             if last < request.start_session or first > request.end_session:
                 continue
-            content_hash = str(item["chunk_hash"])
             path = self.resolver.resolve_feature_panel_chunk_ref(
                 uri=str(item["uri"]),
-                content_hash=content_hash,
+                content_hash=str(item["chunk_hash"]),
                 metadata_hash=str(item["metadata_hash"]),
             )
-            # A chunk is hashed with the binding of the build that wrote it.
-            # A manifest that reuses another build's partition records that
-            # origin; one written before partition reuse recorded none, and
-            # every such writer used the snapshot's own binding.
-            origin = item.get("origin_binding_hash")
-            self._validate_chunk_content(
-                path,
-                expected_chunk_hash=content_hash,
-                expected_schema_hash=schema_hash,
-                panel_binding_hash=str(origin) if origin is not None else panel_binding_hash,
-                year=int(item["year"]),
-                part=int(item.get("part") or 0),
-                expected_row_count=int(item["row_count"]),
-                row_hash_factor_ids=row_hash_factor_ids,
-            )
+            _validate_manifest_chunk(path, manifest, item)
             paths.append(str(path))
         return paths
 
@@ -479,3 +495,6 @@ class FeaturePanelReader:
             ):
                 raise ValueError("feature panel chunk values do not match their row hashes")
             _VALUES_VERIFIED[digest] = True
+
+
+panel_reads.register_proof(chunk_content_proven)

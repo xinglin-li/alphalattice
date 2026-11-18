@@ -33,7 +33,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -126,6 +126,8 @@ _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
 _attached: dict[str, tuple[Path, Any]] = {}
 """Outside a Host, the log attached read-only for derived file reads, with its root."""
+_reads: dict[str, set[str]] = {}
+"""The file partitions (by table, their digests) the Host read since their last mark."""
 
 
 def held(root: Path | None = None) -> HostLog:
@@ -419,6 +421,8 @@ def close_history() -> None:
         provider.shutdown()  # every span ended before the log closes
     if port is not None:
         port.close()
+    if log is not None:
+        _mark_reads(log)
     with _read_lock:
         if reading is not None:
             reading.close()
@@ -590,7 +594,11 @@ def derived_file_body(table: str, digest: str) -> Path | None:
     read-only once per process and root."""
     log, root = _open.get("log"), _open.get("root")
     if log is not None and root is not None:
-        return derived_files.found(log.read, Path(root), table, digest)
+        held = derived_files.found(log.read, Path(root), table, digest)
+        if held is not None:
+            with _read_lock:  # its last read, marked in one batch (_mark_reads)
+                _reads.setdefault(table, set()).add(digest)
+        return held
     where = data_root()
     with _read_lock:
         held = _attached.get("log")
@@ -602,6 +610,35 @@ def derived_file_body(table: str, digest: str) -> Path | None:
         return derived_files.found(
             lambda sql, args: reader.execute(sql, args).fetchall(), where, table, digest
         )
+
+
+def root_derived_files(
+    table: str,
+    digests: Collection[str],
+    *,
+    unread_for: timedelta,
+    verified: Callable[[str], bool],
+) -> dict[str, int] | None:
+    """In the Host, make the file partitions with these digests its workspace's only roots of
+    `table`, evict what has gone unread for `unread_for` where `verified` holds its source, and
+    collect what no workspace roots (StorePort.root_files), the reads noted marked first. None
+    outside a Host, whose roots wait for the Host's next call; nothing it keeps is lost by that."""
+    port = store()
+    if port is None or not recording():
+        return None
+    _mark_reads(_open["log"])
+    return port.root_files(
+        table, str(_open["workspace"]), digests, unread_for=unread_for, verified=verified
+    )
+
+
+def _mark_reads(log: HostLog) -> None:
+    """Mark the file partitions the Host read since the last call as read now, in its log."""
+    with _read_lock:
+        reads = dict(_reads)
+        _reads.clear()
+    for table, digests in reads.items():
+        log.read_cached(table, sorted(digests))
 
 
 def keep_derived_file(table: str, *, recipe_key: str, part: str, digest: str, source: Path) -> None:

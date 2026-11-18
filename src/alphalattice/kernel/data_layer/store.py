@@ -30,7 +30,7 @@ import logging
 import shutil
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -536,12 +536,51 @@ class StorePort:
             rooted_by=rooted_by,
         ).add_done_callback(_kept)
 
+    def root_files(
+        self,
+        table: str,
+        workspace: str,
+        digests: Collection[str],
+        *,
+        unread_for: timedelta,
+        verified: Callable[[str], bool],
+    ) -> dict[str, int]:
+        """Make the kept partitions of the file table `table` with these digests `workspace`'s
+        only roots of it, evict those of them it alone roots and nobody has read for
+        `unread_for` whose source `verified` still proves, then
+        collect the table. A digest not kept yet is rooted by its keep. The caller marks the
+        reads it noted first. The roots dropped, the bodies evicted and collected."""
+        _file_table(table)
+        with self._writer:
+            kept = self.log.read(
+                "SELECT recipe_key, part, input_digest FROM cache_entry WHERE derived_table = ?"
+                " AND input_digest IN (SELECT value FROM json_each(?))",
+                (table, json.dumps(sorted(digests))),
+            )
+            dropped = self.log.rooted(workspace, table, [tuple(row) for row in kept], exactly=True)
+            before = self.log.clock() - unread_for // timedelta(microseconds=1)
+            stale = derived_files.unread(self.log.read, table, workspace, before)
+            evicted = derived_files.drop(
+                self.root,
+                self.log,
+                table,
+                [digest for digest in stale if verified(digest)],
+            )
+        collected = self.collect(table)
+        return {"unrooted": dropped, "evicted": len(evicted), "collected": collected}
+
     def collect(self, table: str) -> int:
         """Drop a derived table's partitions whose cache entries no workspace roots (the log's
         cache_root), as one catalog snapshot, and those entries: a cache holds no fact, so a
-        partition no workspace reads goes. The rows dropped."""
+        partition no workspace reads goes. A table held as files (derived_files) drops each such
+        partition's body, then its entry; nothing outside the data root is touched. The rows
+        dropped, or for a file table the bodies."""
         import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
+        if table in derived_files.TABLES:
+            with self._writer:
+                found = derived_files.unrooted(self.log.read, table)
+                return len(derived_files.drop(self.root, self.log, table, found))
         family = "feature_set_" if table.startswith("feature_set_") else table
         target, run = f"lake.derived.{table}", self.lake.execute
         with self._writer:

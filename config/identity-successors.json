@@ -16143,6 +16143,153 @@
    "successor": "9c522885b0ea6cc956788cff8d41dc0e62318a4838c11bb00e7f9d13689dcce5",
    "change": "First use commits market bars once, with their adjustment audit",
    "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "2b4ceced14e391cb1c7262daec0ed53a8a8749c2ac358e6d0d3d5119d9c61b60",
+   "successor": "9342647a868efa0f64695b9c950aaf270ee636dfcf2b01e724264ccce8b7d6c8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "dc3cf7b415dad318a5e327e35b00e7cd98282c301077b89610336cb327f9aa58",
+   "successor": "80991e3db0e517a769e4e5f81b6e8a545b7dd3e52943caf5612bc257bddddba2",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "ed068005ecb51b999c9f8e74813b67ee5505928159910b4eab0bfea2bc26aad7",
+   "successor": "17e4c73618c36cdef22f7dc1987d15b7a5ea2f431d419803d8e33b8b2f9fcdb5",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "b75c972eb36daef2dc036abe3349af2e600b55a69e8bceb4557e84245e440ce1",
+   "successor": "f54cff3e02d31f78c5160b6c464d1ac009c901f59b03ff59364959da869629ef",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "165058e441bab4fe54a707df3151563ad1323db7df4fcb5dd80f85eba7b34cf9",
+   "successor": "0e030a895fd840f2096c21ec45d8090ad562800e822a613f13579480d5977a21",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ba42fc7c063a66fac4d83c5c84de65fa7c33f778aee532812e64c6b433b99832",
+   "successor": "dee739137238c0ed6b9128faefb257ec1c4d0bfff6b0da133071ade0fb6a4915",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "acd657110285d1b632b6092e883a4db6467ca29ad40515f1f21d313f523383a3",
+   "successor": "9e9e1420f501c2a981ab670b02e53f1521c92377985c0d9d7f886be8a8fd5017",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "0c6da0886096fdb32d1314cf714342d89a1acc8d20327b97ff75df476a67d46c",
+   "successor": "80a64f0aa59765bf4d684dee89f3d43521157f1dc8b84786e15052b6e811d957",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "60ddb0b7719586ab8e7afa40ab3dcc05f9323a7f849cfc7d3b7880bb108abcfa",
+   "successor": "9f29d4ac726df6a2a36006e881ca2702ff087a16793575ea7e79888a69de44ff",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "9145543502f2dc3c550fd2d0fc90be0430d378040390948efd632832de9b29d1",
+   "successor": "d49abfe34118039e92920fd2cef9781d0422e39ebf2bf63b79f8f0a0e1bf15c4",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "5d057f071f261b40ab8d6c4fb7992ab4dc392e789cd623378ab444c6ac3bddfc",
+   "successor": "ae39b76e64906cc7e9597a1f77da1d0f8e3a4abe596ecc415aed3a3014ecb16a",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "b1d5a3667cf538dc236431bb4660224593d115123472054d07e6039fb4f30f75",
+   "successor": "df9cdf6939dd3a53c1a5d8bb76039182b5dd959e30efdbc0273b1a6dbc682ff0",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "a0923d35db30329b79a34fa608303f0a3dea0d9650868e51e700f18b47d0c4b5",
+   "successor": "b2139298f18f6783c3b4c8b8c4b2fc9da0875f86b317733bd92bab9ce02eea9a",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "217d1dd620f38ed4a33b1ab5fe8ca6239181f719b502035ee6955df4c135afcc",
+   "successor": "f681d0b9618d5ace7752ab7a8190ebe6424b37cbb82dcc74862129bc4a4c73f6",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "9c522885b0ea6cc956788cff8d41dc0e62318a4838c11bb00e7f9d13689dcce5",
+   "successor": "e5a6a232911e0eb8ef209b0f4efa5f18560ff6f4fb55611989049c7f3e44ad1b",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "successor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "successor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "8cc37df6feea4879014699bc6703ed6ed44dbb5b75cd0891e51862b36a96cb1f",
+   "successor": "ac60092af70439946eeefb304b0bc86669cbb90bc18fbe32efec772a7ba87858",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "269afb3c86672eb051ec8686500d7e0df4d20dfb81b70a33daa55972e6a17c29",
+   "successor": "db8e667e09ab7d76ad66c10db99eb8d44eb49dd0130b0308dd51e9762454e134",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "bbfd148457aae7f22f13c12763f01ec2bc312a014af3ddbfda0b6b6050b38884",
+   "successor": "dc2c33ad822e6a68751552d96b9fe5a18862205bca4a734aaf789d6c843861c0",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "ebf697d4847ae44b74ac5fabd7181b0e8b00144d907e94841576238bff1728be",
+   "successor": "f8ebe2a10e346e3cdc7edb13ac01de60f1ef00608023098d863824e919f7900b",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
   }
  ]
 }

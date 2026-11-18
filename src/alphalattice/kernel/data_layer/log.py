@@ -428,6 +428,26 @@ class HostLog:
             )
             return found.rowcount == 1
 
+    def read_cached(self, table: str, digests: Sequence[str]) -> None:
+        """Mark the last read of `table`'s partitions with these input digests as now: one
+        statement for a batch of reads, on the digest index. Eviction reads the mark."""
+        with self.unit() as con:
+            con.execute(
+                "UPDATE cache_entry SET last_read_us = ? WHERE derived_table = ?"
+                " AND input_digest IN (SELECT value FROM json_each(?))",
+                (self.clock(), table, json.dumps(sorted(digests))),
+            )
+
+    def uncached(self, table: str, digests: Sequence[str]) -> None:
+        """Drop the cache entries of `table`'s partitions with these input digests. Their roots
+        stay, so a workspace that roots one keeps it again at its next read."""
+        with self.unit() as con:
+            con.execute(
+                "DELETE FROM cache_entry WHERE derived_table = ?"
+                " AND input_digest IN (SELECT value FROM json_each(?))",
+                (table, json.dumps(sorted(digests))),
+            )
+
     def close(self) -> None:
         """Commit the open batch and release the data root's lock."""
         with self._guard:

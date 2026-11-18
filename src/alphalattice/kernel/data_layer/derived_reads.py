@@ -1,11 +1,11 @@
 """The setup that serves a workspace's derived views (workspace_runtime.derived_views): the data
 root's catalog attached read-only to the workspace's DuckDB instance, once, and each view a TEMP
-view on the connection; and the calls that read and keep derived partitions held as files
+view on the connection; and the calls that read, keep and root derived partitions held as files
 (workspace_runtime.panel_reads). Registered on import; data_layer alone writes the data root."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -44,5 +44,12 @@ def keep(table: str, **partition: Any) -> None:
     history.keep_derived_file(table, **partition)
 
 
+def root(table: str, digests: Collection[str], **lifecycle: Any) -> dict[str, int] | None:
+    """Root, evict and collect a file table's partitions in the Host (history's lifecycle)."""
+    import alphalattice.kernel.data_layer.history as history  # lazy: history imports the log
+
+    return history.root_derived_files(table, digests, **lifecycle)
+
+
 derived_views.register(serve)
-panel_reads.register(body, keep)
+panel_reads.register(body, keep, root)

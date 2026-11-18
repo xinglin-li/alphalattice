@@ -2248,6 +2248,13 @@
       "seconds": 5,
       "lower_layer": "The native DuckDB statement parser and registration APIs define this boundary; an in-memory policy double cannot prove that SQL and method calls reach it."
     },
+    "workspace_runtime.panel_bodies_follow_the_workspaces_panels": {
+      "description": "Each Panel lifecycle publication roots the available snapshots' chunks, collects other bodies, and evicts unread bodies only while their stored chunk proves its content.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 3,
+      "lower_layer": "Roots, eviction and collection run through the Host's StorePort and its log, which the unit layer cannot open."
+    },
     "workspace_runtime.panel_chunks_read_from_their_derived_bodies": {
       "description": "Under derived reads the Host keeps each Panel chunk once, byte for byte, and reads take that body; stored reads the workspace's file.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -2257,6 +2264,12 @@
     },
     "workspace_runtime.panel_reads_key_a_chunk_by_its_binding_year_and_part": {
       "description": "A derived Panel keep is keyed by the chunk's recorded binding, year and part; stored keeps nothing; unknown or unserved settings are refused.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "workspace_runtime.panel_roots_are_the_available_snapshots_chunks": {
+      "description": "Under derived reads a Panel lifecycle publication hands the Host every available snapshot's chunks and the Panel reader's proof of each chunk's stored source.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "unit",
       "seconds": 1

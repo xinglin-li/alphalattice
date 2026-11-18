@@ -18,6 +18,7 @@ file to find it: in the Host on its log, elsewhere through a read-only attach of
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from collections.abc import Callable
@@ -88,4 +89,57 @@ def found(read: Read, root: Path, table: str, digest: str) -> Path | None:
     return root / str(held[0][0]) if held else None
 
 
-__all__ = ["FOLDER", "STAGED", "TABLES", "found", "handle", "keep"]
+def unrooted(read: Read, table: str) -> list[str]:
+    """The digests of `table`'s partitions no workspace roots, which collection drops."""
+    held = read(
+        "SELECT DISTINCT input_digest FROM cache_entry e WHERE derived_table = ? AND NOT EXISTS"
+        " (SELECT 1 FROM cache_root r WHERE r.derived_table = e.derived_table"
+        " AND r.input_digest = e.input_digest)",
+        (table,),
+    )
+    return [str(row[0]) for row in held]
+
+
+def unread(read: Read, table: str, workspace: str, before_us: int) -> list[str]:
+    """The digests of `table`'s partitions `workspace` alone roots whose body is unread since
+    `before_us`: those eviction may drop, once each one's source still verifies."""
+    held = read(
+        "SELECT DISTINCT e.input_digest FROM cache_entry e JOIN cache_root r"
+        " ON r.derived_table = e.derived_table AND r.input_digest = e.input_digest"
+        " WHERE e.derived_table = ? AND r.workspace_id = ? AND e.body IS NOT NULL"
+        " AND e.last_read_us < ? AND NOT EXISTS (SELECT 1 FROM cache_root o"
+        " WHERE o.derived_table = e.derived_table AND o.input_digest = e.input_digest"
+        " AND o.workspace_id <> r.workspace_id)",
+        (table, workspace, before_us),
+    )
+    return [str(row[0]) for row in held]
+
+
+def drop(root: Path, log: HostLog, table: str, digests: list[str]) -> list[str]:
+    """Delete these partitions' bodies, then their entries: a crash between leaves an entry
+    whose body is gone, which a read takes as not held. A body another process holds open (a
+    delete Windows refuses) keeps its entry for a later drop, and is logged with the count of
+    such bodies. The digests dropped."""
+    gone: list[str] = []
+    held: list[tuple[str, OSError]] = []
+    for digest in digests:
+        try:
+            (root / handle(table, digest)).unlink(missing_ok=True)
+        except OSError as error:
+            held.append((digest, error))
+        else:
+            gone.append(digest)
+    if held:
+        logging.getLogger(__name__).warning(
+            "%d %s bodies are held open and stay for a later drop; the first: %s (%s)",
+            len(held),
+            table,
+            held[0][0],
+            held[0][1],
+        )
+    if gone:
+        log.uncached(table, gone)
+    return gone
+
+
+__all__ = ["FOLDER", "STAGED", "TABLES", "drop", "found", "handle", "keep", "unread", "unrooted"]
