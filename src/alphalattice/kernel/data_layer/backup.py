@@ -25,7 +25,7 @@ from blake3 import blake3
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
-from alphalattice.kernel.data_layer.root import FOLDERS, catalog, load_extensions
+from alphalattice.kernel.data_layer.root import FOLDERS, bound_reads, catalog, load_extensions
 from alphalattice.kernel.data_layer.store import StorePort
 
 DATABASES: Final = ("index.sqlite", "log.sqlite", "catalog.sqlite")
@@ -301,6 +301,7 @@ def _owners(machine: Path, data: Path) -> dict[str, str | None]:
             )
         ) as lake:
             load_extensions(lake)
+            bound_reads(lake)
             lake.execute(
                 f"ATTACH 'ducklake:sqlite:{catalog}' AS lake "
                 f"(READ_ONLY, DATA_PATH '{location}', OVERRIDE_DATA_PATH true)"

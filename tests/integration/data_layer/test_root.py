@@ -15,7 +15,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.project import definition_id, register
 from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import catalog
+from alphalattice.kernel.data_layer.root import THREADS, catalog, duckdb_session
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 N = 10**9
@@ -408,3 +408,32 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with pytest.raises(DataError, match="schema version 10") as refused:
         create_data_root(tmp_path)
     assert refused.value.failure.code == "data_layer.schema_mismatch"
+
+
+@pytest.mark.proves("data_layer.a_lake_scan_holds_files_by_thread")
+def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path):
+    """A session over the lake reads a table of 1,100 small files, as a first use's admissions
+    leave, holding open a few Parquet files per thread, never one per file: DuckDB's default
+    read-ahead held hundreds open at a scan's start, past macOS's default of 256 per process."""
+    import psutil
+
+    session = duckdb_session(tmp_path)
+    assert session is not None
+    with closing(session):
+        path, data = (tmp_path / "catalog.sqlite").as_posix(), (tmp_path / "data").as_posix()
+        session.execute(f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{data}/')")
+        session.execute("CREATE TABLE lake.bar (listing INTEGER, day INTEGER, version_id UUID)")
+        session.execute("ALTER TABLE lake.bar SET PARTITIONED BY (listing)")
+        session.execute(
+            "INSERT INTO lake.bar SELECT i // 250, i % 250, uuidv7() FROM range(275_000) t(i)"
+        )
+        held, rows = [], 0  # the read-ahead queue fills at a scan's start; a listing is slow
+        for at, batch in enumerate(session.sql("SELECT * FROM lake.bar").to_arrow_reader(2048)):
+            rows += batch.num_rows
+            if at < 10:
+                files = psutil.Process().open_files()
+                held.append(sum(1 for file in files if file.path.endswith(".parquet")))
+    assert rows == 275_000 and len(list((tmp_path / "data").rglob("*.parquet"))) == 1_100
+    # Bounded, a scan's peak at 8 threads was 8 to 11 on Windows and 24 to 28 on macOS, over whole
+    # scans; unbounded, it held 334 here and stopped at macOS's 256 with too many open files.
+    assert max(held) <= 8 * THREADS, held

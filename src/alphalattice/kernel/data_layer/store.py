@@ -45,6 +45,7 @@ from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uu
 from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import (
     THREADS,
+    bound_reads,
     catalog,
     catalog_matches,
     load_extensions,
@@ -223,6 +224,7 @@ class StorePort:
             },
         )
         load_extensions(lake)
+        bound_reads(lake)
         catalog(root)  # made at the store's first open, not with the root
         machine, data = sql_path(root / "machine"), sql_path(root / "data")
         for sql in (

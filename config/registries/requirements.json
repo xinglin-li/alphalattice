@@ -349,6 +349,19 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_lake_scan_holds_files_by_thread": {
+      "description": "A DuckDB session over the lake scans a table of many small Parquet files holding open about one file per thread, never one per file, so a process stays within macOS's default 256 descriptors however many files admissions leave.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "Descriptors are held by DuckDB's reader over real Parquet files; only a real catalog and its files show them."
+    },
+    "data_layer.a_lake_session_bounds_its_read_ahead": {
+      "description": "Every DuckDB session over the lake loads its extensions and then turns DuckDB's read-ahead off, so no scan holds a queue of open Parquet files.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_legacy_document_is_known_from_its_availability": {
       "description": "A legacy evidence document is known from its 0.2.7 availability, the source's acceptance or a recorded import's capture, never its filing date; another body of a held document is known no earlier than its admission.",
       "owner": "alphalattice.kernel.data_layer",

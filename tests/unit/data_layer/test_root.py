@@ -7,7 +7,7 @@ from pathlib import PureWindowsPath
 import pytest
 
 from alphalattice.kernel.data_layer.log import envelope
-from alphalattice.kernel.data_layer.root import sql_path
+from alphalattice.kernel.data_layer.root import bound_reads, sql_path
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 
@@ -33,3 +33,21 @@ def test_an_event_is_of_its_types_current_version_unless_it_names_another():
     version its writer names."""
     assert envelope("task.saved")["type_version"] is None
     assert envelope("task.requested", version=2)["type_version"] == 2
+
+
+@pytest.mark.proves("data_layer.a_lake_session_bounds_its_read_ahead")
+def test_a_lake_session_reads_ahead_no_scan_job():
+    """A session over the lake turns DuckDB's read-ahead off: its default queue holds a Parquet
+    file open per queued job, so a scan's descriptors grow with the lake's files."""
+    run = []
+
+    class Session:
+        def execute(self, sql):
+            run.append(sql)
+            return self
+
+        def complete(self):
+            return None
+
+    bound_reads(Session())
+    assert run == ["SET read_ahead_depth = 0"]

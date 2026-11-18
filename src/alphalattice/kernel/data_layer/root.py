@@ -51,6 +51,12 @@ SPEC_FIELDS: Final = {
 THREADS: Final = min(8, os.cpu_count() or 1)
 """Threads of a DuckDB session over the lake. Its statements are many and small, and each pipeline
 fans out to every thread: past eight, a statement pays more in that fan-out than its scans gain."""
+READ_AHEAD: Final = 0
+"""Scan jobs an instance opened over the lake reads ahead of decoding: none. DuckDB's default is
+bounded only by memory, and each queued job holds its Parquet file open. The lake's files are many
+and small (each admission writes one for each year its rows fall in), so a scan held one for each
+file, past macOS's default of 256 per process. With none, a scan holds about one file per thread,
+and over local files it is faster: on a 1,100-file catalog, every row in 0.14 s against 0.38 s."""
 
 
 @dataclass(frozen=True)
@@ -180,6 +186,14 @@ def load_extensions(connection) -> None:
             ) from error
 
 
+def bound_reads(connection: Any) -> None:
+    """An instance opened over the lake reads ahead no scan job (READ_AHEAD), so a scan holds
+    about one Parquet file open per thread, however many files the lake has. The setting is the
+    instance's: its opener sets it, and a workspace's own instance, which the lake is only
+    attached to, keeps DuckDB's default, under which its native tables read faster."""
+    connection.execute(f"SET read_ahead_depth = {READ_AHEAD}").complete()
+
+
 def sql_path(path: PurePath) -> str:
     """`path` for a DuckDB string literal: forward slashes, each quote doubled, and a Windows
     extended-length path (`//?/D:/...`, `//?/UNC/server/...` as forward slashes give them) in its
@@ -210,6 +224,7 @@ def duckdb_session(root: Path) -> Any | None:
     )
     try:
         load_extensions(connection)
+        bound_reads(connection)
     except ModuleNotFoundError:
         connection.close()
         return None
