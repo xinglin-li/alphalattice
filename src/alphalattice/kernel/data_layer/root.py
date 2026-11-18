@@ -23,7 +23,7 @@ import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from importlib import resources
-from pathlib import Path, PurePath
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
 import sqlite_vec
@@ -198,12 +198,20 @@ def sql_path(path: PurePath) -> str:
     """`path` for a DuckDB string literal: forward slashes, each quote doubled, and a Windows
     extended-length path (`//?/D:/...`, `//?/UNC/server/...` as forward slashes give them) in its
     ordinary spelling, which DuckDB can open and derive its WAL's name from."""
-    text = path.as_posix()
+    return _without_extended_prefix(path.as_posix()).replace("'", "''")
+
+
+def _without_extended_prefix(text: str) -> str:
     if text.startswith("//?/UNC/"):
-        text = "//" + text[len("//?/UNC/") :]
-    elif text.startswith("//?/"):
-        text = text[len("//?/") :]
-    return text.replace("'", "''")
+        return "//" + text[len("//?/UNC/") :]
+    return text.removeprefix("//?/")
+
+
+def sqlite_read_only_uri(path: PurePath) -> str:
+    """Build a SQLite file URI without treating a Windows path prefix as its authority."""
+    if isinstance(path, PureWindowsPath):
+        path = PureWindowsPath(_without_extended_prefix(path.as_posix()))
+    return path.as_uri() + "?mode=ro"
 
 
 def duckdb_session(root: Path) -> Any | None:

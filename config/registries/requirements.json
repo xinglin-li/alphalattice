@@ -594,6 +594,12 @@
       "seconds": 1,
       "owner": "alphalattice.kernel.data_layer"
     },
+    "data_layer.backup_opens_read_only_sqlite_paths": {
+      "description": "A machine backup gives SQLite the same escaped, read-only file URI for an ordinary Windows path and its extended-length spelling.",
+      "layer": "unit",
+      "seconds": 1,
+      "owner": "alphalattice.kernel.data_layer"
+    },
     "data_layer.baggage_attributes_every_span": {
       "description": "A span below W3C headers is their trace's child, carries its baggage's trial and selection and its caller's workspace, is logged live as started, and has its log records as facts inside it.",
       "owner": "alphalattice.kernel.data_layer",

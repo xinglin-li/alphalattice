@@ -25,7 +25,14 @@ from blake3 import blake3
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
-from alphalattice.kernel.data_layer.root import FOLDERS, bound_reads, catalog, load_extensions
+from alphalattice.kernel.data_layer.root import (
+    FOLDERS,
+    bound_reads,
+    catalog,
+    load_extensions,
+    sql_path,
+    sqlite_read_only_uri,
+)
 from alphalattice.kernel.data_layer.store import StorePort
 
 DATABASES: Final = ("index.sqlite", "log.sqlite", "catalog.sqlite")
@@ -178,7 +185,7 @@ def copy_files(
 def _snapshot(source: Path, target: Path) -> None:
     """Copy one committed SQLite state in bounded page steps, without a long source lock."""
     with (
-        closing(sqlite3.connect(_real(source).as_uri() + "?mode=ro", uri=True)) as src,
+        closing(sqlite3.connect(sqlite_read_only_uri(_real(source)), uri=True)) as src,
         closing(sqlite3.connect(_real(target))) as dst,
     ):
         src.backup(dst, pages=128)
@@ -186,7 +193,7 @@ def _snapshot(source: Path, target: Path) -> None:
 
 def _head(path: Path) -> dict[str, Any]:
     """Verify the entire copied chain and return its actual head and final sequence."""
-    with closing(sqlite3.connect(_real(path).as_uri() + "?mode=ro", uri=True)) as con:
+    with closing(sqlite3.connect(sqlite_read_only_uri(_real(path)), uri=True)) as con:
         con.row_factory = sqlite3.Row
         stored = con.execute(
             "SELECT seq, head, chain_version FROM chain_head WHERE id = 1"
@@ -214,9 +221,9 @@ def _consistent(machine: Path) -> None:
     """A copied log must never name a snapshot newer than its copied catalog's newest: the
     catalog would be behind the log. A snapshot older than those the catalog keeps, expired by
     StorePort.maintain under the snapshot rule, is not missing."""
-    with closing(sqlite3.connect((machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)) as con:
+    with closing(sqlite3.connect(sqlite_read_only_uri(machine / "log.sqlite"), uri=True)) as con:
         con.execute(
-            "ATTACH DATABASE ? AS catalog", ((machine / "catalog.sqlite").as_uri() + "?mode=ro",)
+            "ATTACH DATABASE ? AS catalog", (sqlite_read_only_uri(machine / "catalog.sqlite"),)
         )
         absent = con.execute(
             "SELECT a.catalog_snapshot FROM admission a WHERE a.catalog_snapshot >"
@@ -250,7 +257,7 @@ def _unreadable(error: OSError) -> None:
 
 def _catalog_paths(catalog: Path) -> set[str]:
     """Resolve the copied catalog's paths at each file's creation snapshot, including history."""
-    with closing(sqlite3.connect(_real(catalog).as_uri() + "?mode=ro", uri=True)) as con:
+    with closing(sqlite3.connect(sqlite_read_only_uri(_real(catalog)), uri=True)) as con:
         bases = con.execute(
             "SELECT value FROM ducklake_metadata WHERE key='data_path' AND scope IS NULL"
         ).fetchall()
@@ -313,7 +320,7 @@ def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]
         _catalog_paths(machine / "catalog.sqlite")
     )
     with closing(
-        sqlite3.connect(_real(machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(sqlite_read_only_uri(_real(machine / "log.sqlite")), uri=True)
     ) as con:
         profiles = con.execute(
             "SELECT a.artifact_id,a.content_digest,a.body_state,d.name FROM artifact a "
@@ -326,8 +333,8 @@ def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]
                 {"kind": "array", "digest": digest} if kind == "array" else digest
             )
     collected = {name for name, _, state, _ in profiles if state == "collected"}
-    catalog = _real(machine / "catalog.sqlite").as_posix().replace("'", "''")
-    location = (_real(data).as_posix() + "/").replace("'", "''")
+    catalog = sql_path(_real(machine / "catalog.sqlite"))
+    location = sql_path(_real(data)) + "/"
     try:
         with closing(
             duckdb.connect(
@@ -408,7 +415,7 @@ def backup_data_root(root: Path, repository: Path) -> Path:
         _consistent(partial / "machine")
         files = _files(root, partial / "machine")
         with closing(
-            sqlite3.connect((partial / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True)
+            sqlite3.connect(sqlite_read_only_uri(partial / "machine/log.sqlite"), uri=True)
         ) as saved_log:
             copied = copy_files(
                 root, pool, files, read=lambda sql, args: saved_log.execute(sql, args).fetchall()
@@ -516,7 +523,7 @@ def verify_data_root(
         pool = generation.parent.parent / "files"
         with closing(
             sqlite3.connect(
-                _real(generation / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True
+                sqlite_read_only_uri(_real(generation / "machine/log.sqlite")), uri=True
             )
         ) as saved_log:
             for entry in manifest["files"]:
@@ -534,7 +541,7 @@ def verify_data_root(
                     "supply the recorded backup generation before resuming",
                 )
             path = _real(source.resolve() / "machine/log.sqlite")
-            with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as con:
+            with closing(sqlite3.connect(sqlite_read_only_uri(path), uri=True)) as con:
                 con.row_factory = sqlite3.Row
                 events = con.execute(
                     "SELECT * FROM event WHERE seq <= ? ORDER BY seq", (saved["seq"],)
@@ -591,7 +598,7 @@ def restore_data_root(generation: Path, target: Path) -> Path:
             _snapshot(generation / "machine" / database, partial / "machine" / database)
         with closing(
             sqlite3.connect(
-                _real(generation / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True
+                sqlite_read_only_uri(_real(generation / "machine/log.sqlite")), uri=True
             )
         ) as saved_log:
             copy_files(

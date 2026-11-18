@@ -1,12 +1,13 @@
-"""The backup's manifest and immutable-file decisions, without databases."""
+"""The backup's manifest, file pool and SQLite URI construction, without databases."""
 
 import json
+from pathlib import PureWindowsPath
 
 import pytest
 from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import backup
+from alphalattice.kernel.data_layer import backup, root
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
 HEAD = {"seq": 7, "head": "blake3:" + "a" * 64, "chain_version": 1}
@@ -95,3 +96,12 @@ def test_the_file_pool_reuses_a_sealed_name_and_copies_only_its_new_file(tmp_pat
     with pytest.raises(DataError, match="sealed") as refused:
         backup.copy_files(source, pool, [FILE | {"size": len(b"changed sealed name")}])
     assert refused.value.failure.code == "data_layer.backup_file_changed"
+
+
+@pytest.mark.proves("data_layer.backup_opens_read_only_sqlite_paths")
+@pytest.mark.parametrize("prefix", ["", "//?/"], ids=["ordinary-windows", "extended-windows"])
+def test_a_snapshot_addresses_its_source_with_a_read_only_file_uri(prefix):
+    uri = getattr(root, "sqlite_read_only_uri", None)
+    assert uri is not None
+    path = PureWindowsPath(prefix + "D:/backup folder/log #1.sqlite")
+    assert uri(path) == "file:///D:/backup%20folder/log%20%231.sqlite?mode=ro"
