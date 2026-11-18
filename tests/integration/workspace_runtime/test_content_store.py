@@ -1149,26 +1149,46 @@ def _aged(target: Path) -> None:
     os.utime(target, (target.stat().st_atime - 10, target.stat().st_mtime - 10))
 
 
+def _hashed(timing) -> int:
+    """How many sealed files the verifier hashed inside `timing`."""
+    return sum(row["count"] for row in timing.rows() if row["detail"] == "sealed_file")
+
+
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
 def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
     tmp_path: Path,
 ) -> None:
     """requirement: a reader's digest of a file modified within two seconds is not kept, since
-    a write in the same clock tick could leave its stamp; the writer's own digest is."""
+    a write in the same clock tick could leave its stamp; the writer's own digest is, and a
+    sealed file's is trusted only once its stat has settled."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
         facts.record_file_fact(target, "columns", "a" * 64)
         assert facts.file_fact(target, "columns") is None
         facts.record_file_fact(target, "columns", "a" * 64, written=True)
         assert facts.file_fact(target, "columns") == "a" * 64
+        sealed = hashlib.sha256(b"one").hexdigest()
+        facts.record_sealed_file(target, sealed)
+        stat = target.stat()
+        target.write_bytes(b"two")  # same size, in the same tick as far as its stat says
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert not facts.sealed_file_holds(target, sealed)
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
 def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
     tmp_path: Path,
 ) -> None:
-    """requirement: a digest verified once is kept for the next process of the workspace."""
+    """requirement: a digest verified once is kept for the next process of the workspace, and
+    a sealed file's writer's digest lets that process read it with no hash."""
     with _kept_facts(tmp_path) as (facts, workspace, target):
         _aged(target)
+        sealed = hashlib.sha256(b"one").hexdigest()
+        facts.record_sealed_file(target, sealed)
+        facts.release_file_facts(workspace)
+        facts.keep_file_facts(workspace)  # the next process: only the writer's journal
+        with collect() as timing:
+            assert facts.sealed_file_holds(target, sealed)
+        assert _hashed(timing) == 0
         # A legacy metadata-only fact is readable but never used as a byte proof.
         stat = target.stat()
         journal = workspace / facts.FILE_FACTS
@@ -1221,7 +1241,9 @@ def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
 def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None:
-    """tamper: a file rewritten in place, same size, loses its fact and is digested again."""
+    """tamper: a file rewritten in place, same size, loses its fact and is digested again; a
+    sealed file's read hashes it again once its stat changed, and only full proof refuses a
+    rewrite whose stat was put back."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
         _aged(target)
         digest = hashlib.file_digest
@@ -1262,6 +1284,20 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
         os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
         assert facts.file_fact(target, "columns") is None
         assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
+        sealed = hashlib.sha256(b"two").hexdigest()
+        _aged(target)
+        facts.record_sealed_file(target, sealed)
+        aged = target.stat()
+        target.write_bytes(b"TWO")
+        with collect() as timing:
+            assert not facts.sealed_file_holds(target, sealed)  # its stat changed: hashed
+        assert _hashed(timing) == 1
+        os.utime(target, ns=(aged.st_atime_ns, aged.st_mtime_ns))
+        assert facts.sealed_file_holds(target, sealed)  # stat put back: trusted, as git does
+        with facts.full_content_proof():
+            assert not facts.sealed_file_holds(target, sealed)
+        target.write_bytes(b"two")
+        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
         # Even a forced index collision cannot match a different full content key.
         monkeypatch.setattr(facts.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
         facts.record_file_fact(target, "columns", "b" * 64, written=True)

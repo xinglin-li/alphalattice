@@ -13,6 +13,12 @@
   A writer's own digest can be kept immediately. Deliberately restoring timestamps is outside the
   accidental-change model.
 
+- A **sealed file** is checked once, at write, in git's index form: its writer records the
+  SHA-256 of the bytes it wrote with the file's identity stat (size, modification time, file
+  id), and a read takes that digest while the stat holds, hashing the file again only once the
+  stat changed. Inside ``full_content_proof()`` (an entry, an export, the scrub: LAWS.md EV2)
+  every sealed file is proved from its bytes.
+
 A missing fact only costs the full computation: both records are rebuildable caches, and a
 store that predates the year-fact table holds none until its first writer creates it.
 """
@@ -26,7 +32,9 @@ import os
 import time
 import weakref
 from _thread import LockType
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from ctypes import wintypes
 from pathlib import Path
 from threading import Lock
@@ -43,6 +51,12 @@ if os.name == "nt":
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 _CONTENT_KIND = "\x00content-v1:"
 _STAMP_KIND = "\x00file-stamp-v1:"
+_SEALED = "sealed-sha256"
+"""A sealed file's fact: this path holds the bytes of this SHA-256 while its stat holds."""
+_FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+    "content_store_full_proof", default=None
+)
+"""Open inside ``full_content_proof()``: what a proof has shown, shared by its reads."""
 RACY_SECONDS = 2.0
 """How old the newest modification or change time must be before a digest is kept."""
 
@@ -316,6 +330,64 @@ def _read_digest(path: Path, *, settle: bool = False) -> str:
         with span("verify", "file_stamp_unsettled"):
             pass
     return digest
+
+
+@contextmanager
+def full_content_proof() -> Iterator[None]:
+    """Prove every sealed file read inside from its bytes, answering nothing kept before.
+
+    The edges open it (LAWS.md EV2): an export, a publication, a stage's check of what it just
+    wrote, and the scrub. What it proves is shared inside it, so each sealed value is proved once
+    per proof; a nested proof joins the outer one. Kept values stay kept for ordinary reads.
+    """
+    if _FULL_PROOF.get() is not None:
+        yield
+        return
+    token = _FULL_PROOF.set({})
+    try:
+        yield
+    finally:
+        _FULL_PROOF.reset(token)
+
+
+def full_proof() -> bool:
+    """Whether a read proves its sealed bytes now: inside ``full_content_proof()``."""
+    return _FULL_PROOF.get() is not None
+
+
+def sealed_file_holds(path: Path, sha256: str) -> bool:
+    """Whether `path` holds the bytes whose SHA-256 is `sha256`, checked once (git's index).
+
+    An ordinary read takes the digest its writer recorded, or an earlier read proved, while the
+    file's identity stat holds, and hashes the file only when there is none or the stat changed;
+    inside ``full_content_proof()`` the bytes are always hashed. As git does with a racily clean
+    entry, a stat whose modification time is not yet settled is hashed: a rewrite of the same
+    size within one clock tick would leave it unchanged. False for a missing, unreadable or
+    different file.
+    """
+    if not full_proof():
+        entries, key = _place(path, _content_kind(_SEALED, sha256))
+        with _LOCK:
+            held = entries.get(key)
+        settled = held is not None and time.time_ns() - held[0][1] > RACY_SECONDS * 10**9
+        if settled and held is not None and _holds(path, held):
+            return True
+    try:
+        before = os.stat(path)
+        with span("hash", "sealed_file"):
+            digest = _content_sha256(path)
+    except OSError:
+        return False
+    if digest != sha256:
+        return False
+    record_file_fact(path, _SEALED, sha256, stat=before, _content=sha256)
+    return True
+
+
+def record_sealed_file(path: Path, sha256: str) -> None:
+    """Record, as its writer, that `path` now holds the bytes it wrote, whose SHA-256 is `sha256`,
+    so no read hashes them again while the file's stat holds."""
+    record_file_fact(path, _SEALED, sha256, written=True, _content=sha256)
 
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:

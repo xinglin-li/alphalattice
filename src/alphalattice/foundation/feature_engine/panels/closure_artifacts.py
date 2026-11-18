@@ -17,6 +17,10 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import (
+    record_sealed_file,
+    sealed_file_holds,
+)
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
 from alphalattice.kernel.shared_kernel.persistence import (
     DURABLE_REPLACE_DELAYS,
@@ -182,6 +186,7 @@ class PanelClosureArtifactStore:
                 staged.unlink(missing_ok=True)
         self._validate_parquet(target, content_hash=content_hash, kind=kind)
         physical = hashlib.sha256(target.read_bytes()).hexdigest()
+        record_sealed_file(target, physical)  # checked here once; reads take it by its stat
         return ClosureArtifactRef(
             kind=kind,
             content_hash=content_hash,
@@ -192,13 +197,14 @@ class PanelClosureArtifactStore:
         )
 
     def load_parquet(self, *, category: str, reference: ClosureArtifactRef) -> pa.Table:
-        """Verify a Parquet reference and load its table."""
+        """Verify a Parquet reference and load its table: its bytes are the digest its writer
+        recorded while the file's stat holds, hashed again only after a change or in full proof."""
         expected_uri = self._uri(category, reference.content_hash)
         if reference.uri != expected_uri:
             raise ValueError("closure Parquet URI does not match its content hash")
         target = self._path(category, reference.content_hash, ".parquet")
         self._validate_parquet(target, content_hash=reference.content_hash, kind=reference.kind)
-        if hashlib.sha256(target.read_bytes()).hexdigest() != reference.physical_sha256:
+        if not sealed_file_holds(target, reference.physical_sha256):
             raise ValueError("closure Parquet physical hash does not match its reference")
         if target.stat().st_size != reference.byte_count:
             raise ValueError("closure Parquet byte count does not match its reference")

@@ -20,6 +20,10 @@ from numpy.typing import NDArray
 
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
+from alphalattice.control.workspace_runtime.verified_facts import (
+    record_sealed_file,
+    sealed_file_holds,
+)
 from alphalattice.foundation.causal_outcomes.execution.compile import execution_session_status
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -297,11 +301,12 @@ class TradabilityArtifactStore:
         target = self._path(f"{surface_kind.lower()}/chunks", content_hash, "parquet")
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            if target.read_bytes() != content:
+            if not sealed_file_holds(target, payload_sha256):
                 raise TradabilitySurfaceError("data_tradability.chunk_identity_reused")
         else:
             self._capacity(len(content))
             self._atomic_write(target, content)
+            record_sealed_file(target, payload_sha256)  # checked once; reads take it by its stat
         return TradabilitySurfaceChunk(
             surface_kind=surface_kind,
             formation_sessions=sessions,
@@ -313,7 +318,9 @@ class TradabilityArtifactStore:
         )
 
     def resolve_chunk(self, chunk: TradabilitySurfaceChunk) -> Path:
-        """Resolve a chunk only after verifying its URI, payload bytes, metadata and rows.
+        """Resolve a chunk only after verifying its URI, payload bytes, metadata and rows; the
+        bytes are the digest recorded at write while the file's stat holds (hashed again only after
+        a change, or in full proof).
 
         Args:
             chunk: Typed immutable chunk reference requested by a consumer.
@@ -329,10 +336,7 @@ class TradabilityArtifactStore:
         if chunk.uri != self.uri(category, chunk.content_hash):
             raise TradabilitySurfaceError("data_tradability.chunk_uri_invalid")
         path = self._path(category, chunk.content_hash, "parquet")
-        if (
-            not path.is_file()
-            or hashlib.sha256(path.read_bytes()).hexdigest() != chunk.payload_sha256
-        ):
+        if not sealed_file_holds(path, chunk.payload_sha256):
             raise TradabilitySurfaceError("data_tradability.chunk_tampered")
         parquet = pq.ParquetFile(path)
         metadata = parquet.schema_arrow.metadata or {}

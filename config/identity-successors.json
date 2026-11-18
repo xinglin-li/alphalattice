@@ -16290,6 +16290,125 @@
    "successor": "f8ebe2a10e346e3cdc7edb13ac01de60f1ef00608023098d863824e919f7900b",
    "change": "Panel chunks are refilled and evicted only when proven",
    "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "80991e3db0e517a769e4e5f81b6e8a545b7dd3e52943caf5612bc257bddddba2",
+   "successor": "0afb931c2133d280cf07ece4e0fa0db18712d80dead54f1f423cdeab8c048eae",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f54cff3e02d31f78c5160b6c464d1ac009c901f59b03ff59364959da869629ef",
+   "successor": "9abe488c480a37c0ef060305347aeee18e4010623af545b8787e0d108fb0a6ec",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0e030a895fd840f2096c21ec45d8090ad562800e822a613f13579480d5977a21",
+   "successor": "a418a49f0636ba90554dc4458505bacea5b54a2eebe9704417f0767d884c5349",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "dee739137238c0ed6b9128faefb257ec1c4d0bfff6b0da133071ade0fb6a4915",
+   "successor": "232a2b3dc9fb73f7e91febcf081b74c62bd6b2500535e238ab844d85d87c8a30",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "9e9e1420f501c2a981ab670b02e53f1521c92377985c0d9d7f886be8a8fd5017",
+   "successor": "7f5f00515de491605d8aecc872fb9e1393d69e0f45ead5bdf23cf1af49316cbf",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "80a64f0aa59765bf4d684dee89f3d43521157f1dc8b84786e15052b6e811d957",
+   "successor": "ab45e9ba656dc8941761d21241da863336f40eaff97b2124db51f8b65c30ab7c",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "9f29d4ac726df6a2a36006e881ca2702ff087a16793575ea7e79888a69de44ff",
+   "successor": "4999c19effdb57937f3fd9d9d94cd050a2bb46cc380754858a0c1058671e87d4",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d49abfe34118039e92920fd2cef9781d0422e39ebf2bf63b79f8f0a0e1bf15c4",
+   "successor": "085d6c87e1ce0664a01f433b502ad33470b7526dd4efc32571dd2c27bcd4cdea",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ae39b76e64906cc7e9597a1f77da1d0f8e3a4abe596ecc415aed3a3014ecb16a",
+   "successor": "cc81430425416fed8ce199febb09ca1bda260534547c4624e8464bed050b0a3e",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "df9cdf6939dd3a53c1a5d8bb76039182b5dd959e30efdbc0273b1a6dbc682ff0",
+   "successor": "dd8a80cee63d50dd26ae892e42eeaca064bb33efefffacd684b42cb3a48304de",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b2139298f18f6783c3b4c8b8c4b2fc9da0875f86b317733bd92bab9ce02eea9a",
+   "successor": "19e88c551a68b554b23d8650e0065dc1b31b1edbbc91c588d670a6e47dc6db4e",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f681d0b9618d5ace7752ab7a8190ebe6424b37cbb82dcc74862129bc4a4c73f6",
+   "successor": "95ead64a018af9ffda1430a920a34c71a4670a79573676a7c4b7e8213b8ab9d9",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e5a6a232911e0eb8ef209b0f4efa5f18560ff6f4fb55611989049c7f3e44ad1b",
+   "successor": "b8996ac00ff389a5c171c97640a7db94e151a0b610789b2ca492be3571d4221c",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "successor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "successor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "ac60092af70439946eeefb304b0bc86669cbb90bc18fbe32efec772a7ba87858",
+   "successor": "2fb4f291556743cd980362cd3657b745bf22c0475674fe82c4cc47ed4678b9aa",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "dc2c33ad822e6a68751552d96b9fe5a18862205bca4a734aaf789d6c843861c0",
+   "successor": "896124f34f8b5a42e2b9ae85b6d48f85e4444c4aa7cd08745a968f4b29768c7d",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
   }
  ]
 }

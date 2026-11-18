@@ -1462,19 +1462,15 @@ class AlphaDevelopmentArtifactStore:
             payload = self._lanes.load_packed_bytes(
                 category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, content_hash=artifact.payload_hash
             )
-            dtype = np.dtype(artifact.dtype)
-            if (
-                sha256(payload).hexdigest() != artifact.payload_hash
-                or len(payload) != int(np.prod(artifact.shape, dtype=np.int64)) * dtype.itemsize
-            ):
+            dtype = np.dtype(artifact.dtype)  # the store proves the payload's digest at the edges
+            if len(payload) != int(np.prod(artifact.shape, dtype=np.int64)) * dtype.itemsize:
                 raise ValueError("value artifact payload mismatch")
             values: npt.NDArray[np.float64] = np.frombuffer(payload, dtype=dtype).reshape(
                 artifact.shape
             )
-            if (
-                not np.isfinite(values).all()
-                or score_values_identity(values) != artifact.values_identity
-            ):
+            if not np.isfinite(values).all() or (
+                full_proof() and score_values_identity(values) != artifact.values_identity
+            ):  # the values' digest is proved with the payload's, at the edges (EV2)
                 raise ValueError("value artifact numerical identity mismatch")
             values.setflags(write=False)
             return binding, artifact, values
@@ -1520,8 +1516,7 @@ class AlphaDevelopmentArtifactStore:
                 artifact.binding_hash != binding_hash
                 or artifact.shape != expected_shape
                 or artifact.values_identity != binding.values_identity
-                or len(payload) != expected_bytes
-                or sha256(payload).hexdigest() != artifact.payload_hash
+                or len(payload) != expected_bytes  # its digest is the store's to prove (EV2)
             ):
                 raise ValueError("value artifact metadata mismatch")
             return binding, artifact, len(payload)

@@ -48,8 +48,11 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.verified_facts import (
+    _FULL_PROOF,
     _content_sha256,
     file_fact,
+    full_content_proof,
+    full_proof,
     record_file_fact,
 )
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
@@ -71,9 +74,6 @@ _VERIFIED_ARRAY_SCOPE: ContextVar[OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object,
 )
 _VERIFIED_SOURCE_BUILD: ContextVar[bool] = ContextVar(
     "content_store_verified_source_build", default=False
-)
-_FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
-    "content_store_full_proof", default=None
 )
 _VERIFIED_ARRAY_CACHE: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object, int]] = OrderedDict()
 _VERIFIED_ARRAY_CACHE_BYTES = 0
@@ -97,24 +97,6 @@ _VERIFIED_PROOF_CACHE: OrderedDict[tuple[object, ...], None] = OrderedDict()
 _VERIFIED_PROOF_CACHE_LOCK = Lock()
 
 
-@contextmanager
-def full_content_proof() -> Iterator[None]:
-    """Prove every sealed file read inside from its bytes, answering nothing kept before.
-
-    The edges open it (LAWS.md EV2): an export, a publication, a stage's check of what it just
-    wrote, and the scrub. What it proves is shared inside it, so each sealed value is proved once
-    per proof; a nested proof joins the outer one. Kept values stay kept for ordinary reads.
-    """
-    if _FULL_PROOF.get() is not None:
-        yield
-        return
-    token = _FULL_PROOF.set({})
-    try:
-        yield
-    finally:
-        _FULL_PROOF.reset(token)
-
-
 def at_the_edge[**P, R](read: Callable[P, R]) -> Callable[P, R]:
     """`read` as an edge: each call runs inside ``full_content_proof()``, so what it reports as
     verified is proved from the bytes on disk, never from a value an earlier read kept."""
@@ -125,11 +107,6 @@ def at_the_edge[**P, R](read: Callable[P, R]) -> Callable[P, R]:
             return read(*args, **kwargs)
 
     return proved
-
-
-def full_proof() -> bool:
-    """Whether a read proves its sealed bytes now: inside ``full_content_proof()``."""
-    return _FULL_PROOF.get() is not None
 
 
 @contextmanager
