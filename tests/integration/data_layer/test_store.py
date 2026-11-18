@@ -12,6 +12,7 @@ import sys
 import uuid
 from contextlib import closing
 from datetime import date
+from functools import partial
 from pathlib import Path
 from time import perf_counter
 
@@ -566,6 +567,81 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     assert recorded == sorted(set(recorded))
     assert seen == [(0, None), (3, 1.0), (3, 2.0)]
     assert replaced == [(correction.admission_id,)]
+
+
+FEATURES = storeport.feature_table(definition_id("feature_set", "desktop"))
+
+
+def factors(digest: str, *names: str, days=("2024-01-02", "2024-01-03")) -> pa.Table:
+    """A feature set's derived rows of two listings on `days`, one column per factor."""
+    rows = [
+        {"recipe_key": "r1", "input_digest": digest, "listing_id": listing, "session_date": day}
+        | {name: 0.5 for name in names}
+        for listing in (LISTING, MOVED)
+        for day in days
+    ]
+    return arrow(rows)  # the catalog casts each listing's UUID and each session's DATE
+
+
+def parts(digest: str, days=("2024-01-02", "2024-01-03")) -> pa.Table:
+    """The partitions `factors` fills on `days`, each listing's year, under `digest`."""
+    named = [f"{day[:4]}/{listing}" for listing in (LISTING, MOVED) for day in sorted(set(days))]
+    named = list(dict.fromkeys(named))
+    return pa.table({"part": named, "input_digest": [digest] * len(named)})
+
+
+def roots(*tables: pa.Table) -> list[tuple[str, str, str]]:
+    """Recipe r1's roots of the partitions in `tables`."""
+    return [("r1", row["part"], row["input_digest"]) for t in tables for row in t.to_pylist()]
+
+
+@pytest.mark.proves("data_layer.storeport_writes_each_derived_partition_once")
+def test_a_derived_partition_is_written_once_and_valid_only_for_its_inputs(root):
+    """StorePort writes each derived partition once, valid for its inputs alone, and keeps it
+    while a workspace roots it."""
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        derive = partial(port.derive, FEATURES, recipe_key="r1", compute_ms=5)
+        written = [derive(factors("d1", "momentum"), parts=parts("d1"))]
+        written.append(derive(factors("d1", "momentum"), parts=parts("d1")))  # held already
+        day = ("2024-01-04",)  # other inputs, and a column the table widens by
+        written.append(derive(factors("d3", "momentum", "value", days=day), parts=parts("d3", day)))
+        late = ("2023-12-29",)
+        written.append(derive(factors("d1", "momentum", days=late), parts=parts("d1", late)))
+        recomputed = factors("d2", "momentum").append_column("row_hash", pa.array(["h"] * 4))
+        written.append(derive(recomputed, parts=parts("d2"), rooted_by="w1"))  # beside d1's
+        log.rooted("w2", FEATURES, roots(parts("d1"), parts("d3", day), parts("d1", late)))
+        kept = roots(parts("d1", late))
+        dropped = log.rooted("w2", FEATURES, kept, exactly=True)  # w2 reads 2024 no more
+        collected = port.collect(FEATURES)
+        rooted = log.read(
+            "SELECT workspace_id, input_digest FROM cache_root WHERE part = ?", (f"2024/{LISTING}",)
+        )
+        held = port.lake.execute(
+            f"SELECT count(*), count(value), count(DISTINCT year(session_date)),"
+            f" count(*) FILTER (WHERE input_digest = 'd2'), any_value(typeof(row_hash))"
+            f" FROM lake.derived.{FEATURES}"
+        ).fetchall()[0]
+        hits = [log.cache_hit(FEATURES, "r1", f"2024/{LISTING}", d) for d in ("d1", "d2")]
+        hits.append(log.cache_hit(FEATURES, "r1", f"2023/{LISTING}", "d1"))
+        hits.append(log.cache_hit("factor_cov", "r1", f"2024/{LISTING}", "d2"))  # another table
+        refused = []
+        for table, rows, named in (
+            ("feature_values", factors("d1", "momentum"), parts("d1")),
+            (FEATURES, factors("d1", "momentum"), parts("d2")),
+            (FEATURES, factors("d1", "momentum", days=("2023-12-29", "2024-01-02")), parts("d1")),
+        ):
+            with pytest.raises(DataError) as error:
+                port.derive(table, rows, recipe_key="r1", parts=named, compute_ms=1)
+            refused.append(error.value.failure.code)
+        owed = repair(log, port.lake)  # a derived commit owes no event
+        port.close()
+    assert written == [4, 0, 2, 2, 4] and (dropped, collected) == (4, 6) and owed == []
+    assert [tuple(row) for row in rooted] == [("w1", "d2")]  # derive rooted it under the writer
+    assert held == (6, 0, 2, 4, "VARCHAR")  # d2's 2024 and d1's rooted 2023 alone
+    assert hits == [False, True, True, False]  # the rooted inputs, its table alone
+    mixed = ["data_layer.derived_rows_mixed"] * 2
+    assert refused == ["data_layer.derived_table_not_admitted", *mixed]
 
 
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")

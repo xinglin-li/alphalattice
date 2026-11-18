@@ -91,6 +91,28 @@ RESULTS_KEYS: Final = {"execution_outcome": ("artifact_id", "listing_id", "forma
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
 outside provider: its admission names no provider and lists the artifacts it holds."""
+DERIVED_KEYS: Final = {
+    "feature_set_": ("recipe_key", "input_digest", "session_date", "listing_id"),
+    "training_sample": ("recipe_key", "input_digest", "row_no"),
+    "factor_cov": ("recipe_key", "input_digest", "as_of", "factor_i", "factor_j"),
+    "factor_loading": ("recipe_key", "input_digest", "as_of", "listing_id", "factor"),
+    "specific_risk": ("recipe_key", "input_digest", "as_of", "listing_id"),
+}
+"""The derived caches StorePort admits, with their keys: a feature set's table by its prefix
+(feature_table). A cache is rebuildable and no row references it, so its key may hold a digest;
+its rows are written only by `StorePort.derive`, and the log's cache_entry says which are valid."""
+DERIVED_PARTS: Final = {
+    "feature_set_": (
+        "CAST(year(CAST(session_date AS DATE)) AS VARCHAR) || '/' || CAST(listing_id AS VARCHAR)"
+    ),
+    "training_sample": "CAST(year(CAST(session_date AS DATE)) AS VARCHAR)",
+    "factor_cov": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
+    "factor_loading": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
+    "specific_risk": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
+}
+"""Each derived table's partition of a row, as cache_entry's `part` names it: a year, a year and
+listing (a feature set's: the unit a build's batch writes and a day's append touches), or an as-of
+date."""
 LEGACY_VALID: Final = {
     "listing": ("last_session", "first_session"),
     "provider_symbol": ("valid_to", "valid_from"),
@@ -314,6 +336,178 @@ class StorePort:
                 (staged.admission_id,),
             )
             return Committed(int(found[0][0]), count, dropped, rewritten)
+
+    def derive(
+        self,
+        table: str,
+        rows: Any,
+        *,
+        recipe_key: str,
+        parts: Any,
+        compute_ms: int,
+        rooted_by: str | None = None,
+    ) -> int:
+        """Write derived partitions of `table`, computed by `recipe_key`, as one catalog snapshot,
+        and record each valid in the log's cache_entry; the rows written. `parts` holds, as Arrow
+        columns (part, input_digest), each partition the rows fill and the digest of what it was
+        computed from: one partition, or a build's batch of them. A feature set's table is made,
+        partitioned by year(session_date), and widened by a factor column, from the rows. A
+        partition is written whole, so one already held under its digest is not written again:
+        a repeated partition adds nothing, and workspaces whose partition has one digest share
+        its rows. Refused by name: a table StorePort does not
+        derive, and rows of another recipe, or of a partition or inputs `parts` does not name,
+        which a cache entry would otherwise certify. `rooted_by` names the workspace whose reads
+        take the partitions: they are rooted, and the root made durable, while the catalog's
+        writer is still held, so no collection can see them unrooted."""
+        family = "feature_set_" if table.startswith("feature_set_") else table
+        key = DERIVED_KEYS.get(family)
+        if key is None:
+            raise DataError(
+                f"{table} is not a derived table StorePort writes; it writes"
+                f" {', '.join(DERIVED_KEYS)}",
+                code="data_layer.derived_table_not_admitted",
+            )
+        target, run, part = f"lake.derived.{table}", self.lake.execute, DERIVED_PARTS[family]
+        with self._writer:
+            self.lake.register("deriving_rows", rows)
+            self.lake.register("deriving_parts", parts)
+            try:
+                named = run(
+                    "SELECT count(*), count(*) FILTER (WHERE n.recipe_key = ? AND EXISTS (SELECT 1"
+                    f" FROM deriving_parts p WHERE p.part = {part} AND p.input_digest ="
+                    " n.input_digest)) FROM deriving_rows n",
+                    (recipe_key,),
+                ).fetchall()[0]
+                if named[0] != named[1]:
+                    raise DataError(
+                        f"{named[0] - named[1]} rows name another recipe, partition or inputs"
+                        " than those derived; derive each recipe's partitions as they name",
+                        code="data_layer.derived_rows_mixed",
+                    )
+                if table.startswith("feature_set_"):
+                    self._feature_set(table, target)
+                held = f"SELECT DISTINCT recipe_key, {part} AS part, input_digest FROM {target}"
+                held += " WHERE input_digest IN (SELECT input_digest FROM deriving_parts)"
+                fresh = f"SELECT n.* FROM deriving_rows n WHERE NOT EXISTS (SELECT 1 FROM ({held})"
+                fresh += " h WHERE h.recipe_key = n.recipe_key AND h.input_digest = n.input_digest"
+                fresh += f" AND h.part = {part})"
+                count = run(f"SELECT count(*) FROM ({fresh})").fetchall()[0][0]
+                if count:
+                    run("BEGIN").complete()
+                    try:
+                        info = {"table": table, "recipe_key": recipe_key, "rows": count}
+                        info |= {"parts": len(parts)}
+                        run(
+                            "CALL lake.set_commit_message('host', 'derived', extra_info => ?)",
+                            (canonical(info).decode(),),
+                        ).complete()
+                        run(
+                            f"INSERT INTO {target} BY NAME {fresh} ORDER BY {', '.join(key)}"
+                        ).complete()
+                        run("COMMIT").complete()
+                    except BaseException:
+                        run("ROLLBACK").complete()
+                        raise
+                filled = run(
+                    f"SELECT {part}, input_digest, count(*) FROM deriving_rows GROUP BY ALL"
+                ).fetchall()
+            finally:
+                self.lake.unregister("deriving_rows")
+                self.lake.unregister("deriving_parts")
+            share = int(getattr(rows, "nbytes", 0)) / max(len(rows), 1)
+            for name, digest, held in filled:
+                self.log.cached(
+                    table,
+                    recipe_key,
+                    name,
+                    digest,
+                    rows=held,
+                    size_bytes=round(share * held),
+                    compute_ms=compute_ms,
+                )
+            if rooted_by is not None:
+                self.log.rooted(rooted_by, table, [(recipe_key, n, d) for n, d, _ in filled])
+                self.log.flush()
+        return count
+
+    def collect(self, table: str) -> int:
+        """Drop a derived table's partitions whose cache entries no workspace roots (the log's
+        cache_root), as one catalog snapshot, and those entries: a cache holds no fact, so a
+        partition no workspace reads goes. The rows dropped."""
+        import pyarrow as pa  # lazy: the optional data extra, as DuckDB
+
+        family = "feature_set_" if table.startswith("feature_set_") else table
+        target, run = f"lake.derived.{table}", self.lake.execute
+        with self._writer:
+            held = run(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
+                " AND schema_name = 'derived' AND table_name = ?",
+                (table,),
+            ).fetchall()
+            if not held:
+                return 0
+            found = self.log.read(
+                "SELECT recipe_key, part, input_digest FROM cache_entry e WHERE derived_table = ?"
+                " AND NOT EXISTS (SELECT 1 FROM cache_root r WHERE r.derived_table ="
+                " e.derived_table AND r.recipe_key = e.recipe_key AND r.part = e.part"
+                " AND r.input_digest = e.input_digest)",
+                (table,),
+            )
+            if not found:
+                return 0
+            parts = pa.table(
+                {
+                    name: pa.array([row[at] for row in found], pa.string())
+                    for at, name in enumerate(("recipe_key", "part", "input_digest"))
+                }
+            )
+            unrooted = (
+                "EXISTS (SELECT 1 FROM collect_parts c WHERE c.recipe_key = t.recipe_key"
+                f" AND c.input_digest = t.input_digest AND c.part = {DERIVED_PARTS[family]})"
+            )
+            self.lake.register("collect_parts", parts)
+            try:
+                count = run(f"SELECT count(*) FROM {target} t WHERE {unrooted}").fetchall()[0][0]
+                if count:
+                    run("BEGIN").complete()
+                    try:
+                        info = canonical({"table": table, "collected": count}).decode()
+                        run(
+                            "CALL lake.set_commit_message('host', 'derived', extra_info => ?)",
+                            (info,),
+                        ).complete()
+                        run(f"DELETE FROM {target} t WHERE {unrooted}").complete()
+                        run("COMMIT").complete()
+                    except BaseException:
+                        run("ROLLBACK").complete()
+                        raise
+            finally:
+                self.lake.unregister("collect_parts")
+            self.log.collect_cached(table)
+        return count
+
+    def _feature_set(self, table: str, target: str) -> None:
+        """A feature set's wide table as catalog.sql declares it, made on its first partition and
+        given a column for each one the rows bring that it does not hold yet, typed as the rows
+        type it: a DOUBLE per factor, and the lineage the build stamps on each row."""
+        run = self.lake.execute
+        if not run(
+            "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake' AND schema_name = 'derived'"
+            " AND table_name = ?",
+            (table,),
+        ).fetchall():
+            run(
+                f"CREATE TABLE {target} (recipe_key VARCHAR NOT NULL,"
+                " input_digest VARCHAR NOT NULL, listing_id UUID NOT NULL,"
+                " session_date DATE NOT NULL)"
+            ).complete()
+            run(f"ALTER TABLE {target} SET PARTITIONED BY (year(session_date))").complete()
+        held = {row[0] for row in run(f"DESCRIBE {target}").fetchall()}
+        for column, kind in run(
+            "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM deriving_rows)"
+        ).fetchall():
+            if column not in held:
+                run(f'ALTER TABLE {target} ADD COLUMN "{column}" {kind}').complete()
 
     def close(self) -> None:
         """Close the Host's DuckDB session; the log is the caller's."""
@@ -833,11 +1027,13 @@ def repair(log: HostLog, lake: Any) -> list[str]:
 
     An owed event keeps every field its writer made, its id, version, workspace, actor, trace and
     time included; only its recording time is new, after the moment it carries, and its
-    attributes name the snapshot. Running it again adds none.
+    attributes name the snapshot. Running it again adds none. Only an admission's commit owes an
+    event; a derived write's commit info only describes its rows.
     """
     carried = lake.execute(
         "SELECT snapshot_id, commit_extra_info FROM lake.snapshots()"
-        " WHERE commit_extra_info IS NOT NULL ORDER BY snapshot_id"
+        " WHERE commit_message = 'admission' AND commit_extra_info IS NOT NULL"
+        " ORDER BY snapshot_id"
     ).fetchall()
     added = []
     for snapshot, info in carried:

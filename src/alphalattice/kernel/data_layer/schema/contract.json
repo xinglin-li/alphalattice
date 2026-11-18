@@ -566,12 +566,14 @@
    "home": "cache",
    "key": [
     "recipe_key",
+    "derived_table",
     "part",
     "input_digest"
    ],
    "id": {
     "recipe_key": "link",
-    "part": "standard: a year, or an as-of date",
+    "derived_table": "standard: its table in the catalog's derived schema",
+    "part": "standard: a year, a year and listing, or an as-of date",
     "input_digest": "content: a cached partition is valid for exactly the rows it read"
    },
    "links": [
@@ -581,6 +583,27 @@
     "computed_us": "utc_us",
     "last_read_us": "utc_us"
    }
+  },
+  "log.cache_root": {
+   "home": "cache",
+   "key": [
+    "derived_table",
+    "recipe_key",
+    "part",
+    "input_digest",
+    "workspace_id"
+   ],
+   "id": {
+    "derived_table": "standard: its table in the catalog's derived schema",
+    "recipe_key": "link",
+    "part": "standard: a year, a year and listing, or an as-of date",
+    "input_digest": "content: the cached partition the workspace's reads take",
+    "workspace_id": "link"
+   },
+   "links": [
+    "workspace_id",
+    "recipe_key"
+   ]
   },
   "log.chain_checkpoint": {
    "home": "log",

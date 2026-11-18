@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections.abc import Callable, Iterable
+import struct
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any, Final
 
@@ -127,6 +128,51 @@ def recipe_key(method_id: str, version: int, params: Any, upstream: Iterable[str
     """An action's identity: its method's lineage and version, its parameters, the recipes it
     reads; never a name, so a renamed method keeps every recipe's key."""
     return digest(canonical([method_id, version, params, sorted(upstream)]))
+
+
+INPUT_ENCODING: Final = 1
+"""The version of input_digest's binary form; a change to the form is a new version."""
+
+
+def input_digest(
+    con: sqlite3.Connection, depends: Mapping[str, Iterable[str]], cutoff_us: int
+) -> str:
+    """Whether a cached partition is still valid: BLAKE3 over INPUT_ENCODING's form of the
+    admissions of each dataset it depends on whose rows in its parts (`depends`: a dataset and its
+    parts, 'all' for an unpartitioned one) are visible at `cutoff_us`, the cutoff itself when it
+    falls inside one of their knowledge ranges, else their latest knowledge time, and their lag-rule
+    versions. It reads the admissions' `parts`, never the data: a correction, which is a new
+    admission, changes the digest of exactly the parts it touched, and a later admission never
+    reaches an earlier cutoff's digest."""
+    wanted = {dataset: set(parts) for dataset, parts in depends.items()}
+    found = con.execute(
+        "SELECT a.admission_id, a.dataset, a.parts, json_extract(e.attrs, '$.lag_rule'),"
+        " json_extract(e.attrs, '$.lag_rule_version') FROM admission a JOIN event e"
+        " ON e.seq = a.admission_seq"
+    ).fetchall()
+    rows, ranges = [], []
+    for admission, dataset, parts, rule, version in found:
+        seen = [
+            (p["part"], p["min_known_asof_us"], p["max_known_asof_us"])
+            for p in json.loads(parts or "[]")
+            if p["part"] in wanted.get(dataset, ()) and p["min_known_asof_us"] <= cutoff_us
+        ]
+        if seen:
+            rows.append((admission, dataset, rule or "", int(version or 0)))
+            ranges += [(low, high) for _, low, high in seen]
+    rows.sort()  # one order whatever the log's: by admission id
+    inside = any(low <= cutoff_us <= high for low, high in ranges)
+    effective = cutoff_us if inside or not ranges else max(high for _, high in ranges)
+    data = bytearray([INPUT_ENCODING]) + struct.pack(">qI", effective, len(rows))
+    for row in rows:  # column by column within each admission: its id, dataset, lag rule, version
+        for text in row[:3]:
+            data += _sized(str(text).encode())
+        data += struct.pack(">q", row[3])
+    return digest(bytes(data))
+
+
+def _sized(data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + data
 
 
 def definition_id(family: str, name: str) -> str:

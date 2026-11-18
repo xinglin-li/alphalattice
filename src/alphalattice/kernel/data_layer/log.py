@@ -32,7 +32,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
@@ -324,6 +324,82 @@ class HostLog:
         """Forget a queued file once it is gone."""
         with self._guard:
             self._con.execute("DELETE FROM deletion_queue WHERE handle = ?", (handle,))
+
+    def cached(
+        self,
+        table: str,
+        recipe_key: str,
+        part: str,
+        input_digest: str,
+        *,
+        rows: int,
+        size_bytes: int,
+        compute_ms: int,
+    ) -> None:
+        """Record a derived partition of `table` written for these inputs; `cache_entry` is the
+        Host's working state, not a projection: no event writes it, and losing it loses only the
+        cache."""
+        with self._guard:
+            now = self.clock()
+            self._con.execute(
+                "INSERT INTO cache_entry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT DO UPDATE SET row_count = excluded.row_count,"
+                " size_bytes = excluded.size_bytes,"
+                " compute_ms = excluded.compute_ms, computed_us = excluded.computed_us",
+                (recipe_key, table, part, input_digest, rows, size_bytes, compute_ms, now, now),
+            )
+
+    def rooted(
+        self,
+        workspace_id: str,
+        table: str,
+        parts: Sequence[tuple[str, str, str]],
+        *,
+        exactly: bool = False,
+    ) -> int:
+        """Root the partitions of `table` a workspace's reads take, each (recipe_key, part,
+        input_digest), in `cache_root`. With `exactly`, they become its only roots of `table`: a
+        partition it no longer reads loses its root, and is collected once no workspace roots it.
+        The roots dropped."""
+        with self.unit() as con:
+            con.execute("CREATE TEMP TABLE IF NOT EXISTS rooting (recipe_key, part, input_digest)")
+            con.execute("DELETE FROM temp.rooting")
+            con.executemany("INSERT INTO temp.rooting VALUES (?, ?, ?)", parts)
+            dropped = 0
+            if exactly:
+                dropped = con.execute(
+                    "DELETE FROM cache_root WHERE workspace_id = ? AND derived_table = ?"
+                    " AND (recipe_key, part, input_digest) NOT IN (SELECT * FROM temp.rooting)",
+                    (workspace_id, table),
+                ).rowcount
+            con.execute(
+                "INSERT OR IGNORE INTO cache_root SELECT ?, *, ? FROM temp.rooting",
+                (table, workspace_id),
+            )
+            con.execute("DELETE FROM temp.rooting")
+        return dropped
+
+    def collect_cached(self, table: str) -> None:
+        """Drop the cache entries of `table`'s partitions no workspace roots."""
+        with self._guard:
+            self._con.execute(
+                "DELETE FROM cache_entry WHERE derived_table = ? AND NOT EXISTS (SELECT 1 FROM"
+                " cache_root r WHERE r.derived_table = cache_entry.derived_table AND r.recipe_key"
+                " = cache_entry.recipe_key AND r.part = cache_entry.part AND r.input_digest ="
+                " cache_entry.input_digest)",
+                (table,),
+            )
+
+    def cache_hit(self, table: str, recipe_key: str, part: str, input_digest: str) -> bool:
+        """Whether a derived partition of `table` is cached for exactly these inputs; a hit marks
+        its last read, which eviction reads."""
+        with self._guard:
+            found = self._con.execute(
+                "UPDATE cache_entry SET last_read_us = ? WHERE recipe_key = ? AND derived_table = ?"
+                " AND part = ? AND input_digest = ?",
+                (self.clock(), recipe_key, table, part, input_digest),
+            )
+            return found.rowcount == 1
 
     def close(self) -> None:
         """Commit the open batch and release the data root's lock."""

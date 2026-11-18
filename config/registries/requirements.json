@@ -323,6 +323,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.a_cache_is_valid_for_exactly_its_inputs": {
+      "description": "A cached partition's input digest moves with exactly the admissions, lag rules and cutoff its parts see, and with nothing else.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_clients_trace_reaches_its_workers": {
       "description": "Client trace context reaches its Host and worker spans; the log and an opted-in receiver retain their trace, and external secrets and content are protected.",
       "lower_layer": "A real Host serves the request over loopback HTTP and a real worker process runs the call; the spans are read from a real log and an in-memory OTLP/HTTP receiver.",
@@ -413,6 +419,19 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.a_workspace_attaches_the_catalog_once": {
+      "description": "A workspace connection attaches the catalog read-only only when its instance lacks it, and makes each served view its own.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_workspace_reads_derived_rows_under_its_names": {
+      "description": "Under derived, a workspace reader reads the catalog's derived rows under the table's name while its writer keeps the table.",
+      "lower_layer": "It attaches a real DuckLake catalog to a real workspace DuckDB file and reads through the workspace's own connections; only both files show it.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
     },
     "data_layer.a_world_row_carries_its_providers_lineage": {
       "description": "Staging gives a world row whose key names a provider the lineage it is admitted under, and stages other rows as they came.",
@@ -759,6 +778,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.storeport_writes_each_derived_partition_once": {
+      "description": "StorePort writes a derived partition once, valid only for its recipe and inputs, keeps each digest a workspace roots and collects the rest, and makes and widens a feature set's table.",
+      "lower_layer": "The partitions are written into the DuckLake catalog in one transaction and their validity and roots into the log; only a real catalog and log show both.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.the_schema_meets_its_contract": {
       "description": "If a schema change broke a declared data-model rule, such as a meaningless key, one upward link or a status's moves, the change would merge unseen until review or production.",
       "lower_layer": "The DDL is read as SQLite and DuckDB build it, the engines the Host runs, so the contract judges the schema they enforce, not a parse of its text.",
@@ -976,6 +1002,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.derived_feature_reads_equal_the_stored": {
+      "description": "Under derived, each workspace's Feature writes reach the catalog and every read takes values equal to its own table's, whatever another workspace builds or drops.",
+      "lower_layer": "It writes through a real workspace DuckDB into a real DuckLake catalog in an open Host history and reads back through both; only all three show it.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 30
+    },
     "feature_engine.factor_handoff_refuses_a_changed_input": {
       "description": "If a Factor handoff accepted a corrupt copy, a changed source or a tampered pool, Alpha research would train on inputs its binding never named.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -1011,6 +1044,12 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 5
+    },
+    "feature_engine.the_feature_read_setting_names_one_choice": {
+      "description": "The Feature read setting is stored by default, derived when set so, and refused by name otherwise.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
     },
     "knowledge.a_new_authority_takes_the_int8_recipe": {
       "description": "If a new Evidence authority did not take the int8 recipe, or an installed one lost its own recipe on a rebind, first use stays slow or old indexes stop matching.",
@@ -1994,6 +2033,12 @@
     "testing.worker_crash_evidence_is_named": {
       "description": "A dead pytest worker records its actual exit, running test and fault output, and missing evidence remains unknown.",
       "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "workspace_runtime.a_derived_view_answers_its_readers": {
+      "description": "A declared derived view answers in its workspace table's place only under its setting, and is refused by name without a setup.",
+      "owner": "alphalattice.control.workspace_runtime",
       "layer": "unit",
       "seconds": 1
     },

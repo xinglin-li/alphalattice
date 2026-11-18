@@ -1,5 +1,6 @@
 """The 0.2.8 data layer: one event log, its registry, the DuckLake catalog DDL, the index."""
 
+from alphalattice.kernel.data_layer import derived_reads as derived_reads  # registers its setup
 from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
 from alphalattice.kernel.data_layer.root import (
     SCHEMA_VERSION,

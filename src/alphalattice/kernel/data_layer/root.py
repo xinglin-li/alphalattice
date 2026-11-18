@@ -32,11 +32,13 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 6
+SCHEMA_VERSION: Final = 7
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
+DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
+"""Names the folder of this process's data root; unset, the application data folder."""
 INDEX_DEFERRED: Final = "index: vector table deferred (extension loading unavailable)"
 SPEC_FIELDS: Final = {
     "event_types": ("event_type", ("work", "subject", "required", "text", "durable")),
@@ -58,6 +60,18 @@ class DataRoot:
     path: Path
     created: tuple[str, ...]
     deferred: tuple[str, ...]
+
+
+def data_root() -> Path:
+    """The machine's data root: `ALPHALATTICE_DATA_ROOT`, else the application data folder."""
+    override = os.environ.get(DATA_ROOT_ENV, "").strip()
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "AlphaLattice"
+    data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(data) / "alphalattice"
 
 
 def schema_text(name: str) -> str:

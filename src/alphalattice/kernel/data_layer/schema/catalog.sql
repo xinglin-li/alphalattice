@@ -265,7 +265,11 @@ CREATE TABLE world.rewritten (
 --     recipe_key VARCHAR NOT NULL, input_digest VARCHAR NOT NULL,
 --     listing_id UUID NOT NULL, session_date DATE NOT NULL, <factor> DOUBLE, ...);
 --   ALTER TABLE derived.feature_set_<hex> SET PARTITIONED BY (year(session_date));
---   key: (recipe_key, input_digest, listing_id, session_date)
+--   key: (recipe_key, input_digest, session_date, listing_id), written in that order
+-- StorePort.derive adds each column its rows bring, typed as they type it: the factors, and the lineage a build
+-- stamps on each row (raw_input_hash, row_hash, ...). Its cache partition is a year and listing: rows of one under
+-- several digests sit side by side, a workspace roots the digests it reads (log cache_root) and reads them under its
+-- own table's name (workspace_runtime.derived_views), and a digest no workspace roots is collected.
 
 -- key: (recipe_key, input_digest, row_no). x is a list: DuckLake has no fixed-size array; it reads back to NumPy zero-copy.
 CREATE TABLE derived.training_sample (

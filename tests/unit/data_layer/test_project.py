@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import (
     definition_id,
+    input_digest,
     recipe_key,
     registry_us,
     task_parent,
@@ -14,6 +18,33 @@ from alphalattice.kernel.data_layer.project import (
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
 MOMENTUM = definition_id("method", "momentum")
+
+
+def _admitted(admission, *parts, dataset="raw_bar", rule=None, version=None):
+    """One admission as input_digest reads it from the log: its parts' knowledge ranges."""
+    ranges = [{"part": p, "min_known_asof_us": lo, "max_known_asof_us": hi} for p, lo, hi in parts]
+    return (admission, dataset, json.dumps(ranges), rule, version)
+
+
+def _digest(*admissions, cutoff=25, parts=("2023",)):
+    log = SimpleNamespace(execute=lambda sql: SimpleNamespace(fetchall=lambda: list(admissions)))
+    return input_digest(log, {"raw_bar": parts}, cutoff)
+
+
+@pytest.mark.proves("data_layer.a_cache_is_valid_for_exactly_its_inputs")
+def test_an_input_digest_moves_only_with_the_admissions_its_parts_see():
+    """A part's digest moves with a correction it sees, a lag rule's version or a cutoff inside a
+    range; never with another part's admission, a later one or the order admissions are read in."""
+    first = _admitted("a1", ("2023", 10, 20), rule="yf-close", version=1)
+    other = _admitted("a2", ("2024", 30, 40))
+    held = _digest(first, other)
+    assert held.startswith("blake3:") and held == _digest(other, first)
+    assert held == _digest(first, other, _admitted("a3", ("2024", 22, 22)))  # another part
+    assert held == _digest(first, other, _admitted("a3", ("2023", 30, 30)))  # after the cutoff
+    assert held == _digest(first, cutoff=24)  # past every range: its latest knowledge time
+    assert held != _digest(first, other, _admitted("a3", ("2023", 22, 22)))  # a correction
+    assert held != _digest(_admitted("a1", ("2023", 10, 20), rule="yf-close", version=2), other)
+    assert _digest(first, cutoff=15) != _digest(first, cutoff=18)  # inside a range: the cutoff
 
 
 @pytest.mark.proves("data_layer.recipe_key_is_its_content")

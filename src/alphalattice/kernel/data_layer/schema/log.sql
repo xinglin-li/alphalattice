@@ -1,9 +1,9 @@
 -- log.sqlite: the machine's one event log, and every table projected from it. Only the Host writes.
 -- Shape tiers (plan 0.2.8): [1] strict core  [2] versioned definitions  [3] contract content  [4] opaque bodies.
 -- Rule: `event` is the only truth. Every other table here is a projection the Host updates in the event's own
--- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Four tables are the Host's private
--- working state or caches and are not projections: cache_entry, deletion_queue, workspace_task_heartbeat_at and
--- workspace_task_projection.
+-- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Five tables are the Host's private
+-- working state or caches and are not projections: cache_entry, cache_root, deletion_queue,
+-- workspace_task_heartbeat_at and workspace_task_projection.
 -- Times are integer microseconds since the Unix epoch, UTC (`*_us`). Every `*_seq` is a position in event.seq.
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;  -- FULL for the commits that cannot be obtained again (an answer, a paid call, a download)
@@ -709,21 +709,37 @@ CREATE TABLE setting (
 ) STRICT, WITHOUT ROWID;
 
 -- ===== The Host's working state (not projections; safe to lose) =====
--- Which cached partition of derived.* is valid for which inputs. A cache hit needs the same recipe, partition and
--- digest of the exact rows it depends on; a correction to those rows changes the digest and nothing else. The digest
+-- Which cached partition of derived.* is valid for which inputs. A cache hit needs the same recipe, table, partition
+-- and digest of the exact rows it depends on; a correction to those rows changes the digest and nothing else. The digest
 -- is per (part, cutoff): the admissions whose rows in the part are visible at the cutoff (min_known_asof_us <= cutoff),
 -- the cutoff itself when it falls inside one of their ranges, else their largest max_known_asof_us, and the lag-rule
--- versions, so a later admission never reaches an earlier cutoff's cache (project.input_digest).
+-- versions, so an admission known only later never reaches an earlier cutoff's cache (project.input_digest).
+-- `derived_table` names the partition's table: one recipe may write several (a risk model's factor_cov,
+-- factor_loading and specific_risk), and a hit identifies the rows actually written.
 CREATE TABLE cache_entry (
   recipe_key TEXT NOT NULL,
-  part TEXT NOT NULL,             -- a year, or an as-of date
+  derived_table TEXT NOT NULL,    -- its table in the catalog's derived schema
+  part TEXT NOT NULL,             -- a year, a year and listing, or an as-of date
   input_digest TEXT NOT NULL,
   row_count INTEGER NOT NULL,
   size_bytes INTEGER NOT NULL,
   compute_ms INTEGER NOT NULL,
   computed_us INTEGER NOT NULL,
   last_read_us INTEGER NOT NULL,  -- eviction reads it
-  PRIMARY KEY (recipe_key, part, input_digest)
+  PRIMARY KEY (recipe_key, derived_table, part, input_digest)
+) STRICT, WITHOUT ROWID;
+
+-- A workspace's reference to a cached partition its reads take: the root that keeps it. Workspaces share a partition
+-- only under one digest, so only the same rows; each roots the digests its own view reads, and a partition no workspace
+-- roots is collected (StorePort.collect). A workspace adds its new digest's root before its view reads it and drops
+-- the old one after, so a crash leaves an extra root, never a read of a collected partition.
+CREATE TABLE cache_root (
+  derived_table TEXT NOT NULL,
+  recipe_key TEXT NOT NULL,
+  part TEXT NOT NULL,
+  input_digest TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  PRIMARY KEY (derived_table, recipe_key, part, input_digest, workspace_id)  -- a partition's roots, together
 ) STRICT, WITHOUT ROWID;
 
 -- A running execution's latest business heartbeat, beside its sealed record; reading the execution reseals it with

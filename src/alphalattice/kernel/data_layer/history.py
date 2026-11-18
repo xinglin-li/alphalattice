@@ -46,13 +46,12 @@ from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import LogReader, reading_session
-from alphalattice.kernel.data_layer.root import create_data_root
+from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV, create_data_root, data_root
 from alphalattice.kernel.shared_kernel.environment import offline
 
 if TYPE_CHECKING:
     from alphalattice.kernel.data_layer.store import StorePort
 
-DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
 OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
 OTLP_CONTENT_ENV: Final = "ALPHALATTICE_OTLP_INCLUDE_CONTENT"
 EVIDENCE_TYPE: Final = "research_evidence"
@@ -123,18 +122,6 @@ _conversations: dict[str, str] = {}
 _once = threading.Lock()
 _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
-
-
-def data_root() -> Path:
-    """The machine's data root: `ALPHALATTICE_DATA_ROOT`, else the application data folder."""
-    override = os.environ.get(DATA_ROOT_ENV, "").strip()
-    if override:
-        return Path(override)
-    if os.name == "nt":
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(local) / "AlphaLattice"
-    data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(data) / "alphalattice"
 
 
 def held(root: Path | None = None) -> HostLog:

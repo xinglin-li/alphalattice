@@ -15835,6 +15835,27 @@
    "successor": "1ec39f1f9c02893c782465b5fcfbba676f681aac1956c2f62ef691a44d74fcbf",
    "change": "Keep task progress in workspace copies and open the market store once",
    "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "19fcc93ffb5fd0a8425d326ed3cc89ff508674659745dbf5ee75a90478628c9a",
+   "successor": "1ef053dd528631b8d91685494408893d84495fa94a7b3a3f5a99959479368855",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1a75a80925511401006e9cafb667f05f0db65dacbb17e976a46b51b31d471bca",
+   "successor": "d781a7093399f5ca30661be2f56f8eeed9423c4ab8c99aad92370207a70a9c3e",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "1ec39f1f9c02893c782465b5fcfbba676f681aac1956c2f62ef691a44d74fcbf",
+   "successor": "17e4176a078f9edd0f7347de8953a989184d651e6ae0378b1f5e7bc6709cfd9b",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
   }
  ]
 }
