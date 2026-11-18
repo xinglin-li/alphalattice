@@ -788,6 +788,49 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         held = (admissions() - before, read("world"))
     after = read("world")  # the first read after the file closes admits
     updated = (admissions() - before, after)
+    # Import one source's live, delisted and re-listed intervals together. The real
+    # StorePort/catalog boundary must retain their values and historical opening state.
+    with store._connect() as connection:
+        connection.executemany(
+            "INSERT INTO provider_symbol_mapping VALUES (?, 'lifecycle-fixture', ?, ?, ?, ?)",
+            [
+                ("listing-msft", "LIVE", DAYS[0], None, "ACTIVE"),
+                ("listing-aapl", "OLD", DAYS[0], DAYS[2], "DELISTED"),
+                ("listing-aapl", "NEW", DAYS[3], None, "ACTIVE"),
+            ],
+        )
+    world.admit(database, "w1")
+    delisting_close = datetime(2026, 7, 29, 20, tzinfo=UTC)
+    for instant, expected in (
+        (
+            delisting_close - timedelta(microseconds=1),
+            [("LIVE", None, "ACTIVE"), ("OLD", None, "ACTIVE")],
+        ),
+        (delisting_close, [("LIVE", None, "ACTIVE"), ("OLD", DAYS[2], "DELISTED")]),
+        (
+            datetime.combine(DAYS[3], datetime.max.time(), UTC),
+            [("LIVE", None, "ACTIVE"), ("NEW", None, "ACTIVE"), ("OLD", DAYS[2], "DELISTED")],
+        ),
+    ):
+        cutoff = world_reads.cutoff(instant)
+        with store.market_reads(cutoff_us=cutoff) as (cursor, tables):
+            assert tables != world_reads.WORKSPACE
+            assert (
+                cursor.execute(
+                    "SELECT provider_symbol, effective_to, lifecycle_state"
+                    f" FROM {tables['mappings']} WHERE provider = 'lifecycle-fixture'"
+                    " ORDER BY provider_symbol"
+                ).fetchall()
+                == expected
+            )
+    for state, equal in (("ACTIVE", False), ("DELISTED", True)):
+        with store._connect() as connection:
+            connection.execute(
+                "UPDATE provider_symbol_mapping SET lifecycle_state = ?"
+                " WHERE provider = 'lifecycle-fixture' AND provider_symbol = 'OLD'",
+                [state],
+            )
+        assert world_reads.holds(database, world_reads.LATEST) == equal
     history.release_history()
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(database.parent.parent / "data"))
     child = [read("workspace"), read("world")]

@@ -1233,22 +1233,23 @@ def _symbols(
     run: Any, dated: list[tuple[Any, ...]], ids: Mapping[str, str]
 ) -> dict[str, list[dict[str, Any]]]:
     """Each provider's symbol rows, an interval with an end as one row, which StorePort writes as
-    its two versions; an alias keeps the valid_from it was first admitted with, so it is never
-    doubled."""
+    its two versions, carrying the source's lifecycle state; an alias keeps the valid_from it
+    was first admitted with, so it is never doubled."""
     held = run(
         "SELECT provider_id, CAST(listing_id AS VARCHAR), min(valid_from)::VARCHAR"
         " FROM lake.world.provider_symbol GROUP BY ALL"
     ).fetchall()
     aliases = {(provider, listing): valid for provider, listing, valid in held}
     out: dict[str, list[dict[str, Any]]] = {}
-    for listing, provider, symbol, start, end in run(
+    for listing, provider, symbol, start, end, state in run(
         "SELECT listing_id, provider, provider_symbol, strftime(effective_from, '%Y-%m-%d'),"
-        f" strftime(effective_to, '%Y-%m-%d') FROM {WORKSPACE}.provider_symbol_mapping"
+        f" strftime(effective_to, '%Y-%m-%d'), lifecycle_state"
+        f" FROM {WORKSPACE}.provider_symbol_mapping"
         " ORDER BY listing_id, provider, effective_from"
     ).fetchall():
         if listing in ids:
             row = {"listing_id": ids[listing], "symbol": symbol, "valid_from": start}
-            out.setdefault(provider, []).append(row | {"valid_to": end})
+            out.setdefault(provider, []).append(row | {"valid_to": end, "lifecycle_state": state})
     display = dict(run(f"SELECT listing_id, display_symbol FROM {WORKSPACE}.listing").fetchall())
     for listing, *_, first in dated:
         for alias, symbol in ((LISTING_ALIAS, listing), (DISPLAY_ALIAS, display[listing])):

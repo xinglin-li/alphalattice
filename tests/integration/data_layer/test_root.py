@@ -15,7 +15,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.project import definition_id, register
 from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import THREADS, catalog, duckdb_session
+from alphalattice.kernel.data_layer.root import SCHEMA_VERSION, THREADS, catalog, duckdb_session
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 N = 10**9
@@ -403,9 +403,10 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
     con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
-    con.execute("PRAGMA user_version = 11")
+    other_version = SCHEMA_VERSION + 1
+    con.execute(f"PRAGMA user_version = {other_version}")
     con.close()
-    with pytest.raises(DataError, match="schema version 11") as refused:
+    with pytest.raises(DataError, match=f"schema version {other_version}") as refused:
         create_data_root(tmp_path)
     assert refused.value.failure.code == "data_layer.schema_mismatch"
 

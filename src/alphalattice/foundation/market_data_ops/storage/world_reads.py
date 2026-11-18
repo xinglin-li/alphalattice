@@ -275,7 +275,7 @@ COMPARED: Final = {
     "mappings": (
         "provider_symbol_mapping",
         "",
-        "listing_id, provider, provider_symbol, effective_from, effective_to",
+        "listing_id, provider, provider_symbol, effective_from, effective_to, lifecycle_state",
     ),
 }
 """Each relation a value read names, with the workspace table, rows and columns it answers for."""
@@ -583,11 +583,11 @@ def mappings(
     cutoff_us: int = LATEST, held_us: int | None = None, named: tuple[str, str] | None = None
 ) -> str:
     """0.2.7's provider_symbol_mapping, as world knew it at `cutoff_us`: listing_id, provider,
-    provider_symbol, effective_from and effective_to; world's own aliases are not mappings.
-    0.2.7's current-only bootstrap writes ACTIVE as its mapping lifecycle."""
+    provider_symbol, effective_from, effective_to and the source's lifecycle state; world's own
+    aliases are not mappings. A closed interval's opening version remains active before its end."""
     return (
         "(SELECT alias.listing_id, named.name AS provider, m.symbol AS provider_symbol,"
-        " m.valid_from AS effective_from, m.valid_to AS effective_to, 'ACTIVE' AS lifecycle_state"
+        " m.valid_from AS effective_from, m.valid_to AS effective_to, m.lifecycle_state"
         f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us, held_us, named)}"
         f" AND m.provider_id NOT IN {_ALIASES})"
     )

@@ -83,6 +83,7 @@ CREATE TABLE world.provider_symbol (
   valid_from DATE NOT NULL,
   version_id UUID NOT NULL,
   valid_to DATE,
+  lifecycle_state VARCHAR,        -- the source's state; internal aliases leave it empty
   listing_id UUID NOT NULL,
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,

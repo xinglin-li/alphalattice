@@ -881,8 +881,9 @@ class StorePort:
         another 0.2.7 fact with its own availability, known then, never before the version it
         replaces. A legacy interval with an end, for a key world does not hold yet, is
         written as its two versions: the open one known from its start, the closing one from its
-        end. In a TIMED table, a held key is superseded only by a row its source wrote after the
-        newest version's value was last written (its ordering time, `newest`), and a later write
+        end; a delisted provider mapping's opening state is ACTIVE. In a TIMED table, a held
+        key is superseded only by a row its source wrote after the newest version's value was
+        last written (its ordering time, `newest`), and a later write
         of that same value is REWRITTEN."""
         at = f"make_timestamptz({known}::BIGINT)"
         key = WORLD_KEYS[table]
@@ -897,9 +898,15 @@ class StorePort:
         interval = LEGACY_VALID[table] if rule is not None else ()
         if len(interval) == 2 and interval[0] in columns:  # an interval's open version, beside
             end = interval[0]  # its closing one
+            opening = f"NULL::{declared[end]} AS {end}, true AS _opening"
+            if table == "provider_symbol" and "lifecycle_state" in columns:
+                opening += (
+                    ", CASE WHEN lifecycle_state = 'DELISTED' THEN 'ACTIVE'"
+                    " ELSE lifecycle_state END AS lifecycle_state"
+                )
             rows = (
-                f"SELECT * FROM ({rows}) UNION ALL SELECT * REPLACE (NULL::{declared[end]} AS"
-                f" {end}, true AS _opening) FROM ({rows}) WHERE {end} IS NOT NULL"
+                f"SELECT * FROM ({rows}) UNION ALL SELECT * REPLACE ({opening})"
+                f" FROM ({rows}) WHERE {end} IS NOT NULL"
             )
         held = f" LEFT JOIN {newest(table)} p ON " + " AND ".join(f"p.{k} = n.{k}" for k in key)
         timed = table in TIMED
