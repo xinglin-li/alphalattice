@@ -874,11 +874,23 @@ def pyramid(
     *,
     retired_tests: Mapping[str, str] | None = None,
     removed_sources: set[str] | None = None,
+    unit_backends: Iterable[Mapping[str, Any]] = (),
 ) -> list[str]:
     """An area's integration share of its test functions may only fall: a change that raises it
     is refused by name. Correct an unchanged holder's prior label only when its raised registered
     requirement says why it cannot run in unit; a new area has no prior share to keep. An
-    unchanged area's deleted tests may leave with the exact source they alone import."""
+    unchanged area's deleted tests may leave with the exact source they alone import. An area
+    whose whole package `unit_backends` bars from unit cannot lower its share, so it is not held
+    to it; its new rows still say why no lower layer proves them (`lower_layer`)."""
+    barred = {  # an area's own package (alphalattice.<group>.<area>) or its alias, never a part
+        row["name"].rpartition(".")[2]
+        for row in unit_backends
+        if row.get("kind") == "module"
+        and (
+            (row["name"].count(".") == 2 and row["name"].startswith("alphalattice."))
+            or "." not in row["name"]
+        )
+    }
     current, previous = list(after), list(before or ())
     now, then = _area_layers(current), _area_layers(previous)  # no base tree: nothing to keep
     retired_tests = retired_tests or {}
@@ -890,7 +902,9 @@ def pyramid(
         was = then.get(area, Counter())
         total, prior = sum(counts.values()), sum(was.values())
         if prior and counts["integration"] * prior > was["integration"] * total:
-            if _retired_area(area, current, previous, retired_tests, removed_sources):
+            if area in barred or _retired_area(
+                area, current, previous, retired_tests, removed_sources
+            ):
                 continue
             found.append(
                 f"Test pyramid risk for {area}: its integration share would rise from "
@@ -1069,5 +1083,6 @@ def guard(
             before,
             retired_tests=retired_tests,
             removed_sources=removed_sources,
+            unit_backends=load_policy(root).get("unit_backends", []),
         )
     )

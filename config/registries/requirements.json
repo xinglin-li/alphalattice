@@ -1678,6 +1678,13 @@
       "seconds": 2,
       "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
+    "product_host.first_start_upgrades_every_old_workspace": {
+      "description": "The first 0.2.8 start shows one plan for every old workspace, serves only the upgrade until acknowledged and done, resumes on that plan, and upgrades a later workspace at its open.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 20,
+      "lower_layer": "The proof is the Host composition itself: its socket, its log, the workspace leases and the backups; the unit layer cannot load them."
+    },
     "product_host.held_data_update_names_provider_work": {
       "description": "A plan using held market data says that no provider work is needed.",
       "owner": "alphalattice.control.product_host",

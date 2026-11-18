@@ -1,5 +1,9 @@
 {
  "upgrade.refused": {"detail": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.", "next_action": "VERIFY_BACKUPS_AND_REPAIR_THE_NAMED_FAMILY"},
+ "upgrade.in_progress": {"detail": "The Host is upgrading this machine's data to 0.2.8 and serves only the upgrade until it completes. Read the plan and its progress with alphalattice upgrade show (or on /api/upgrade), and acknowledge it with alphalattice upgrade acknowledge if it waits for you.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.acknowledged": {"detail": "This upgrade plan is already acknowledged and running. Read its progress on /api/upgrade.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.plan_changed": {"detail": "The upgrade plan named is not the one shown now. Read /api/upgrade again and acknowledge the plan it shows.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.backup_space": {"detail": "Writing this upgrade's backups would leave less free space than the floor, so nothing was written. Free space where the plan names, then start the Host again.", "next_action": "FREE_SPACE_AND_START_AGAIN"},
  "workspace_database.runtime_extension_refused": {"detail": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
  "data_layer.extension_unavailable": {"detail": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
  "experience.history_unavailable": {"detail": "The Host's research history is unavailable, so its trial experience could not be read.", "next_action": "RESTORE_THE_HOST_HISTORY"},

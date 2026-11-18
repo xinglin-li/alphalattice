@@ -46,6 +46,9 @@ class Family:
     step: Callable[[UpgradeRunner], None]
     verify: Callable[[UpgradeRunner], bool]
     switch: Callable[[Literal["old", "new"]], None]
+    holds: Callable[[Path], bool] = lambda _workspace: False
+    """Whether a workspace holds old data this family's new store lacks: only such a workspace is
+    upgraded, so a copy of an upgraded one is not."""
 
 
 class UpgradeRunner:
@@ -63,9 +66,16 @@ class UpgradeRunner:
         workspaces: tuple[Path, ...],
         families: tuple[Family, ...],
         backup_check: Callable[[Path, tuple[Path, ...], dict[str, Any] | None], dict[str, Any]],
+        *,
+        subject: str = TARGET,
     ) -> None:
-        """Read this upgrade's indexed progress once; the caller retains the writer's lifetime."""
+        """Read this upgrade's indexed progress once; the caller retains the writer's lifetime.
+
+        `subject` names one run's progress: the machine's first start is TARGET, and a workspace
+        that first appears after it completed runs the same families alone under
+        `TARGET/<workspace_id>`, so the machine run's recorded plan never changes."""
         self.root, self.log, self.workspaces = root, log, workspaces
+        self.subject = subject
         self.families, self.backup_check = families, backup_check
         self._ids: dict[tuple[str, str], str] = {}
         self._done: set[str] = set()
@@ -74,7 +84,7 @@ class UpgradeRunner:
         self._complete = False
         for row in log.read(
             "SELECT attrs FROM event WHERE type = ? AND subject_id = ? ORDER BY seq",
-            (PROGRESS, TARGET),
+            (PROGRESS, subject),
         ):
             event = json.loads(row[0])
             if event["kind"] == "started":
@@ -169,6 +179,18 @@ class UpgradeRunner:
         self._complete = True
         return True
 
+    @property
+    def complete(self) -> bool:
+        """Whether this run's `completed` is recorded."""
+        return self._complete
+
+    @property
+    def started(self) -> dict[str, Any] | None:
+        """This run's recorded plan (families and backups), None before its first start."""
+        if self._plan is None:
+            return None
+        return {"families": list(self._plan), "backups": self._backups}
+
     def map_id(self, family: str, old_id: str, new_id: str) -> str:
         """Keep one immutable old-to-new mapping; a repeated step reuses its existing entry."""
         key = (family, old_id)
@@ -193,7 +215,7 @@ class UpgradeRunner:
         """Append progress through the one log writer; its durable type commits on return."""
         self.log.record(
             PROGRESS,
-            ("upgrade", TARGET),
+            ("upgrade", self.subject),
             {"kind": kind, **attrs},
             actor=("host", "upgrade"),
             node="upgrade",

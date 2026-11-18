@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock, Thread
 from typing import Any, Final, cast, get_args
 from urllib.parse import urlencode
 from uuid import UUID
@@ -40,6 +40,10 @@ from alphalattice.control.product_host.composition.evidence_review_application i
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
 )
+from alphalattice.control.product_host.composition.first_start import (
+    FirstStart,
+    refusal_reason,
+)
 from alphalattice.control.product_host.composition.goal_case_routes import (
     CASE_ROUTES,
     case_answer,
@@ -54,6 +58,7 @@ from alphalattice.control.product_host.composition.native_usage_reader import (
     NativeUsageReader,
     attach_native_usage,
 )
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.portfolio_application import (
     PLAN_FIELDS as PORTFOLIO_PLAN_FIELDS,
 )
@@ -169,6 +174,7 @@ from alphalattice.interface.local_application.activity import (
     refusal_code,
     returned_status,
 )
+from alphalattice.interface.local_application.call_span import CALL_PATH
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -238,7 +244,8 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
-from alphalattice.kernel.data_layer.history import release_history
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.history import data_root, held, release_history
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
@@ -563,7 +570,14 @@ class LocalPortfolioWebSession:
     port: int = 0
     idle_timeout_seconds: int = field(default=DEFAULT_IDLE_TIMEOUT_SECONDS, kw_only=True)
     upgrade: UpgradeRunner | None = field(default=None, kw_only=True)
-    """The first 0.2.8 composition supplies its runner; it finishes before the Host binds."""
+    """A runner given in place of the first start's own (`FirstStart`); it finishes before the
+    Host binds."""
+    first_start: FirstStart | None = field(default=None, init=False, repr=False)
+    """The upgrade this start owes: while it is not done, the Host serves only its routes."""
+    stop_host: Callable[[], dict[str, object]] | None = field(default=None, kw_only=True)
+    """How `host stop` stops this Host, given to its operations when they compose."""
+    _upgrading: Thread | None = field(default=None, init=False, repr=False)
+    _admitting: Lock = field(default_factory=Lock, init=False, repr=False)
 
     review_authority: EvidenceReviewAuthority | None = None
     data_provider: MarketDataProvider | None = None
@@ -649,6 +663,117 @@ class LocalPortfolioWebSession:
             binding = self.workspace_manifest.evidence_review
             assert binding is not None
             self.review_authority = self._workspace_authority(binding)
+        if self.upgrade is None:
+            first = FirstStart(data_root(), held(), self.workspace)
+            if first.plan is not None:
+                self.first_start = first
+                restricted = self._upgrade_web(first)
+                self.web = LocalWebService(application=restricted, port=self.port)
+                url = self.web.start()
+                self._publish_connection(restricted, url)
+                if first.state == "RUNNING":  # acknowledged when it started: it resumes
+                    self._upgrade_in_background()
+                return url
+        return self._compose()
+
+    def _upgrade_web(self, first: FirstStart) -> LocalWebApplication:
+        """The Host while its upgrade is owed: the Workbench's assets, /api/session, the plan and
+        its progress on /api/upgrade, and its acknowledgement, which the CLI's `upgrade show` and
+        `upgrade acknowledge` reach through /api/client/operations. Every other path and
+        operation refuses `upgrade.in_progress` with the progress."""
+        web = workspace_web(self.workspace, None)
+        serve_assets(web, ASSET_ROOT)
+        # Nothing it answers writes the log: a span or a CLI call's end would land between the
+        # data root's backup and the run's check that the backup holds the log's head. A CLI's
+        # call end is refused with the progress, which the CLI does not read.
+        del web.routes[("POST", CALL_PATH)]
+        routes = {"UPGRADE_OVERVIEW": ("GET", "/api/upgrade")}
+        routes["UPGRADE_ACKNOWLEDGE"] = ("POST", "/api/upgrade/acknowledge")
+        web.withheld = lambda: {
+            "failure_code": "upgrade.in_progress",
+            "upgrade": first.view()["first_start"],
+        }
+
+        @web.route("GET", "/api/session", session=True)
+        def _session(_query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+            return {
+                "workspace_id": self.workspace_id,
+                "workspace_manifest_hash": self.workspace_manifest.manifest_hash,
+                "execution_mode": "UPGRADE",
+                "session_token": web.session_token,
+                "upgrade": first.view()["first_start"],
+                "routes": {op: {"method": m, "path": path} for op, (m, path) in routes.items()},
+            }
+
+        @web.route(*routes["UPGRADE_OVERVIEW"])
+        def _overview(_query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+            return first.view()
+
+        @web.route(*routes["UPGRADE_ACKNOWLEDGE"], mutates=True, traced=False)
+        def _acknowledge(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            with self._admitting:
+                first.admit(payload.get("upgrade_set_hash"))
+                self._upgrade_in_background()
+            return first.view()
+
+        @web.route(
+            "POST", "/api/client/operations", mutates=True, external_client=True, traced=False
+        )
+        def _client(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            try:
+                request = PortfolioResearchRequestDocument.model_validate(payload)
+            except ValidationError as error:
+                failure = located_failure(error, "local_client.request_invalid", request=payload)
+                return {"status": "REFUSED", **failure}
+            operation = request.to_operation_request()
+            try:
+                if operation.operation == "UPGRADE_OVERVIEW":
+                    return first.view()
+                if operation.operation == "UPGRADE_ACKNOWLEDGE":
+                    return _acknowledge(query, {"upgrade_set_hash": operation.upgrade_set_hash})
+            except DataError as error:
+                return refused(error.failure.code)
+            return refused("upgrade.in_progress") | {"upgrade": first.view()["first_start"]}
+
+        return web
+
+    def _publish_connection(
+        self, web: LocalWebApplication, url: str, serving_host: dict[str, object] | None = None
+    ) -> None:
+        """Publish the connection the CLI reads to reach this Host's `web` at `url`."""
+        connection = LocalResearchConnection(
+            workspace=str(self.workspace.resolve()),
+            workspace_id=self.workspace_id,
+            url=url,
+            instance=web.external_instance,
+            token=web.external_token,
+        )
+        publish_client_connection(connection, serving_host=serving_host)
+        self.client_connection = connection
+
+    def _upgrade_in_background(self) -> None:
+        """Run the acknowledged upgrade off the request thread, then compose and serve in full."""
+
+        def finish() -> None:
+            first = self.first_start
+            assert first is not None
+            try:
+                first.run()
+                self._compose()
+            except Exception as error:  # kept for /api/upgrade; the Host stays restricted
+                first.state, first.failure = "FAILED", first.failure or refusal_reason(error)
+
+        self._upgrading = Thread(target=finish, name="first-start-upgrade", daemon=False)
+        self._upgrading.start()
+
+    def upgraded(self, timeout: float | None = None) -> bool:
+        """Wait up to `timeout` for the acknowledged first-start upgrade to end; True once the
+        Host serves its full composition."""
+        if self._upgrading is not None:
+            self._upgrading.join(timeout)
+        return self.operations is not None
+
+    def _compose(self) -> str:
         session = WorkspaceApplicationSession.acquire(self.workspace, self.upgrade).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
@@ -760,17 +885,14 @@ class LocalPortfolioWebSession:
         )
         web_application.admission = self.dispatcher._admit
         _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
-        self.web = LocalWebService(application=web_application, port=self.port)
-        url = self.web.start()
-        connection = LocalResearchConnection(
-            workspace=str(self.workspace.resolve()),
-            workspace_id=self.workspace_id,
-            url=url,
-            instance=web_application.external_instance,
-            token=web_application.external_token,
-        )
-        publish_client_connection(connection, serving_host=activity.serving_host)
-        self.client_connection = connection
+        self.operations.stop_host = self.stop_host
+        if self.web is None:
+            self.web = LocalWebService(application=web_application, port=self.port)
+            url = self.web.start()
+        else:  # the upgrade's socket, its session kept: the browser that opened it stays in
+            self.web.serve(web_application)
+            url = self.web.url
+        self._publish_connection(web_application, url, activity.serving_host)
         self.resumed_task_ids = self.resume()
         # A Codex lead's wake whose Task ended, stopped or deferred while no Host ran (WAKE).
         activity.replay_wakes()
@@ -1004,6 +1126,10 @@ class LocalPortfolioWebSession:
         """Join work and requests before releasing the lease. True when complete."""
 
         quiet = True
+        if self._upgrading is not None:
+            self._upgrading.join(timeout)
+            if self._upgrading.is_alive():
+                return False
         if self.forward_prewarm is not None:
             quiet = self.forward_prewarm.close(timeout=timeout) and quiet
         if self.operations is not None:
@@ -1035,10 +1161,10 @@ class LocalPortfolioWebSession:
         if self._history:
             self._history = False
             release_history()
+        if self.client_connection is not None:  # a Host serving only its upgrade published one
+            remove_client_connection(self.client_connection)
+            self.client_connection = None
         if self.session is not None:
-            if self.client_connection is not None:
-                remove_client_connection(self.client_connection)
-                self.client_connection = None
             self.session.__exit__(None, None, None)
         self.web = None
         self.dispatcher = None

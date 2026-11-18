@@ -55,6 +55,14 @@ def test_an_areas_integration_share_may_only_fall():
     assert refused.startswith("Test pyramid risk for risk:") and "3/4 to 4/5" in refused
     assert pyramid(holders(integration__risk=4, unit__risk=2, integration__feature=3), before) == []
     assert pyramid(holders(integration__risk=3, unit__risk=1, integration__new=5), before) == []
+    # An area whose own package the unit layer bars whole is not held to a share it cannot lower;
+    # an unbarred area with the same counts, or one barred only in part, still is.
+    barred = holders(integration__host=4, e2e__host=1)
+    backends = [{"kind": "module", "name": "alphalattice.control.host"}]
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1), unit_backends=backends) == []
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1))
+    part = [{"kind": "module", "name": "alphalattice.control.other.host"}]
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1), unit_backends=part)
     retired = holders(integration__retired=3, unit__retired=2)
     remaining = holders(integration__retired=3, unit__retired=1)
     removed_test = "tests/unit/retired/test_x.py"

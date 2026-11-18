@@ -21,6 +21,7 @@
     "src/alphalattice/control/product_host/composition/evidence_source_ways.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/experience_read.py": {"kind": "COMPOSITION", "description": "Routes bounded experience reads and attributed study admission to their owners."},
     "src/alphalattice/control/product_host/composition/feature_trials.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/composition/first_start.py": {"kind": "COMPOSITION", "description": "Composes the first 0.2.8 start: discovers old workspaces, names the backups, and runs the declared upgrade families once acknowledged."},
     "src/alphalattice/control/product_host/composition/first_use_road.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/foundation_summary.py": "COMPOSITION",
     "src/alphalattice/control/product_host/composition/goal_case_routes.py": "COMPOSITION",

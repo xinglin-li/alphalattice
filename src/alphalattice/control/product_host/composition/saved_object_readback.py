@@ -11,7 +11,8 @@ import time
 import urllib.error
 import urllib.request
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -168,7 +169,8 @@ def probe(
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     source = data_root()  # where the harvested workspaces' Tasks are, carried into each copy
-    with own_root(work / "data-root"):
+    # A copy's upgrade backups go beside its root, never to the person's backup root.
+    with own_root(work / "data-root"), _environment(ALPHALATTICE_BACKUP_ROOT=str(work / "backups")):
         opener = LocalPortfolioWebSession.from_workspace
         _read_saved(
             harvest, work, out, source, opener, keep=keep, fallback=fallback, harness=harness
@@ -234,7 +236,10 @@ def _open_copy(
     try:
         session = opener(copy)
         session.start()
-        session.stop()
+        try:
+            _upgraded(session)
+        finally:
+            session.stop()
         return opener(copy), "OPENS"
     except Exception as error:
         rows.append(_workspace_row(name, "PRODUCT_OPEN", f"REFUSES {str(error)[:140]}"))
@@ -245,6 +250,32 @@ def _open_copy(
     except Exception as refused:
         rows.append(_workspace_row(name, "OPEN", f"REFUSES {str(refused)[:140]}"))
         return None
+
+
+def _upgraded(session: Any) -> None:
+    """A 0.2.7 copy's first 0.2.8 start shows its upgrade plan: acknowledge it as the person
+    would, and wait for the run, so the copy's saved objects are read as the upgrade left them."""
+    if getattr(session, "first_start", None) is None:
+        return
+    _status, _headers, body = _request(session, "/api/upgrade")
+    acknowledge = json.loads(body)["next_requests"]["acknowledge"]
+    _request(session, "/api/upgrade/acknowledge", method="POST", payload=acknowledge)
+    if not session.upgraded():
+        raise ValueError(f"upgrade.refused: {session.first_start.failure}")
+
+
+@contextmanager
+def _environment(**values: str) -> Iterator[None]:
+    before = {name: os.environ.get(name) for name in values}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for name, value in before.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _reader(live: Any, name: str, rows: list[dict[str, Any]]) -> Callable[..., Any]:

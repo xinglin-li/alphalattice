@@ -388,6 +388,9 @@ class UpgradeOverviewAnswer(_Answer):
     """Each waiting Task with its standing."""
     next_requests: dict[str, Any]
     """The requests the overview offers, acknowledging it among them."""
+    first_start: dict[str, Any] | None = None
+    """While the Host owes its first 0.2.8 start: its plan (workspaces, families, backups with
+    their estimates), its state (PENDING, RUNNING, FAILED) and progress, and any refusal."""
 
 
 class ResearchInputRow(_Answer):

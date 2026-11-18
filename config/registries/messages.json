@@ -37,6 +37,52 @@
         "zh-CN": "升级已停止，服务尚未启动。首次启动前请创建数据根目录和各工作区的当前备份；恢复升级时请使用已记录的备份代次，并修复提示的数据族。"
       }
     },
+    "upgrade.in_progress": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The Host is upgrading this machine's data to 0.2.8 and serves only the upgrade until it completes. Read the plan and its progress with alphalattice upgrade show (or on /api/upgrade), and acknowledge it with alphalattice upgrade acknowledge if it waits for you.",
+        "zh-CN": "主机正在将本机数据升级到 0.2.8，升级完成前只提供升级相关的服务。请用 alphalattice upgrade show（或在 /api/upgrade）查看升级计划和进度；如计划在等待确认，请用 alphalattice upgrade acknowledge 确认。"
+      }
+    },
+    "upgrade.acknowledged": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This upgrade plan is already acknowledged and running. Read its progress on /api/upgrade.",
+        "zh-CN": "该升级计划已确认并正在执行。请在 /api/upgrade 查看进度。"
+      }
+    },
+    "upgrade.plan_changed": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The upgrade plan named is not the one shown now. Read /api/upgrade again and acknowledge the plan it shows.",
+        "zh-CN": "所确认的升级计划与当前显示的不一致。请重新读取 /api/upgrade，并确认它显示的计划。"
+      }
+    },
+    "upgrade.backup_space": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Writing this upgrade's backups would leave less free space than the floor, so nothing was written. Free space where the plan names, then start the Host again.",
+        "zh-CN": "写入本次升级的备份会使剩余空间低于下限，因此未写入任何内容。请在计划指明的位置腾出空间，然后重新启动主机。"
+      }
+    },
+    "upgrade.first_start.lede": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This version moves each workspace's old data to its new store once. Nothing moves until you acknowledge this plan; the Host then writes each backup named here and runs it.", "zh-CN": "此版本会将每个工作区的旧数据一次性迁移到新存储。在你确认此计划之前不会迁移任何内容；确认后，主机会写入此处列出的每份备份，然后执行迁移。"}},
+    "upgrade.first_start.workspaces": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Workspaces", "zh-CN": "工作区"}},
+    "upgrade.first_start.families": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Families", "zh-CN": "数据族"}},
+    "upgrade.first_start.machine_backup": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The data root", "zh-CN": "数据根目录"}},
+    "upgrade.first_start.backup_kept": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["generation"], "words": {"en": "An existing verified backup is kept · {generation}", "zh-CN": "保留一份已验证的现有备份 · {generation}"}},
+    "upgrade.first_start.backup_written": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["repository", "size", "free"], "words": {"en": "About {size}, leaving {free} free · written to {repository}", "zh-CN": "约 {size}，写入后剩余 {free} · 写入到 {repository}"}},
+    "upgrade.first_start.family.execution_outcomes": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Execution outcomes", "zh-CN": "执行结果"}},
+    "upgrade.first_start.not_moving": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The upgrade does not move", "zh-CN": "升级没有进行"}},
+    "upgrade.first_start.running": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Upgrading", "zh-CN": "正在升级"}},
+    "upgrade.first_start.completed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Upgraded", "zh-CN": "已升级"}},
     "research_update.features_binding_invalid": {
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The update's feature result does not match its recorded score plan or update plan, so the update cannot continue. Read the update and its Task, resolve the binding mismatch, then cancel the Task and plan the update again.", "zh-CN": "更新的特征结果与所记录的评分计划或更新计划不匹配，因此无法继续更新。请查看更新及其任务，解决绑定不匹配的问题，然后取消任务并重新规划更新。"}

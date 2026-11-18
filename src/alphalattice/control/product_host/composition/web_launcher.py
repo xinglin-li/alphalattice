@@ -33,10 +33,8 @@ import tempfile
 import threading
 import time
 import webbrowser
-from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -536,6 +534,7 @@ def main(
     # The stop is read from the start, so a stop during a slow start (its resume) ends it at the
     # next step instead of after it, past a caller's wait, with its connection left behind.
     session.stop_requested = stop.is_set
+    session.stop_host = stopping
     try:
         if tied:
             # Either way of stopping ends the wait: the input's own, or `host stop`.
@@ -546,11 +545,13 @@ def main(
         # The launch URL gives the browser that opens it the session, and only it (HB):
         # a script or the QA kit takes it from this line.
         url = session.launch_url
-        if session.operations is not None:
-            session.operations.stop_host = stopping
-        needed: Callable[[], bool] = bool
-        if session.operations is not None and session.operations.automation is not None:
-            needed = partial(session.operations.automation.keeps_host, session.operations.goals)
+
+        def needed() -> bool:  # read each time: a Host owing its upgrade composes later
+            operations = session.operations
+            if operations is None or operations.automation is None:
+                return False
+            return operations.automation.keeps_host(operations.goals)
+
         # A detached launch holds the key it handed over and prints it itself (never on disk).
         shown = re.sub(r"key=[^&#]+", HANDED_KEY, url) if handed else url
         print(f"Portfolio Research workspace: {shown}")

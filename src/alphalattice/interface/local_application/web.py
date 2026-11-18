@@ -311,6 +311,9 @@ class LocalWebApplication:
     admission: Callable[[Callable[[], object], bool], object] | None = field(
         default=None, repr=False
     )
+    withheld: Callable[[], dict[str, object]] | None = field(default=None, repr=False)
+    """While set, every path with no route or asset is refused with this refusal, not as
+    unknown: a Host that serves only its upgrade's routes says why, with its progress."""
 
     def route(
         self,
@@ -475,7 +478,7 @@ class LocalWebApplication:
             return self._launch(parsed.query, headers)
         asset = self.assets.get(path) if method == "GET" else None
         route = self.routes.get((method, path))
-        if asset is None and route is None:
+        if asset is None and route is None and self.withheld is None:
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         refusal = self._authorised(
             method=method,
@@ -492,6 +495,11 @@ class LocalWebApplication:
                 refusal,
                 next_action=REOPEN_FROM_LAUNCH_URL if route and route.session else None,
             )
+        if asset is None and route is None and self.withheld is not None:
+            withheld = self.withheld()
+            refused = self._refuse(HTTPStatus.SERVICE_UNAVAILABLE, str(withheld["failure_code"]))
+            body = json.dumps(json.loads(refused.body) | withheld).encode("utf-8")
+            return LocalWebResponse(refused.status, body, refused.content_type)
         declared = (headers.get("Content-Length") or "0").strip()
         if not declared.isdigit():
             # `isdigit` rejects the whole malformed family in one test: a sign,
@@ -1094,6 +1102,16 @@ class LocalWebService:
     def live_request_threads(self) -> tuple[threading.Thread, ...]:
         """Handler threads still running. Empty is the only clean shutdown."""
         return () if self._server is None else self._server.live_request_threads()
+
+    def serve(self, application: LocalWebApplication) -> None:
+        """Answer on this socket with `application` from the next request on, keeping its session:
+        the browser and launch key the first one admitted stay admitted, on the same port."""
+        current = self.application
+        for name in ("session_token", "launch_key", "allowed_hosts", "cookie_name", "offer_keys"):
+            setattr(application, name, getattr(current, name))
+        self.application = application
+        if self._server is not None:
+            self._server.application = application
 
     def __enter__(self) -> LocalWebService:
         """Start the loopback service for the context scope."""
