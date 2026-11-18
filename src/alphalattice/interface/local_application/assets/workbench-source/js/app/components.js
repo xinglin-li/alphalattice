@@ -2000,6 +2000,7 @@ const CODE_WORDS = {
   PORTFOLIO_UPDATE_RUN: "Portfolio update RUN",
   RESEARCH_HISTORY: "Research history",
   EXPERIENCE_READ: "experience.label.trials",
+  EXPERIENCE_CLASS: "experience.label.class",
   EXPERIENCE_RECORD: "experience.label.review",
   RESEARCH_INPUTS: "Research inputs",
   RESEARCH_INPUT_READBACK: "Read input publication",

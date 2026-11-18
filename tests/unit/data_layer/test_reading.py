@@ -42,3 +42,46 @@ def test_a_reader_that_does_not_answer_is_ended_and_refused_by_name(tmp_path, mo
         reading._ask(silent, ("experience", {"limit": 1}), answers, tmp_path)
     assert refused.value.failure.code == "data_layer.history_unavailable"
     assert silent.poll() == -9
+
+
+@pytest.mark.proves("data_layer.a_class_width_is_named")
+def test_an_unknown_class_width_is_refused_by_name_before_any_read():
+    """A width other than recipe, method_version or method is refused by its code, naming the
+    three."""
+    with pytest.raises(DataError, match="recipe, method_version, method") as refused:
+        reading.experience_class(None, trial="t1", width="family")
+    assert refused.value.failure.code == "experience.class_width_unknown"
+
+
+class _Answering:
+    """A reader's process that answers each request with `answer`, as `serve` sends it."""
+
+    def __init__(self, answer: object) -> None:
+        self.stdin, self.stdout = io.BytesIO(), io.BytesIO()
+        reading._send(self.stdout, answer)
+        self.stdout.seek(0)
+
+
+@pytest.mark.proves("data_layer.a_reads_answer_and_refusal_cross_the_reader")
+@pytest.mark.parametrize(
+    ("answer", "code"),
+    [
+        pytest.param((True, {"members": [], "search": {}}), None, id="an-answer-whole"),
+        pytest.param(
+            (False, ("experience.trial_unknown", "not held")),
+            "experience.trial_unknown",
+            id="a-refusal-by-its-code",
+        ),
+        pytest.param((False, "OSError: gone"), "data_layer.history_unavailable", id="a-fault"),
+    ],
+)
+def test_a_reads_answer_or_refusal_reaches_the_host_as_the_read_gave_it(tmp_path, answer, code):
+    """A read's answer reaches the Host as the read returned it, a mapping too; the read's own
+    refusal by its code; any other failure as the history being unavailable."""
+    with ThreadPoolExecutor(max_workers=1) as answers:
+        if code is None:
+            assert reading._ask(_Answering(answer), ("q", {}), answers, tmp_path) == answer[1]
+            return
+        with pytest.raises(DataError) as refused:
+            reading._ask(_Answering(answer), ("q", {}), answers, tmp_path)
+    assert refused.value.failure.code == code

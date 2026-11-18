@@ -764,6 +764,12 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Reads recorded trials, their measures and conclusions.",
         collection=True,
     ),
+    "EXPERIENCE_CLASS": Command(
+        "experience",
+        "class",
+        "Reads every trial of a trial's class, across goals, workspaces and agents, as known at "
+        "a time: each member and its measures, each metric's spread and the search's size.",
+    ),
     "EXPERIENCE_RECORD": Command(
         "experience",
         "record",
@@ -1110,6 +1116,9 @@ FLAGS: Final[dict[str, str]] = {
     "experience_hypothesis": "hypothesis",
     "experience_method": "method",
     "experience_workspace": "from-workspace",
+    "experience_trial": "of-trial",
+    "experience_width": "width",
+    "experience_known_at": "known-at",
     "review_subject": "reviews",
     "review_verdict": "verdict",
     "incident_key": "incident",

@@ -329,6 +329,26 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_class_read_is_a_search_memory_span": {
+      "description": "If a class read left no search_memory step in the Host's log, which experience reads informed a trial could never be measured; if it carried the query or the records, it would hold what the conventions keep opt-in.",
+      "lower_layer": "The step is the span the Host's log accepts by its registered event type, so only a real log shows it recorded.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.a_class_read_is_cut_at_its_known_time": {
+      "description": "If a class read named the wrong trials at a width, or counted a trial, a state or a measure learned after its cutoff, an agent would judge a result against a spread that never existed then.",
+      "lower_layer": "The read joins the log's trials, recipes, events and measures through the reading views in DuckDB; only a real log shows each width and cut.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.a_class_width_is_named": {
+      "description": "If an unknown class width were read as some default, an agent would get a class it did not ask for.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_clients_trace_reaches_its_workers": {
       "description": "Client trace context reaches its Host and worker spans; the log and an opted-in receiver retain their trace, and external secrets and content are protected.",
       "lower_layer": "A real Host serves the request over loopback HTTP and a real worker process runs the call; the spans are read from a real log and an in-memory OTLP/HTTP receiver.",
@@ -390,6 +410,12 @@
     },
     "data_layer.a_number_has_one_typed_form": {
       "description": "A number has one typed form, so 5 and 5.0 are one recipe parameter and one measure dimension, and a value with none is refused.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_reads_answer_and_refusal_cross_the_reader": {
+      "description": "A reading view's answer reaches the Host from the reader's process as the read returned it, a mapping too; the read's own refusal arrives by its code; any other failure is refused as the history being unavailable.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1

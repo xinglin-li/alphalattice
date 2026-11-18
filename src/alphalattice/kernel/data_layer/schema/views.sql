@@ -199,6 +199,23 @@ SELECT ts.workspace_id, t.selection_id, count(*) AS trials, sum(t.candidates) AS
 FROM log.trial t JOIN log.trial_scope ts ON ts.trial_id = t.trial_id JOIN log.recipe r ON r.recipe_key = t.recipe_key
 GROUP BY ts.workspace_id, t.selection_id;
 
+-- A trial's place in its experiment's class: the ids a class is named by, at each width (the same recipe; the same
+-- method version with other parameters; any version of the method), with the seqs its parts became known at, so a
+-- read cut at a known time sees only what was known then. It spans goals, workspaces and agents.
+CREATE VIEW class_member AS
+SELECT t.trial_id, ts.workspace_id, ts.goal_id, reg.actor_kind, reg.actor_id,
+       t.recipe_key, r.method_id, rl.name AS method, r.method_version, r.params,
+       t.selection_id, s.universe_id, s.cutoff_us, s.valid_from, s.valid_to,
+       (SELECT list(u.upstream_key ORDER BY u.position) FROM log.recipe_upstream u WHERE u.recipe_key = t.recipe_key)
+         AS upstream_recipes,
+       t.state, t.candidates, t.result_artifact, t.registered_seq, t.ended_seq
+FROM log.trial t
+JOIN log.trial_scope ts ON ts.trial_id = t.trial_id
+JOIN log.selection s ON s.selection_id = t.selection_id
+JOIN log.recipe r ON r.recipe_key = t.recipe_key
+JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
+JOIN log.event reg ON reg.seq = t.registered_seq;
+
 -- Comparing two artifacts is the Host's `compare` (project.py), which reads `measure` through SQLite by its primary
 -- key, artifact first: through DuckDB's SQLite scan the filter is not pushed down and every measure is read.
 

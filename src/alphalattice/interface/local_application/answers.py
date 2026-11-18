@@ -485,6 +485,30 @@ class ExperienceAnswer(_Answer):
     """Trials on this page that have no recorded hypothesis."""
 
 
+class ExperienceClassAnswer(_Answer):
+    """Every trial of a trial's class as the history knew it at a time, with the class's spread
+    and the size of its search: what a recalled experience's statistics rest on."""
+
+    model_config = ConfigDict(extra="forbid")
+    trial: str
+    """The trial whose class was read."""
+    width: str
+    """The class's width: recipe, method_version or method."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    members: list[dict[str, Any]]
+    """Each member: its goal, workspace, agent, recipe, method and its version, parameters,
+    selection, universe, state then and measures recorded by then; at most 200."""
+    spread: list[dict[str, Any]]
+    """Per metric, version and dimensions: count, mean, standard deviation, minimum, median and
+    maximum over every member measured by then."""
+    search: dict[str, Any]
+    """The search's size: trials, candidates, recipes, goals, workspaces, agents, and how many
+    completed and failed."""
+
+
 class ExperienceRecordAnswer(_Answer):
     """A review's note as the Host recorded it, with the run it rests on; its experience is
     rendered after this reply."""
@@ -687,6 +711,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
     "EXPERIENCE_READ": ExperienceAnswer,
+    "EXPERIENCE_CLASS": ExperienceClassAnswer,
     "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),

@@ -11,8 +11,12 @@
       "words": {"en": "This Host's history is not recording, so it records no events and answers no activity; the Host that alphalattice serve starts records its history or refuses to start.", "zh-CN": "这个 Host 的历史没有在记录，因此不记录事件，也不回答活动；alphalattice serve 启动的 Host 会记录它的历史，否则拒绝启动。"}
     },
     "experience.label.trials": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial experience", "zh-CN": "试验经验"}},
+    "experience.label.class": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial class", "zh-CN": "试验类别"}},
     "experience.label.review": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Review note", "zh-CN": "复盘笔记"}},
     "experience.label.hypothesis": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Hypothesis", "zh-CN": "假设"}},
+    "experience.trial_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That trial is not in the Host's history.", "zh-CN": "Host 的历史中没有该试验。"}},
+    "experience.class_width_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A class's width is recipe, method_version or method.", "zh-CN": "类别的宽度只能是 recipe、method_version 或 method。"}},
+    "experience.known_at_invalid": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A known time is an ISO-8601 time with its offset.", "zh-CN": "已知时间是带时区偏移的 ISO-8601 时间。"}},
     "experience.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's research history is unavailable, so its trial experience could not be read.", "zh-CN": "Host 的研究历史不可用，因此无法读取试验经验。"}},
     "experience.note_incomplete": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A note says its hypothesis, method and conclusion, each a sentence, and each lesson is a sentence.", "zh-CN": "笔记要写明它的假设、做法和结论，每项一句话，每条教训也是一句话。"}},
     "experience.layer_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A note reviews a trial, a Task or a goal.", "zh-CN": "笔记复盘的是一个试验、一个任务或一个目标。"}},

@@ -1,5 +1,6 @@
 """Experience read and the research run's explicit hypothesis."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from alphalattice.control.product_host.composition.plain_refusals import refused
@@ -48,6 +49,25 @@ def read_experience(request: "PortfolioResearchOperationRequest") -> dict[str, o
         "notes": experience["notes"],
         "unattributed_in_page": sum(row["hypothesis_id"] is None for row in trials),
     }
+
+
+def read_experience_class(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+    """Every trial of the named trial's class, at its width, as the history knew it at the
+    request's known time (`history.read_experience_class`); refused by name for a trial the
+    history does not hold."""
+    assert request.experience_trial is not None
+    known = request.experience_known_at
+    try:
+        found = history.read_experience_class(
+            trial=request.experience_trial,
+            width=request.experience_width or "method_version",
+            cutoff_us=None
+            if known is None
+            else round(datetime.fromisoformat(known).timestamp() * 1_000_000),
+        )
+    except DataError as error:  # the read's own code, or the history unavailable
+        return refused(public_failure(error, "experience.history_unavailable"))
+    return refused("experience.history_unavailable") if found is None else found
 
 
 def record_experience(

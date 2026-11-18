@@ -16,6 +16,7 @@ import pytest
 
 from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
+    read_experience_class,
     record_experience,
 )
 from alphalattice.interface.local_application.answers import (
@@ -30,6 +31,7 @@ TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
 
 
 @pytest.mark.proves("data_layer.host_history_records_or_refuses")
+@pytest.mark.proves("data_layer.a_class_read_is_a_search_memory_span")
 def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,6 +104,11 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             review.review_subject = "trial:none"
             unheld = record_experience(SimpleNamespace(**vars(review), review_note=note), "A")
             assert unheld["failure_code"] == "experience.unit_unknown"
+            # A class read of a trial the log does not hold is refused by its own code, through
+            # the reader's process, never as the history being unavailable.
+            ask = SimpleNamespace(experience_trial="none", experience_width=None)
+            unknown = read_experience_class(SimpleNamespace(**vars(ask), experience_known_at=None))
+            assert unknown["failure_code"] == "experience.trial_unknown"
             # A render holds the log's guard alone: while it is inside, the lock `open_history`
             # takes before the guard is free, so neither waits on the other (a handshake; every
             # wait is bounded and only a red one runs out).
@@ -161,6 +168,17 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"
         ).fetchone() == (5,)
+        # The class read is one search_memory step in the log, failed with the read, holding
+        # neither the query nor the records.
+        found = con.execute(
+            "SELECT phase, attrs FROM event WHERE type = 'search_memory'"
+        ).fetchall()
+        assert [(phase, json.loads(attrs)) for phase, attrs in found] == [
+            (
+                "failed",
+                {"gen_ai.operation.name": "search_memory", "gen_ai.memory.store.id": "experience"},
+            )
+        ]
         rows = con.execute(
             "SELECT workspace_id, name, folder FROM workspace ORDER BY workspace_id"
         ).fetchall()

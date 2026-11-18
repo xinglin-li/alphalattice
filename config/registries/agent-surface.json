@@ -6704,6 +6704,118 @@
         "type": "string"
       }
     },
+    "answer:EXPERIENCE_CLASS.cutoff_us": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:EXPERIENCE_CLASS.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_CLASS.known_seq": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.members": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.search": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.spread": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.trial": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.width": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:EXPERIENCE_READ.error_info": {
       "required": false,
       "schema": {
@@ -25427,6 +25539,21 @@
         "default": null
       }
     },
+    "answer:UPGRADE_OVERVIEW.first_start": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "answer:UPGRADE_OVERVIEW.installed": {
       "required": true,
       "schema": {
@@ -27249,6 +27376,11 @@
       ]
     },
     "command:experience": {},
+    "command:experience class": {
+      "operations": [
+        "EXPERIENCE_CLASS"
+      ]
+    },
     "command:experience list": {
       "operations": [
         "EXPERIENCE_READ"
@@ -28751,6 +28883,16 @@
       ],
       "required": [
         "analysis_publication_hash"
+      ]
+    },
+    "operation:EXPERIENCE_CLASS": {
+      "allowed": [
+        "experience_known_at",
+        "experience_trial",
+        "experience_width"
+      ],
+      "required": [
+        "experience_trial"
       ]
     },
     "operation:EXPERIENCE_READ": {
@@ -37709,6 +37851,131 @@
       "type": "Path"
     },
     "option:evidence/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience class/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience class/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--known-at": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience class/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience class/--of-trial": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience class/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience class/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--width": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience class/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience class/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -57643,13 +57910,16 @@
     "refusal:execution.cpu_budget_invalid": {},
     "refusal:execution.cpu_budget_unreadable": {},
     "refusal:execution.memory_insufficient": {},
+    "refusal:experience.class_width_unknown": {},
     "refusal:experience.history_unavailable": {},
     "refusal:experience.hypothesis_existing_run": {},
     "refusal:experience.hypothesis_goal": {},
     "refusal:experience.hypothesis_unknown": {},
     "refusal:experience.hypothesis_workspace": {},
+    "refusal:experience.known_at_invalid": {},
     "refusal:experience.layer_unknown": {},
     "refusal:experience.note_incomplete": {},
+    "refusal:experience.trial_unknown": {},
     "refusal:experience.trials_malformed": {},
     "refusal:experience.unit_unknown": {},
     "refusal:experience.verdict_unknown": {},
@@ -60316,6 +60586,16 @@
     "refusal:shared_kernel.source_inventory_invalid": {},
     "refusal:shared_kernel.source_resource_outside_runtime": {},
     "refusal:shared_kernel.source_syntax_unreadable": {},
+    "refusal:spawn.encoding_invalid": {},
+    "refusal:spawn.initial_thread_unavailable": {},
+    "refusal:spawn.session_input_closed": {},
+    "refusal:spawn.session_owns_stdin": {},
+    "refusal:spawn.session_stop_unconfirmed": {},
+    "refusal:spawn.session_terminal": {},
+    "refusal:spawn.stdin_unfed": {},
+    "refusal:spawn.stop_scope_invalid": {},
+    "refusal:spawn.timeout_invalid": {},
+    "refusal:spawn.tree_not_stopped": {},
     "refusal:storage.cap_setting_invalid": {},
     "refusal:storage.cap_setting_unreadable": {},
     "refusal:storage.cleanup_interrupted": {},
@@ -60612,6 +60892,7 @@
     "refusal:workspace_data_update.valuation_scope_invalid": {},
     "refusal:workspace_data_update.workspace_manifest_changed": {},
     "refusal:workspace_database.access_mode_conflict_on_this_thread": {},
+    "refusal:workspace_database.derived_setup_absent": {},
     "refusal:workspace_database.read_only_retention_cannot_write": {},
     "refusal:workspace_database.runtime_extension_refused": {},
     "refusal:workspace_maintenance.candidate_data_recheck_history_invalid": {},
@@ -61486,6 +61767,22 @@
         "default": null
       }
     },
+    "request:Request.experience_known_at": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "request:Request.experience_method": {
       "required": false,
       "schema": {
@@ -61493,6 +61790,41 @@
           {
             "maxLength": 256,
             "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_trial": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_width": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "enum": [
+              "recipe",
+              "method_version",
+              "method"
+            ],
             "type": "string"
           },
           {
@@ -63410,6 +63742,7 @@
         "GOAL_ABANDON",
         "RESEARCH_HISTORY",
         "EXPERIENCE_READ",
+        "EXPERIENCE_CLASS",
         "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",

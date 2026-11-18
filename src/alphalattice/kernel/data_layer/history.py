@@ -76,6 +76,11 @@ STEPS: Final = {
         "none",
         "One CLI invocation: the command an agent or the person ran.",
     ),
+    "search_memory": (
+        ["gen_ai.operation.name", "gen_ai.memory.store.id"],
+        "none",
+        "One read of an agent memory store, as the gen_ai conventions name it.",
+    ),
 }
 """The Host's own step types, by required attributes and text: each span `step`, `begin` and a
 worker open is one of these events."""
@@ -1117,6 +1122,36 @@ def definition_id(family: str, name: str) -> str | None:
         )
     )
     return str(found[0][0]) if found else None
+
+
+def read_experience_class(
+    *, trial: str, width: str = "method_version", cutoff_us: int | None = None
+) -> dict[str, Any] | None:
+    """Every trial of `trial`'s experiment class at `width`, as known at `cutoff_us`, with the
+    class's spread and search size (`reading.experience_class`), read by the open Host as one
+    gen_ai `search_memory` span over the experience store; None if unavailable. The query and
+    the records stay off the span: the conventions make both opt-in."""
+    with _lock:
+        reading = _open.get("reading")
+        if reading is None:
+            return None
+        _open["log"].flush()
+        provider = _open.get("tracer")
+        if provider is None:
+            return reading.read("experience_class", trial=trial, width=width, cutoff_us=cutoff_us)
+        from opentelemetry.trace import SpanKind  # lazy: the SDK, once open
+
+        attributes = {
+            "gen_ai.operation.name": "search_memory",
+            "gen_ai.memory.store.id": "experience",
+        }
+        with provider.get_tracer("host").start_as_current_span(
+            "search_memory", kind=SpanKind.CLIENT, attributes=attributes
+        ) as span:
+            found = reading.read("experience_class", trial=trial, width=width, cutoff_us=cutoff_us)
+            span.set_attribute("gen_ai.memory.record.count", len(found["members"]))
+        _open["log"].flush()
+        return found
 
 
 @contextmanager

@@ -152,6 +152,7 @@ type PortfolioResearchOperation = Literal[
     "GOAL_ABANDON",
     "RESEARCH_HISTORY",
     "EXPERIENCE_READ",
+    "EXPERIENCE_CLASS",
     "EXPERIENCE_RECORD",
     "EXPERIMENT_COMPARE",
     "EXPERIMENT_ALPHA_COMPARE",
@@ -424,6 +425,9 @@ class PortfolioResearchOperationRequest:
     experience_hypothesis: str | None = None
     experience_method: str | None = None
     experience_workspace: str | None = None
+    experience_trial: str | None = None
+    experience_width: str | None = None
+    experience_known_at: str | None = None
     review_subject: str | None = None
     review_verdict: str | None = None
     review_note: dict[str, Any] | None = None
@@ -774,6 +778,13 @@ class PortfolioResearchOperationRequest:
                 raise LocalApplicationError("alternative_evidence.cutoff_invalid") from error
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise LocalApplicationError("alternative_evidence.cutoff_invalid")
+        if self.experience_known_at is not None:
+            try:
+                parsed = datetime.fromisoformat(str(self.experience_known_at))
+            except ValueError as error:
+                raise LocalApplicationError("experience.known_at_invalid") from error
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise LocalApplicationError("experience.known_at_invalid")
         if self.review_read_at is not None:
             try:
                 parsed = datetime.fromisoformat(str(self.review_read_at))
@@ -853,6 +864,14 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """Only trials using this method."""
     experience_workspace: str | None = Field(default=None, min_length=1, max_length=256)
     """Only trials from this workspace ID."""
+    experience_trial: str | None = Field(default=None, min_length=1, max_length=64)
+    """The trial, by its ID, whose class to read."""
+    experience_width: Literal["recipe", "method_version", "method"] | None = None
+    """The class's width: the same recipe; the same method version with other parameters (the
+    default); any version of the method."""
+    experience_known_at: str | None = Field(default=None, min_length=1, max_length=64)
+    """Read the class as the history knew it at this ISO-8601 time with its offset; now when
+    absent."""
     review_subject: str | None = Field(
         default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
     )

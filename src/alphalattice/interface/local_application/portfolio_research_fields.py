@@ -94,6 +94,10 @@ requirements = {
             }
         ),
     ),
+    "EXPERIENCE_CLASS": (
+        frozenset({"experience_trial"}),
+        frozenset({"experience_trial", "experience_width", "experience_known_at"}),
+    ),
     "EXPERIENCE_RECORD": (
         frozenset({"review_subject", "review_verdict", "review_note"}),
         frozenset({"review_subject", "review_verdict", "review_note"}),

@@ -85,10 +85,11 @@ class LogReader:
         self._child: subprocess.Popen[bytes] | None = None
         self._answers = ThreadPoolExecutor(max_workers=1, thread_name_prefix="log-reader")
 
-    def read(self, name: str, **filters: Any) -> list[dict[str, Any]]:
-        """The rows of the view read `name` (experience or goal_notes) with `filters`; refused as
-        `data_layer.history_unavailable` when the reader cannot answer, or has not within
-        READ_SECONDS, when its process is ended and the next read starts another."""
+    def read(self, name: str, **filters: Any) -> Any:
+        """The answer of the view read `name` (`serve`'s reads) with `filters`, as that read
+        returns it; a read's own refusal by its code; refused as `data_layer.history_unavailable`
+        when the reader cannot answer, or has not within READ_SECONDS, when its process is ended
+        and the next read starts another."""
         child = self._child
         if child is None or child.poll() is not None:
             child = self._child = subprocess.Popen(
@@ -110,10 +111,11 @@ class LogReader:
 
 def _ask(
     child: subprocess.Popen[bytes], request: Any, answers: ThreadPoolExecutor, root: Path
-) -> list[dict[str, Any]]:
+) -> Any:
     """One read's exchange with the reader's process `child`, its answer awaited on `answers`:
-    refused as `data_layer.history_unavailable` when the process cannot answer, or has not within
-    READ_SECONDS, when it is ended and reaped, so the next read starts another."""
+    a read's own refusal raised again by its code; refused as `data_layer.history_unavailable`
+    when the process cannot answer, or has not within READ_SECONDS, when it is ended and reaped,
+    so the next read starts another."""
     assert child.stdin is not None and child.stdout is not None
     try:
         _send(child.stdin, request)
@@ -129,12 +131,14 @@ def _ask(
             f"the reading views' process at {root} ended ({error})",
             code="data_layer.history_unavailable",
         ) from error
+    if not ok and isinstance(value, tuple):  # the read's own refusal: its code and message
+        raise DataError(value[1], code=value[0])
     if not ok:
         raise DataError(
             f"the reading views at {root} did not answer ({value})",
             code="data_layer.history_unavailable",
         )
-    return list(value)
+    return value
 
 
 def _end(child: subprocess.Popen[bytes], *, kill: bool) -> None:
@@ -178,11 +182,17 @@ def serve(root: Path, requests: IO[bytes], answers: IO[bytes]) -> None:
     `root` until the requests end. This process holds no HostLog, so its DuckDB is the only SQLite
     library that opens the log here."""
     session = reading_session(root)
-    reads = {"experience": experience, "goal_notes": goal_notes}
+    reads = {
+        "experience": experience,
+        "goal_notes": goal_notes,
+        "experience_class": experience_class,
+    }
     try:
         for name, filters in _requests(requests):
             try:
                 _send(answers, (True, reads[name](session, **filters)))
+            except DataError as error:  # a read's own refusal, by its code
+                _send(answers, (False, (error.failure.code, str(error))))
             except Exception as error:  # the Host refuses it by name
                 _send(answers, (False, f"{type(error).__name__}: {error}"))
     finally:
@@ -241,6 +251,108 @@ def _experience_rows(
         f"SELECT * FROM {view}{where} ORDER BY {order} LIMIT ?",
         [*values, limit],
     )
+    names = [column[0] for column in result.description]
+    return [dict(zip(names, row, strict=True)) for row in result.fetchall()]
+
+
+CLASS_WIDTHS = {
+    "recipe": "c.recipe_key = a.recipe_key",
+    "method_version": "c.method_id = a.method_id AND c.method_version = a.method_version",
+    "method": "c.method_id = a.method_id",
+}
+"""An experiment's class at each width the agent may pick: the same recipe; the same method
+version with other parameters; any version of the method."""
+
+
+def experience_class(
+    con: Any,
+    *,
+    trial: str,
+    width: str = "method_version",
+    cutoff_us: int | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Every trial of `trial`'s class at `width`, across goals, workspaces and agents, as known at
+    `cutoff_us` (now when None): those registered by then, each in the state it had then, its
+    end's fields (result, candidates, end) only once it had ended, with the headline measures
+    recorded by then; the class's spread per metric and its search size, over every member,
+    failed and cancelled ones included. Refused by name for an unknown width, or a trial the
+    history did not hold by then."""
+    if width not in CLASS_WIDTHS:
+        raise DataError(
+            f"a class's width is one of {', '.join(CLASS_WIDTHS)}, not {width!r}",
+            code="experience.class_width_unknown",
+        )
+    known = con.execute(
+        "SELECT coalesce(max(seq), 0) FROM log.event WHERE ? IS NULL OR recorded_us <= ?",
+        [cutoff_us, cutoff_us],
+    ).fetchone()[0]
+    then = "CASE WHEN c.ended_seq <= $known THEN c.{0} END AS {0}"  # an end's fields, once known
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE class_now AS SELECT c.* REPLACE ("
+        + ", ".join(then.format(name) for name in ("result_artifact", "candidates", "ended_seq"))
+        + "), CASE WHEN c.ended_seq <= $known THEN c.state ELSE 'running' END AS state_then"
+        f" FROM class_member a JOIN class_member c ON {CLASS_WIDTHS[width]}"
+        " WHERE a.trial_id = $trial AND a.registered_seq <= $known"
+        " AND c.registered_seq <= $known",
+        {"known": known, "trial": trial},
+    )
+    try:
+        members = _rows(
+            con,
+            "SELECT * EXCLUDE (state) FROM class_now ORDER BY registered_seq, trial_id LIMIT ?",
+            [limit],
+        )
+        if not members:  # a trial known then is a member of its own class
+            raise DataError(
+                f"trial {trial!r} is not in the Host's history as known then",
+                code="experience.trial_unknown",
+            )
+        measured = (
+            "SELECT c.trial_id, ml.name AS metric, m.metric_version, m.dims, m.value"
+            " FROM class_now c JOIN log.measure m ON m.artifact_id = c.result_artifact"
+            " JOIN log.definition_lineage ml ON ml.definition_id = m.metric_id"
+            " WHERE m.recorded_seq <= $known AND m.value IS NOT NULL"
+        )
+        spread = _rows(
+            con,
+            f"SELECT metric, metric_version, dims, count(*) AS n, avg(value) AS mean,"
+            f" stddev_samp(value) AS sd, min(value) AS lo, median(value) AS mid, max(value) AS hi"
+            f" FROM ({measured}) GROUP BY ALL ORDER BY metric, metric_version, dims",
+            {"known": known},
+        )
+        search = _rows(
+            con,
+            "SELECT count(*) AS trials, sum(candidates) AS candidates,"
+            " count(DISTINCT recipe_key) AS recipes, count(DISTINCT goal_id) AS goals,"
+            " count(DISTINCT workspace_id) AS workspaces, count(DISTINCT actor_id) AS actors,"
+            " count(*) FILTER (WHERE state_then = 'completed') AS completed,"
+            " count(*) FILTER (WHERE state_then IN ('failed', 'cancelled')) AS failed"
+            " FROM class_now",
+        )[0]
+        measures = _rows(
+            con, f"{measured} ORDER BY trial_id, metric, metric_version, dims", {"known": known}
+        )
+    finally:
+        con.execute("DROP TABLE IF EXISTS class_now")
+    by_trial: dict[str, list[dict[str, Any]]] = {}
+    for row in measures:
+        by_trial.setdefault(row.pop("trial_id"), []).append(row)
+    for member in members:
+        member["measures"] = by_trial.get(member["trial_id"], [])
+    return {
+        "trial": trial,
+        "width": width,
+        "cutoff_us": cutoff_us,
+        "known_seq": known,
+        "members": members,
+        "spread": spread,
+        "search": search,
+    }
+
+
+def _rows(con: Any, sql: str, parameters: Any = ()) -> list[dict[str, Any]]:
+    result = con.execute(sql, parameters)
     names = [column[0] for column in result.description]
     return [dict(zip(names, row, strict=True)) for row in result.fetchall()]
 

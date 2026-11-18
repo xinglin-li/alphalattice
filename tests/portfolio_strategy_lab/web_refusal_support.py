@@ -128,6 +128,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "evidence_documents_per_issuer",
         "evidence_index_id",
         "evidence_setup",
+        "experience_trial",
         "experiment_curation",
         "experiment_document",
         "experiment_plan_hash",

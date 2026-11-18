@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, reading
 from alphalattice.kernel.data_layer import log as log_module
 from alphalattice.kernel.data_layer.log import HostLog
@@ -156,6 +157,60 @@ def bare(tmp_path_factory):
         shutil.rmtree(root / folder)
         (root / folder).mkdir()
     return root
+
+
+@pytest.mark.proves("data_layer.a_class_read_is_cut_at_its_known_time")
+@pytest.mark.parametrize(
+    ("width", "cut", "members", "states", "sharpe_n", "unknown_then"),
+    [
+        pytest.param("recipe", None, ["t1", "t2"], ["completed"] * 2, 2, [], id="recipe-now"),
+        pytest.param(
+            "method_version", None, ["t1", "t2", "t3"], ["completed"] * 3, 3, [], id="version-now"
+        ),
+        pytest.param("method", None, ["t1", "t2", "t3"], ["completed"] * 3, 3, [], id="method-now"),
+        pytest.param(
+            "method",
+            "t3",
+            ["t1", "t2", "t3"],
+            ["completed", "completed", "running"],
+            2,
+            [],
+            id="cut-before-t3-ended",
+        ),
+        pytest.param(
+            "method_version", "t1", ["t1"], ["running"], 0, ["t2", "t3"], id="cut-before-t1-ended"
+        ),
+    ],
+)
+def test_a_class_read_returns_its_members_and_spread_as_known_at_its_cutoff(
+    analytics_log, width, cut, members, states, sharpe_n, unknown_then
+):
+    """A class read cut at a known time holds only what was known then: its trials, their states,
+    their end's fields and their measures; a trial registered later is refused by name."""
+    with closing(sqlite3.connect(analytics_log / "machine" / "log.sqlite")) as con:
+        ended = dict(
+            con.execute(
+                "SELECT t.trial_id, e.recorded_us FROM trial t JOIN event e ON e.seq = t.ended_seq"
+            ).fetchall()
+        )
+    session = reading_session(analytics_log)
+    assert session is not None, "the reading views need DuckDB's sqlite extension"
+    cutoff = None if cut is None else ended[cut] - 1
+    with closing(session):
+        read = reading.experience_class(session, trial="t1", width=width, cutoff_us=cutoff)
+        for later in unknown_then:
+            with pytest.raises(DataError, match="as known then") as refused:
+                reading.experience_class(session, trial=later, width=width, cutoff_us=cutoff)
+            assert refused.value.failure.code == "experience.trial_unknown"
+    assert [m["trial_id"] for m in read["members"]] == members
+    assert [m["state_then"] for m in read["members"]] == states
+    ended_then = [state == "completed" for state in states]
+    for field in ("result_artifact", "ended_seq"):  # set at the end, so unknown before it
+        assert [m[field] is not None for m in read["members"]] == ended_then
+    sharpe = [row for row in read["spread"] if row["metric"] == "sharpe" and row["dims"] == "{}"]
+    assert [row["n"] for row in sharpe] == ([sharpe_n] if sharpe_n else [])
+    assert read["search"]["trials"] == len(members)
+    assert sum(len(m["measures"]) > 0 for m in read["members"]) == states.count("completed")
 
 
 @pytest.mark.proves("data_layer.experience_reads_without_bodies")
