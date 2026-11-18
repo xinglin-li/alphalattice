@@ -136,7 +136,7 @@ def _verify_file(path: Path, entry: dict[str, Any], read: Any = None) -> None:
                 "backup_manifest_invalid",
                 "array backup lacks its saved owner; use a complete generation",
             )
-        from alphalattice.kernel.data_layer import arrays  # lazy: array bodies only
+        import alphalattice.kernel.data_layer.arrays as arrays  # lazy: array bodies only
 
         arrays.verify(path.parent.parent, read, entry["digest"], path.name)
     elif _file_digest(path, entry["digest"].rpartition(":")[0]) != entry["digest"]:
