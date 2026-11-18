@@ -51,6 +51,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
 from alphalattice.kernel.data.table import coerce_daily_records
+from alphalattice.kernel.data_layer import history
 
 
 class CurrentUniverseOnboardingStatus(StrEnum):
@@ -326,6 +327,7 @@ class CurrentUniverseOnboarding:
             retry_of=self.retry_of,
         )
         self._calendar_cache: dict[str, tuple[object, tuple[dict[str, object], ...]]] = {}
+        self._selection_cutoff_us: int | None = None
         self._admitted = False
 
     def admit(self, *, observed_at: datetime) -> None:
@@ -349,10 +351,12 @@ class CurrentUniverseOnboarding:
             observed_at=observed_at,
         )
         if self.retained_listing_ids:
+            self._admit_audited(observed_at)
             rebound = self.store.bind_available_action_audit_receipts_to_manifest(
                 self.acquisition_manifest,
                 requested_as_of=self.as_of_session,
                 now=observed_at,
+                cutoff_us=self._selection_cutoff_us,
             )
             if not set(self.retained_listing_ids).issubset(rebound):
                 # The listing worker records the specific typed failure.  This
@@ -639,6 +643,7 @@ class CurrentUniverseOnboarding:
             research_manifest,
             requested_as_of=self.as_of_session,
             now=now,
+            cutoff_us=self._selection_cutoff_us,
         )
         self.store.complete_current_universe_onboarding(
             onboarding_id=self.onboarding_id,
@@ -779,13 +784,13 @@ class CurrentUniverseOnboarding:
             {"listing_count": 1, "row_count": len(batch.bars)},
         )
         persistence_started = time.perf_counter()
-        with self.store.writing():
-            self.store.apply_validated_batch(
-                self.acquisition_manifest,
-                batch,
-                ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
-                observed_at=observed_at,
-            )
+        self.store.stage_onboarding_batch(
+            self.acquisition_manifest,
+            batch,
+            onboarding_id=self.onboarding_id,
+            ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
+            observed_at=observed_at,
+        )
         self._record_timing(
             "raw_persistence",
             persistence_started,
@@ -937,19 +942,27 @@ class CurrentUniverseOnboarding:
                         state="RAW_FAILED",
                     )
                     return "FAILED"
-                with self.store.writing():
-                    self.store.apply_validated_batch(
-                        self.acquisition_manifest,
-                        batch,
-                        ingestion_id=f"{self.onboarding_id}:retained-tail:{listing.listing_id}",
-                        observed_at=observed_at,
-                    )
+                self.store.stage_onboarding_batch(
+                    self.acquisition_manifest,
+                    batch,
+                    onboarding_id=self.onboarding_id,
+                    ingestion_id=f"{self.onboarding_id}:retained-tail:{listing.listing_id}",
+                    observed_at=observed_at,
+                )
+                self._mark_listing(
+                    item,
+                    state="RAW_READY",
+                    observed_at=observed_at,
+                    origin="RETAINED",
+                    raw_through=max(bar.session_date for bar in batch.bars),
+                    tail_acquired=True,
+                )
                 if not self._complete_retained_action_audit(
                     item, evidence=evidence, observed_at=observed_at
                 ):
                     return "FAILED"
-                raw_through = max(raw_through, max(bar.session_date for bar in batch.bars))
-                break
+                self._admit_audited(observed_at)
+                return "READY"
         self._mark_listing(
             item,
             state="RAW_READY",
@@ -964,21 +977,36 @@ class CurrentUniverseOnboarding:
         self,
         item: CurrentUniverseOnboardingListing,
         *,
-        evidence: HydrationEvidence,
+        evidence: HydrationEvidence | None,
         observed_at: datetime,
-    ) -> bool:
+    ) -> ActionAuditReceipt | None:
         """Splice bounded fresh evidence onto durable history before publication."""
         with self._hold.released():
-            bars = self.store.raw_bars(
-                item.listing_id,
-                through=self.as_of_session,
-                cutoff_us=world_reads.cutoff(observed_at),
+            existing = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+            bars = self.store.onboarding_bars(
+                self.onboarding_id, item.listing_id, through=self.as_of_session
             )
+            if evidence is None:
+                start = max(self.history_start, existing[-1].session_date - timedelta(days=45))
+                listing = self._listing(item.listing_id)
+                evidence = HydrationEvidence(
+                    daily_rows=(),
+                    actions=self.provider.fetch_action_history(
+                        listing_id=item.listing_id,
+                        provider_symbol=listing.provider_symbol,
+                        start=start,
+                        end=self.as_of_session,
+                    ),
+                    adjusted_closes=self.provider.fetch_adjusted_close_history(
+                        listing_id=item.listing_id,
+                        provider_symbol=listing.provider_symbol,
+                        start=start,
+                        end=self.as_of_session,
+                    ),
+                )
             action_by_key = {
                 (value.effective_date, value.action_kind): value
-                for value in self.store.actions(
-                    item.listing_id, cutoff_us=world_reads.cutoff(observed_at)
-                )
+                for value in self.store.actions(item.listing_id)
             }
             action_by_key.update(
                 {(value.effective_date, value.action_kind): value for value in evidence.actions}
@@ -988,7 +1016,6 @@ class CurrentUniverseOnboarding:
                 for value in self.store.provider_adjusted_closes(
                     item.listing_id,
                     through=self.as_of_session,
-                    cutoff_us=world_reads.cutoff(observed_at),
                 )
             }
             adjusted_by_session.update(
@@ -996,7 +1023,7 @@ class CurrentUniverseOnboarding:
             )
         try:
             with self.store.writing():
-                self.store.complete_action_audit(
+                return self.store.complete_onboarding_audit(
                     self.acquisition_manifest,
                     ActionAuditObservation(
                         listing_id=item.listing_id,
@@ -1009,7 +1036,8 @@ class CurrentUniverseOnboarding:
                         history_end=self.as_of_session,
                         observed_at=observed_at,
                     ),
-                )[0]
+                    onboarding_id=self.onboarding_id,
+                )
         except ValueError:
             self._record_listing_failure(
                 item,
@@ -1017,8 +1045,7 @@ class CurrentUniverseOnboarding:
                 observed_at=observed_at,
                 state="AUDIT_FAILED",
             )
-            return False
-        return True
+            return None
 
     def _defer_hydration(
         self,
@@ -1136,13 +1163,13 @@ class CurrentUniverseOnboarding:
             # A write or store failure is an owner failure, not a corrupt
             # provider payload. Propagate it instead of silently excluding a
             # listing under a misleading sanitizer code.
-            with self.store.writing():
-                self.store.apply_validated_batch(
-                    self.acquisition_manifest,
-                    batch,
-                    ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
-                    observed_at=observed_at,
-                )
+            self.store.stage_onboarding_batch(
+                self.acquisition_manifest,
+                batch,
+                onboarding_id=self.onboarding_id,
+                ingestion_id=f"{self.onboarding_id}:raw:{listing.listing_id}",
+                observed_at=observed_at,
+            )
             self._mark_listing(
                 item,
                 state="RAW_READY",
@@ -1152,6 +1179,16 @@ class CurrentUniverseOnboarding:
             )
             return "READY"
         raise AssertionError("bounded raw refresh did not return")
+
+    def _admit_audited(self, observed_at: datetime) -> None:
+        """Admit the committed composite, then select what its checks may know."""
+        with self._hold.released():
+            with self.store.market_reads():
+                pass
+            port = history.store()
+            self._selection_cutoff_us = (
+                port.log.clock() if port is not None else world_reads.cutoff(observed_at)
+            )
 
     def _qualify_raw_history(
         self, item: CurrentUniverseOnboardingListing, *, observed_at: datetime
@@ -1168,13 +1205,21 @@ class CurrentUniverseOnboarding:
             self._calendar_cache[item.calendar_id] = (schedule, schedule_rows)
         else:
             schedule, schedule_rows = cached
+        pending = self.store.onboarding_bars(
+            self.onboarding_id, item.listing_id, through=self.as_of_session
+        )
+        if not pending and self._selection_cutoff_us is None:
+            self._admit_audited(observed_at)
         with self._hold.released():
             bars = tuple(
                 bar
-                for bar in self.store.raw_bars(
-                    item.listing_id,
-                    through=self.as_of_session,
-                    cutoff_us=world_reads.cutoff(observed_at),
+                for bar in (
+                    pending
+                    or self.store.raw_bars(
+                        item.listing_id,
+                        through=self.as_of_session,
+                        cutoff_us=self._selection_cutoff_us or world_reads.cutoff(observed_at),
+                    )
                 )
                 if bar.session_date >= self.history_start
             )
@@ -1228,6 +1273,10 @@ class CurrentUniverseOnboarding:
             as_of_timestamp=observed_at,
             created_at=observed_at,
         ).symbol_reports[0]
+        if pending and report.eligible:
+            # The writer's precheck only: publish the quality admission from world after
+            # this staged payload and its audit have committed together.
+            return True
         self._admit_quality(
             item,
             eligible=report.eligible,
@@ -1249,11 +1298,14 @@ class CurrentUniverseOnboarding:
         evidence: HydrationEvidence | None = None,
     ) -> str | ProviderFetchError:
         listing = self._listing(item.listing_id)
+        pending = self.store.onboarding_bars(
+            self.onboarding_id, item.listing_id, through=self.as_of_session
+        )
         with self._hold.released():
-            bars = self.store.raw_bars(
+            bars = pending or self.store.raw_bars(
                 item.listing_id,
                 through=self.as_of_session,
-                cutoff_us=world_reads.cutoff(observed_at),
+                cutoff_us=self._selection_cutoff_us or world_reads.cutoff(observed_at),
             )
         if not bars:
             self._record_listing_failure(
@@ -1261,16 +1313,21 @@ class CurrentUniverseOnboarding:
             )
             return "FAILED"
         with self._hold.released():
-            receipt = self.store.reusable_action_audit_receipt(
-                self.acquisition_manifest,
-                listing_id=item.listing_id,
-                provider=self.provider.name,
-                requested_as_of=self.as_of_session,
-                now=observed_at,
+            receipt = (
+                None
+                if pending
+                else self.store.reusable_action_audit_receipt(
+                    self.acquisition_manifest,
+                    listing_id=item.listing_id,
+                    provider=self.provider.name,
+                    requested_as_of=self.as_of_session,
+                    now=observed_at,
+                    cutoff_us=self._selection_cutoff_us,
+                )
             )
-        if receipt is None and item.listing_id in set(self.retained_listing_ids):
+        if receipt is None and not pending and item.listing_id in set(self.retained_listing_ids):
             receipt = self._retained_audit_chain(item, observed_at=observed_at)
-        if receipt is None and item.listing_id in set(self.retained_listing_ids):
+        if receipt is None and not pending and item.listing_id in set(self.retained_listing_ids):
             self._record_listing_failure(
                 item,
                 code="data.retained_action_evidence_not_reusable",
@@ -1280,13 +1337,20 @@ class CurrentUniverseOnboarding:
             return "FAILED"
         try:
             if receipt is None:
-                receipt = self._complete_action_audit(
-                    item,
-                    listing.provider_symbol,
-                    bars,
-                    observed_at=observed_at,
-                    evidence=evidence,
-                )
+                if pending and item.listing_id in set(self.retained_listing_ids):
+                    receipt = self._complete_retained_action_audit(
+                        item, evidence=evidence, observed_at=observed_at
+                    )
+                    if receipt is None:
+                        return "FAILED"
+                else:
+                    receipt = self._complete_action_audit(
+                        item,
+                        listing.provider_symbol,
+                        bars,
+                        observed_at=observed_at,
+                        evidence=evidence,
+                    )
         except ProviderFetchError as exc:
             if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                 return exc
@@ -1303,12 +1367,15 @@ class CurrentUniverseOnboarding:
             )
             return "FAILED"
         assert receipt is not None
+        self._admit_audited(observed_at)
+        if pending and not self._qualify_raw_history(item, observed_at=observed_at):
+            return "FAILED"
         with self._hold.released():
             adjusted = self.store.provider_adjusted_closes(
                 item.listing_id,
                 through=self.as_of_session,
                 start=bars[0].session_date,
-                cutoff_us=world_reads.cutoff(observed_at),
+                cutoff_us=self._selection_cutoff_us or world_reads.cutoff(observed_at),
             )
         if {point.session_date for point in adjusted} != {bar.session_date for bar in bars}:
             self._record_listing_failure(
@@ -1349,6 +1416,7 @@ class CurrentUniverseOnboarding:
             now=observed_at,
             allow_historical=True,
             provider=self.provider.name,
+            cutoff_us=self._selection_cutoff_us,
         )
         link = self.store.verified_action_audit_receipt(
             self.acquisition_manifest,
@@ -1358,6 +1426,7 @@ class CurrentUniverseOnboarding:
             now=observed_at,
             allow_equivalent_manifest=True,
             provider=self.provider.name,
+            cutoff_us=self._selection_cutoff_us,
         )
         if anchor is None or link is None:
             return None
@@ -1385,7 +1454,7 @@ class CurrentUniverseOnboarding:
 
         def complete(actions, adjusted_closes):
             with self.store.writing():
-                return self.store.complete_action_audit(
+                return self.store.complete_onboarding_audit(
                     self.acquisition_manifest,
                     ActionAuditObservation(
                         listing_id=item.listing_id,
@@ -1396,7 +1465,8 @@ class CurrentUniverseOnboarding:
                         history_end=self.as_of_session,
                         observed_at=observed_at,
                     ),
-                )[0][0]
+                    onboarding_id=self.onboarding_id,
+                )
 
         if evidence is not None:
             try:

@@ -16108,6 +16108,41 @@
    "successor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
    "change": "Read a Panel's sector names through the data root's world",
    "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6b51a6089fb9b4b2af57b9da49c559411c10c5487021c69b5f6866feec65c36b",
+   "successor": "165058e441bab4fe54a707df3151563ad1323db7df4fcb5dd80f85eba7b34cf9",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d781a7093399f5ca30661be2f56f8eeed9423c4ab8c99aad92370207a70a9c3e",
+   "successor": "9145543502f2dc3c550fd2d0fc90be0430d378040390948efd632832de9b29d1",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "5bbc444a049d222f33cf004463e68ad2c0ebbafd3df33538cb2db5c406a6235c",
+   "successor": "a0923d35db30329b79a34fa608303f0a3dea0d9650868e51e700f18b47d0c4b5",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "02101cb4dbfffa85c4f3a16751424e7b5b2f07ec75dbcb62ea6295de0ff0ab0f",
+   "successor": "217d1dd620f38ed4a33b1ab5fe8ca6239181f719b502035ee6955df4c135afcc",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "eac64b944139e8db96e3a626d48417f8d2adf1afe101e67c6283cb170b69f780",
+   "successor": "9c522885b0ea6cc956788cff8d41dc0e62318a4838c11bb00e7f9d13689dcce5",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
   }
  ]
 }

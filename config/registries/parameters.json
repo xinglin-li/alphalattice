@@ -1,5 +1,15 @@
 {
 "entries": {
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::complete_onboarding_audit::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "The staged raw-bar row ends with ingestion_id and original observed_at, after the RawDailyBar fields."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::ingestion_id::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "Read the staged payload's preserved ingestion_id immediately before its observed_at metadata."
+},
 "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_cutoff::1000000": {
 "class": "METHOD",
 "count": 1,
@@ -4420,7 +4430,7 @@
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::days::45": {
 "class": "METHOD",
-"count": 1
+"count": 2
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::hydration_chunk_size::25": {
 "class": "LIMIT",

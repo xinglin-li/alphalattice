@@ -90,6 +90,8 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
 )
 
 FeaturePersistenceTimingSink = Callable[[str, float], None]
+_ONBOARDING_BARS = ", ".join(item.name for item in fields(RawDailyBar))
+_ONBOARDING_ACTIONS = ", ".join(item.name for item in fields(CorporateActionEvent))
 FeaturePersistenceSqlProfiler = Callable[
     [duckdb.DuckDBPyConnection, str], AbstractContextManager[None]
 ]
@@ -987,6 +989,20 @@ class MarketDataRepository(WorkspaceRepository):
                     observed_at TIMESTAMP NOT NULL
                 )
                 """
+            )
+            # Durable provider payloads awaiting their audit, not canonical market facts.
+            # Their existing onboarding/listing identities partition the staging projection.
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS onboarding_raw_stage AS SELECT"
+                " ''::VARCHAR AS onboarding_id, ''::VARCHAR AS ingestion_id, observed_at, "
+                + _ONBOARDING_BARS
+                + " FROM raw_daily_bar_current WHERE false"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS onboarding_action_stage AS SELECT"
+                " ''::VARCHAR AS onboarding_id, "
+                + _ONBOARDING_ACTIONS
+                + " FROM corporate_action_current WHERE false"
             )
             connection.execute(
                 """
@@ -3104,9 +3120,10 @@ class MarketDataRepository(WorkspaceRepository):
         observed_at: datetime,
         failure_code: str | None = None,
         raw_through: date | None = None,
+        _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> None:
         """Record one deterministic unit-of-work outcome without provider payloads."""
-        connection = self._connect()
+        connection = _connection or self._connect()
         try:
             result = connection.execute(
                 """
@@ -3127,7 +3144,8 @@ class MarketDataRepository(WorkspaceRepository):
             if result.rowcount == 0:
                 raise ValueError("onboarding listing does not exist")
         finally:
-            connection.close()
+            if _connection is None:
+                connection.close()
 
     def record_current_universe_quality_admission(
         self,
@@ -4105,6 +4123,124 @@ class MarketDataRepository(WorkspaceRepository):
             )
             retracted += 1
         return retracted
+
+    def stage_onboarding_batch(
+        self,
+        manifest: UniverseManifest,
+        batch: SanitizedBatch,
+        *,
+        onboarding_id: str,
+        ingestion_id: str,
+        observed_at: datetime,
+    ) -> None:
+        """Retain a sanitized payload for audit/resume without publishing canonical rows."""
+        self._assert_manifest_scope(manifest, (bar.listing_id for bar in batch.bars))
+        with self.database.transaction() as connection:
+            connection.register(
+                "onboarding_payload", pa.Table.from_pylist([vars(b) for b in batch.bars])
+            )
+            try:
+                for table in ("onboarding_raw_stage", "onboarding_action_stage"):
+                    connection.execute(
+                        f"DELETE FROM {table} WHERE onboarding_id = ? AND listing_id IN"
+                        " (SELECT listing_id FROM onboarding_payload)",
+                        [onboarding_id],
+                    )
+                connection.execute(
+                    "INSERT INTO onboarding_raw_stage SELECT ?, ?, ?, "
+                    + _ONBOARDING_BARS
+                    + " FROM onboarding_payload",
+                    [onboarding_id, ingestion_id, _utc_naive(observed_at)],
+                )
+            finally:
+                connection.unregister("onboarding_payload")
+            if batch.actions:
+                connection.register(
+                    "onboarding_actions", pa.Table.from_pylist([vars(a) for a in batch.actions])
+                )
+                try:
+                    connection.execute(
+                        "INSERT INTO onboarding_action_stage SELECT ?, "
+                        + _ONBOARDING_ACTIONS
+                        + " FROM onboarding_actions",
+                        [onboarding_id],
+                    )
+                finally:
+                    connection.unregister("onboarding_actions")
+            for listing in {bar.listing_id for bar in batch.bars}:
+                self.update_current_universe_onboarding_listing(
+                    onboarding_id=onboarding_id,
+                    listing_id=listing,
+                    state="RAW_READY",
+                    raw_through=max(
+                        bar.session_date for bar in batch.bars if bar.listing_id == listing
+                    ),
+                    observed_at=observed_at,
+                    _connection=connection,
+                )
+
+    def onboarding_bars(
+        self, onboarding_id: str, listing_id: str, *, through: date
+    ) -> tuple[RawDailyBar, ...]:
+        """The pending unit's staged overlay on its durable history; empty without a stage."""
+        with self._connect(read_only=True) as connection:
+            pending = connection.execute(
+                "SELECT 1 FROM onboarding_raw_stage"
+                " WHERE onboarding_id = ? AND listing_id = ? LIMIT 1",
+                [onboarding_id, listing_id],
+            ).fetchall()
+            if not pending:
+                return ()
+            rows = connection.execute(
+                f"SELECT {_ONBOARDING_BARS} FROM onboarding_raw_stage s"
+                " WHERE onboarding_id = ? AND listing_id = ? AND session_date <= ? UNION ALL "
+                f"SELECT {_ONBOARDING_BARS} FROM raw_daily_bar_current r"
+                " WHERE listing_id = ? AND session_date <= ? AND NOT EXISTS"
+                " (SELECT 1 FROM onboarding_raw_stage s WHERE s.onboarding_id = ?"
+                " AND s.listing_id = r.listing_id AND s.provider = r.provider"
+                " AND s.session_date = r.session_date) ORDER BY session_date",
+                [onboarding_id, listing_id, through, listing_id, through, onboarding_id],
+            ).fetchall()
+        return tuple(RawDailyBar(*row) for row in rows)
+
+    def complete_onboarding_audit(
+        self, manifest: UniverseManifest, observation: ActionAuditObservation, *, onboarding_id: str
+    ) -> ActionAuditReceipt:
+        """Publish a staged raw payload and its audit atomically; a failure leaves the stage."""
+        listing = observation.listing_id
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                f"SELECT {_ONBOARDING_BARS}, ingestion_id, observed_at FROM onboarding_raw_stage"
+                " WHERE onboarding_id = ? AND listing_id = ? ORDER BY session_date",
+                [onboarding_id, listing],
+            ).fetchall()
+            if rows:
+                actions = connection.execute(
+                    f"SELECT {_ONBOARDING_ACTIONS} FROM onboarding_action_stage"
+                    " WHERE onboarding_id = ? AND listing_id = ?"
+                    " ORDER BY effective_date, action_kind",
+                    [onboarding_id, listing],
+                ).fetchall()
+                self.apply_validated_batch(
+                    manifest,
+                    SanitizedBatch(
+                        observation.provider,
+                        tuple(RawDailyBar(*r[:-2]) for r in rows),
+                        tuple(CorporateActionEvent(*r) for r in actions),
+                    ),
+                    ingestion_id=rows[0][-2],
+                    observed_at=rows[0][-1],
+                    _connection=connection,
+                )
+            receipt = self.complete_action_audit(manifest, observation, _connection=connection)[0][
+                0
+            ]
+            for table in ("onboarding_raw_stage", "onboarding_action_stage"):
+                connection.execute(
+                    f"DELETE FROM {table} WHERE onboarding_id = ? AND listing_id = ?",
+                    [onboarding_id, listing],
+                )
+        return receipt
 
     def apply_validated_batch(
         self,
@@ -5361,6 +5497,7 @@ class MarketDataRepository(WorkspaceRepository):
         now: datetime,
         allow_equivalent_manifest: bool = False,
         _connection: duckdb.DuckDBPyConnection | None = None,
+        cutoff_us: int | None = None,
     ) -> ActionAuditReceipt | None:
         """Return a still-valid full-history receipt; TTL is a budget, never proof of truth.
 
@@ -5376,7 +5513,7 @@ class MarketDataRepository(WorkspaceRepository):
         owns_connection = _connection is None
         try:
             with self.market_reads(
-                cutoff_us=world_reads.cutoff(now),
+                cutoff_us=world_reads.cutoff(now) if cutoff_us is None else cutoff_us,
                 listings=(listing_id,),
             ) as (reader, tables):
                 earliest = reader.execute(
@@ -5433,6 +5570,7 @@ class MarketDataRepository(WorkspaceRepository):
         now: datetime,
         allow_historical: bool = False,
         allow_equivalent_manifest: bool = False,
+        cutoff_us: int | None = None,
     ) -> ActionAuditReceipt | None:
         """Verify an exact consumed receipt over its recorded range, not a new audit budget.
 
@@ -5455,6 +5593,7 @@ class MarketDataRepository(WorkspaceRepository):
                 ),
                 receipt_hash=receipt_hash,
                 allow_historical=allow_historical,
+                cutoff_us=cutoff_us,
             )
         if receipt is None or receipt.observed_at > _utc_naive(now):
             return None
@@ -5631,6 +5770,7 @@ class MarketDataRepository(WorkspaceRepository):
         candidate_hashes: frozenset[str] | None = None,
         allow_historical: bool = False,
         verified: frozenset[str] = frozenset(),
+        cutoff_us: int | None = None,
     ) -> ActionAuditReceipt | None:
         """The first receipt `_rebindable_action_audit_receipts` finds still proving its range.
 
@@ -5649,6 +5789,7 @@ class MarketDataRepository(WorkspaceRepository):
                 candidate_hashes=candidate_hashes,
                 allow_historical=allow_historical,
                 verified=verified,
+                cutoff_us=cutoff_us,
             ),
             None,
         )
@@ -5666,6 +5807,7 @@ class MarketDataRepository(WorkspaceRepository):
         candidate_hashes: frozenset[str] | None = None,
         allow_historical: bool = False,
         verified: frozenset[str] = frozenset(),
+        cutoff_us: int | None = None,
     ) -> Iterator[ActionAuditReceipt]:
         """Every candidate receipt that still proves its own range, in the candidates' order.
 
@@ -5684,7 +5826,7 @@ class MarketDataRepository(WorkspaceRepository):
         )
         evidence_by_range: dict[tuple[date, date], dict[str, object]] = {}
         with self.market_reads(
-            cutoff_us=world_reads.cutoff(now),
+            cutoff_us=world_reads.cutoff(now) if cutoff_us is None else cutoff_us,
             listings=(listing_id,),
         ) as (reader, tables):
             for receipt in candidates:
@@ -5731,6 +5873,7 @@ class MarketDataRepository(WorkspaceRepository):
         *,
         requested_as_of: date,
         now: datetime,
+        cutoff_us: int | None = None,
     ) -> tuple[str, ...]:
         """Bind currently equivalent listing evidence to a derived manifest.
 
@@ -5832,6 +5975,7 @@ class MarketDataRepository(WorkspaceRepository):
                         now=now,
                         manifest_revision=None,
                         candidate_hashes=frozenset(new_evidence),
+                        cutoff_us=cutoff_us,
                     )
                 )
             if prepared:
@@ -6025,6 +6169,7 @@ class MarketDataRepository(WorkspaceRepository):
         requested_as_of: date,
         now: datetime,
         verified: frozenset[str] = frozenset(),
+        cutoff_us: int | None = None,
     ) -> tuple[str, ...]:
         """Bind unchanged audit evidence to a derived manifest revision; answer the bound receipts.
 
@@ -6051,6 +6196,7 @@ class MarketDataRepository(WorkspaceRepository):
                     now=now,
                     manifest_revision=source_manifest.revision_sha256,
                     verified=verified,
+                    cutoff_us=cutoff_us,
                 )
                 if receipt is None:
                     raise ValueError(

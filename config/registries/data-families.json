@@ -14,6 +14,27 @@
     "backup-install"
   ],
   "families": {
+    "universe-onboarding-payload": {
+      "summary": "durable sanitized raw bars and actions awaiting their onboarding unit's adjustment audit",
+      "class": "external-observation",
+      "tier": 3,
+      "home": "workspace onboarding_raw_stage and onboarding_action_stage until the completed audit transaction publishes the canonical composite",
+      "location": "workspace-database",
+      "bytes": null,
+      "covers": [
+        "table:onboarding_raw_stage"
+      ],
+      "authority_owners": [
+        "market_data_ops.storage.MarketDataRepository"
+      ],
+      "persistence_owner": "market_data_ops.storage.duckdb:MarketDataRepository",
+      "writers": [],
+      "readers": [
+        "market_data_ops.runtime.universe_onboarding"
+      ],
+      "store_step": "the repository retains the pending provider payload, then admits its committed raw-plus-audit composite through the existing world owner",
+      "placement_reason": "The unit must survive an audit interruption without publishing unaudited rows or refetching its raw payload. These task-owned staging tables are excluded from world admission and removed only with successful audit completion. They did not exist in the registry's measured 0.2.7 QA workspace."
+    },
     "market-current": {
       "summary": "current market source-of-record rows: profiles, listings, provider symbols, current raw bars, corporate actions and provider adjusted closes",
       "class": "external-observation",

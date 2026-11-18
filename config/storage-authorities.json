@@ -3,6 +3,19 @@
   "groups": [
     {
       "tables": [
+        "onboarding_raw_stage",
+        "onboarding_action_stage"
+      ],
+      "database": "workspace",
+      "semantic_role": "durable onboarding provider payload pending action audit, excluded from canonical and world admission",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "task_control; removed by successful atomic audit completion",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
         "market_profile",
         "listing",
         "provider_symbol_mapping",

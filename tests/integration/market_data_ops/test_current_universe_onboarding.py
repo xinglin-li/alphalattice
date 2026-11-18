@@ -317,6 +317,8 @@ def _bootstrap(
 def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest(
     tmp_path, monkeypatch, request, read_mode
 ) -> None:
+    from alphalattice.kernel.data_layer.store import StorePort
+
     schedule = materialize_calendar_schedule(
         ("XNAS",),
         start=date(2016, 7, 31),
@@ -349,6 +351,17 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             "onboarding-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
         )
         request.addfinalizer(history.release_history)
+        commit = StorePort.commit
+
+        def completed(port, staged):
+            result = commit(port, staged)
+            if staged.table == "raw_bar":
+                assert port.lake.execute(
+                    "SELECT count(*) FROM lake.world.raw_bar WHERE adjusted_close IS NULL"
+                ).fetchall() == [(0,)], "world published an unaudited onboarding bar"
+            return result
+
+        monkeypatch.setattr(StorePort, "commit", completed)
     # The optional observer is told each unit transition after the store recorded it:
     # one announcement per transition, in order, never for a unit that was not advanced.
     announced: list[ListingUnitObservation] = []
@@ -474,6 +487,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             provider="yfinance",
             requested_as_of=AS_OF,
             now=OBSERVED_AT,
+            cutoff_us=history.store().log.clock() if read_mode == "world" else None,
         )
         is not None
     )
@@ -578,6 +592,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         gateway_manifest,
         requested_as_of=AS_OF,
         now=OBSERVED_AT,
+        cutoff_us=history.store().log.clock() if read_mode == "world" else None,
     )
     assert rebound == (aapl.listing_id,)
     assert (
@@ -587,6 +602,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             provider="yfinance",
             requested_as_of=AS_OF,
             now=OBSERVED_AT,
+            cutoff_us=history.store().log.clock() if read_mode == "world" else None,
         )
         is not None
     )
@@ -685,9 +701,11 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     )
 
 
+@pytest.mark.parametrize("tail", (False, True))
 def test_membership_revision_hydrates_only_additions_and_reuses_retained_history(
     tmp_path,
     session_dates,
+    tail,
 ) -> None:
     """Control: Membership revision hydrates only additions and reuses retained history."""
     sessions = session_dates
@@ -707,28 +725,33 @@ def test_membership_revision_hydrates_only_additions_and_reuses_retained_history
     assert retained is not None
     assert removed is not None
 
-    revision_provider = HydrationFixtureProvider(sessions, provider_wide_failures=0)
+    target = AS_OF + timedelta(days=3) if tail else AS_OF
+    revision_provider = HydrationFixtureProvider(
+        (*sessions, target) if tail else sessions, provider_wide_failures=0
+    )
     announced: list[ListingUnitObservation] = []
     revision = CurrentUniverseOnboarding(
         store=store,
         bootstrap=_bootstrap(("AAPL", "MSFT")),
         profile_path=PROFILE,
         provider=revision_provider,
-        as_of_session=AS_OF,
+        as_of_session=target,
         history_start=date(2016, 7, 31),
         retained_listing_ids=(retained.listing_id,),
     )
     revision.listing_observer = announced.append
-    revised = revision.run(observed_at=OBSERVED_AT + timedelta(minutes=1))
+    revised = revision.run(
+        observed_at=OBSERVED_AT + (timedelta(days=2) if tail else timedelta(minutes=1))
+    )
 
     assert revised.status is CurrentUniverseOnboardingStatus.COMPLETED
     # The observer distinguishes what was evidenced: the retained listing reused its
-    # durable history (no tail was needed, nothing fetched), the addition was acquired.
+    # durable history (fetching a bounded tail only when needed), the addition was acquired.
     assert [(v.symbol, v.state, v.origin, v.tail_acquired) for v in announced] == [
         ("MSFT", "RAW_READY", "ACQUIRED", False),
         ("MSFT", "QUALITY_ELIGIBLE", "LOCAL", False),
         ("MSFT", "FEATURE_READY", "LOCAL", False),
-        ("AAPL", "RAW_READY", "RETAINED", False),
+        ("AAPL", "RAW_READY", "RETAINED", tail),
         ("AAPL", "QUALITY_ELIGIBLE", "LOCAL", False),
         ("AAPL", "FEATURE_READY", "LOCAL", False),
     ]
@@ -744,7 +767,13 @@ def test_membership_revision_hydrates_only_additions_and_reuses_retained_history
         "AAPL",
         "MSFT",
     ), disclosure
-    assert revision_provider.hydration_calls == {"MSFT": 1}
+    assert revision_provider.hydration_calls == ({"MSFT": 1, "AAPL": 1} if tail else {"MSFT": 1})
+    if tail:
+        assert store.raw_bars(retained.listing_id)[-1].session_date == target
+        assert (
+            store.provider_adjusted_closes(retained.listing_id, through=target)[-1].session_date
+            == target
+        )
     assert revision_provider.daily_calls == {}
     assert "REM" not in revision_provider.hydration_calls
 
@@ -1264,6 +1293,8 @@ def test_audit_fallback_and_resumed_units_hold_nothing_across_the_provider(
 def test_resumed_quality_audit_holds_no_writable_connection(
     tmp_path,
     session_dates,
+    monkeypatch,
+    request,
 ) -> None:
     """Control: Resumed quality audit releases writers across provider calls."""
 
@@ -1306,6 +1337,12 @@ def test_resumed_quality_audit_holds_no_writable_connection(
         )
 
     first = runner()
+    store.bootstrap(first.acquisition_manifest)
+    monkeypatch.setenv(world_reads.SETTING, "world")
+    history.open_history(
+        "audit-resume-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
+    )
+    request.addfinalizer(history.release_history)
     interrupted = first.run(observed_at=OBSERVED_AT)
     assert interrupted.status is CurrentUniverseOnboardingStatus.RUNNING
     states = {
@@ -1316,11 +1353,21 @@ def test_resumed_quality_audit_holds_no_writable_connection(
         "AAPL": "FEATURE_READY",
         "BAD": "FEATURE_READY",
         "MSFT": "FEATURE_READY",
-        "FAIL": "QUALITY_ELIGIBLE",
+        "FAIL": "RAW_READY",
     }
     assert provider.hydration_calls == {"AAPL": 1, "BAD": 1, "FAIL": 1, "MSFT": 1}
     assert provider.fallback_attempts == 1 and provider.fallback_adjusted_calls == {}
     assert live_workspace_connections(store.path) is None  # the Provider-failure exit
+    failed = first.acquisition_manifest.listing_for_symbol("FAIL").listing_id
+    staged = store.onboarding_bars(first.onboarding_id, failed, through=AS_OF)
+    assert len(staged) == len(sessions) and store.raw_bars(failed) == ()
+    audit = store.complete_action_audit
+
+    def interrupted_commit(*args, **kwargs):
+        audit(*args, **kwargs)
+        raise RuntimeError("interrupted audit commit")
+
+    monkeypatch.setattr(store, "complete_action_audit", interrupted_commit)
 
     def checker() -> None:
         if not blocked_in_fallback.wait(timeout=60.0):
@@ -1352,15 +1399,27 @@ def test_resumed_quality_audit_holds_no_writable_connection(
     watcher.start()
     resumed = runner()  # a fresh instance: nothing of the first run's memory
     assert resumed.onboarding_id == first.onboarding_id
-    completed = resumed.run(observed_at=OBSERVED_AT + timedelta(minutes=20))
+    with pytest.raises(RuntimeError, match="interrupted audit commit"):
+        resumed.run(observed_at=OBSERVED_AT + timedelta(minutes=20))
     watcher.join(timeout=60.0)
     assert not watcher.is_alive() and "error" not in seen, seen
+    # The audit did its writes, then lost the transaction: neither canonical nor world
+    # publishes the raw half, and another instance repeats the audit from the same payload.
+    assert store.raw_bars(failed) == ()
+    assert store.onboarding_bars(first.onboarding_id, failed, through=AS_OF) == staged
+    assert history.store().lake.execute(
+        "SELECT count(*) FROM lake.world.raw_bar WHERE listing_id = ?", [failed]
+    ).fetchall() == [(0,)]
+    monkeypatch.setattr(store, "complete_action_audit", audit)
+    completed = runner().run(observed_at=OBSERVED_AT + timedelta(minutes=21))
     assert completed.status is CurrentUniverseOnboardingStatus.COMPLETED, completed
     assert completed.feature_ready == 4
     assert provider.hydration_calls == {"AAPL": 1, "BAD": 1, "FAIL": 1, "MSFT": 1}
-    assert provider.fallback_attempts == 2 and provider.fallback_adjusted_calls == {"FAIL": 1}
+    assert provider.fallback_attempts == 3 and provider.fallback_adjusted_calls == {"FAIL": 2}
+    assert store.onboarding_bars(first.onboarding_id, failed, through=AS_OF) == ()
+    assert len(store.raw_bars(failed)) == len(sessions)
     assert seen["live"] is None or seen["live"].read_only, seen
-    assert seen["reader"].read_only and seen["state"] == "QUALITY_ELIGIBLE", seen
+    assert seen["reader"].read_only and seen["state"] == "RAW_READY", seen
     assert seen["writer"] == "wrote"
     assert live_workspace_connections(store.path) is None
 
