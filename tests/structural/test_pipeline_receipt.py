@@ -1,5 +1,6 @@
 import contextlib
 import json
+import os
 import shutil
 import sys
 import time
@@ -1944,14 +1945,24 @@ def test_every_red_is_classed_from_its_own_evidence_and_unknown_is_never_a_defec
 
 
 def _git(root: Path, *args: str) -> str:
+    """Git in the test's own repository, apart from the outer run's: no GIT_* key and no global or
+    system configuration reach it, and a refusal names git's own reason."""
+    import subprocess
+
+    environment = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_")}
+    environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
     done = spawn.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", *args],
         cwd=root,
-        check=True,
+        env=environment,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    assert done.returncode == 0, f"git {' '.join(args)} exited {done.returncode}: {done.stderr}"
     return done.stdout.strip()
 
 
@@ -2019,7 +2030,20 @@ def _empty_tools(monkeypatch, health) -> None:
     monkeypatch.setattr(health, "DOCSTRINGS", ("-c", "print('[]')"))
 
 
+@pytest.fixture
+def git_apart():
+    """The test's process, the report's own git included, sees no GIT_* key of the outer run and
+    no global or system configuration; its own patch, which the test's undo leaves in place."""
+    with pytest.MonkeyPatch.context() as patch:
+        for key in [k for k in os.environ if k.upper().startswith("GIT_")]:
+            patch.delenv(key)
+        patch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        patch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+        yield
+
+
 @pytest.mark.proves("pipeline.code_health_reports_every_row")
+@pytest.mark.usefixtures("git_apart")
 @pytest.mark.parametrize(
     "case",
     [

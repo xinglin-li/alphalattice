@@ -628,7 +628,11 @@ def _memory_checks_read_no_host():
             assert '"heavy_place_holders": [{"line": "probe", "path": "h"}]' in logged, logged
 
 
-GUARD_TIME = {"timeout": (6000, 0.1), "guard-runs": (10, 7)}  # the guard scale and the test's sleep
+GUARD_TIME = {
+    "timeout": (6000, None),
+    "guard-runs": (10, 7),
+}  # the guard scale and the test's sleep
+"""`None` is a hang: the child blocks on an event that never sets, so only the guard ends it."""
 
 
 @pytest.mark.parametrize(
@@ -1305,7 +1309,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         + ("@pytest.mark.timeout(0.05)\n" if case == "strict" else "")
         + 'def test_example():\n    """Exercise the resolved execution limit."""\n'
         + (
-            f"    import time; time.sleep({GUARD_TIME[case][1]})\n"
+            "    import threading; threading.Event().wait()\n"
+            if case in GUARD_TIME and GUARD_TIME[case][1] is None
+            else f"    import time; time.sleep({GUARD_TIME[case][1]})\n"
             if case in GUARD_TIME
             else "    pass\n"
         ),
