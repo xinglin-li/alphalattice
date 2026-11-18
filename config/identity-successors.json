@@ -15898,6 +15898,132 @@
    "successor": "ebf697d4847ae44b74ac5fabd7181b0e8b00144d907e94841576238bff1728be",
    "change": "Name each research record on the log by an id",
    "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "bf71439c1cd9841bcaa3a2dcf662a3c7b3a86314d05742bbf86c5b1f3c381297",
+   "successor": "2b4ceced14e391cb1c7262daec0ed53a8a8749c2ac358e6d0d3d5119d9c61b60",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "2fe5641a945a9e5ced999d3b6732623112dad74245378f998778d29cf710dcce",
+   "successor": "dc3cf7b415dad318a5e327e35b00e7cd98282c301077b89610336cb327f9aa58",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "5677f8d8b6468f59df75e24de8643f9bfd3f1280843c9ae0c9bc14d5b371ed05",
+   "successor": "ed068005ecb51b999c9f8e74813b67ee5505928159910b4eab0bfea2bc26aad7",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "6fe08fac7802b86906db3080bf6ecb75e1a1e6754d9d973a7537ed0a8c60612a",
+   "successor": "b507c7acc8c5bdf6bbe57e4bccf30e03330f19a50e74b793f59a3b84aebea411",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1ef053dd528631b8d91685494408893d84495fa94a7b3a3f5a99959479368855",
+   "successor": "1fba10d066fba720f622bdc544e17410df3ef1f7aecea597e7f030325600ad32",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "84946270d924fe7183b020f098033471fbfd2d16a6f37b686d59dc84678ae2ca",
+   "successor": "33c76e7547866958d80754c49cfb777cca23eada88751c495ef2d6878327b827",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "f137766a773cc08946a45df19961ec771b70a6f8126a001cafedbc9f32a060ec",
+   "successor": "acd657110285d1b632b6092e883a4db6467ca29ad40515f1f21d313f523383a3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "eb9928c7ff4a9514c6549e7b18e0a7cfc09f35e0e64ac6fc0d2526bbb5da663b",
+   "successor": "60ddb0b7719586ab8e7afa40ab3dcc05f9323a7f849cfc7d3b7880bb108abcfa",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6fdcdeb0474c03a9a1235161806f734ce7482fc22bc9b7202b174e17e04a0d9d",
+   "successor": "73e8f45f84693e53e3e434e7cb9bd3a9fdd7fcb0148620cc0d998b2832085cdb",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "07a75a32be5f03c0edd66bdb6451dc2150a9da05226d0f3a40b779932206177f",
+   "successor": "efdaa1c567de1d213a906b8d9e42096e0a0ac0c207ac2644d2c3b7d1ac2ca6db",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "87d1f4ad2ee6f6943c2964b47a366b85be95b1e09aa6a314031be9cd95fa19ce",
+   "successor": "6f69f9757b2f1d3040cf1c897bb8604b12174c04d96236b3d9173f3dec0f3216",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "17e4176a078f9edd0f7347de8953a989184d651e6ae0378b1f5e7bc6709cfd9b",
+   "successor": "02101cb4dbfffa85c4f3a16751424e7b5b2f07ec75dbcb62ea6295de0ff0ab0f",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "592213e783cd9e2cf04be0d814e868be7df0291c791e6e4b182f5a5d19055285",
+   "successor": "a818beed371c2417c3bb000c230dda9e3994603a7b0c3a8293cc428321e08172",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "successor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "successor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "2fde2054f52763795f51abf1cafed6c654ad06438bc2e523a580ddfc6c3c718b",
+   "successor": "8cc37df6feea4879014699bc6703ed6ed44dbb5b75cd0891e51862b36a96cb1f",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "a431f234c2cb9a67ad74081b80f56f782d6c7d7326f5022db23b815b787a33f8",
+   "successor": "269afb3c86672eb051ec8686500d7e0df4d20dfb81b70a33daa55972e6a17c29",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "52b7d4af184fc14ef7d6e9d5a6c27a1c7f4d5d56da26c95506abe8801515ab1a",
+   "successor": "e94f27facb37ebbc2204a2012e09f3ef72777b67515633e64fb0482432f8ddbe",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
   }
  ]
 }

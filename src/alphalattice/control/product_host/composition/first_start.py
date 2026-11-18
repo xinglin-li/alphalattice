@@ -48,6 +48,11 @@ from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+UNHELD: Final = ("data_layer.outcome_missing",)
+"""The refusal that says only that the catalog holds no body for a chunk: no profile for its
+digest, or one without rows. An unavailable reader or any other catalog fault is not evidence
+of absence, so it stops the start by its own name."""
+
 
 def execution_outcomes() -> Family:
     """The execution-outcome family, holding a workspace whose committed legacy chunks the catalog
@@ -58,7 +63,9 @@ def execution_outcomes() -> Family:
     def holds(workspace: Path) -> bool:
         try:
             return family.verify(SimpleNamespace(workspaces=(workspace,))) is not True
-        except DataError:  # a chunk the catalog does not hold yet
+        except DataError as error:  # a chunk the catalog does not hold yet; any other fault stops
+            if error.failure.code not in UNHELD:
+                raise
             return True
 
     return replace(family, holds=holds)

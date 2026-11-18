@@ -1704,6 +1704,13 @@
       "seconds": 2,
       "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
+    "product_host.first_start_asks_nothing_of_catalog_held_outcomes": {
+      "description": "A fileless outcome chunk asks no upgrade only when the catalog holds its rows; one it lacks is refused by name; other faults stop the start.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The upgrade family's module imports the Host's log, which the unit layer's contract refuses (sqlite3)."
+    },
     "product_host.first_start_upgrades_every_old_workspace": {
       "description": "The first 0.2.8 start shows one plan for every old workspace, serves only the upgrade until acknowledged and done, resumes on that plan, and upgrades a later workspace at its open.",
       "owner": "alphalattice.control.product_host",

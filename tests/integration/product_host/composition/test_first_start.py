@@ -232,3 +232,132 @@ def test_the_first_start_upgrades_every_old_workspace_on_one_plan(
         assert host.first_start is None and _request(host, "/api/tasks")[0] == 200
     finally:
         host.stop()
+
+
+@pytest.mark.proves("product_host.first_start_asks_nothing_of_catalog_held_outcomes")
+@pytest.mark.parametrize(
+    "case",
+    [
+        "the catalog holds it",
+        "nowhere",
+        "its profile without rows",
+        "more rows than its manifest",
+        "a folder in its place",
+        "a catalog fault",
+        "no catalog reader",
+    ],
+)
+def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it(
+    tmp_path: Path, case: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fileless chunk whose rows the catalog holds asks nothing of the first start; one it
+    lacks is planned and refused, and any other fault stops the start by its own error."""
+    from datetime import UTC, date, datetime
+
+    import pyarrow as pa
+
+    from alphalattice.foundation.causal_outcomes.execution.contracts import (
+        CausalExecutionOutcomeChunk,
+        CausalExecutionOutcomeManifest,
+        CausalExecutionOutcomeMarker,
+    )
+    from alphalattice.kernel.data.errors import DataError
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+    outcomes, address = tmp_path / OUTCOMES, "playpen://data-operations/execution-outcomes/"
+
+    def publish(category: str, payload: dict[str, Any], name: str) -> str:
+        """Write `payload` as the outcome store's files hold it; returns its address."""
+        (outcomes / category).mkdir(parents=True, exist_ok=True)
+        (outcomes / category / f"{payload[name]}.json").write_text(json.dumps(payload))
+        return f"{address}{category}/{payload[name]}"
+
+    day = date(2025, 1, 2)
+    chunks = {
+        split: CausalExecutionOutcomeChunk(
+            split=split,
+            year=2025,
+            row_count=1,
+            first_formation_session=day,
+            last_formation_session=day,
+            content_hash=digit * 64,
+            metadata_hash="f" * 64,
+            uri=f"{address}{split.casefold().replace('_', '-')}/chunks/{digit * 64}",
+        )
+        for split, digit in (("DEVELOPMENT", "a"), ("SEALED_HOLDOUT", "b"))
+    }
+    values = {
+        "research_cadence": "DAILY",
+        "market_as_of": date(2025, 1, 5),
+        "listing_ids": ("listing",),
+        "listing_set_hash": canonical_hash(("listing",)),
+        "schedule_hash": "1" * 64,
+        "ordered_session_triples_hash": "2" * 64,
+        "source_rows_semantic_hash": "3" * 64,
+        "data_validity_class": "CURRENT_UNIVERSE_RESEARCH_ONLY",
+        "development_chunks": (chunks["DEVELOPMENT"],),
+        "sealed_holdout_chunks": (chunks["SEALED_HOLDOUT"],),
+        "development_formation_count": 1,
+        "sealed_holdout_formation_count": 1,
+        "limitations": ("test",),
+    }
+    draft = CausalExecutionOutcomeManifest.model_construct(**values, snapshot_hash="")
+    manifest = CausalExecutionOutcomeManifest(
+        **values,
+        snapshot_hash=canonical_hash(draft.model_dump(mode="json", exclude={"snapshot_hash"})),
+    )
+    ref = publish("manifests", manifest.model_dump(mode="json"), "snapshot_hash")
+    fields = {
+        "kind": "CausalExecutionOutcomeMarker",
+        "snapshot_hash": manifest.snapshot_hash,
+        "manifest_ref": ref,
+        "schedule_hash": manifest.schedule_hash,
+        "listing_set_hash": manifest.listing_set_hash,
+    }
+    marker = CausalExecutionOutcomeMarker(**fields, marker_hash=canonical_hash(fields))
+    publish("markers", marker.model_dump(mode="json"), "marker_hash")
+
+    history.open_history("first-start", "first start", tmp_path, tmp_path / "data-root")
+    try:
+        port = history.store()
+        assert port is not None
+        lake = port.lake
+        empty = lake.sql("FROM lake.results.execution_outcome LIMIT 0").to_arrow_table()
+        schema, stamp = empty.drop(["artifact_id"]).schema, datetime(2025, 1, 2, tzinfo=UTC)
+        kinds = (
+            (pa.types.is_string, "x"),
+            (pa.types.is_date, day),
+            (pa.types.is_timestamp, stamp),
+            (pa.types.is_integer, 0),
+        )
+        row = {f.name: next((v for kind, v in kinds if kind(f.type)), None) for f in schema}
+        rows = {"nowhere": None, "its profile without rows": 0}.get(case, 1)
+        rows = 2 if case == "more rows than its manifest" else rows
+        for chunk in chunks.values() if rows is not None else ():
+            listed = [row | {"listing_id": f"listing-{n}"} for n in range(rows)]
+            history.write_execution_outcome(
+                chunk.content_hash, pa.Table.from_pylist(listed, schema)
+            )
+        if case == "a folder in its place":
+            (outcomes / "development" / "chunks" / f"{'a' * 64}.parquet").mkdir(parents=True)
+        if case == "a catalog fault":
+
+            def fault(_digest: str) -> str:
+                raise DataError("named twice", code="data_layer.outcome_incomplete")
+
+            monkeypatch.setattr(history, "execution_outcome_artifact_id", fault)
+        if case == "no catalog reader":  # DuckDB, the data extra, is absent
+            monkeypatch.setattr(history, "reading_session", lambda *_args, **_kwargs: None)
+        family = first_start.execution_outcomes()
+        unheld = case in ("nowhere", "its profile without rows")
+        if unheld or case == "the catalog holds it":
+            assert family.holds(tmp_path) is unheld
+        if unheld:
+            with pytest.raises(DataError, match="not in the catalog"):
+                family.verify(SimpleNamespace(workspaces=(tmp_path,)))
+        stops = {"more rows than its manifest": ValueError, "a folder in its place": OSError}
+        if case in (*stops, "a catalog fault", "no catalog reader"):
+            with pytest.raises(stops.get(case, DataError)):
+                family.holds(tmp_path)
+    finally:
+        history.close_history()

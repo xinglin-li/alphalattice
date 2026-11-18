@@ -1515,6 +1515,11 @@ def execution_outcome_upgrade_family() -> Family:
                     path = store._parquet_path(chunk.split, chunk.content_hash)
                     if not path.resolve().is_relative_to(workspace):
                         raise ValueError("causal_outcomes.upgrade_path_invalid")
+                    if not path.exists():  # written to the catalog only, by this version
+                        held = history.read_execution_outcome(chunk.content_hash, ["listing_id"])
+                        if held.num_rows != chunk.row_count:  # else outcome_missing refused it
+                            raise ValueError("causal_outcomes.upgrade_chunk_invalid")
+                        continue  # the catalog holds its rows: nothing to upgrade
                     table = (
                         pq.read_table(store.resolve_chunk(chunk))
                         .combine_chunks()
