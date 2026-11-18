@@ -48,6 +48,7 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import Sect
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import named
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.activity import refusal_code, returned_status
 from alphalattice.interface.local_application.failure_codes import (
@@ -953,8 +954,10 @@ def _date_risk(
     reader = CausalRiskReturnReader(root)
     closure = PanelClosureArtifactStore(ArtifactResolver(root))
     sessions = reader.available_sessions(surface)
-    classification = closure.load_model(
-        category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+    classification = named(  # the risk producer's Sectors, through world
+        closure.load_model(
+            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+        )
     )
     formation, forward, hashes, listings, missing, held, covered, gap = _dated_risk_inputs(
         workspace, surface, classification, sessions, session, readback, positions

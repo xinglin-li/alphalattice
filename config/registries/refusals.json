@@ -7929,6 +7929,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "This broad saved-state precondition covers a missing or nonunique stored sector map and a copied history that differs on immediate readback after publication. The latter is an owner output invariant under the same reason; no retry is inferred."
 },
+"feature_closure.sector_map_unserved": {
+"owner": "feature_closure",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A sector map selected at a cutoff whose listings world no longer classifies in full, or a process with no world catalog: the map's names are world's at that cutoff, so the read is refused rather than answered from the artifact. Restore the data root from its last backup, or read with ALPHALATTICE_MARKET_READS=workspace."
+},
 "feature_closure.store_readback_mismatch": {
 "owner": "feature_closure",
 "category": "INTERNAL",

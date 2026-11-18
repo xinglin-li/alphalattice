@@ -242,6 +242,18 @@ def selected(database: Path) -> int | None:
     return None
 
 
+def map_cutoff(map_hash: str) -> int | None:
+    """The cutoff of the selection a sector map's publication recorded, its spec naming the map's
+    `map_hash` (the first made, in any workspace: the map's names are world's at each); None for a
+    map with none: one published before 0.2.8, or while world did not serve its names."""
+    rows = _log_rows(
+        "SELECT cutoff_us FROM selection WHERE json_extract(spec, '$.map_hash') = ?"
+        " ORDER BY made_seq LIMIT 1",
+        (map_hash,),
+    )
+    return int(rows[0][0]) if rows else None
+
+
 COMPARED: Final = {
     "bars": (
         "raw_daily_bar_current",

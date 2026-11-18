@@ -16066,6 +16066,48 @@
    "successor": "bbfd148457aae7f22f13c12763f01ec2bc312a014af3ddbfda0b6b6050b38884",
    "change": "Keep Strategy Lab result files once in the data root",
    "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e668d9bb4d8d714cace7b51757d9e940ef32e78a99ccd5148d5b810c6db801d8",
+   "successor": "b75c972eb36daef2dc036abe3349af2e600b55a69e8bceb4557e84245e440ce1",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "73e8f45f84693e53e3e434e7cb9bd3a9fdd7fcb0148620cc0d998b2832085cdb",
+   "successor": "5d057f071f261b40ab8d6c4fb7992ab4dc392e789cd623378ab444c6ac3bddfc",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "62a66dff96c6bb4174a9ca2b6a786bd559921d8c09746d4ff6fe26a3fdc7ccd0",
+   "successor": "b1d5a3667cf538dc236431bb4660224593d115123472054d07e6039fb4f30f75",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a818beed371c2417c3bb000c230dda9e3994603a7b0c3a8293cc428321e08172",
+   "successor": "eac64b944139e8db96e3a626d48417f8d2adf1afe101e67c6283cb170b69f780",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "successor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "successor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
   }
  ]
 }

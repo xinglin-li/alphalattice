@@ -1131,6 +1131,19 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.sector_map_entries_take_world_names_or_are_refused": {
+      "description": "A sector map's entries take world's Sector names with their provenance kept, and a listing world does not classify is refused by name.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "feature_engine.sector_maps_read_their_names_through_world": {
+      "description": "A sector map's first Host read selects it when world holds exactly its names; its readers then take world's names at that cutoff, else the map's own entries.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 3,
+      "lower_layer": "The selection and world's names are the Host's log and catalog, which the unit layer cannot open."
+    },
     "feature_engine.source_prefix_proof_tells_changed_rows_apart": {
       "description": "If materialization identity blurred null, NaN, signed zero or absent rows, or kept a sealed year after a write, stale Feature stores would pass as current.",
       "owner": "alphalattice.foundation.feature_engine",

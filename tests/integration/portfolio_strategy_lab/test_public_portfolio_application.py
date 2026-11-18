@@ -1995,7 +1995,9 @@ def test_the_shared_axis_says_what_is_missing(
     # One surface and one sector map, read through the owners' stores.
     epoch = SimpleNamespace(ordered_listing_ids=("R1", "R2"), universe_manifest_revision="u")
     sectors = SimpleNamespace(
-        manifest_revision="u", entries=tuple(SimpleNamespace(listing_id=v) for v in ("R1", "R2"))
+        manifest_revision="u",
+        map_hash="e" * 64,
+        entries=tuple(SimpleNamespace(listing_id=v) for v in ("R1", "R2")),
     )
     (tmp_path / "surface" / "manifests").mkdir(parents=True)
     (tmp_path / "surface" / "manifests" / f"{'c' * 64}.json").write_text("{}", encoding="utf-8")

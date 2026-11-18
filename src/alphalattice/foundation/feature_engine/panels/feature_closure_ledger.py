@@ -35,6 +35,7 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
     PreparedFeatureBaseClosureTransition,
     SectorRevisionMapActivationReceipt,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.persistence import (
@@ -618,7 +619,7 @@ def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str)
         ),
         key=lambda value: (value.observed_at, value.receipt_hash),
     )
-    current = {entry.listing_id: entry.sector_name for entry in target[0].entries}
+    current = {entry.listing_id: entry.sector_name for entry in classified(target[0])}
     if not any(value.sector_revision == sector_revision for value in receipts):
         if any(value.effective_session is not None for value in receipts):
             raise ValueError("feature_closure.sector_map_capture_failed")
@@ -629,7 +630,7 @@ def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str)
         activated = by_hash.get(receipt.sector_map_hash)
         if activated is None:
             raise ValueError("feature_closure.sector_map_capture_failed")
-        entries = {entry.listing_id: entry.sector_name for entry in activated.entries}
+        entries = {entry.listing_id: entry.sector_name for entry in classified(activated)}
         if receipt.effective_session is not None:
             found.extend(
                 SectorReclassification(

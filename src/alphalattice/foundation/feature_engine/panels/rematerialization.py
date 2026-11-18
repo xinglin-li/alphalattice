@@ -49,6 +49,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_schema_hash,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     ROBUST_SECTOR_NEUTRAL_Z,
 )
@@ -1037,7 +1038,7 @@ def recipe_sector_history(
     """
     return SectorHistory(
         current_revision=recipe.sector_revision,
-        current={item.listing_id: item.sector_name for item in sector_map.entries},
+        current={item.listing_id: item.sector_name for item in classified(sector_map)},
         reclassifications=tuple(
             SectorReclassification(
                 listing_id=item.listing_id,
