@@ -239,6 +239,7 @@ def test_the_first_start_upgrades_every_old_workspace_on_one_plan(
     "case",
     [
         "the catalog holds it",
+        "the catalog is created after discovery",
         "nowhere",
         "its profile without rows",
         "more rows than its manifest",
@@ -319,6 +320,9 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
 
     history.open_history("first-start", "first start", tmp_path, tmp_path / "data-root")
     try:
+        if case == "the catalog is created after discovery":
+            with pytest.raises(DataError, match="outcome body is not in the catalog"):
+                history.read_execution_outcome(chunks["DEVELOPMENT"].content_hash)
         port = history.store()
         assert port is not None
         lake = port.lake
@@ -350,6 +354,13 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
             monkeypatch.setattr(history, "reading_session", lambda *_args, **_kwargs: None)
         family = first_start.execution_outcomes()
         unheld = case in ("nowhere", "its profile without rows")
+        if case == "the catalog is created after discovery":
+            import duckdb
+
+            try:
+                assert family.verify(SimpleNamespace(workspaces=(tmp_path,))) is True
+            except duckdb.CatalogException as error:
+                pytest.fail(f"first verification could not read the committed catalog: {error}")
         if unheld or case == "the catalog holds it":
             assert family.holds(tmp_path) is unheld
         if unheld:

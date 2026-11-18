@@ -634,14 +634,15 @@ def read_execution_outcome(content_hash: str, columns: list[str] | None = None) 
         owned = not recording()
         if connection is None:
             connection = reading_session(_open.get("root") or data_root(), log=False)
-            if connection is not None and not owned:
-                _open["outcome_reading"] = connection
         if connection is None:
             raise DataError(
                 "the outcome catalog is unavailable", code="data_layer.history_unavailable"
             )
         try:
             artifact = execution_outcome_artifact_id(content_hash)
+            # Discovery can precede the catalog: retain a reader only for a held outcome.
+            if not owned:
+                _open["outcome_reading"] = connection
             selected = (
                 "* EXCLUDE (artifact_id)"
                 if columns is None
@@ -653,7 +654,7 @@ def read_execution_outcome(content_hash: str, columns: list[str] | None = None) 
                 (artifact,),
             ).to_arrow_table()
         finally:
-            if owned:
+            if owned or connection is not _open.get("outcome_reading"):
                 connection.close()
     if table.num_rows == 0:
         raise DataError("the outcome body is not in the catalog", code="data_layer.outcome_missing")
