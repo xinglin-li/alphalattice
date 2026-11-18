@@ -53,6 +53,32 @@ def test_an_unknown_class_width_is_refused_by_name_before_any_read():
     assert refused.value.failure.code == "experience.class_width_unknown"
 
 
+@pytest.mark.proves("data_layer.a_brief_budget_is_bounded")
+@pytest.mark.parametrize("budget", [99, 32_001, 0, -1], ids=["under", "over", "zero", "negative"])
+def test_a_brief_budget_out_of_range_is_refused_by_name_before_any_read(budget):
+    """A budget outside 100 to 32,000 tokens is refused by its code, naming the range."""
+    with pytest.raises(DataError, match="100 to 32000 tokens") as refused:
+        reading.brief(None, goal="g1", budget=budget)
+    assert refused.value.failure.code == "experience.brief_budget_invalid"
+
+
+@pytest.mark.proves("data_layer.a_condition_digest_names_its_content")
+@pytest.mark.parametrize(
+    ("other", "same"),
+    [
+        pytest.param({"market_vol_63d": 0.2}, True, id="equal-values"),
+        pytest.param({"market_vol_63d": 0.3}, False, id="another-value"),
+        pytest.param({"market_vol_63d": None}, False, id="undefined"),
+    ],
+)
+def test_a_condition_digest_is_its_values_and_their_question(other, same):
+    """A market condition's content digest binds its values, so equal values of one question
+    share it and different ones do not."""
+    first, _ = reading.condition_events("s1", "u1", 5, {"market_vol_63d": 0.2}, 1)
+    second, _ = reading.condition_events("s2", "u1", 5, other, 1)
+    assert (first["content_digest"] == second["content_digest"]) is same
+
+
 class _Answering:
     """A reader's process that answers each request with `answer`, as `serve` sends it."""
 

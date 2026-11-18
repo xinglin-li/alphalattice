@@ -47,7 +47,7 @@ def _define(log, family, name, version=1, *, text, **more):
     )
 
 
-def _trial(log, trial, recipe, sharpe, storage):
+def _trial(log, trial, recipe, sharpe, storage, selection="s1"):
     """One trial from registration to its headline result; returns its result artifact."""
     registered = log.record(
         "trial.registered",
@@ -55,7 +55,7 @@ def _trial(log, trial, recipe, sharpe, storage):
         {
             "goal_id": "g1",
             "hypothesis_id": "h1",
-            "selection_id": "s1",
+            "selection_id": selection,
             "recipe_key": recipe,
             "seeds": [7],
             "product_version": "0.2.8",
@@ -75,7 +75,7 @@ def _trial(log, trial, recipe, sharpe, storage):
             "type_version": 1,
             "meaning": "Does 12-1 momentum earn a premium on the S&P 500, 2015 to 2024?",
             "recipe_key": recipe,
-            "selection_id": "s1",
+            "selection_id": selection,
             "trial_id": trial,
             "storage": storage,
             "identity_kind": "recipe",

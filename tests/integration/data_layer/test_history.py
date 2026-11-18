@@ -16,6 +16,7 @@ import pytest
 
 from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
+    read_experience_brief,
     read_experience_class,
     record_experience,
 )
@@ -109,6 +110,16 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             ask = SimpleNamespace(experience_trial="none", experience_width=None)
             unknown = read_experience_class(SimpleNamespace(**vars(ask), experience_known_at=None))
             assert unknown["failure_code"] == "experience.trial_unknown"
+            ask = SimpleNamespace(goal_id="none", experience_budget=None, experience_known_at=None)
+            assert read_experience_brief(ask)["failure_code"] == "experience.goal_unknown"
+            # A new selection is made whether or not world can be read: this Host's reader holds
+            # no world catalog, so no market condition is recorded and nothing is refused.
+            window = {"cutoff_us": 1, "universe": "sp500"}
+            made = history.selection(window, actor=("agent", "claude"))
+            # A trial's kept return series names a trial the log holds, else is refused by name.
+            with pytest.raises(DataError, match="no trial") as refused:
+                history.record_return_series("none", ["2015-01"], [0.01])
+            assert refused.value.failure.code == "data_layer.trial_unknown"
             # A render holds the log's guard alone: while it is inside, the lock `open_history`
             # takes before the guard is free, so neither waits on the other (a handshake; every
             # wait is bounded and only a red one runs out).
@@ -168,17 +179,20 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"
         ).fetchone() == (5,)
-        # The class read is one search_memory step in the log, failed with the read, holding
-        # neither the query nor the records.
+        # The class read and the brief are one search_memory step each in the log, failed with
+        # their reads, holding neither the query nor the records.
         found = con.execute(
-            "SELECT phase, attrs FROM event WHERE type = 'search_memory'"
+            "SELECT phase, attrs FROM event WHERE type = 'search_memory' ORDER BY seq"
         ).fetchall()
-        assert [(phase, json.loads(attrs)) for phase, attrs in found] == [
-            (
-                "failed",
-                {"gen_ai.operation.name": "search_memory", "gen_ai.memory.store.id": "experience"},
-            )
-        ]
+        memory = {"gen_ai.operation.name": "search_memory", "gen_ai.memory.store.id": "experience"}
+        condition = con.execute(
+            "SELECT l.name, m.value FROM artifact a JOIN measure m USING (artifact_id)"
+            " JOIN definition_lineage l ON l.definition_id = m.metric_id"
+            " WHERE a.selection_id = ? ORDER BY l.name",
+            (made,),
+        ).fetchall()
+        assert made is not None and condition == []
+        assert [(phase, json.loads(attrs)) for phase, attrs in found] == [("failed", memory)] * 2
         rows = con.execute(
             "SELECT workspace_id, name, folder FROM workspace ORDER BY workspace_id"
         ).fetchall()
@@ -209,7 +223,11 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         owned = (
             "SELECT name, owner FROM definition WHERE family = 'artifact_type' AND owner = 'host'"
         )
-        assert con.execute(owned).fetchall() == [(history.EVIDENCE_TYPE, "host")]
+        assert sorted(con.execute(owned).fetchall()) == [
+            ("market_condition", "host"),
+            ("research_evidence", "host"),
+            ("return_series", "host"),
+        ]
     with HostLog.open(root), pytest.raises(DataError) as held:
         history.open_history("w1", "one", folder, root)
     assert held.value.failure.code == "data_layer.host_running"

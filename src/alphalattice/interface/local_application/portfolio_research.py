@@ -152,6 +152,7 @@ type PortfolioResearchOperation = Literal[
     "GOAL_ABANDON",
     "RESEARCH_HISTORY",
     "EXPERIENCE_READ",
+    "EXPERIENCE_BRIEF",
     "EXPERIENCE_CLASS",
     "EXPERIENCE_RECORD",
     "EXPERIMENT_COMPARE",
@@ -428,6 +429,7 @@ class PortfolioResearchOperationRequest:
     experience_trial: str | None = None
     experience_width: str | None = None
     experience_known_at: str | None = None
+    experience_budget: int | None = None
     review_subject: str | None = None
     review_verdict: str | None = None
     review_note: dict[str, Any] | None = None
@@ -872,6 +874,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     experience_known_at: str | None = Field(default=None, min_length=1, max_length=64)
     """Read the class as the history knew it at this ISO-8601 time with its offset; now when
     absent."""
+    experience_budget: int | None = Field(default=None, ge=100, le=32_000, strict=True)
+    """A brief's budget in tokens, 100 to 32,000; 2,000 when absent."""
     review_subject: str | None = Field(
         default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
     )

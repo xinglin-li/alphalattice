@@ -94,6 +94,10 @@ requirements = {
             }
         ),
     ),
+    "EXPERIENCE_BRIEF": (
+        frozenset({"goal_id"}),
+        frozenset({"goal_id", "experience_budget", "experience_known_at"}),
+    ),
     "EXPERIENCE_CLASS": (
         frozenset({"experience_trial"}),
         frozenset({"experience_trial", "experience_width", "experience_known_at"}),

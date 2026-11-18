@@ -7,7 +7,7 @@ from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import experiences, history
+from alphalattice.kernel.data_layer import experiences, history, reading
 
 if TYPE_CHECKING:
     from alphalattice.interface.local_application.portfolio_research import (
@@ -61,6 +61,25 @@ def read_experience_class(request: "PortfolioResearchOperationRequest") -> dict[
         found = history.read_experience_class(
             trial=request.experience_trial,
             width=request.experience_width or "method_version",
+            cutoff_us=None
+            if known is None
+            else round(datetime.fromisoformat(known).timestamp() * 1_000_000),
+        )
+    except DataError as error:  # the read's own code, or the history unavailable
+        return refused(public_failure(error, "experience.history_unavailable"))
+    return refused("experience.history_unavailable") if found is None else found
+
+
+def read_experience_brief(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+    """What to know before new work on the request's goal, as known at its known time, in its
+    budget (`history.read_experience_brief`); refused by name for a goal the history did not
+    hold then."""
+    assert request.goal_id is not None
+    known = request.experience_known_at
+    try:
+        found = history.read_experience_brief(
+            goal=str(request.goal_id),
+            budget=request.experience_budget or reading.BRIEF_BUDGET,
             cutoff_us=None
             if known is None
             else round(datetime.fromisoformat(known).timestamp() * 1_000_000),

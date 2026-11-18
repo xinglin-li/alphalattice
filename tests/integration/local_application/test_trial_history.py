@@ -163,9 +163,13 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
         assert recipe == [(first.kind,)]
         artifact = con.execute(
             "SELECT l.name, a.storage, a.trial_id IS NOT NULL FROM artifact a"
-            " JOIN definition_lineage l ON l.definition_id = a.type_id"
+            " JOIN definition_lineage l ON l.definition_id = a.type_id ORDER BY a.artifact_id"
         )
-        assert artifact.fetchall() == [("research_evidence", "none", 1)] * 2
+        # The one selection's market condition, then each trial's evidence.
+        assert (
+            artifact.fetchall()
+            == [("market_condition", "none", 0)] + [("research_evidence", "none", 1)] * 2
+        )
         with closing(replay(con, tmp_path / "replayed.sqlite")) as target:
             assert differences(con, target) == []
     with closing(reading_session(root)) as view:

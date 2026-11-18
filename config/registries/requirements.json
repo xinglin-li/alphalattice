@@ -323,11 +323,31 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.a_brief_budget_is_bounded": {
+      "description": "If a brief took any budget, an agent could ask for none of the brief, or for more than its context holds.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_brief_fits_its_budget_in_priority_order": {
+      "description": "If a brief broke its budget, or let lessons or similar experiences take the room of the goal's current decisions, or read anything recorded after its cut, the agent would start new work on the wrong or later knowledge.",
+      "lower_layer": "The brief joins the log's events, notes and class members in DuckDB over a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.a_cache_is_valid_for_exactly_its_inputs": {
       "description": "A cached partition's input digest moves with exactly the admissions, lag rules and cutoff its parts see, and with nothing else.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.a_class_read_gives_its_effective_n": {
+      "description": "If a class read gave no effective N, or counted series known only after its cut, a result's significance would be read against the raw trial count, or against later knowledge.",
+      "lower_layer": "The series are inline bodies in the log read by DuckDB's SQLite scan, so only a real log shows them correlated.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
     },
     "data_layer.a_class_read_is_a_search_memory_span": {
       "description": "If a class read left no search_memory step in the Host's log, which experience reads informed a trial could never be measured; if it carried the query or the records, it would hold what the conventions keep opt-in.",
@@ -343,6 +363,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.a_class_read_splits_its_effect_by_market_condition": {
+      "description": "If a class read gave no effect by market condition, or banded a member by a condition recorded after its cut, which approach works in which market could not be read, or would be read from later knowledge.",
+      "lower_layer": "The bands join the log's condition artifacts and measures to the class in DuckDB over a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.a_class_width_is_named": {
       "description": "If an unknown class width were read as some default, an agent would get a class it did not ask for.",
       "owner": "alphalattice.kernel.data_layer",
@@ -355,6 +382,12 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 20
+    },
+    "data_layer.a_condition_digest_names_its_content": {
+      "description": "If a condition artifact's content digest left out its values, two different results of one question would claim one content, and the digest could not tell them apart.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.a_correction_is_known_from_its_admission": {
       "description": "StorePort admits one fact as one version however a writer stages it, a changed value as a new version known from its admission, and supersedes each held version once.",
@@ -426,6 +459,12 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
+    },
+    "data_layer.a_return_series_is_kept_in_its_form": {
+      "description": "If a malformed series were kept, the class read's correlations would join months that are not calendar months or read values that are not returns.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.a_source_supersedes_only_with_a_later_write": {
       "description": "StorePort writes a closed interval's two versions and supersedes a held bar only with a source write after its value's last write, which a same-value write moves without a version.",
@@ -646,6 +685,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.effective_n_follows_its_formula": {
+      "description": "If effective N left the method's range, a deflated Sharpe ratio built on it would count more trials than were run, or fewer than one.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.event_ids_are_uuidv7": {
       "description": "A new event's id is a UUIDv7 whose leading 48 bits are the Unix milliseconds it was minted in.",
       "owner": "alphalattice.kernel.data_layer",
@@ -772,6 +817,13 @@
     "data_layer.maintenance_bounds_the_catalog": {
       "description": "If maintenance expired a snapshot whose admission event the log lacks, the next start could not repair it; if it never expired or cleaned up, a collected partition's bytes would stay forever.",
       "lower_layer": "Expiry and file cleanup are DuckLake's own catalog calls over real Parquet files, read against the log's events; only a real catalog and log show both.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.market_condition_is_measured_at_its_cutoff": {
+      "description": "If a market's condition read members or bars known after its cutoff, or a member that had left the universe, a trial's effect would be split by a condition it could not have seen.",
+      "lower_layer": "The condition is read through world's point-in-time macros over the lake, so only a real lake shows what was known at the cutoff.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10

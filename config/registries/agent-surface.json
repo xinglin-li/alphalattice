@@ -6704,6 +6704,117 @@
         "type": "string"
       }
     },
+    "answer:EXPERIENCE_BRIEF.budget": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.cutoff_us": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.goal": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.known_seq": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.parts": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF.used": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_BRIEF/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_CLASS.by_condition": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
     "answer:EXPERIENCE_CLASS.cutoff_us": {
       "required": true,
       "schema": {
@@ -6715,6 +6826,13 @@
             "type": "null"
           }
         ]
+      }
+    },
+    "answer:EXPERIENCE_CLASS.effective_n": {
+      "required": true,
+      "schema": {
+        "additionalProperties": true,
+        "type": "object"
       }
     },
     "answer:EXPERIENCE_CLASS.error_info": {
@@ -27376,6 +27494,11 @@
       ]
     },
     "command:experience": {},
+    "command:experience brief": {
+      "operations": [
+        "EXPERIENCE_BRIEF"
+      ]
+    },
     "command:experience class": {
       "operations": [
         "EXPERIENCE_CLASS"
@@ -28883,6 +29006,16 @@
       ],
       "required": [
         "analysis_publication_hash"
+      ]
+    },
+    "operation:EXPERIENCE_BRIEF": {
+      "allowed": [
+        "experience_budget",
+        "experience_known_at",
+        "goal_id"
+      ],
+      "required": [
+        "goal_id"
       ]
     },
     "operation:EXPERIENCE_CLASS": {
@@ -37851,6 +37984,125 @@
       "type": "Path"
     },
     "option:evidence/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--budget": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience brief/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience brief/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--known-at": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience brief/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience brief/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience brief/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience brief/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience brief/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience brief/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -57751,8 +58003,16 @@
     "refusal:data_layer.admission_lineage_invalid": {},
     "refusal:data_layer.admission_out_of_order": {},
     "refusal:data_layer.admission_source_time_missing": {},
+    "refusal:data_layer.array_collected": {},
+    "refusal:data_layer.array_digest_reused": {},
+    "refusal:data_layer.array_invalid": {},
+    "refusal:data_layer.array_missing": {},
+    "refusal:data_layer.array_profile_mismatch": {},
+    "refusal:data_layer.array_tampered": {},
     "refusal:data_layer.artifact_body_missing": {},
     "refusal:data_layer.artifact_body_unexpected": {},
+    "refusal:data_layer.artifact_held_unknown": {},
+    "refusal:data_layer.artifact_holder_unnamed": {},
     "refusal:data_layer.artifact_trial_unregistered": {},
     "refusal:data_layer.below_free_floor": {},
     "refusal:data_layer.chain_broken": {},
@@ -57779,6 +58039,7 @@
     "refusal:data_layer.outcome_incomplete": {},
     "refusal:data_layer.outcome_missing": {},
     "refusal:data_layer.result_key_present": {},
+    "refusal:data_layer.return_series_invalid": {},
     "refusal:data_layer.review_before_its_end": {},
     "refusal:data_layer.review_trial_unknown": {},
     "refusal:data_layer.review_trials_need_a_review_task": {},
@@ -57786,6 +58047,7 @@
     "refusal:data_layer.review_workspace_disagrees": {},
     "refusal:data_layer.schema_mismatch": {},
     "refusal:data_layer.staging_taken": {},
+    "refusal:data_layer.trial_unknown": {},
     "refusal:data_layer.world_table_not_admitted": {},
     "refusal:data_tradability.adv20_warmup_unavailable": {},
     "refusal:data_tradability.artifact_identity_invalid": {},
@@ -57910,7 +58172,9 @@
     "refusal:execution.cpu_budget_invalid": {},
     "refusal:execution.cpu_budget_unreadable": {},
     "refusal:execution.memory_insufficient": {},
+    "refusal:experience.brief_budget_invalid": {},
     "refusal:experience.class_width_unknown": {},
+    "refusal:experience.goal_unknown": {},
     "refusal:experience.history_unavailable": {},
     "refusal:experience.hypothesis_existing_run": {},
     "refusal:experience.hypothesis_goal": {},
@@ -59218,6 +59482,7 @@
     "refusal:portfolio_strategy_lab.anchor_axis_empty": {},
     "refusal:portfolio_strategy_lab.anchor_pool_empty": {},
     "refusal:portfolio_strategy_lab.anchor_recipe_identity_invalid": {},
+    "refusal:portfolio_strategy_lab.array_store_invalid": {},
     "refusal:portfolio_strategy_lab.artifact_absent": {},
     "refusal:portfolio_strategy_lab.artifact_identity_invalid": {},
     "refusal:portfolio_strategy_lab.artifact_identity_reused": {},
@@ -61751,6 +62016,22 @@
         "default": null
       }
     },
+    "request:Request.experience_budget": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maximum": 32000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "request:Request.experience_hypothesis": {
       "required": false,
       "schema": {
@@ -63742,6 +64023,7 @@
         "GOAL_ABANDON",
         "RESEARCH_HISTORY",
         "EXPERIENCE_READ",
+        "EXPERIENCE_BRIEF",
         "EXPERIENCE_CLASS",
         "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",

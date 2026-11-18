@@ -141,6 +141,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "foundation_admission_hash",
         "goal_declaration",
         "goal_hash",
+        "goal_id",
         "goal_reference",
         "goal_reference_id",
         "goal_statement",

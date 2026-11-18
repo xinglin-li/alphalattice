@@ -33,7 +33,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -43,11 +43,18 @@ from urllib.parse import urlsplit
 import alphalattice.kernel.data_layer.derived_files as derived_files
 import alphalattice.kernel.data_layer.experiences as experiences
 import alphalattice.kernel.data_layer.project as project
+import alphalattice.kernel.data_layer.return_series as return_series
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
-from alphalattice.kernel.data_layer.reading import LogReader, reading_session
+from alphalattice.kernel.data_layer.reading import (
+    CONDITION_METRICS,
+    CONDITION_TYPE,
+    LogReader,
+    condition_events,
+    reading_session,
+)
 from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV, create_data_root, data_root
 from alphalattice.kernel.shared_kernel.environment import offline
 
@@ -59,6 +66,8 @@ OTLP_CONTENT_ENV: Final = "ALPHALATTICE_OTLP_INCLUDE_CONTENT"
 EVIDENCE_TYPE: Final = "research_evidence"
 """The artifact type of a trial's execution evidence, registered by the Host as its own."""
 _EVIDENCE_TEXT: Final = "What one research trial's Desk run did: its program, inputs and artifacts."
+_RETURN_SERIES_TEXT: Final = "A trial's headline monthly return series, kept with its profile."
+_CONDITION_TEXT: Final = "A market's condition at a selection's cutoff, as registered metrics."
 STEPS: Final = {
     "host.request": (
         ["operation"],
@@ -287,6 +296,13 @@ def open_history(
             "keep": "while_active",
         }
         define("artifact_type", EVIDENCE_TYPE, _EVIDENCE_TEXT, spec)
+        kept = {"storage": "inline", "table": None, "measures": [], "keep": "forever"}
+        define("artifact_type", return_series.TYPE, _RETURN_SERIES_TEXT, kept)
+        for metric, (metric_spec, words) in CONDITION_METRICS.items():
+            define("metric", metric, words, metric_spec)
+        condition = {"storage": "none", "table": None, "keep": "forever"}
+        condition["measures"] = sorted(CONDITION_METRICS)
+        define("artifact_type", CONDITION_TYPE, _CONDITION_TEXT, condition)
         for step_name, (required, words, text) in STEPS.items():
             kind = {"work": True, "subject": None, "required": required, "text": words}
             define("event_type", step_name, text, kind | {"durable": False})
@@ -1076,7 +1092,37 @@ def selection(window: Mapping[str, Any], *, actor: tuple[str, str]) -> str | Non
                 return str(held[0])
             made = uuid7()
             record("selection.made", ("selection", made), window, actor=actor)
-            return made
+    _record_condition(made, window, actor)
+    return made
+
+
+def _record_condition(selection: str, window: Mapping[str, Any], actor: tuple[str, str]) -> None:
+    """Record the market's condition at a new selection's cutoff (reading.market_condition) as
+    one `market_condition` artifact of that selection, its metrics as measures; nothing when the
+    selection names no universe, and a warning, never a refusal, when world cannot be read, so a
+    trial never waits on it."""
+    reading = _open.get("reading")
+    universe = (
+        None
+        if window.get("universe") is None
+        else definition_id("universe", str(window["universe"]))
+    )
+    if reading is None or universe is None:
+        return
+    cutoff = int(window["cutoff_us"])
+    try:
+        with _lock:
+            values = reading.read("market_condition", universe=universe, cutoff_us=cutoff)
+    except DataError as error:
+        logging.getLogger(__name__).warning("market_condition.unread: %s", error)
+        return
+    kind = version("artifact_type", CONDITION_TYPE)  # the Host registers it at its open
+    if kind is None:
+        return
+    produced, result = condition_events(selection, universe, cutoff, values, kind)
+    artifact = ("artifact", uuid7())
+    record("artifact.produced", artifact, produced, actor=actor)
+    record("result.recorded", artifact, result, actor=actor)
 
 
 def recipe(
@@ -1109,6 +1155,33 @@ def recipe(
             return key
 
 
+def record_return_series(
+    trial: str,
+    months: Sequence[str],
+    returns: Sequence[float],
+    *,
+    actor: tuple[str, str] = ("host", "host"),
+) -> str | None:
+    """Keep `trial`'s headline monthly return series with its profile, as one inline
+    `return_series` artifact (return_series.encode's body); the class read's effective N reads
+    the newest one a trial holds. Refused by name for a malformed series or a trial the log does
+    not hold; None outside a Host."""
+    return_series.encode(months, returns)  # refused by name before the log is read
+    log = _open.get("log")
+    if log is None or not recording():
+        return None
+    found = log.read("SELECT recipe_key FROM trial WHERE trial_id = ?", (trial,))
+    if not found:
+        raise DataError(f"no trial {trial!r} is in the log", code="data_layer.trial_unknown")
+    kind = version("artifact_type", return_series.TYPE)  # the Host registers it at its open
+    if kind is None:
+        return None
+    produced, body = return_series.produced(trial, found[0][0], months, returns, kind)
+    artifact = uuid7()
+    record("artifact.produced", ("artifact", artifact), produced, body=body, actor=actor)
+    return artifact
+
+
 def definition_id(family: str, name: str) -> str | None:
     """The lineage `name` names in `family`, by any name it held: what a recipe or a row keys by,
     never the name. None outside a Host, while deferred, or when nothing registers it."""
@@ -1131,6 +1204,36 @@ def read_experience_class(
     class's spread and search size (`reading.experience_class`), read by the open Host as one
     gen_ai `search_memory` span over the experience store; None if unavailable. The query and
     the records stay off the span: the conventions make both opt-in."""
+    return _search_memory(
+        "experience_class",
+        lambda read: len(read["members"]),
+        trial=trial,
+        width=width,
+        cutoff_us=cutoff_us,
+    )
+
+
+def read_experience_brief(
+    *, goal: str, budget: int, cutoff_us: int | None = None
+) -> dict[str, Any] | None:
+    """What to know before new work on `goal` as known at `cutoff_us`, fitted to `budget`
+    tokens (`reading.brief`), read by the open Host as one gen_ai `search_memory` span counting
+    the items it took; None if unavailable."""
+    return _search_memory(
+        "brief",
+        lambda read: sum(len(part["items"]) for part in read["parts"]),
+        goal=goal,
+        budget=budget,
+        cutoff_us=cutoff_us,
+    )
+
+
+def _search_memory(
+    name: str, count: Callable[[dict[str, Any]], int], **filters: Any
+) -> dict[str, Any] | None:
+    """The reader's `name` read, as one gen_ai `search_memory` client span over the experience
+    store, its record count `count` of the answer; the query and the records stay off it, the
+    conventions making both opt-in. None while the history is not open."""
     with _lock:
         reading = _open.get("reading")
         if reading is None:
@@ -1138,7 +1241,8 @@ def read_experience_class(
         _open["log"].flush()
         provider = _open.get("tracer")
         if provider is None:
-            return reading.read("experience_class", trial=trial, width=width, cutoff_us=cutoff_us)
+            found: dict[str, Any] = reading.read(name, **filters)
+            return found
         from opentelemetry.trace import SpanKind  # lazy: the SDK, once open
 
         attributes = {
@@ -1148,8 +1252,8 @@ def read_experience_class(
         with provider.get_tracer("host").start_as_current_span(
             "search_memory", kind=SpanKind.CLIENT, attributes=attributes
         ) as span:
-            found = reading.read("experience_class", trial=trial, width=width, cutoff_us=cutoff_us)
-            span.set_attribute("gen_ai.memory.record.count", len(found["members"]))
+            found = reading.read(name, **filters)
+            span.set_attribute("gen_ai.memory.record.count", count(found))
         _open["log"].flush()
         return found
 

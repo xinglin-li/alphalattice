@@ -106,6 +106,26 @@ FROM log.event e LEFT JOIN log.event_text x ON x.seq = e.seq
 JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded')
 WHERE e.subject_kind = 'goal';
 
+-- The index of conclusions and lessons: every one the log holds, on a goal, a hypothesis or a trial, with the goal,
+-- hypothesis and method it informs, so an agent finds them across workspaces by any of the three. A note on a trial
+-- reaches them through the trial, one on a hypothesis its goal; a note's own attributes name a hypothesis or method
+-- its subject does not. A forgotten note keeps its row, with no text.
+CREATE VIEW note_index AS
+SELECT e.event_id AS note_id, e.seq, k.named AS kind, e.subject_kind, e.subject_id, e.workspace_id,
+       coalesce(ts.goal_id, h.goal_id, CASE WHEN e.subject_kind = 'goal' THEN e.subject_id END) AS goal_id,
+       coalesce(json_extract_string(e.attrs, '$.hypothesis_id'), t.hypothesis_id,
+                CASE WHEN e.subject_kind = 'hypothesis' THEN e.subject_id END) AS hypothesis_id,
+       coalesce(json_extract_string(e.attrs, '$.method'), rl.name) AS method,
+       x.text, make_timestamptz(e.recorded_us) AS recorded_at
+FROM log.event e
+JOIN log.event_type_name k ON k.type = e.type AND k.named IN ('conclusion.drawn', 'lesson.recorded')
+LEFT JOIN log.event_text x ON x.seq = e.seq
+LEFT JOIN log.trial t ON e.subject_kind = 'trial' AND t.trial_id = e.subject_id
+LEFT JOIN log.trial_scope ts ON ts.trial_id = t.trial_id
+LEFT JOIN log.recipe r ON r.recipe_key = t.recipe_key
+LEFT JOIN log.definition_lineage rl ON rl.definition_id = r.method_id
+LEFT JOIN log.hypothesis h ON e.subject_kind = 'hypothesis' AND h.hypothesis_id = e.subject_id;
+
 -- One row per trial, as state, action, effect and new state: what an agent studies before it tries something.
 -- It reads profiles and measures only, so it is whole whether or not any artifact body still exists.
 CREATE VIEW experience AS

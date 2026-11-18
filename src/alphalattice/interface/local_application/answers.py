@@ -485,6 +485,27 @@ class ExperienceAnswer(_Answer):
     """Trials on this page that have no recorded hypothesis."""
 
 
+class ExperienceBriefAnswer(_Answer):
+    """What to know before new work on a goal, as known at a time, fitted to a token budget in
+    priority order."""
+
+    model_config = ConfigDict(extra="forbid")
+    goal: str
+    """The goal briefed."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    budget: int
+    """The budget, in tokens of about four characters."""
+    used: int
+    """The tokens the items taken use, never more than the budget."""
+    parts: list[dict[str, Any]]
+    """In priority order: decisions (the goal's current one of each kind), lessons (its own
+    first, then other goals' on its methods) and experiences (other goals' trials of its
+    method, with their conclusions); each with its items taken whole and how many were omitted."""
+
+
 class ExperienceClassAnswer(_Answer):
     """Every trial of a trial's class as the history knew it at a time, with the class's spread
     and the size of its search: what a recalled experience's statistics rest on."""
@@ -504,6 +525,13 @@ class ExperienceClassAnswer(_Answer):
     spread: list[dict[str, Any]]
     """Per metric, version and dimensions: count, mean, standard deviation, minimum, median and
     maximum over every member measured by then."""
+    effective_n: dict[str, Any]
+    """The class's effective number of independent trials (Bailey and Lopez de Prado 2014) from
+    its members' kept monthly return series: how many members hold one, the pairs correlated,
+    their mean correlation and N; N is null below two series."""
+    by_condition: list[dict[str, Any]]
+    """Each headline effect's spread in each band (low, mid, high: the members' terciles) of each
+    market condition metric of the members' selections known then."""
     search: dict[str, Any]
     """The search's size: trials, candidates, recipes, goals, workspaces, agents, and how many
     completed and failed."""
@@ -711,6 +739,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
     "EXPERIENCE_READ": ExperienceAnswer,
+    "EXPERIENCE_BRIEF": ExperienceBriefAnswer,
     "EXPERIENCE_CLASS": ExperienceClassAnswer,
     "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,

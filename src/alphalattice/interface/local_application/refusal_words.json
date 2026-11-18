@@ -8,6 +8,8 @@
  "data_layer.extension_unavailable": {"detail": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
  "experience.trial_unknown": {"detail": "That trial is not in the Host's history.", "next_action": "NAME_A_TRIAL_FROM_AN_EXPERIENCE_READ"},
  "experience.class_width_unknown": {"detail": "A class's width is recipe, method_version or method.", "next_action": "NAME_THE_CLASS_WIDTH"},
+ "experience.goal_unknown": {"detail": "That goal is not in the Host's history as known then.", "next_action": "NAME_A_GOAL_THE_HISTORY_HELD"},
+ "experience.brief_budget_invalid": {"detail": "A brief's budget is 100 to 32,000 tokens.", "next_action": "GIVE_A_BUDGET_IN_RANGE"},
  "experience.known_at_invalid": {"detail": "A known time is an ISO-8601 time with its offset.", "next_action": "GIVE_THE_TIME_WITH_ITS_OFFSET"},
  "experience.history_unavailable": {"detail": "The Host's research history is unavailable, so its trial experience could not be read.", "next_action": "RESTORE_THE_HOST_HISTORY"},
  "experience.note_incomplete": {"detail": "A note says its hypothesis, method and conclusion, each a sentence, and each lesson is a sentence.", "next_action": "COMPLETE_THE_NOTE_AND_RECORD_AGAIN"},

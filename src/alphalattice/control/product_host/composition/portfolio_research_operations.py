@@ -63,6 +63,7 @@ from alphalattice.control.product_host.composition.evidence_review_projection im
 )
 from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
+    read_experience_brief,
     read_experience_class,
     record_experience,
 )
@@ -1511,6 +1512,8 @@ class PortfolioResearchOperations:
             return self.upgrade(request)
         if request.operation == "EXPERIENCE_READ":
             return read_experience(request)
+        if request.operation == "EXPERIENCE_BRIEF":
+            return read_experience_brief(request)
         if request.operation == "EXPERIENCE_CLASS":
             return read_experience_class(request)
         if request.operation == "EXPERIENCE_RECORD":
