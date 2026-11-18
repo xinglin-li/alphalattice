@@ -12,10 +12,12 @@ from hashlib import sha256
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
+from uuid import UUID
 
 import pyarrow as pa
 import pytest
 
+from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_words
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
@@ -403,7 +405,11 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
         assert progress["stage"] == "maintain_data_feature"
         assert progress["delivery"]["delivered"] >= 1 and progress["delivery"]["failures"] == 0
         sidecar = workspace / "runtime/data-update" / response["task_id"] / "work-progress.json"
-        assert sidecar.is_file()
+        # The Task-bound copy is kept on the log as a span since 11-16 (no file): read it
+        # through its owner's reader, which reads a legacy file first.
+        kept = TaskTelemetry.read_json(sidecar, UUID(response["task_id"]))
+        assert isinstance(kept, dict), kept
+        assert (kept["task_id"], kept["stage"]) == (response["task_id"], "maintain_data_feature")
         # The receipt's resulting Panel, named, not whichever Panel is active today.
         assert readback["partition_reuse"] == {
             "reused_partition_count": len(_active_panel_manifest(workspace)["chunks"]) - 1,

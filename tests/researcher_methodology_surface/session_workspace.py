@@ -26,7 +26,9 @@ import portalocker
 import pytest
 
 from alphalattice.control.task_control.upgrade import carry_tasks
+from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
 from alphalattice.kernel.data_layer.history import carry_arrays, own_root
+from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,
@@ -283,14 +285,19 @@ def session_workspace(
             # sits with the test machines', a plain path a log attaches by URI.
             assert environment.DATA_ROOT is not None
             machine = environment.DATA_ROOT / f"seed-{target.name}"
+            carried = None
             try:
                 with own_root(machine):
                     metadata = build(target / "workspace")
-                    # A seed outlives the data root it was built on: it carries its Tasks.
+                    # A seed outlives the data root it was built on: it carries its Tasks,
                     carry_tasks(target / "workspace", target / "workspace")
                     carry_arrays(target / "workspace", target / "workspace")
+                # and its machine, whose catalog alone holds the outcome bodies it names.
+                if (machine / "machine/log.sqlite").is_file():
+                    carried = backup_data_root(machine, target / "machine").relative_to(target)
             finally:
                 RUNNING_TEST.update(running)
+                retire_children()
                 shutil.rmtree(machine, ignore_errors=True)
             if not isinstance(metadata, dict) or not (target / "workspace").is_dir():
                 raise RuntimeError(
@@ -306,6 +313,7 @@ def session_workspace(
                 "inputs": input_hash,
                 "metadata": metadata,
                 "persistent": persistent is not None,
+                "machine": None if carried is None else carried.as_posix(),
                 "files": (
                     verified_payload(target / "workspace")
                     if persistent is not None
@@ -385,6 +393,24 @@ def _shared_data(path: Path) -> bool:
     from alphalattice.control.product_host.storage.backup import BYTE_ADDRESSED
 
     return path.parent.parts[-3:] in BYTE_ADDRESSED
+
+
+def retire_children() -> None:
+    """End this process's kept Task workers before the data root they hold goes: a spawned worker
+    keeps the root this process held when it started, for its idle wait after its last call, so a
+    later call there opens a root a seed build or a test has removed."""
+    from alphalattice.control.task_control import child
+
+    for worker, pool in list(child._WORKERS.items()):
+        child._retire_worker(worker, pool)
+
+
+def restore_seed(source: Path) -> None:
+    """Start the held data root, still fresh, on the machine a seed was built on: a copy's
+    outcome bodies live in that machine's catalog alone."""
+    record = json.loads((Path(source).parent / "complete.json").read_text(encoding="utf-8"))
+    if record.get("machine") is not None:
+        restore_data_root(Path(source).parent / record["machine"], Path(os.environ[DATA_ROOT_ENV]))
 
 
 def copy_workspace(

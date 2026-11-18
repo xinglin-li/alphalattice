@@ -249,6 +249,9 @@ _ROUND_TRIP_REPORT = os.environ.get("ALPHALATTICE_ROUND_TRIP_REPORT")
 """Discovery: each offer is sent back whole, a preview's body included, and what it finds is
 written to this file. A sent preview records its link, so this never runs by default."""
 _observer = RoundTripObserver(report=bool(_ROUND_TRIP_REPORT))
+_HOST_TESTS: dict[str, str] = {}
+"""Each Host's workspace id and the test it first answered in. The observer hears every answer
+in the process, so a problem line names whose Host gave it."""
 
 
 def truth_problems(host, operation, body, admits):
@@ -466,6 +469,18 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 else {}
             )
 
+            workspace = self.workspace_manifest.workspace_id
+            host_test = _HOST_TESTS.setdefault(
+                workspace, os.environ.get("PYTEST_CURRENT_TEST", "no test").split(" ")[0]
+            )
+
+            def named_problem(operation: str, answer: Any, *rest: Any) -> str | None:
+                problem = answer_problem(operation, answer, *rest)
+                if problem is None or not isinstance(answer, dict):
+                    return problem
+                task = answer.get("task_id") or answer.get("blocking_task_id")
+                return f"{problem} (Task {task}, workspace {workspace}, Host of {host_test})"
+
             def truth():
                 admits = self._recovery_context
                 if _ROUND_TRIP_REPORT:
@@ -476,7 +491,7 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 request.operation,
                 body,
                 given,
-                answer_problem=answer_problem,
+                answer_problem=named_problem,
                 untyped_failure=untyped_failure,
                 truth=truth,
                 plan_admission=lambda: _host_plan_admission(self, owner, request.operation, body),

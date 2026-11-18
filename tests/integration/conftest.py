@@ -6,6 +6,7 @@ from tests._support.researcher_methodology_session_fixtures import (
 )
 from tests._support.researcher_methodology_surface_fixtures import alpha_case as alpha_case
 from tests._support.researcher_methodology_surface_fixtures import alpha_seed as alpha_seed
+from tests._support.researcher_methodology_surface_fixtures import factor_history as factor_history
 from tests._support.researcher_methodology_surface_fixtures import factor_seed as factor_seed
 from tests._support.researcher_methodology_surface_fixtures import input_seed as input_seed
 from tests._support.researcher_methodology_surface_fixtures import inputs as inputs

@@ -40,6 +40,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json, _request
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
+    restore_seed,
     session_workspace,
 )
 from tests.workspace_maintenance.local_data_provider import (
@@ -328,6 +329,7 @@ def revision_seed(request, tmp_path_factory):
 @pytest.fixture
 def revision_journey(revision_seed, tmp_path):
     source, metadata = revision_seed
+    restore_seed(source)
     root = copy_workspace(source, tmp_path / "input-revision")
     return (
         root,

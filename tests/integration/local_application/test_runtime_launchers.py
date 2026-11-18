@@ -672,17 +672,28 @@ def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace
             )
             return escape != "unproven"
 
-        def limits(_job, _kind, output, _size, _length):
+        real_kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        def limits(job, kind, output, size, length):
+            if job is not None:  # an owner's own Job (spawn's accounting): the real kernel answers
+                query = real_kernel.QueryInformationJobObject
+                query.argtypes = getattr(limits, "argtypes", None)
+                query.restype = getattr(limits, "restype", ctypes.c_int)
+                return query(job, kind, output, size, length)
             output._obj.BasicLimitInformation.LimitFlags = 0x2000
             return escape != "unproven"
 
-        lock_api = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel = SimpleNamespace(
-            IsProcessInJob=proof,
-            QueryInformationJobObject=limits,
-            LockFileEx=lock_api.LockFileEx,
-            UnlockFileEx=lock_api.UnlockFileEx,
-        )
+        class Kernel:
+            """The caller's own Job reads faked for the escape; every other call is the real
+            kernel's, so an owner that makes its own Job (the shared spawn) still can."""
+
+            IsProcessInJob = staticmethod(proof)
+            QueryInformationJobObject = staticmethod(limits)
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(real_kernel, name)
+
+        kernel = Kernel()
         monkeypatch.setattr(ctypes, "WinDLL", lambda *_a, **_k: kernel)
         monkeypatch.setattr(ctypes, "get_last_error", lambda: 87 if escape == "unproven" else 0)
     return record
