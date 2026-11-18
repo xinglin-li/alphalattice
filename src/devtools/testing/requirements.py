@@ -1030,6 +1030,36 @@ def _fresh_lower_layers(
     ]
 
 
+def _decision_line_problems(rows: Mapping[str, dict[str, Any]], roster: Path) -> list[str]:
+    """Reject registered line names in decision text using the export roster."""
+    try:
+        if roster.is_symlink() or roster.is_junction():
+            raise ValueError("the roster is a link")
+        document = json.loads(roster.read_text(encoding="utf-8"))
+        names = document.get("entries") if isinstance(document, dict) else None
+        if (
+            not isinstance(names, dict)
+            or not names
+            or any(not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name) for name in names)
+        ):
+            raise ValueError("the roster has invalid or missing line names")
+    except (OSError, ValueError) as error:
+        raise ValueError(f"requirements.line_roster_unreadable: {roster}: {error}") from error
+
+    words = "|".join(re.escape(name) for name in sorted(names))
+    label = re.compile(r"(?<![A-Za-z0-9_-])(?:" + words + r")(?![A-Za-z0-9_-])")
+    found = []
+    for key, row in rows.items():
+        exception = row.get("exception")
+        decided = exception.get("decided") if isinstance(exception, dict) else None
+        if isinstance(decided, str) and label.search(decided):
+            found.append(
+                f"TEST-REGISTRY {key} requirements.decision_names_line: "
+                'keep the date and reason in "decided" and remove the development line.'
+            )
+    return found
+
+
 def guard(
     root: Path,
     new: Iterable[Holder],
@@ -1040,16 +1070,17 @@ def guard(
     before_tests: Iterable[Holder] | None = None,
     retired_tests: Mapping[str, str] | None = None,
     removed_sources: set[str] | None = None,
+    roster: Path | None = None,
 ) -> list[str]:
-    """The fast guard's step over a change: its new tests and its added or edited rows, parsed
-    once; a tree with no registry at either end has nothing to register."""
+    """Check new tests, edited rows and workshop decision text in one registry snapshot."""
     if text is None and base is None:
         return []
     try:
         rows, before = parse(text) if text else {}, parse(base, ordered=False) if base else {}
+        decisions = _decision_line_problems(rows, roster) if roster is not None else []
         new = list(new)
         if not new and rows == before and before_tests is None:
-            return []
+            return decisions
         at = index(root, rows, tests=tests)
         added_nodes = {test.node for test in new}
         prior = _places(
@@ -1073,7 +1104,8 @@ def guard(
                 ids=tuple(dict.fromkeys((*(previous.ids if previous else ()), *ids)))
             )
     return (
-        registration(root, candidates.values(), rows, at=at, prior=prior)
+        decisions
+        + registration(root, candidates.values(), rows, at=at, prior=prior)
         + admission(root, rows, before, at=at)
         + _fresh_lower_layers(new, rows, before)
         + pyramid(

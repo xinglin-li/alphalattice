@@ -1155,6 +1155,10 @@ def _test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
         listed = git("ls-tree", "--name-only", base, "--", registry).strip()
         declared_then = git("show", f"{base}:{registry}") if listed else None
+        roster = None
+        if staged and declared is not None and os.environ.get("ALPHALATTICE_STAGE_TARGET"):
+            common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+            roster = common.parent.parent / "playpen-board" / "registries" / "lines.json"
         if fresh or declared != declared_then or changed_tests:  # an area's shares need every test
             missing = paths - projected.keys()
             if staged:
@@ -1209,6 +1213,7 @@ def _test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         ],
         retired_tests=removed_tests,
         removed_sources=removed_sources,
+        roster=roster,
     )
     for line in refused:
         print(line, flush=True)

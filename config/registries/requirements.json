@@ -166,7 +166,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "architecture.discovered_imports_kept_by_place_and_bytes": {
@@ -940,7 +940,7 @@
           "over_budget"
         ],
         "why": "a real process killed at each write-order point of the observed, results and array writers; a kill needs a real process",
-        "decided": "2026-11-18: T1: over the medium admission seconds as on develop; its process cases fall 9 -> 8 and its seconds stay at or below 60"
+        "decided": "2026-11-18: over the medium admission seconds as on develop; its process cases fall 9 -> 8 and its seconds stay at or below 60"
       }
     },
     "data_platform.session_authority_is_content_addressed": {
@@ -1568,7 +1568,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "pipeline.cost_receipt_contains_required_nodes": {
@@ -1606,7 +1606,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "pipeline.health_report_counts_the_test_metrics": {
@@ -1619,7 +1619,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "pipeline.public_closure_needs_every_file_a_public_file_uses": {
@@ -1693,7 +1693,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "pipeline.result_cache_hits_only_on_unchanged_inputs": {
@@ -2079,7 +2079,7 @@
           "growth"
         ],
         "why": "The costliest tooling tests were rewritten: shared build-once Git histories, one shared child session and tool stubs replace a child process per case; no test function was added",
-        "decided": "2026-11-15: Lead: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
+        "decided": "2026-11-15: the excess is shared build-once fixtures and tool stubs that remove child processes; every case kept"
       }
     },
     "testing.lint_rules_improve_the_code": {
@@ -2174,7 +2174,7 @@
           "growth"
         ],
         "why": "The rule's own test gains the planted case of a rewrite that adds no test function",
-        "decided": "2026-11-15: Lead: fix the rule with one planted case in the existing growth test"
+        "decided": "2026-11-15: fix the rule with one planted case in the existing growth test"
       }
     },
     "testing.the_semgrep_scan_gets_a_short_temp_on_windows": {
@@ -2244,7 +2244,7 @@
           "growth"
         ],
         "why": "The memo's 20 existing tests state both file-system rules (kept, and not kept where no lifetime handle exists) instead of skipping there, as the review required",
-        "decided": "2026-11-15: Lead: the excess is the coverage of the second file-system rule; keep every check"
+        "decided": "2026-11-15: the excess is the coverage of the second file-system rule; keep every check"
       }
     },
     "workspace_runtime.an_interrupt_ends_a_source_check_wait": {
