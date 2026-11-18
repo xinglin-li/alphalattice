@@ -90,7 +90,7 @@ PUBLICATIONS = "lifecycle-input-publications"
 
 
 IMPLEMENTATION_ROLE = "product_host.research_component_training_input"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

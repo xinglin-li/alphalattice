@@ -42,10 +42,16 @@ _A, _B, _C, _D = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)
 
 
 def _successors(root: Path, moves: list[dict[str, str]], *, version: int = 1) -> Path:
-    path = root / "config" / "identity-successors.json"
-    path.parent.mkdir(parents=True)
-    document = {"schema": "identity-successors", "version": version, "moves": moves}
-    path.write_text(json.dumps(document), encoding="utf-8")
+    directory = root / "config" / "identity-successors"
+    directory.mkdir(parents=True)
+    header = {"schema": "identity-successors", "version": version}
+    directory.with_suffix(".json").write_text(
+        json.dumps(dict(header, moves=moves[:1])), encoding="utf-8"
+    )
+    for index, move in reversed(list(enumerate(moves[1:]))):
+        (directory / f"{index:02d}.json").write_text(
+            json.dumps(dict(header, moves=[move])), encoding="utf-8"
+        )
     return root
 
 
@@ -100,6 +106,10 @@ def test_a_bound_value_is_held_at_the_origin_its_recorded_moves_lead_from(
     assert recorded_origin("other", _D, root=root) == _C, "each role follows its own moves"
     assert recorded_origin("loop", _A, root=root) in {_A, _B}, "a recorded cycle ends"
 
+    tied = _successors(root.parent / "tied", [_move("role", _A, _C), _move("role", _B, _C)])
+    assert recorded_origin("role", _C, root=tied) == _A
+    assert predecessors("role", _C, root=tied) == (_C, _A, _B)
+
 
 def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Path) -> None:
     """requirement (LAWS.md ID1, W9a): a store keyed by a recorded value finds the entries
@@ -123,10 +133,42 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
 @pytest.mark.parametrize(
     ("moves", "version", "code"),
     [
-        ([_move("role", _A, _B)], 2, "shared_kernel.identity_successors_from_another_build"),
-        ([_move("role", _A, _A)], 1, "shared_kernel.identity_successor_invalid"),
-        ([_move("role", _A, "not-a-hash")], 1, "shared_kernel.identity_successor_invalid"),
-        ([{"role": "role", "predecessor": _A}], 1, "shared_kernel.identity_successor_invalid"),
+        pytest.param(
+            [_move("role", _A, _B)],
+            2,
+            "shared_kernel.identity_successors_from_another_build",
+            id="foreign-version",
+        ),
+        pytest.param(
+            [_move("role", _A, _A)],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="self-successor",
+        ),
+        pytest.param(
+            [_move("role", _A, "not-a-hash")],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="invalid-hash",
+        ),
+        pytest.param(
+            [{"role": "role", "predecessor": _A}],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="incomplete-move",
+        ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _A, _B)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _A,
+            id="duplicate-predecessor",
+        ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _A, _C)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _A,
+            id="conflicting-successor",
+        ),
     ],
 )
 def test_moves_this_build_cannot_read_are_refused_not_ignored(

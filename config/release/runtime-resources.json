@@ -18,6 +18,7 @@
     "config/registries/refusals.json": "The shared refusal categories and their owning domains for structured error answers."
   },
   "directories": {
+    "config/identity-successors": "Read newly recorded successor sets on installed readback.",
     ".agents/skills": "Portable guidance projected with the installed command when configuring an agent project.",
     ".codex/agents": "Portable guidance projected with the installed command when configuring an agent project.",
     ".claude/agents": "Portable guidance projected with the installed command when configuring an agent project.",

@@ -4,8 +4,8 @@ An identity built from source moves whenever a file its closure tracks changes. 
 change meaning, and a record made before one is historical. Some do not: a build file leaves
 a closure while every library stays bound by its installed version, and the policy the old
 value named is the policy the new value names. Such a move is recorded once, with its
-reason and the change that made it, in ``config/identity-successors.json`` -- a committed
-file no closure tracks, so recording a move never moves an identity itself.
+reason and the change that made it, under ``config/identity-successors/``. The frozen
+``config/identity-successors.json`` is the first set. No closure tracks the sets.
 
 ``is_current`` is the one check an owner uses where it would compare a recorded value with
 the installed one for current use (reuse, handoff, a new plan's inputs): the record is
@@ -24,13 +24,18 @@ from pathlib import Path
 
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-IDENTITY_SUCCESSORS_PATH = Path("config") / "identity-successors.json"
+IDENTITY_SUCCESSORS_PATH = Path("config") / "identity-successors"
+FROZEN_SUCCESSORS_PATH = IDENTITY_SUCCESSORS_PATH.with_suffix(".json")
 _SCHEMA = "identity-successors"
 _VERSION = 1
 
 
 class IdentitySuccessorError(ValueError):
     """The recorded moves cannot be read as this build reads them."""
+
+    def __init__(self, code: str, detail: str | Path = "") -> None:
+        """Keep the registered failure code and identify the refused input."""
+        super().__init__(f"{code}: {detail}" if detail else code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,21 +49,25 @@ class IdentityMove:
     reason: str
 
 
-@cache
-def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
-    """Every recorded move, as committed beside this build."""
-    base = resolve_playpen_root(Path(__file__)) if root is None else root
-    path = base / IDENTITY_SUCCESSORS_PATH
-    if not path.is_file():
-        return ()
+def _read_set(path: Path) -> list[IdentityMove]:
+    """Decode one committed set or name the file the reader refused."""
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise IdentitySuccessorError("shared_kernel.identity_successors_unreadable") from error
-    if document.get("schema") != _SCHEMA or document.get("version") != _VERSION:
-        raise IdentitySuccessorError("shared_kernel.identity_successors_from_another_build")
+        raise IdentitySuccessorError(
+            "shared_kernel.identity_successors_unreadable", path
+        ) from error
+    if (
+        not isinstance(document, dict)
+        or document.get("schema") != _SCHEMA
+        or document.get("version") != _VERSION
+    ):
+        raise IdentitySuccessorError("shared_kernel.identity_successors_from_another_build", path)
+    entries = document.get("moves")
+    if not isinstance(entries, list):
+        raise IdentitySuccessorError("shared_kernel.identity_successor_invalid", path)
     moves = []
-    for entry in document.get("moves", ()):
+    for entry in entries:
         try:
             move = IdentityMove(
                 role=str(entry["role"]),
@@ -68,14 +77,53 @@ def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
                 reason=str(entry["reason"]),
             )
         except (KeyError, TypeError) as error:
-            raise IdentitySuccessorError("shared_kernel.identity_successor_invalid") from error
+            raise IdentitySuccessorError(
+                "shared_kernel.identity_successor_invalid", path
+            ) from error
         if move.predecessor == move.successor or not all(
             len(value) == 64 and all(c in "0123456789abcdef" for c in value)
             for value in (move.predecessor, move.successor)
         ):
-            raise IdentitySuccessorError("shared_kernel.identity_successor_invalid")
+            raise IdentitySuccessorError("shared_kernel.identity_successor_invalid", path)
         moves.append(move)
-    return tuple(moves)
+    return moves
+
+
+@cache
+def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
+    """Read the frozen ledger first, then sets in filename and row order."""
+    base = resolve_playpen_root(Path(__file__)) if root is None else root
+    directory = base / IDENTITY_SUCCESSORS_PATH
+    try:
+        paths = sorted(path for path in directory.iterdir() if path.suffix == ".json")
+    except FileNotFoundError:
+        paths = []
+    except OSError as error:
+        raise IdentitySuccessorError(
+            "shared_kernel.identity_successors_unreadable", directory
+        ) from error
+    frozen = base / FROZEN_SUCCESSORS_PATH
+    try:
+        frozen.stat()
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        raise IdentitySuccessorError(
+            "shared_kernel.identity_successors_unreadable", frozen
+        ) from error
+    else:
+        paths.insert(0, frozen)
+    moves: dict[tuple[str, str], IdentityMove] = {}
+    for path in paths:
+        for move in _read_set(path):
+            key = (move.role, move.predecessor)
+            if key in moves:
+                raise IdentitySuccessorError(
+                    "shared_kernel.identity_successor_invalid",
+                    f"duplicate {move.role} {move.predecessor} in {path}",
+                )
+            moves[key] = move
+    return tuple(moves.values())
 
 
 def latest(role: str, value: str, *, root: Path | None = None) -> str:

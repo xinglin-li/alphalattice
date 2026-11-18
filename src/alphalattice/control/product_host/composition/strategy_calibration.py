@@ -103,7 +103,7 @@ RESULT_CATEGORY = "prepared-component-inputs"
 
 
 IMPLEMENTATION_ROLE = "product_host.strategy_calibration"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

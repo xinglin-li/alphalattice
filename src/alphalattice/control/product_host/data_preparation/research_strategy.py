@@ -97,7 +97,7 @@ PLAN_FIELDS = (
 the installed strategy, its defaults and the bindings an installation must find empty,
 and the inputs it was prepared from. A publication of other fields (a model's training
 inputs, a data update) leaves the plan applicable."""
-"""A move of `implementation_hash` recorded in `config/identity-successors.json` keeps a
+"""A move of `implementation_hash` recorded in `config/identity-successors/` keeps a
 plan sealed under its predecessor preparable."""
 STAGE = "materialize_verified_lifecycle_portfolio_inputs"
 

@@ -88,7 +88,7 @@ STAGES = ("verify_update", "seal_market_observations", "publish_decision_settlem
 
 
 IMPLEMENTATION_ROLE = "product_host.portfolio_updates"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
