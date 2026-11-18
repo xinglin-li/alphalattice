@@ -352,19 +352,21 @@ class HostLog:
         parts: Sequence[tuple[str, str, int, int]],
         *,
         compute_ms: int,
+        body: str | None = None,
     ) -> None:
         """Record the derived partitions of `table` written for these inputs, each (part,
-        input_digest, rows, size_bytes), in one unit; `cache_entry` is the Host's working state,
-        not a projection: no event writes it, and losing it loses only the cache."""
+        input_digest, rows, size_bytes), in one unit; `body` is a file partition's handle (one
+        part), None for catalog rows. `cache_entry` is the Host's working state, not a projection:
+        no event writes it, and losing it loses only the cache."""
         with self.unit() as con:
             now = self.clock()
             con.executemany(
-                "INSERT INTO cache_entry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO cache_entry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT DO UPDATE SET row_count = excluded.row_count,"
-                " size_bytes = excluded.size_bytes,"
-                " compute_ms = excluded.compute_ms, computed_us = excluded.computed_us",
+                " size_bytes = excluded.size_bytes, compute_ms = excluded.compute_ms,"
+                " computed_us = excluded.computed_us, body = excluded.body",
                 [
-                    (recipe_key, table, part, digest, rows, size, compute_ms, now, now)
+                    (recipe_key, table, part, digest, rows, size, compute_ms, now, now, body)
                     for part, digest, rows, size in parts
                 ],
             )
@@ -475,10 +477,11 @@ def _run(actions: list[Callable[[bool], None]], *, committed: bool) -> None:
         raise failed
 
 
-def attach(root: Path) -> sqlite3.Connection:
-    """A read-only connection to the data root's log, for any process but the Host."""
+def attach(root: Path, *, shared: bool = False) -> sqlite3.Connection:
+    """A read-only connection to the data root's log, for any process but the Host; `shared`, one
+    any thread may use under its holder's lock."""
     uri = f"file:{(root / 'machine' / 'log.sqlite').as_posix()}?mode=ro"
-    con = sqlite3.connect(uri, uri=True)
+    con = sqlite3.connect(uri, uri=True, check_same_thread=not shared)
     con.row_factory = sqlite3.Row
     return con
 

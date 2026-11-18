@@ -403,9 +403,9 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
     con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
-    con.execute("PRAGMA user_version = 10")
+    con.execute("PRAGMA user_version = 11")
     con.close()
-    with pytest.raises(DataError, match="schema version 10") as refused:
+    with pytest.raises(DataError, match="schema version 11") as refused:
         create_data_root(tmp_path)
     assert refused.value.failure.code == "data_layer.schema_mismatch"
 

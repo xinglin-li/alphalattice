@@ -40,8 +40,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
+import alphalattice.kernel.data_layer.derived_files as derived_files
+import alphalattice.kernel.data_layer.experiences as experiences
+import alphalattice.kernel.data_layer.project as project
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import experiences, project
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
@@ -122,6 +124,8 @@ _conversations: dict[str, str] = {}
 _once = threading.Lock()
 _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
+_attached: dict[str, tuple[Path, Any]] = {}
+"""Outside a Host, the log attached read-only for derived file reads, with its root."""
 
 
 def held(root: Path | None = None) -> HostLog:
@@ -264,7 +268,7 @@ def open_history(
             _open["logger"] = logger_provider(_open["facts"])
         _open["workspace"] = workspace_on_log(folder, name, workspace_id, root)
         _open["hosts"] = _open.get("hosts", 0) + 1
-        from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+        import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
         # a copy's lanes move onto this log before anything reads them, its workers included
         where, log = Path(_open["root"]), _open["log"]
@@ -421,6 +425,9 @@ def close_history() -> None:
         outcome_reading = _open.pop("outcome_reading", None)
         if outcome_reading is not None:
             outcome_reading.close()
+        attached = _attached.pop("log", None)
+        if attached is not None:
+            attached[1].close()
     if log is not None:
         log.close()
 
@@ -577,6 +584,47 @@ def execution_outcome_artifact_id(content_hash: str) -> str:
     return str(profile[0])
 
 
+def derived_file_body(table: str, digest: str) -> Path | None:
+    """The body the log names for `table`'s file partition with `digest`, or None
+    (derived_files.found): read on the Host's log, or outside a Host on its data root's, attached
+    read-only once per process and root."""
+    log, root = _open.get("log"), _open.get("root")
+    if log is not None and root is not None:
+        return derived_files.found(log.read, Path(root), table, digest)
+    where = data_root()
+    with _read_lock:
+        held = _attached.get("log")
+        if held is None or held[0] != where:
+            if held is not None:
+                held[1].close()
+            held = _attached["log"] = (where, attach(where, shared=True))
+        reader = held[1]
+        return derived_files.found(
+            lambda sql, args: reader.execute(sql, args).fetchall(), where, table, digest
+        )
+
+
+def keep_derived_file(table: str, *, recipe_key: str, part: str, digest: str, source: Path) -> None:
+    """Hand the file `source` to the Host's StorePort to keep as a derived partition, rooted by
+    the Host's workspace, on its own worker (StorePort.keep_file_later): the caller never waits
+    on the keep. Refused by name outside a Host, which alone writes the data root."""
+    port = store()
+    if port is None or not recording():
+        raise DataError(
+            f"only the Host keeps {table}'s partitions in the data root; open this workspace in"
+            " the Host, which keeps it, or read it from the workspace's own file",
+            code="data_layer.derived_files_need_host",
+        )
+    port.keep_file_later(
+        table,
+        recipe_key=recipe_key,
+        part=part,
+        digest=digest,
+        source=source,
+        rooted_by=str(_open["workspace"]),
+    )
+
+
 def read_execution_outcome(content_hash: str, columns: list[str] | None = None) -> Any:
     """Read the outcome body through the data root's catalog, including from non-Host processes."""
     with _read_lock:
@@ -622,7 +670,7 @@ def keep_array(
     Host, on its log and held by its workspace; in another process, on the log it holds (`held`),
     held by none. `durable=False` leaves its profile in the log's batch for the caller to commit
     (`flush`) before it writes anything citing the digest."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _held_log() as found:
         current = found
@@ -636,7 +684,7 @@ def keep_array(
 def read_array(content_digest: str, *, packed: bool = False) -> Any:
     """The array a digest names, checked against its profile and proved: its flat columns, or its
     C-order bytes with `packed`; from any process."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _array_reader() as (root, read):
         return (arrays.read_packed if packed else arrays.read_columns)(root, read, content_digest)
@@ -645,7 +693,7 @@ def read_array(content_digest: str, *, packed: bool = False) -> Any:
 def array_profile(content_digest: str) -> dict[str, Any] | None:
     """The profile of the array a digest names (its kind, shape and dtypes, its artifact_id and
     body state); None when the door holds none."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _array_reader() as (_root, read):
         return arrays.profile(read, content_digest)
@@ -653,7 +701,7 @@ def array_profile(content_digest: str) -> dict[str, Any] | None:
 
 def arrays_lacking(digests: Iterable[str]) -> list[str]:
     """The digests the door holds no array for, in one read of the log."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _array_reader() as (_root, read):
         return [digest for digest in digests if arrays.profile(read, digest) is None]
@@ -662,7 +710,7 @@ def arrays_lacking(digests: Iterable[str]) -> list[str]:
 def move_carried(folder: Path, workspace_id: str) -> int:
     """A Host's admission of a workspace copy: the lanes it carries move onto the log this process
     holds, held by the workspace, before admission reads them. Nothing when it carries none."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     if not (folder / arrays.CARRIED).is_dir():
         return 0
@@ -679,7 +727,7 @@ def carry_arrays(workspace: Path, copy: Path, *, root: Path | None = None) -> in
 
     contract: carried lanes retire when a copy carries its own segment of the log, as carried
     Tasks do (`carry_tasks`)."""
-    from alphalattice.kernel.data_layer import arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     where = data_root() if root is None else root
     log = holding()

@@ -1,13 +1,15 @@
 """The setup that serves a workspace's derived views (workspace_runtime.derived_views): the data
 root's catalog attached read-only to the workspace's DuckDB instance, once, and each view a TEMP
-view on the connection. Registered on import; data_layer alone loads DuckLake."""
+view on the connection; and the calls that read and keep derived partitions held as files
+(workspace_runtime.panel_reads). Registered on import; data_layer alone writes the data root."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
-from alphalattice.control.workspace_runtime import derived_views
+from alphalattice.control.workspace_runtime import derived_views, panel_reads
 from alphalattice.kernel.data_layer.root import data_root, load_extensions, sql_path
 
 
@@ -28,4 +30,19 @@ def serve(connection: Any, views: Sequence[tuple[str, str]]) -> None:
         connection.execute(f"CREATE OR REPLACE TEMP VIEW {name} AS {body}").complete()
 
 
+def body(table: str, digest: str) -> Path | None:
+    """The body the log names for `table`'s file partition with `digest` (history's read)."""
+    import alphalattice.kernel.data_layer.history as history  # lazy: history imports the log
+
+    return history.derived_file_body(table, digest)
+
+
+def keep(table: str, **partition: Any) -> None:
+    """Hand one file to the Host to keep as a partition of `table` (history's write)."""
+    import alphalattice.kernel.data_layer.history as history  # lazy: history imports the log
+
+    history.keep_derived_file(table, **partition)
+
+
 derived_views.register(serve)
+panel_reads.register(body, keep)

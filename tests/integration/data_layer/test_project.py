@@ -277,7 +277,9 @@ def _cached(root, log, key):
     """The cache entry and derived partition a first computation leaves, as their writers keep them:
     the entry keyed by the recipe, the partition's table named by the feature set's lineage."""
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con, con:
-        entry = "INSERT INTO cache_entry VALUES (?, 'feature_set', '2024', 'rows', 1, 8, 1, ?, ?)"
+        entry = (
+            "INSERT INTO cache_entry VALUES (?, 'feature_set', '2024', 'rows', 1, 8, 1, ?, ?, NULL)"
+        )
         con.execute(entry, (key, T0, T0))
     port = StorePort.open(root, log)
     try:

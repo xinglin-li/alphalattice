@@ -735,7 +735,8 @@ CREATE TABLE setting (
 -- the cutoff itself when it falls inside one of their ranges, else their largest max_known_asof_us, and the lag-rule
 -- versions, so an admission known only later never reaches an earlier cutoff's cache (project.input_digest).
 -- `derived_table` names the partition's table: one recipe may write several (a risk model's factor_cov,
--- factor_loading and specific_risk), and a hit identifies the rows actually written.
+-- factor_loading and specific_risk), and a hit identifies the rows actually written. A partition held as one file
+-- rather than catalog rows (a Panel chunk) names it by `body`, its handle under the data root (`derived_files`).
 CREATE TABLE cache_entry (
   recipe_key TEXT NOT NULL,
   derived_table TEXT NOT NULL,    -- its table in the catalog's derived schema
@@ -746,8 +747,10 @@ CREATE TABLE cache_entry (
   compute_ms INTEGER NOT NULL,
   computed_us INTEGER NOT NULL,
   last_read_us INTEGER NOT NULL,  -- eviction reads it
+  body TEXT,                      -- a file partition's handle, blobs/<derived_table>/<input_digest>.<suffix>; NULL for rows
   PRIMARY KEY (recipe_key, derived_table, part, input_digest)
 ) STRICT, WITHOUT ROWID;
+CREATE INDEX cache_entry_digest ON cache_entry(derived_table, input_digest);  -- a read finds its file partitions by digest
 
 -- A workspace's reference to a cached partition its reads take: the root that keeps it. Workspaces share a partition
 -- only under one digest, so only the same rows; each roots the digests its own view reads, and a partition no workspace
