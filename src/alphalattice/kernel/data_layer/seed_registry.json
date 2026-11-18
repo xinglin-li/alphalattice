@@ -467,7 +467,23 @@
       ],
       "text": "required",
       "durable": false,
-      "description": "A review of its subject."
+      "description": "A review of its subject: an agent's note on a trial, task or goal, whose text holds its hypothesis, method, conclusion and lessons and whose attributes its verdict and its run's aggregates. It closes what it reviews."
+    },
+    {
+      "name": "experience.recorded",
+      "work": false,
+      "subject": "experience",
+      "required": [
+        "version",
+        "note_seq",
+        "body",
+        "size",
+        "renderer_version",
+        "known_us"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A review's note rendered into one experience body (blobs/, by its BLAKE3): version 1 makes the experience and points its layer at it, replacing the one before; a later version renders the same note anew. task_id names the task that made it."
     },
     {
       "name": "decision.made",

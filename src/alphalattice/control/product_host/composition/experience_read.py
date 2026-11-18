@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Protocol
 
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
-from alphalattice.kernel.data_layer import history
+from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import experiences, history
 
 if TYPE_CHECKING:
     from alphalattice.interface.local_application.portfolio_research import (
@@ -45,6 +47,36 @@ def read_experience(request: "PortfolioResearchOperationRequest") -> dict[str, o
         "trials": trials,
         "notes": experience["notes"],
         "unattributed_in_page": sum(row["hypothesis_id"] is None for row in trials),
+    }
+
+
+def record_experience(
+    request: "PortfolioResearchOperationRequest", caller: str
+) -> dict[str, object]:
+    """Record a review's note on what it names, with its verdict and its run's aggregates; the
+    Host renders the experience after the reply. A note missing a part, or one on a trial or Task
+    not yet ended, is refused by name and nothing is recorded."""
+    assert request.review_subject and request.review_verdict and request.review_note is not None
+    layer, unit = request.review_subject.split(":", 1)
+    note = request.review_note
+    try:
+        text = experiences.note_text(
+            note.get("hypothesis"), note.get("method"), note.get("conclusion"), note.get("lessons")
+        )
+        trials = note.get("trials")  # a review task's: the trials it reviewed
+        held = history.record_review(layer, unit, request.review_verdict, text, caller, trials)
+    except (DataError, ValueError) as error:  # the note's or the history's own code
+        return refused(public_failure(error, "experience.history_unavailable"))
+    return {
+        "status": "RECORDED",
+        "note_id": held["note_id"],
+        "verdict": held["verdict"],
+        "input_tokens": held["gen_ai.usage.input_tokens"],
+        "output_tokens": held["gen_ai.usage.output_tokens"],
+        "cost_usd": held["cost_usd"],
+        "seconds": held["seconds"],
+        "place": held.get("place", []),
+        "trials": held.get("trials", []),
     }
 
 

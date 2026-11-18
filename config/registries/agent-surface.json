@@ -6784,6 +6784,121 @@
         "type": "string"
       }
     },
+    "answer:EXPERIENCE_RECORD.cost_usd": {
+      "required": true,
+      "schema": {
+        "type": "number"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_RECORD.input_tokens": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.note_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.output_tokens": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.place": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.seconds": {
+      "required": true,
+      "schema": {
+        "type": "number"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.status": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.trials": {
+      "required": true,
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_RECORD.verdict": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECORD/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:EXPERIMENTS.error_info": {
       "required": false,
       "schema": {
@@ -27139,6 +27254,11 @@
         "EXPERIENCE_READ"
       ]
     },
+    "command:experience record": {
+      "operations": [
+        "EXPERIENCE_RECORD"
+      ]
+    },
     "command:feature": {},
     "command:feature activate": {
       "operations": [
@@ -28642,6 +28762,18 @@
         "history_limit"
       ],
       "required": []
+    },
+    "operation:EXPERIENCE_RECORD": {
+      "allowed": [
+        "review_note",
+        "review_subject",
+        "review_verdict"
+      ],
+      "required": [
+        "review_note",
+        "review_subject",
+        "review_verdict"
+      ]
     },
     "operation:EXPERIMENTS": {
       "allowed": [],
@@ -37708,6 +37840,131 @@
       "type": "Path"
     },
     "option:experience list/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience record/--file": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience record/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience record/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience record/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience record/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience record/--reviews": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--verdict": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience record/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience record/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -57105,6 +57362,7 @@
     "refusal:causal_inputs.target_is_not_a_decision_input": {},
     "refusal:causal_outcomes.existing_snapshot_carries_a_different_method": {},
     "refusal:causal_outcomes.legacy_snapshot_requires_explicit_method_migration": {},
+    "refusal:causal_outcomes.outcome_store_invalid": {},
     "refusal:causal_outcomes.publication_contract_not_installed_for_recipe": {},
     "refusal:causal_outcomes.qa_calendar_disagrees": {},
     "refusal:causal_outcomes.qa_calendar_support_absent": {},
@@ -57122,6 +57380,8 @@
     "refusal:causal_outcomes.qa_session_axis_invalid": {},
     "refusal:causal_outcomes.qa_session_not_completed": {},
     "refusal:causal_outcomes.qa_source_support_absent": {},
+    "refusal:causal_outcomes.upgrade_chunk_invalid": {},
+    "refusal:causal_outcomes.upgrade_path_invalid": {},
     "refusal:chief_risk_officer.actor_execution_evidence_invalid": {},
     "refusal:chief_risk_officer.answer_problems": {},
     "refusal:chief_risk_officer.carried_review_invalid": {},
@@ -57219,8 +57479,11 @@
     "refusal:data.universe_spy_axis_misaligned": {},
     "refusal:data.universe_spy_return_non_finite": {},
     "refusal:data.unrepaired_split_adjustment": {},
+    "refusal:data_layer.admission_column_foreign": {},
     "refusal:data_layer.admission_key_repeated": {},
+    "refusal:data_layer.admission_lineage_invalid": {},
     "refusal:data_layer.admission_out_of_order": {},
+    "refusal:data_layer.admission_source_time_missing": {},
     "refusal:data_layer.artifact_body_missing": {},
     "refusal:data_layer.artifact_body_unexpected": {},
     "refusal:data_layer.artifact_trial_unregistered": {},
@@ -57238,12 +57501,22 @@
     "refusal:data_layer.event_type_unregistered": {},
     "refusal:data_layer.extension_unavailable": {},
     "refusal:data_layer.handle_outside_root": {},
+    "refusal:data_layer.history_unavailable": {},
     "refusal:data_layer.host_running": {},
     "refusal:data_layer.lag_rule_unknown": {},
+    "refusal:data_layer.lag_rule_version_moved": {},
     "refusal:data_layer.legacy_anchor_missing": {},
     "refusal:data_layer.legacy_table_unanchored": {},
     "refusal:data_layer.live_ref_held": {},
+    "refusal:data_layer.outcome_collected": {},
+    "refusal:data_layer.outcome_incomplete": {},
+    "refusal:data_layer.outcome_missing": {},
     "refusal:data_layer.result_key_present": {},
+    "refusal:data_layer.review_before_its_end": {},
+    "refusal:data_layer.review_trial_unknown": {},
+    "refusal:data_layer.review_trials_need_a_review_task": {},
+    "refusal:data_layer.review_unknown_goal": {},
+    "refusal:data_layer.review_workspace_disagrees": {},
     "refusal:data_layer.schema_mismatch": {},
     "refusal:data_layer.staging_taken": {},
     "refusal:data_layer.world_table_not_admitted": {},
@@ -57375,6 +57648,11 @@
     "refusal:experience.hypothesis_goal": {},
     "refusal:experience.hypothesis_unknown": {},
     "refusal:experience.hypothesis_workspace": {},
+    "refusal:experience.layer_unknown": {},
+    "refusal:experience.note_incomplete": {},
+    "refusal:experience.trials_malformed": {},
+    "refusal:experience.unit_unknown": {},
+    "refusal:experience.verdict_unknown": {},
     "refusal:explorer.wall_deadline": {},
     "refusal:factor_formula.comparison_invalid": {},
     "refusal:factor_formula.constant_invalid": {},
@@ -57771,6 +58049,8 @@
     "refusal:goal.conclusion_requires_evidence": {},
     "refusal:goal.continuation_requires_parent_goal": {},
     "refusal:goal.cursor_moved_reload": {},
+    "refusal:goal.declaration_index_invalid": {},
+    "refusal:goal.declaration_untyped": {},
     "refusal:goal.duplicate_identifier": {},
     "refusal:goal.event_filing_invalid": {},
     "refusal:goal.event_not_filed": {},
@@ -57784,12 +58064,10 @@
     "refusal:goal.goal_id_required": {},
     "refusal:goal.head_invalid": {},
     "refusal:goal.hypothesis_must_be_open": {},
+    "refusal:goal.id_is_the_hosts": {},
     "refusal:goal.identity_mismatch": {},
     "refusal:goal.not_found": {},
     "refusal:goal.operation_not_supported": {},
-    "refusal:goal.declaration_index_invalid": {},
-    "refusal:goal.declaration_untyped": {},
-    "refusal:goal.id_is_the_hosts": {},
     "refusal:goal.parent_absent": {},
     "refusal:goal.reference_absent": {},
     "refusal:goal.reference_changed_reattach_explicitly": {},
@@ -57920,12 +58198,16 @@
     "refusal:local_web.task_id_invalid": {},
     "refusal:local_web.task_id_required": {},
     "refusal:local_web_session.writer_still_live": {},
+    "refusal:market_data.action_kind_unknown": {},
     "refusal:market_data.capability_file_invalid": {},
     "refusal:market_data.covered_listing_identity_unavailable": {},
     "refusal:market_data.execution_return_gross_invalid": {},
     "refusal:market_data.execution_return_input_invalid": {},
     "refusal:market_data.execution_return_non_finite": {},
+    "refusal:market_data.market_calendar_ambiguous": {},
     "refusal:market_data.market_profile_invalid": {},
+    "refusal:market_data.market_reads_unknown": {},
+    "refusal:market_data.workspace_identity_ambiguous": {},
     "refusal:market_data_ops.quality_governance_inputs_request_invalid": {},
     "refusal:market_data_ops.raw_close_volume_request_invalid": {},
     "refusal:market_data_ops.session_mark_absent": {},
@@ -57960,6 +58242,7 @@
     "refusal:market_data_ops.session_mark_surface_not_this_handle": {},
     "refusal:market_data_ops.source_prefix_request_invalid": {},
     "refusal:market_data_ops.universe_manifest_membership_changed": {},
+    "refusal:market_data_ops.universe_workspace_unmeasured": {},
     "refusal:model_declaration.recipe_parameters_differ": {},
     "refusal:model_declaration.unreadable": {},
     "refusal:model_extension.editable_checkout_required": {},
@@ -59445,6 +59728,7 @@
     "refusal:research_experiment.method_or_input_not_installed": {},
     "refusal:research_experiment.official_close_cutoff_required": {},
     "refusal:research_experiment.one_document_required": {},
+    "refusal:research_experiment.outcome_body_incomplete": {},
     "refusal:research_experiment.outcome_method_not_admitted": {},
     "refusal:research_experiment.outcomes_after_declared_cutoff": {},
     "refusal:research_experiment.output_not_host_managed": {},
@@ -60127,10 +60411,13 @@
     "refusal:task_control.child_workers_invalid": {},
     "refusal:task_control.database_authorities_conflict": {},
     "refusal:task_control.database_authority_unreadable": {},
+    "refusal:task_control.heartbeat_import_unequal": {},
     "refusal:task_control.heartbeat_signal_invalid": {},
     "refusal:task_control.heartbeat_store_unreadable": {},
+    "refusal:task_control.heartbeat_task_unbound": {},
     "refusal:task_control.ledger_rebuilt": {},
     "refusal:task_control.legacy_database_state_present": {},
+    "refusal:task_control.live_lease_present": {},
     "refusal:task_control.orphan_cancel_command_absent": {},
     "refusal:task_control.orphan_command_mismatch": {},
     "refusal:task_control.orphan_execution_absent": {},
@@ -60147,10 +60434,17 @@
     "refusal:task_control.recovery_version_stale": {},
     "refusal:task_control.recovery_waits_for_the_running_task": {},
     "refusal:task_control.registry_database_not_canonical": {},
+    "refusal:task_control.runtime_retirement_conflict": {},
     "refusal:task_control.start_version_stale": {},
     "refusal:task_control.task_not_found": {},
     "refusal:task_control.tasks_running_invalid": {},
     "refusal:task_control.tasks_waiting_invalid": {},
+    "refusal:task_control.telemetry_clock_naive": {},
+    "refusal:task_control.telemetry_import_conflict": {},
+    "refusal:task_control.telemetry_import_unequal": {},
+    "refusal:task_control.telemetry_import_unreadable": {},
+    "refusal:task_control.telemetry_log_unavailable": {},
+    "refusal:task_control.telemetry_task_unbound": {},
     "refusal:task_control.wake_registration_invalid": {},
     "refusal:task_control.wake_task_stopped": {},
     "refusal:task_control.workspace_root_expected": {},
@@ -62146,6 +62440,21 @@
         "default": null
       }
     },
+    "request:Request.review_note": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "request:Request.review_policy_hash": {
       "required": false,
       "schema": {
@@ -62198,6 +62507,40 @@
         "anyOf": [
           {
             "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.review_subject": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "pattern": "^(trial|task|goal):[0-9A-Za-z-]{1,64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.review_verdict": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "enum": [
+              "success",
+              "failure",
+              "inconclusive"
+            ],
             "type": "string"
           },
           {
@@ -63063,6 +63406,7 @@
         "GOAL_ABANDON",
         "RESEARCH_HISTORY",
         "EXPERIENCE_READ",
+        "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",
         "EXPERIMENT_DELIVERY_EXPORT",

@@ -35,6 +35,9 @@ PROJECTED: Final = (
     "selection",
     "hypothesis",
     "trial",
+    "experience_made",
+    "experience_version",
+    "trial_experience",
     "prediction",
     "artifact",
     "measure",
@@ -665,14 +668,123 @@ def _hypothesis_standing(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("review.completed")
 def _reviewed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    """A goal's, task's or trial's first review writes its experience: the review's note
-    (research_note) is it, and a later review keeps that id."""
-    if e["subject_kind"] in ("goal", "task", "trial"):
-        kind = e["subject_kind"]
-        con.execute(
-            f"UPDATE {kind} SET experience_id = coalesce(experience_id, ?) WHERE {kind}_id = ?",
-            (e["event_id"], e["subject_id"]),
+    """A review's note closes what it reviews: an ended trial or task is reviewed from its first
+    note on (one with none awaits review), and an open goal is done. Its experience is made from
+    the note later (`experience.recorded`)."""
+    kind, unit, home = e["subject_kind"], e["subject_id"], e["workspace_id"]
+    if kind in ("trial", "task"):
+        _of_workspace(con, kind, unit, home)
+        _one(
+            con.execute(
+                f"UPDATE {kind} SET reviewed_seq = coalesce(reviewed_seq, ?)"
+                f" WHERE {kind}_id = ? AND ended_seq IS NOT NULL",
+                (e["seq"], unit),
+            ),
+            "review_before_its_end",
+            f"a {kind} is reviewed once it has ended",
         )
+    elif kind == "goal":
+        if not _goal_held(con, unit, home):
+            raise _refuse("review_unknown_goal", "a review names a goal of its workspace")
+        con.execute(
+            "UPDATE goal SET state = 'done', closed_seq = ? WHERE goal_id = ? AND state = 'open'",
+            (e["seq"], unit),
+        )
+    trials = a.get("trials", [])
+    if trials and (
+        kind != "task"
+        or con.execute("SELECT task_kind FROM task WHERE task_id = ?", (unit,)).fetchone()[0]
+        != "review"
+    ):
+        raise _refuse("review_trials_need_a_review_task", "only a review task's note names trials")
+    for trial in trials:
+        _of_workspace(con, "trial", trial, home)
+        ended = "SELECT 1 FROM trial WHERE trial_id = ? AND ended_seq IS NOT NULL"
+        if con.execute(ended, (trial,)).fetchone() is None:
+            raise _refuse(
+                "review_trial_unknown", "a review names trials of the log that have ended"
+            )
+
+
+_SCOPE: Final = {
+    "trial": "SELECT workspace_id FROM trial_scope WHERE trial_id = ?",
+    "task": "SELECT workspace_id FROM task_workspace WHERE task_id = ?",
+}
+
+
+def _of_workspace(con: Con, kind: str, unit: str, workspace: str | None) -> None:
+    """A review names a trial or task of its own workspace: another's is refused before the note
+    closes it or names it, so no review crosses a workspace's authority."""
+    found = con.execute(_SCOPE[kind], (unit,)).fetchone()
+    if found is not None and found[0] != workspace:
+        raise _refuse("review_workspace_disagrees", f"a review names a {kind} of its workspace")
+
+
+def _note_maker(con: Con, note_seq: int) -> tuple[str, str, str | None]:
+    """The layer a review's note is of (trial, task or goal), its id and the task that made it."""
+    found = con.execute(
+        "SELECT subject_kind, subject_id FROM event WHERE seq = ? AND type = 'review.completed'",
+        (note_seq,),
+    ).fetchone()
+    if found is None or found[0] not in ("trial", "task", "goal"):
+        raise _refuse(
+            "experience_note_unknown", "an experience renders a review of a trial, task or goal"
+        )
+    kind, unit = found
+    if kind == "trial":
+        return (
+            kind,
+            unit,
+            con.execute("SELECT task_id FROM trial WHERE trial_id = ?", (unit,)).fetchone()[0],
+        )
+    return kind, unit, unit if kind == "task" else None
+
+
+@on("experience.recorded")
+def _experience(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """Version 1 makes an experience of its note's layer and points the layer at it, marking the
+    one it replaces; each later version renders the same note again under the same id."""
+    experience, version, note = e["subject_id"], a["version"], a["note_seq"]
+    kind, unit, task = _note_maker(con, note)
+    if a.get("task_id") != task:
+        raise _refuse(
+            "experience_parent_disagrees", "an experience's parent is the task its note reviewed"
+        )
+    if version == 1:
+        current = con.execute(
+            f"SELECT experience_id FROM {kind} WHERE {kind}_id = ?", (unit,)
+        ).fetchone()[0]
+        con.execute(
+            "INSERT INTO experience_made VALUES (?, ?, ?, NULL)", (experience, task, e["seq"])
+        )
+        if current is not None:
+            con.execute(
+                "UPDATE experience_made SET replaced_seq = ? WHERE experience_id = ?",
+                (e["seq"], current),
+            )
+        con.execute(f"UPDATE {kind} SET experience_id = ? WHERE {kind}_id = ?", (experience, unit))
+        reviewed = con.execute(  # a review task's experience names the trials its note reviewed
+            "SELECT j.value FROM event, json_each(event.attrs, '$.trials') j WHERE event.seq = ?",
+            (note,),
+        ).fetchall()
+        con.executemany(
+            "INSERT INTO trial_experience VALUES (?, ?, 'reviewed', ?)",
+            [(trial, experience, e["seq"]) for (trial,) in reviewed],
+        )
+    else:
+        last = con.execute(
+            "SELECT max(version), min(note_seq) FROM experience_version WHERE experience_id = ?",
+            (experience,),
+        ).fetchone()
+        if last[0] != version - 1 or last[1] != note:
+            raise _refuse(
+                "experience_version_out_of_order",
+                "a version follows the last of its experience, of its note",
+            )
+    con.execute(
+        "INSERT INTO experience_version VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (experience, version, note, a["body"], a["size"], a["renderer_version"], e["seq"]),
+    )
 
 
 @on("trial.registered")

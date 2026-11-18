@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime
@@ -13,10 +14,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.control.product_host.composition.experience_read import read_experience
-from alphalattice.interface.local_application.answers import ExperienceAnswer
+from alphalattice.control.product_host.composition.experience_read import (
+    read_experience,
+    record_experience,
+)
+from alphalattice.interface.local_application.answers import (
+    ExperienceAnswer,
+    ExperienceRecordAnswer,
+)
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer import experiences, history
 from alphalattice.kernel.data_layer.log import HostLog
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
@@ -79,6 +86,43 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             with ThreadPoolExecutor(8) as pool:  # one Host's workers record the same goal at once
                 seqs = list(pool.map(lambda _: history.record_new(exists, (), *goal), range(8)))
             assert sum(seq is not None for seq in seqs) == 1
+            # A note on the goal records with its verdict and run; one missing a part, or on a
+            # trial the log does not hold, is refused by name.
+            note = {"hypothesis": "H", "method": "M", "conclusion": "C", "lessons": ["L"]}
+            review = SimpleNamespace(review_subject="goal:g", review_verdict="success")
+            recorded = record_experience(SimpleNamespace(**vars(review), review_note=note), "A")
+            recorded = ExperienceRecordAnswer.model_validate(recorded)
+            assert (recorded.status, recorded.verdict, recorded.place) == (
+                "RECORDED",
+                "success",
+                [],
+            )
+            blank = SimpleNamespace(**vars(review), review_note=note | {"method": " "})
+            assert record_experience(blank, "A")["failure_code"] == "experience.note_incomplete"
+            review.review_subject = "trial:none"
+            unheld = record_experience(SimpleNamespace(**vars(review), review_note=note), "A")
+            assert unheld["failure_code"] == "experience.unit_unknown"
+            # A render holds the log's guard alone: while it is inside, the lock `open_history`
+            # takes before the guard is free, so neither waits on the other (a handshake; every
+            # wait is bounded and only a red one runs out).
+            inside, go, held = threading.Event(), threading.Event(), {}
+
+            def render_pending(*_: object) -> list[str]:
+                inside.set()
+                go.wait(5)
+                return []
+
+            with monkeypatch.context() as patch:
+                patch.setattr(experiences, "render_pending", render_pending)
+                render = threading.Thread(target=history.render_experiences, daemon=True)
+                render.start()
+                assert inside.wait(5)
+                held["lock"] = history._lock.acquire(timeout=3)
+                if held["lock"]:
+                    history._lock.release()
+                go.set()
+                render.join(5)
+            assert held["lock"] and not render.is_alive()
             attrs = {"operation": "STATUS", "caller": "HUMAN", "subject": {"goal_id": "g1"}}
             assert history.begin("product.operation", attrs | {"request_fields": ["task_id"]})
             failed = history.begin("product.operation", attrs)

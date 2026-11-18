@@ -350,6 +350,25 @@
       "lower_layer": "The known time is derived by StorePort's catalog SQL in a real DuckLake commit and read back through the as-of macro.",
       "seconds": 10
     },
+    "data_layer.a_note_closes_what_it_reviews": {
+      "description": "If a review's note did not close its trial or task with its run's aggregates in one unit, a reader could see a verdict without the usage and cost it rests on.",
+      "lower_layer": "It needs the real log's projection triggers and a reviewed trial's spans in one SQLite unit, which no single function holds.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.a_note_renders_the_same_bytes": {
+      "description": "If the same note rendered different bytes, its experience's BLAKE3 name would change and every re-render would mint a version for nothing.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_note_says_each_part": {
+      "description": "If a note could omit its hypothesis, method or conclusion or hold a blank lesson, an experience would cite a review that says nothing.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_rename_moves_no_key": {
       "description": "A renamed method, metric or feature set keeps its lineage's id, so no recipe key, measure, cache entry or derived partition moves, and every old name still finds it.",
       "lower_layer": "A rename is an event projected inside the log's own SQLite transaction; only a real log shows the rows it leaves.",
@@ -421,11 +440,31 @@
       "seconds": 10,
       "lower_layer": "The contract crosses real DuckLake metadata, Arrow registration and restart persistence."
     },
+    "data_layer.an_ended_trial_awaits_its_review": {
+      "description": "If an ended trial with no note read as reviewed or as running, an agent would skip its review or wait on work already done.",
+      "lower_layer": "It reads the experience view over real projected trial rows, which no single function holds.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
     "data_layer.an_event_names_its_type_version": {
       "description": "A new event is written under version 1 of its type unless its writer names a later registered version.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.an_experience_body_shows_its_run": {
+      "description": "If an experience's body omitted its run's seconds, tokens and cost or its measures' place in their spread, its reader could not weigh its verdict.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.an_experience_renders_again_equal": {
+      "description": "If a grown log's experiences did not replay equal, or a body did not render again to the bytes its event named, a reopened Host would cite experiences it cannot reproduce.",
+      "lower_layer": "It replays a real grown log into an empty one and re-renders its stored bodies, which no single function holds.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
     },
     "data_layer.analytics_views_preserve_values": {
       "description": "Each analytics view returns every pinned column and row of the fixed Host-written research log.",
@@ -480,6 +519,13 @@
     "data_layer.durable_events_commit_at_once": {
       "description": "A durable event commits when appended; an ordinary one with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
       "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.each_note_renders_a_versioned_experience": {
+      "description": "If the Host's rendering of a note did not make an experience of its own, versioned by renderer and kept when a later note replaces it, a later note or renderer would overwrite the experience an earlier read cited.",
+      "lower_layer": "It runs the Host's render over a real log and its stored bodies across a re-render and a replacement.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10

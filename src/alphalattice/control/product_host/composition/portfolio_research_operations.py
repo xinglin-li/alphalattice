@@ -61,7 +61,10 @@ from alphalattice.control.product_host.composition.evidence_review_delivery impo
 from alphalattice.control.product_host.composition.evidence_review_projection import (
     EvidenceCroProjector,
 )
-from alphalattice.control.product_host.composition.experience_read import read_experience
+from alphalattice.control.product_host.composition.experience_read import (
+    read_experience,
+    record_experience,
+)
 from alphalattice.control.product_host.composition.feature_trials import (
     FeatureTrials,
     trial_reads_once,
@@ -1507,6 +1510,8 @@ class PortfolioResearchOperations:
             return self.upgrade(request)
         if request.operation == "EXPERIENCE_READ":
             return read_experience(request)
+        if request.operation == "EXPERIENCE_RECORD":
+            return record_experience(request, caller)
         if request.operation == "RESEARCH_HISTORY":
             try:
                 answer = ResearchHistory(

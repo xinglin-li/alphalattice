@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer import create_data_root, experiences
 from alphalattice.kernel.data_layer import project as projections
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, digest
 from alphalattice.kernel.data_layer.log import HostLog, replay, verify_whole
@@ -119,7 +119,12 @@ def _research(log):
         attrs = {"method": "momentum", "method_version": 1, "params": {"lookback": lookback}}
         log.record("recipe.defined", ("recipe", keys[lookback]), attrs, **AGENT)
     trials = (("t1", 12, 0.9, "table"), ("t2", 12, 1.3, "none"), ("t3", 6, 0.4, "table"))
-    return {t: _trial(log, t, keys[lookback], s, storage) for t, lookback, s, storage in trials}
+    made = {t: _trial(log, t, keys[lookback], s, storage) for t, lookback, s, storage in trials}
+    note = experiences.note_text(claim, "12-1 momentum", "It paid in 2015-2024.", ["Costs matter."])
+    experiences.record_note(
+        log, "trial", "t1", "success", note, workspace="w1", actor=AGENT["actor"]
+    )
+    return made
 
 
 def _aftermath(root, log, artifacts):
@@ -192,6 +197,24 @@ def _aftermath(root, log, artifacts):
     log.record("definition.status_changed", ("definition", "metric/sharpe"), moved)
     log.record("record.forgotten", ("event", str(note)), {"seq": note}, **PERSON)
     _renames(root, log)
+    review = requested | {"type": "review", "input_hash": "r"}  # a review of two trials
+    log.record("task.requested", ("task", "k-review"), review, **AGENT)
+    for phase in ("started", "completed"):
+        log.record("task", ("task", "k-review"), phase=phase, span=f"{2:016x}", **AGENT)
+    note = experiences.note_text("Momentum pays", "Both lookbacks", "The 12-1 one paid.", [])
+    experiences.record_note(
+        log,
+        "task",
+        "k-review",
+        "success",
+        note,
+        workspace="w1",
+        actor=AGENT["actor"],
+        trials=["t1", "t2"],
+    )
+    experiences.render_pending(
+        log, root / "blobs"
+    )  # the reviews' experiences, off the agent's path
     seq, head = log.read("SELECT seq, head FROM chain_head")[0]
     mark = {"kind": "backup", "seq": seq, "head": head, "chain_version": CHAIN_VERSION}
     log.record("chain.checkpointed", attrs=mark)
@@ -539,7 +562,9 @@ def units(tmp_path_factory):
         log.record("trial.registered", ("trial", "t-task"), tested, **w1)
         log.record("trial.registered", ("trial", "t-sub"), trial | {"task_id": "k-sub"}, **w1)
         log.record("trial.registered", ("trial", "t-free"), trial, **w1)
-        for _ in range(2):  # the first review's note is the experience, kept by the second
+        for phase in ("started", "completed"):
+            log.record("trial", ("trial", "t-task"), phase=phase, span="1" * 16, **w1)
+        for _ in range(2):  # the first review closes the trial; the second keeps that
             log.record("review.completed", ("trial", "t-task"), {"verdict": "ok"}, text="R", **w1)
         log.flush()
     return root / "machine" / "log.sqlite"
@@ -560,13 +585,14 @@ def test_a_unit_stores_one_parent_and_reaches_its_chain(
 
 
 @pytest.mark.proves("data_layer.each_work_unit_stores_one_parent")
-def test_a_review_sets_the_experience_and_the_history_replays_equal(units, tmp_path):
-    """The first review's note is its subject's experience; the log replays ALL EQUAL."""
+def test_a_review_closes_its_trial_and_the_history_replays_equal(units, tmp_path):
+    """The first review's note closes its trial and a later one keeps that; the log replays ALL
+    EQUAL."""
     with closing(sqlite3.connect(units)) as con:
         notes = con.execute(
-            "SELECT note_id FROM research_note WHERE subject_id = 't-task' ORDER BY seq"
+            "SELECT seq FROM research_note WHERE subject_id = 't-task' ORDER BY seq"
         ).fetchall()
-        experience = con.execute("SELECT experience_id FROM trial WHERE trial_id = 't-task'")
-        assert experience.fetchone() == notes[0]
+        reviewed = con.execute("SELECT reviewed_seq FROM trial WHERE trial_id = 't-task'")
+        assert reviewed.fetchone() == notes[0]
         with closing(replay(con, tmp_path / "replayed.sqlite")) as again:
             assert differences(con, again) == []

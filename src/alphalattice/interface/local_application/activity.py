@@ -148,9 +148,12 @@ others, but never attributed to a goal and never opening one (a session's first 
 request opens it)."""
 
 
-RECORDS_ITSELF: frozenset[str] = frozenset({"EVENT_DECLARE", "SESSION_USAGE_READ"})
-"""Operations whose own record is what they write: a declared event is its row in the feed,
-and a usage reading files its readings, so the observer records no operation beside them."""
+RECORDS_ITSELF: frozenset[str] = frozenset(
+    {"EVENT_DECLARE", "SESSION_USAGE_READ", "EXPERIENCE_RECORD"}
+)
+"""Operations whose own record is what they write: a declared event is its row in the feed, a
+usage reading files its readings, and a review is its note, so the observer records no operation
+beside them."""
 
 
 OPENS_NO_GOAL: frozenset[str] = (

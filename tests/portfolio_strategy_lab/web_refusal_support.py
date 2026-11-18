@@ -69,6 +69,8 @@ HASH_FIELDS = frozenset(
 )
 LITERAL_SEEDS = {
     "storage_cap_bytes": "auto",
+    "review_subject": "trial:probe",
+    "review_verdict": "success",
     "finding_handle": "FIND-PROBE",
     "remedy": "CANCEL",
     "experiment_yaml": "{}",
@@ -156,6 +158,9 @@ REQUIRED_SEED_FIELDS = frozenset(
         "research_input_plan_hash",
         "result_hash",
         "review_answer",
+        "review_note",
+        "review_subject",
+        "review_verdict",
         "review_dossier_hash",
         "review_policy_hash",
         "review_schema_hash",

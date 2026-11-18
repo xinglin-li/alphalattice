@@ -32,7 +32,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 5
+SCHEMA_VERSION: Final = 6
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")

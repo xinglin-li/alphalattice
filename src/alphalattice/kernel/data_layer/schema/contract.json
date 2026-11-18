@@ -811,6 +811,43 @@
     "seq": "log_seq"
    }
   },
+  "log.experience_made": {
+   "home": "projection",
+   "key": [
+    "experience_id"
+   ],
+   "id": {
+    "experience_id": "uuid7: the Host mints it when it renders a note's first version"
+   },
+   "up": "task_id",
+   "times": {
+    "made_seq": "log_seq",
+    "replaced_seq": "log_seq"
+   }
+  },
+  "log.experience_version": {
+   "home": "projection",
+   "key": [
+    "experience_id",
+    "version"
+   ],
+   "id": {
+    "experience_id": "link",
+    "version": "standard: the experience's own rendering number, counted from 1"
+   },
+   "up": "experience_id",
+   "links": [
+    "note_seq"
+   ],
+   "times": {
+    "note_seq": "log_seq",
+    "recorded_seq": "log_seq"
+   },
+   "versions": {
+    "version": "own: the experience's rendering, the next one for each new renderer",
+    "renderer_version": "own: the Host renderer release that wrote this body (experiences.RENDERER_VERSION)"
+   }
+  },
   "log.goal": {
    "home": "projection",
    "key": [
@@ -1105,7 +1142,8 @@
     "started_seq": "log_seq",
     "ended_seq": "log_seq",
     "admitted_us": "utc_us",
-    "updated_us": "utc_us"
+    "updated_us": "utc_us",
+    "reviewed_seq": "log_seq"
    },
    "status": {
     "state": {
@@ -1249,7 +1287,8 @@
    ],
    "times": {
     "registered_seq": "log_seq",
-    "ended_seq": "log_seq"
+    "ended_seq": "log_seq",
+    "reviewed_seq": "log_seq"
    },
    "status": {
     "state": {
@@ -1281,6 +1320,26 @@
    },
    "versions": {
     "product_version": "own: the product release it ran under"
+   }
+  },
+  "log.trial_experience": {
+   "home": "projection",
+   "key": [
+    "trial_id",
+    "experience_id",
+    "role"
+   ],
+   "id": {
+    "trial_id": "link",
+    "experience_id": "link",
+    "role": "standard: read or reviewed"
+   },
+   "up": "trial_id",
+   "links": [
+    "experience_id"
+   ],
+   "times": {
+    "recorded_seq": "log_seq"
    }
   },
   "log.wait": {

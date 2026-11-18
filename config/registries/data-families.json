@@ -3733,7 +3733,7 @@
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, and machine/host.lock, the one Host's lock naming its holder",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, and blobs/<BLAKE3 hex>, each experience body the renderer keeps",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [
@@ -3744,7 +3744,8 @@
         "data_layer.store:stage",
         "data_layer.backup:restore_data_root",
         "data_layer.backup:_relocate_catalog",
-        "data_layer.backup:_snapshot"
+        "data_layer.backup:_snapshot",
+        "data_layer.experiences:_keep"
       ],
       "readers": [
         "data_layer.backup:backup_data_root",

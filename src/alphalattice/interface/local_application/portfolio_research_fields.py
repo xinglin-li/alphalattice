@@ -94,6 +94,10 @@ requirements = {
             }
         ),
     ),
+    "EXPERIENCE_RECORD": (
+        frozenset({"review_subject", "review_verdict", "review_note"}),
+        frozenset({"review_subject", "review_verdict", "review_note"}),
+    ),
     "EXPERIMENT_COMPARE": (
         frozenset({"left_task_id", "right_task_id"}),
         frozenset({"left_task_id", "right_task_id", "portfolio_session"}),

@@ -239,6 +239,7 @@ CREATE TABLE task (
   requested_seq INTEGER NOT NULL,
   started_seq INTEGER,
   ended_seq INTEGER,
+  reviewed_seq INTEGER,  -- its first review's note, which closes it; NULL while it awaits review
   task_kind TEXT NOT NULL,
   input_hash TEXT NOT NULL,
   plan_hash TEXT NOT NULL,
@@ -252,7 +253,8 @@ CREATE TABLE task (
   CHECK ((parent_task_id IS NOT NULL) + (goal_id IS NOT NULL) + (workspace_id IS NOT NULL) = 1),
   CHECK (started_seq IS NULL OR started_seq > requested_seq),
   CHECK (ended_seq IS NULL OR ended_seq > requested_seq),
-  CHECK ((state IN ('completed', 'failed', 'cancelled')) = (ended_seq IS NOT NULL))
+  CHECK ((state IN ('completed', 'failed', 'cancelled')) = (ended_seq IS NOT NULL)),
+  CHECK (reviewed_seq IS NULL OR reviewed_seq > ended_seq)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX task_open ON task(state) WHERE state IN ('requested', 'running', 'waiting');
 CREATE INDEX task_parent ON task(parent_task_id) WHERE parent_task_id IS NOT NULL;
@@ -465,7 +467,9 @@ CREATE TABLE trial (
   candidates INTEGER NOT NULL DEFAULT 1 CHECK (candidates >= 1),  -- configurations evaluated inside it; the search size sums them
   registered_seq INTEGER NOT NULL,
   ended_seq INTEGER,
-  CHECK (ended_seq IS NULL OR ended_seq > registered_seq)
+  reviewed_seq INTEGER,         -- its first review's note, which closes it; an ended trial without one awaits review
+  CHECK (ended_seq IS NULL OR ended_seq > registered_seq),
+  CHECK (reviewed_seq IS NULL OR reviewed_seq > ended_seq)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX trial_recipe ON trial(recipe_key);
 CREATE INDEX trial_task ON trial(task_id) WHERE task_id IS NOT NULL;
@@ -505,6 +509,40 @@ SELECT e.seq, e.event_id AS note_id, e.type, e.subject_kind, e.subject_id, e.wor
        e.actor_kind, e.actor_id, e.occurred_us
 FROM event e LEFT JOIN event_text t ON t.seq = e.seq
 WHERE e.type IN ('conclusion.drawn', 'lesson.recorded', 'review.completed', 'proposal.made');
+-- An experience: a review's note rendered with its metadata into one markdown body, under an experience_id the Host
+-- mints once. Its parent is the task that made it (the reviewed task, or the reviewed trial's task); a goal's review
+-- has none. The goal, task or trial reviewed points at its current experience (experience_id); a later experience of
+-- that layer replaces it there, and this one keeps the moment it was replaced, never deleted.
+CREATE TABLE experience_made (
+  experience_id TEXT PRIMARY KEY,
+  task_id TEXT REFERENCES task(task_id),
+  made_seq INTEGER NOT NULL,
+  replaced_seq INTEGER,  -- the experience.recorded that replaced it on its layer
+  CHECK (replaced_seq IS NULL OR replaced_seq > made_seq)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX experience_task ON experience_made(task_id) WHERE task_id IS NOT NULL;
+-- Each rendering of an experience: version 1 at its making, the next for a new renderer. The body is the file
+-- blobs/<hex> of its BLAKE3, kept forever; the note it renders is a review.completed.
+CREATE TABLE experience_version (
+  experience_id TEXT NOT NULL REFERENCES experience_made(experience_id),
+  version INTEGER NOT NULL CHECK (version >= 1),
+  note_seq INTEGER NOT NULL,
+  body TEXT NOT NULL CHECK (body GLOB 'blake3:*'),
+  size INTEGER NOT NULL CHECK (size >= 0),
+  renderer_version INTEGER NOT NULL CHECK (renderer_version >= 1),
+  recorded_seq INTEGER NOT NULL,
+  PRIMARY KEY (experience_id, version)
+) STRICT, WITHOUT ROWID;
+-- A trial and an experience it names: one it read before it ran ('read'), or one that reviewed it ('reviewed': a
+-- review task's experience names each trial its note reviewed). The experience's own layer stays its one parent.
+CREATE TABLE trial_experience (
+  trial_id TEXT NOT NULL REFERENCES trial(trial_id),
+  experience_id TEXT NOT NULL REFERENCES experience_made(experience_id),
+  role TEXT NOT NULL CHECK (role IN ('read', 'reviewed')),
+  recorded_seq INTEGER NOT NULL,
+  PRIMARY KEY (trial_id, experience_id, role)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX trial_experience_by_experience ON trial_experience(experience_id);
 -- The person's feedback: adopted or not, read from what they did, and an optional remark.
 CREATE VIEW feedback AS
 SELECT e.seq, e.subject_kind, e.subject_id, json_extract(e.attrs, '$.adopted') AS adopted, t.text AS remark, e.occurred_us

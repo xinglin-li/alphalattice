@@ -122,6 +122,9 @@ SELECT t.trial_id, t.task_id, reg.trace_id, ts.workspace_id,
        t.standing_after AS hypothesis_standing, h.standing AS hypothesis_standing_now, n.conclusions, n.lessons, n.adopted,
        d.trial_id IS NOT NULL AS deployed, hn.conclusions AS hypothesis_conclusions, hn.lessons AS hypothesis_lessons,
        gn.conclusions AS goal_conclusions, gn.lessons AS goal_lessons,
+       -- its review: an ended trial with no note awaits one; its experience, the current one its review made
+       CASE WHEN t.reviewed_seq IS NOT NULL THEN 'reviewed' WHEN t.ended_seq IS NOT NULL THEN 'awaiting' END AS review,
+       t.experience_id,
        make_timestamptz(reg.occurred_us) AS registered_at
 FROM log.trial t
 JOIN log.trial_scope ts ON ts.trial_id = t.trial_id

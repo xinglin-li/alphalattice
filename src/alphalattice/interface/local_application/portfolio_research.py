@@ -152,6 +152,7 @@ type PortfolioResearchOperation = Literal[
     "GOAL_ABANDON",
     "RESEARCH_HISTORY",
     "EXPERIENCE_READ",
+    "EXPERIENCE_RECORD",
     "EXPERIMENT_COMPARE",
     "EXPERIMENT_ALPHA_COMPARE",
     "EXPERIMENT_DELIVERY_EXPORT",
@@ -423,6 +424,9 @@ class PortfolioResearchOperationRequest:
     experience_hypothesis: str | None = None
     experience_method: str | None = None
     experience_workspace: str | None = None
+    review_subject: str | None = None
+    review_verdict: str | None = None
+    review_note: dict[str, Any] | None = None
     left_task_id: UUID | None = None
     right_task_id: UUID | None = None
     left_candidate_id: str | None = None
@@ -849,6 +853,15 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """Only trials using this method."""
     experience_workspace: str | None = Field(default=None, min_length=1, max_length=256)
     """Only trials from this workspace ID."""
+    review_subject: str | None = Field(
+        default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
+    )
+    """What a note reviews: `trial:<id>` or `task:<id>` once it has ended, or `goal:<id>`."""
+    review_verdict: Literal["success", "failure", "inconclusive"] | None = None
+    """The review's verdict on what it reviews."""
+    review_note: dict[str, Any] | None = None
+    """The note: its hypothesis, method and conclusion, each a sentence, its lessons, and for a
+    review task the `trials` it reviewed."""
     left_task_id: UUID | None = None
     """The first of two studies to compare, by its Task."""
     right_task_id: UUID | None = None

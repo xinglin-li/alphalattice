@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import experiences
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
@@ -301,6 +302,8 @@ def open_history(
                 "durable": False,
             },
         )
+    # a note a stopped Host left unrendered, or a renderer this release changed, is rendered now
+    threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
 
 
 def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
@@ -701,6 +704,65 @@ def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:
         record("experience.read", attrs={"count": len(trials)})
         _open["log"].flush()
         return {"trials": trials, "notes": notes}
+
+
+@contextmanager
+def _held_log() -> Iterator[tuple[HostLog, str | None, Path] | None]:
+    """The held log under its guard alone, with its workspace and root as they were then; None
+    without a log, or when it closed meanwhile. This module's lock is not taken: holding both,
+    a caller would wait on one while holding the other against `open_history` (the lock, then
+    the guard) or `store()` (the guard, then the lock)."""
+    log: HostLog | None = _open.get("log")
+    if log is None:
+        yield None
+        return
+    with log.reading():
+        workspace, root = _open.get("workspace"), _open.get("root")
+        current = _open.get("log") is log and root is not None
+        yield (log, workspace, Path(root)) if current else None
+
+
+def record_review(
+    layer: str,
+    unit: str,
+    verdict: str,
+    text: str,
+    attribution: str,
+    trials: list[str] | None = None,
+) -> dict[str, Any]:
+    """Record an agent's review note in the Host's log (`experiences.record_note`), committed before
+    the reply; its experience is rendered after, off the agent's path. Returns the note's id and
+    the aggregates it holds."""
+    with _held_log() as held_log:
+        if held_log is None or held_log[1] is None:
+            raise ValueError("experience.history_unavailable")
+        log, workspace, _ = held_log
+        seq = experiences.record_note(
+            log,
+            layer,
+            unit,
+            verdict,
+            text,
+            workspace=workspace,
+            actor=("agent", attribution),
+            trials=trials,
+        )
+        log.flush()
+        note_id, attrs = log.read("SELECT event_id, attrs FROM event WHERE seq = ?", (seq,))[0]
+    threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
+    return {"note_id": note_id, **json.loads(attrs)}
+
+
+def render_experiences() -> list[str]:
+    """Render each review note still awaiting its experience, and each experience an older
+    renderer wrote (`experiences.render_pending`); the experiences recorded, none without a log."""
+    with _held_log() as held_log:
+        if held_log is None:
+            return []
+        log, _, root = held_log
+        made = experiences.render_pending(log, root / "blobs")
+        log.flush()
+        return made
 
 
 def hypothesis_goal(hypothesis: str, *, expected_goal: str | None = None) -> str | None:

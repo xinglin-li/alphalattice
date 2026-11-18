@@ -227,7 +227,7 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (102, {(1, 1)})
+    assert (len(rows), {row[3:5] for row in rows}) == (103, {(1, 1)})  # experience.recorded
     assert later == {("event_type", "task.requested")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]

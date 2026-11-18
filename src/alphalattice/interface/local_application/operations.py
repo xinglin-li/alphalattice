@@ -764,6 +764,12 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Reads recorded trials, their measures and conclusions.",
         collection=True,
     ),
+    "EXPERIENCE_RECORD": Command(
+        "experience",
+        "record",
+        "Records a review's note on an ended trial or Task, or on a goal, with its verdict; the "
+        "Host renders the note into an experience.",
+    ),
     "RESEARCH_INPUTS": Command(
         "input",
         "list",
@@ -1028,6 +1034,7 @@ PRIMARY: Final[tuple[str, ...]] = (
     "agent_answer",
     "analysis_answer",
     "review_answer",
+    "review_note",
     "event",
     "committee_message",
 )
@@ -1103,6 +1110,8 @@ FLAGS: Final[dict[str, str]] = {
     "experience_hypothesis": "hypothesis",
     "experience_method": "method",
     "experience_workspace": "from-workspace",
+    "review_subject": "reviews",
+    "review_verdict": "verdict",
     "incident_key": "incident",
     "input_binding_hash": "binding",
     "input_pinned": "pinned",

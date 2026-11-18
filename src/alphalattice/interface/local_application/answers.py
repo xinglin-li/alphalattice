@@ -482,6 +482,31 @@ class ExperienceAnswer(_Answer):
     """Trials on this page that have no recorded hypothesis."""
 
 
+class ExperienceRecordAnswer(_Answer):
+    """A review's note as the Host recorded it, with the run it rests on; its experience is
+    rendered after this reply."""
+
+    model_config = ConfigDict(extra="forbid")
+    status: str
+    """RECORDED once the note is in the Host's history."""
+    note_id: str
+    """The note, by its event id."""
+    verdict: str
+    """The verdict recorded: success, failure or inconclusive."""
+    input_tokens: int
+    """Model input tokens the reviewed run's traces used."""
+    output_tokens: int
+    """Model output tokens the reviewed run's traces used."""
+    cost_usd: float
+    """The reviewed run's model cost, in US dollars."""
+    seconds: float
+    """The reviewed run's elapsed seconds, each trace's first start to its last end."""
+    place: list[dict[str, Any]]
+    """For a trial: each headline measure's z and count in its approach's spread; else empty."""
+    trials: list[str]
+    """For a review task: the trials its note reviewed, which its experience names; else empty."""
+
+
 class GuardianEntry(_Answer):
     """One unfinished Task as Guanyin sees it: its liveness, progress, work kept and next steps."""
 
@@ -659,6 +684,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
     "EXPERIENCE_READ": ExperienceAnswer,
+    "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),
 }
