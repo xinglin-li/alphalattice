@@ -39,6 +39,7 @@ import json
 import os
 import threading
 from collections.abc import Callable, Mapping
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -201,6 +202,16 @@ def read_packed(root: Path, read: Read, content_digest: str) -> bytes:
     buffers = [memoryview(values).cast("B") for values in columns.values()]
     _prove(known, buffers, content_digest)
     return b"".join(buffers)
+
+
+def verify(root: Path, read: Read, content_digest: str, artifact_id: str) -> None:
+    """Verify a retained body against its own profile, name, and cited column-bytes identity."""
+    known = profile(read, content_digest)
+    if known is None or known["artifact_id"] != artifact_id:
+        raise _tampered(content_digest)
+    body = read_packed(root, read, content_digest)
+    if _cited([memoryview(body)]) != content_digest:
+        raise _tampered(content_digest)
 
 
 def settle(root: Path, read: Read, collect: Callable[[str], bool]) -> dict[str, list[str]]:
@@ -443,9 +454,13 @@ def _body(root: Path, read: Read, content_digest: str) -> tuple[dict[str, Any], 
     target = root / "blobs" / known["artifact_id"]
     try:
         if target in _unplaced:
-            table = pq.ParquetFile(pa.BufferReader(_read(root, known["artifact_id"]))).read()
+            with closing(
+                pq.ParquetFile(pa.BufferReader(_read(root, known["artifact_id"])))
+            ) as reader:
+                table = reader.read()
         else:
-            table = pq.ParquetFile(target).read()
+            with target.open("rb") as source, closing(pq.ParquetFile(source)) as reader:
+                table = reader.read()
     except FileNotFoundError as error:
         raise DataError(
             f"the array {content_digest} has no body under blobs/; restore the data root",

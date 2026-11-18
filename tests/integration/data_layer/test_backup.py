@@ -10,13 +10,14 @@ from contextlib import closing
 from datetime import UTC, datetime
 from functools import partial
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import backup, create_data_root
+from alphalattice.kernel.data_layer import arrays, backup, create_data_root
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
 from alphalattice.kernel.data_layer.project import definition_id, recipe_key
@@ -88,6 +89,8 @@ def sample(tmp_path_factory):
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
         _admit(root, port)
+        arrays.keep(root, log, {"value": np.array([1.0, 2.0])}, workspace=None)
+        arrays.keep_packed(root, log, b"retained packed array", workspace=None)
         (root / "blobs/result").write_bytes(b"retained result")
         (root / "blobs/document").write_bytes(b"admitted synthetic Evidence document")
         log.record(
@@ -170,11 +173,28 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
     with HostLog.open(restored) as log:
         port = StorePort.open(restored, log)
         assert _catalog_rows(port) == catalog
+        lane = {"value": np.array([1.0, 2.0])}
+        assert (
+            arrays.read_packed(restored, log.read, arrays.digest(lane)) == lane["value"].tobytes()
+        )
+        assert (
+            arrays.read_packed(
+                restored, log.read, arrays.describe_packed(b"retained packed array").content_digest
+            )
+            == b"retained packed array"
+        )
         port.close()
     assert (restored / "blobs/result").read_bytes() == b"retained result"
     assert (restored / "blobs/document").read_bytes() == b"admitted synthetic Evidence document"
     assert (restored / "blobs/later").read_bytes() == b"second retained result"
     manifest = json.loads((generation / "manifest.json").read_text(encoding="utf-8"))
+    assert backup.verify_data_root(generation)["head"] == manifest["head"]
+    array_entries = [entry for entry in manifest["files"] if entry.get("kind") == "array"]
+    assert len(array_entries) == 2
+    assert {entry["digest"] for entry in array_entries} == {
+        arrays.digest({"value": np.array([1.0, 2.0])}),
+        arrays.describe_packed(b"retained packed array").content_digest,
+    }
     assert manifest["copied_files"] == ["blobs/later"]
     assert next(
         entry["digest"] for entry in manifest["files"] if entry["path"] == "blobs/result"
@@ -194,13 +214,44 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
 
 
 @pytest.mark.proves("data_layer.machine_restore_refuses_a_changed_chain")
-@pytest.mark.parametrize("damage", ["chain", "file-bytes", "file-set"])
+@pytest.mark.parametrize(
+    "damage", ["chain", "file-bytes", "file-set", "array-bytes", "array-missing", "array-kind"]
+)
 def test_a_changed_backup_chain_is_refused_before_the_fresh_root_exists(sample, tmp_path, damage):
     """Integration: the real copied owners and bytes must refuse tampering before publication."""
     generation, repository, _, _, _ = sample
     damaged = tmp_path / "damaged"
     shutil.copytree(repository, damaged)
     changed = damaged / "generations" / generation.name
+    if damage in {"array-bytes", "array-missing", "array-kind"}:
+        manifest_path = changed / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        lane = arrays.describe({"value": np.array([1.0, 2.0])})
+        entry = next(
+            entry for entry in manifest["files"] if entry["path"] == "blobs/" + lane.artifact_id
+        )
+        body = damaged / "files" / entry["path"]
+        if damage == "array-bytes":
+            body.write_bytes(arrays.describe({"value": np.array([999.0, 2.0])}).body())
+            entry["size"] = (
+                body.stat().st_size
+            )  # the untrusted manifest cannot bless altered columns
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        elif damage == "array-missing":
+            body.unlink()
+        else:
+            entry.pop("kind")  # an array cannot be downgraded to an ordinary file seal
+            entry["digest"] = digest(body.read_bytes())
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with pytest.raises(DataError) as refused:
+            backup.verify_data_root(changed)
+        if damage == "array-bytes":
+            assert refused.value.failure.code == "data_layer.array_tampered"
+        target = tmp_path / "refused-array"
+        with pytest.raises(DataError):
+            backup.restore_data_root(changed, target)
+        assert not target.exists()
+        return
     if damage != "chain":
         manifest_path = changed / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

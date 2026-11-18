@@ -22,10 +22,15 @@ MANIFEST = {
 @pytest.mark.proves("data_layer.backup_manifest_is_portable")
 def test_a_manifest_keeps_its_saved_head_and_relative_file_set(tmp_path):
     """The restore reader accepts portable database/file handles and keeps the saved head."""
-    (tmp_path / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
-    found = backup.read_manifest(tmp_path)
-    assert found["head"] == HEAD
-    assert found["files"] == [FILE]
+    array = {"path": "blobs/" + "b" * 64, "size": 4, "kind": "array", "digest": "a" * 64}
+    expected = MANIFEST | {"files": [FILE, array]}
+    (tmp_path / "manifest.json").write_text(json.dumps(expected), encoding="utf-8")
+    try:
+        found = backup.read_manifest(tmp_path)
+    except DataError as error:
+        found = {"refused": error.failure.code}
+    assert found.get("head") == HEAD, found
+    assert found.get("files") == [FILE, array]
 
 
 @pytest.mark.proves("data_layer.backup_manifest_is_portable")
@@ -41,6 +46,14 @@ def test_a_manifest_keeps_its_saved_head_and_relative_file_set(tmp_path):
         pytest.param({"files": [FILE | {"path": "C:/outside"}]}, id="absolute drive"),
         pytest.param({"files": [FILE | {"path": "machine/host.lock"}]}, id="process lock"),
         pytest.param({"files": [FILE | {"size": -1}]}, id="negative size"),
+        pytest.param({"files": [FILE | {"kind": "unknown"}]}, id="unknown body kind"),
+        pytest.param(
+            {"files": [FILE | {"kind": "array", "digest": "0" * 64}]}, id="array outside blobs"
+        ),
+        pytest.param(
+            {"files": [FILE | {"kind": "array", "path": "blobs/a", "digest": "bad"}]},
+            id="malformed array identity",
+        ),
         pytest.param({"files": [FILE, FILE]}, id="duplicate handle"),
         pytest.param(
             {"files": [FILE | {"digest": "blake3:v2:" + "a" * 64}]}, id="unknown seal version"

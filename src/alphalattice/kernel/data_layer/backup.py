@@ -97,7 +97,15 @@ def read_manifest(generation: Path) -> dict[str, Any]:
             _handle(entry["path"])
             and type(entry["size"]) is int
             and entry["size"] >= 0
-            and _valid_digest(entry["digest"])
+            and (
+                (entry.get("kind") is None and _valid_digest(entry["digest"]))
+                or (
+                    entry.get("kind") == "array"
+                    and entry["path"].startswith("blobs/")
+                    and isinstance(entry["digest"], str)
+                    and bool(re.fullmatch(r"[0-9a-f]{64}", entry["digest"]))
+                )
+            )
             for entry in files
         ) and len(set(paths)) == len(paths)
         if (
@@ -116,24 +124,45 @@ def read_manifest(generation: Path) -> dict[str, Any]:
     return value
 
 
-def _verify_file(path: Path, entry: dict[str, Any]) -> None:
-    """The existing backup seal check, shared by copying, restore and upgrade admission."""
-    if (
-        _real(path).stat().st_size != entry["size"]
-        or _file_digest(path, entry["digest"].rpartition(":")[0]) != entry["digest"]
-    ):
+def _verify_file(path: Path, entry: dict[str, Any], read: Any = None) -> None:
+    """Verify an immutable body by the recorded owner's rule."""
+    if _real(path).stat().st_size != entry["size"]:
         raise _refuse(
-            "backup_file_changed",
-            f"{path} differs from its sealed bytes; use an intact generation",
+            "backup_file_changed", f"{path} differs from its sealed bytes; use an intact generation"
+        )
+    if entry.get("kind") == "array":
+        if read is None:
+            raise _refuse(
+                "backup_manifest_invalid",
+                "array backup lacks its saved owner; use a complete generation",
+            )
+        from alphalattice.kernel.data_layer import arrays  # lazy: array bodies only
+
+        arrays.verify(path.parent.parent, read, entry["digest"], path.name)
+    elif _file_digest(path, entry["digest"].rpartition(":")[0]) != entry["digest"]:
+        raise _refuse(
+            "backup_file_changed", f"{path} differs from its sealed bytes; use an intact generation"
         )
 
 
-def copy_files(root: Path, pool: Path, files: list[dict[str, Any]]) -> tuple[str, ...]:
-    """Copy only new immutable files and verify every reused or copied body against its seal."""
+def copy_files(
+    root: Path, pool: Path, files: list[dict[str, Any]], *, read: Any = None
+) -> tuple[str, ...]:
+    """Copy only new immutable files and verify every reused or copied body against its owner."""
     copied = []
     for entry in files:
-        handle = entry["path"]
-        if not _handle(handle) or not _valid_digest(entry["digest"]):
+        handle, kind = entry["path"], entry.get("kind")
+        valid = (
+            _valid_digest(entry["digest"])
+            if kind is None
+            else (
+                kind == "array"
+                and isinstance(entry["digest"], str)
+                and bool(re.fullmatch(r"[0-9a-f]{64}", entry["digest"]))
+                and handle.startswith("blobs/")
+            )
+        )
+        if not _handle(handle) or not valid:
             raise _refuse(
                 "backup_manifest_invalid", f"machine backup manifest handle {handle!r} is invalid"
             )
@@ -142,7 +171,7 @@ def copy_files(root: Path, pool: Path, files: list[dict[str, Any]]) -> tuple[str
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
             copied.append(handle)
-        _verify_file(target, entry)
+        _verify_file(target, entry, read)
     return tuple(copied)
 
 
@@ -276,21 +305,27 @@ def _catalog_paths(catalog: Path) -> set[str]:
     return found
 
 
-def _owners(machine: Path, data: Path) -> dict[str, str | None]:
+def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]:
     """The copied catalog's file/body references and copied log's retained blob proofs."""
     import duckdb  # lazy: the optional data extra reads catalog Evidence body references
 
-    found: dict[str, str | None] = dict.fromkeys(_catalog_paths(machine / "catalog.sqlite"))
+    found: dict[str, str | dict[str, str] | None] = dict.fromkeys(
+        _catalog_paths(machine / "catalog.sqlite")
+    )
     with closing(
         sqlite3.connect(_real(machine / "log.sqlite").as_uri() + "?mode=ro", uri=True)
     ) as con:
         profiles = con.execute(
-            "SELECT artifact_id,content_digest,body_state FROM artifact WHERE storage='blob'"
+            "SELECT a.artifact_id,a.content_digest,a.body_state,d.name FROM artifact a "
+            "LEFT JOIN definition_name d ON d.definition_id=a.type_id AND d.family='artifact_type' "
+            "WHERE a.storage='blob'"
         ).fetchall()
-    for name, digest, state in profiles:
+    for name, digest, state, kind in profiles:
         if state == "present":
-            found["blobs/" + name] = digest
-    collected = {name for name, _, state in profiles if state == "collected"}
+            found["blobs/" + name] = (
+                {"kind": "array", "digest": digest} if kind == "array" else digest
+            )
+    collected = {name for name, _, state, _ in profiles if state == "collected"}
     catalog = _real(machine / "catalog.sqlite").as_posix().replace("'", "''")
     location = (_real(data).as_posix() + "/").replace("'", "''")
     try:
@@ -316,7 +351,15 @@ def _owners(machine: Path, data: Path) -> dict[str, str | None]:
             "backup_unreadable", f"{machine} cannot read its body owners; use an intact backup"
         ) from error
     if any(
-        not _handle(path) or (digest is not None and not _valid_digest(digest))
+        not _handle(path)
+        or (
+            not (
+                isinstance(digest.get("digest"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", digest["digest"])
+            )
+            if isinstance(digest, dict)
+            else digest is not None and not _valid_digest(digest)
+        )
         for path, digest in found.items()
     ):
         raise _refuse(
@@ -330,14 +373,16 @@ def _files(root: Path, machine: Path) -> list[dict[str, Any]]:
     """Seal the owners' required files and the admitted blob store without changing identities."""
     owners = _owners(machine, root / "data")
     handles = set(owners) | {path.relative_to(root).as_posix() for path in _walk(root / "blobs")}
-    return [
-        dict(
-            path=handle,
-            size=_real(root / handle).stat().st_size,
-            digest=owners.get(handle) or _file_digest(root / handle, "blake3:v1"),
+    files = []
+    for handle in sorted(handles):
+        owner = owners.get(handle)
+        proof = (
+            owner
+            if isinstance(owner, dict)
+            else {"digest": owner or _file_digest(root / handle, "blake3:v1")}
         )
-        for handle in sorted(handles)
-    ]
+        files.append({"path": handle, "size": _real(root / handle).stat().st_size, **proof})
+    return files
 
 
 def backup_data_root(root: Path, repository: Path) -> Path:
@@ -362,7 +407,12 @@ def backup_data_root(root: Path, repository: Path) -> Path:
         head = _head(partial / "machine/log.sqlite")
         _consistent(partial / "machine")
         files = _files(root, partial / "machine")
-        copied = copy_files(root, pool, files)
+        with closing(
+            sqlite3.connect((partial / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True)
+        ) as saved_log:
+            copied = copy_files(
+                root, pool, files, read=lambda sql, args: saved_log.execute(sql, args).fetchall()
+            )
         manifest = dict(
             version=2,
             databases=list(DATABASES),
@@ -421,12 +471,25 @@ def _verified_manifest(generation: Path) -> dict[str, Any]:
                 f"{generation} omits required file {min(missing)}; use a complete generation",
             )
         if any(
-            digest is not None and digest != listed[path]["digest"]
+            (listed[path].get("kind") != "array" or listed[path]["digest"] != digest["digest"])
+            if isinstance(digest, dict)
+            else (
+                listed[path].get("kind") is not None
+                or (digest is not None and digest != listed[path]["digest"])
+            )
             for path, digest in owners.items()
         ):
             raise _refuse(
                 "backup_file_changed",
                 f"{generation} differs from its owner's digest; use an intact generation",
+            )
+        if any(
+            entry.get("kind") == "array" and not isinstance(owners.get(path), dict)
+            for path, entry in listed.items()
+        ):
+            raise _refuse(
+                "backup_manifest_invalid",
+                f"{generation} names an unowned array; use a complete generation",
             )
     except (OSError, sqlite3.Error) as error:
         raise _refuse(
@@ -451,8 +514,17 @@ def verify_data_root(
     manifest = _verified_manifest(generation)
     try:
         pool = generation.parent.parent / "files"
-        for entry in manifest["files"]:
-            _verify_file(pool / entry["path"], entry)
+        with closing(
+            sqlite3.connect(
+                _real(generation / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True
+            )
+        ) as saved_log:
+            for entry in manifest["files"]:
+                _verify_file(
+                    pool / entry["path"],
+                    entry,
+                    lambda sql, args: saved_log.execute(sql, args).fetchall(),
+                )
         if source is not None:
             saved = manifest["head"]
             if pre_upgrade_head is not None and saved != pre_upgrade_head:
@@ -517,7 +589,17 @@ def restore_data_root(generation: Path, target: Path) -> Path:
             (partial / folder).mkdir()
         for database in DATABASES:
             _snapshot(generation / "machine" / database, partial / "machine" / database)
-        copy_files(pool, partial, manifest["files"])
+        with closing(
+            sqlite3.connect(
+                _real(generation / "machine/log.sqlite").as_uri() + "?mode=ro", uri=True
+            )
+        ) as saved_log:
+            copy_files(
+                pool,
+                partial,
+                manifest["files"],
+                read=lambda sql, args: saved_log.execute(sql, args).fetchall(),
+            )
         _relocate_catalog(partial / "machine/catalog.sqlite", partial / "data")
         with HostLog.open(partial) as log:
             port = StorePort.open(partial, log)
