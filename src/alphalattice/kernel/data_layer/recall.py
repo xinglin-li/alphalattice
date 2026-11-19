@@ -318,9 +318,9 @@ def recall(
     superseded: bool | None = False,
     limit: int = 5,
 ) -> tuple[Retrieved, dict[str, tuple[str, ...]]]:
-    """The experiences most like `query` in `workspace` as known at `cutoff_us`, English reranked
-    and Chinese not, and each hit's trials (the trial its note is on, or each one its review task
-    reviewed)."""
+    """The experiences most like `query` in `workspace` as known at `cutoff_us`, in the fused order
+    (the default path calls no cross-encoder), and each hit's trials (the trial its note is on, or
+    each one its review task reviewed)."""
     with _guard:
         found = _search(log, root).retrieve(
             query,

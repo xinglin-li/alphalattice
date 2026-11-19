@@ -31,6 +31,15 @@ type EvidenceVersions = frozenset[tuple[str, str]]
 
 _HAN = re.compile(r"([\u4e00-\u9fff])")
 _TERMS = re.compile(r"[\u4e00-\u9fff]+|[A-Za-z0-9_]+")
+# From this many indexed chunks the lexical query leaves out the words at least half of them
+# hold. Matching costs about 1 microsecond a chunk (98,000 matched rows took 72-105 ms), so a
+# smaller index scores them all in under 10 ms and keeps every word.
+COMMON_WORDS_FROM = 10_000
+# The source kind a sealed selection reads: evidence review's references (read through
+# `recall.search_references`), whose hit set its reference spec binds to its own inputs. Such a
+# read keeps every word and, in English, its cross-encoder rerank; recall's reads may leave out
+# common words and answer in the fused order.
+SEALED_KIND = "reference"
 
 
 def _spaced(text: str) -> str:
@@ -180,6 +189,41 @@ class VectorPort(Protocol):
         ...
 
 
+class WordCounts:
+    """How many indexed chunks hold each word a query has asked for: a word at least half of them
+    hold is common.
+
+    FTS5's bm25 clamps a common word's idf to almost nothing, so it ranks no chunk above another,
+    yet matching it makes the query score nearly every chunk: measured at 100,000 chunks, an OR
+    of such words scored ~98,000 rows for 72-105 ms. Each word's count is read once and kept
+    until a chunk is added; an index smaller than `COMMON_WORDS_FROM` has no common word."""
+
+    def __init__(self) -> None:
+        """Start with no counts: the first query reads the index's chunk count."""
+        self.at: int | None = None
+        """The last chunk row the counts were taken at."""
+        self.documents = 0
+        self.holding: dict[str, int] = {}
+
+    def common(
+        self,
+        last: int,
+        documents: Callable[[], int],
+        holding: Callable[[str], int],
+        words: list[str],
+    ) -> frozenset[str]:
+        """The common `words`, given the index's last chunk row and readers of its chunk count
+        and of the chunks holding one word."""
+        if last != self.at:
+            self.documents, self.holding, self.at = documents(), {}, last
+        if self.documents < COMMON_WORDS_FROM:
+            return frozenset()
+        for word in words:
+            if word not in self.holding:
+                self.holding[word] = holding(word)
+        return frozenset(word for word in words if 2 * self.holding[word] >= self.documents)
+
+
 class KnowledgeStore:
     """The Host's shared source and embedding store; never opens another SQLite writer."""
 
@@ -189,6 +233,7 @@ class KnowledgeStore:
         """Use the serving Host's writer and its shared cache-build ownership."""
         self.log = log
         self.evidence_asof = evidence_asof
+        self._words = WordCounts()
 
     def scope(
         self,
@@ -615,9 +660,28 @@ class KnowledgeStore:
         per_source: bool = False,
     ) -> tuple[SearchHit, ...]:
         """Search the FTS index within an admitted workspace and source-time boundary: the best
-        `limit` matches, or each source's best `limit` when `per_source`."""
+        `limit` matches, or each source's best `limit` when `per_source`. Outside the precise mode
+        (`per_source`) and a sealed read (`SEALED_KIND`), the words most chunks hold are left out
+        (`WordCounts`); those two keep every word, as their inputs name no index-wide count."""
         terms = _TERMS.findall(query)
         if not terms or limit < 1:
+            return ()
+        common: frozenset[str] = frozenset()
+        if not per_source and scope.kind != SEALED_KIND:
+            with self.log.reading() as con:
+                common = self._words.common(
+                    con.execute("SELECT coalesce(max(rowid), 0) FROM knowledge_chunk").fetchone()[
+                        0
+                    ],
+                    lambda: con.execute("SELECT count(*) FROM knowledge_fts_docsize").fetchone()[0],
+                    lambda word: con.execute(
+                        "SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH ?",
+                        (f'"{word}"',),
+                    ).fetchone()[0],
+                    [*(t.lower() for t in terms if not _HAN.search(t)), *_HAN.findall(query)],
+                )
+        terms = [term for term in terms if term.lower() not in common]
+        if not terms:  # every word is one most chunks hold: the vector channel ranks alone
             return ()
         cutoff_us, kind, superseded = scope.cutoff_us, scope.kind, scope.superseded
         world = json.dumps([f"{document}/{version}" for document, version in scope.evidence])
@@ -674,13 +738,17 @@ class KnowledgeStore:
         with self.log.reading() as con:
             rows = con.execute(sql, (expression, *filters)).fetchall()
             if not rows and any(_HAN.search(term) for term in terms):
-                loose = " OR ".join(
-                    "(" + " AND ".join('"' + char + '"' for char in term) + ")"
+                # A phrase no chunk holds is matched by its characters, less the common ones: an
+                # AND of characters most chunks hold matches most chunks and ranks none.
+                parts = [
+                    "(" + " AND ".join(f'"{char}"' for char in term if char not in common) + ")"
                     if _HAN.search(term)
-                    else '"' + term + '"'
+                    else f'"{term}"'
                     for term in terms
-                )
-                rows = con.execute(sql, (loose, *filters)).fetchall()
+                    if not _HAN.search(term) or set(term) - common
+                ]
+                if parts:
+                    rows = con.execute(sql, (" OR ".join(parts), *filters)).fetchall()
         return tuple(
             SearchHit(
                 row[0], row[1], row[2], Chunk(*row[3:7]), -float(row[7]), row[8], ("lexical",)
@@ -1179,14 +1247,16 @@ class HybridSearch:
         groups: tuple[tuple[str, ...], ...] = (),
         depth: int | None = None,
     ) -> Retrieved:
-        """Fuse both scoped channels and rerank English only, each shortlist within the model's
-        deadline.
+        """Fuse both scoped channels; English is reranked by the cross-encoder in the precise mode
+        (a `depth`) and in a sealed read (`SEALED_KIND`, its best `SHORTLIST` without a depth), and
+        any other answer is the fused order.
 
         `ranges` limits the search to those (source, first ordinal, last ordinal) ranges. With a
-        `depth`, each source supplies its own candidate window and its best `depth` fused
-        candidates are reranked (in shortlists, each under the deadline; past any deadline the
-        fused order stands). With `groups`, each group of source ids takes its own `limit` of the
-        final order, and sources in no group share one trailing group; ranks stay global.
+        `depth` (the precise mode), each source supplies its own candidate window and its best
+        `depth` fused candidates are reranked in English (in shortlists, each under the deadline;
+        past any deadline the fused order stands). With `groups`, each group of source ids takes
+        its own `limit` of the final order, and sources in no group share one trailing group;
+        ranks stay global.
         """
         if language not in ("en", "zh"):
             raise DataError(
@@ -1247,7 +1317,7 @@ class HybridSearch:
                 return text
 
             reranked = 0
-            if language == "en" and ranked:
+            if language == "en" and ranked and (depth or kind == SEALED_KIND):
                 first = ranked if depth else ranked[:SHORTLIST]
                 scores: list[float] = []
                 for start in range(0, len(first), SHORTLIST):

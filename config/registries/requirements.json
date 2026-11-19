@@ -848,6 +848,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.lexical_leaves_out_common_words": {
+      "description": "From 10,000 indexed chunks the full-text query leaves out each word at least half the chunks hold, and counts each word again after a chunk is added.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.lineage_id_is_its_first_registration": {
       "description": "A first version, task or wait reference, or finished step can introduce a definition lineage from the name that event holds.",
       "owner": "alphalattice.kernel.data_layer",

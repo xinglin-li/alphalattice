@@ -156,7 +156,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 models.setattr(encoders, "Reranker", Reranker)
                 models.setattr(model_store, "verify_directory", lambda _dir, _pack: None)
                 found = ExperienceRecallAnswer.model_validate(recall_experience(ask))
-                assert found.score_type == "CROSS_ENCODER_LOGIT" and len(found.hits) == 1
+                assert found.score_type == "LINEAR_FUSION" and len(found.hits) == 1
                 assert found.hits[0]["experience_id"] and found.hits[0]["classes"] == {}
             recall.close()
 

@@ -515,7 +515,7 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
         )
         assert {hit.hit.source_id for hit in found.hits} == {first}
         assert trials == {first: ("t0",)}
-        assert found.score_type == "CROSS_ENCODER_LOGIT" and reranked == ["momentum costs"]
+        assert found.score_type == "LINEAR_FUSION" and reranked == []  # recall is the fused order
         assert all("It paid after costs" in hit.text for hit in found.hits)  # the verified slice
         chinese = experiences.note_text("动量有效", "动量策略", "市场风险上升时失效", [])
         _note(log, "trial", "t1", text=chinese)
@@ -525,7 +525,7 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
             recall.recall(log, root, query="市场风险", workspace="w1", cutoff_us=later)
         found, trials = recall.recall(log, root, query="市场风险", workspace="w1", cutoff_us=later)
         assert found.hits[0].hit.source_id == second and trials[second] == ("t1",)
-        assert found.score_type == "LINEAR_FUSION" and reranked == ["momentum costs"]
+        assert found.score_type == "LINEAR_FUSION" and reranked == []
         made = _one(
             log,
             "SELECT e.recorded_us FROM experience_version v JOIN event e ON e.seq = v.recorded_seq"

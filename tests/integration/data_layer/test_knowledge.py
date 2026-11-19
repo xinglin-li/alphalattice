@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, recall
+from alphalattice.kernel.data_layer import create_data_root, knowledge, recall
 from alphalattice.kernel.data_layer.chain import digest
 from alphalattice.kernel.data_layer.encoders import Reranker, StaticEncoder
 from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
@@ -171,6 +171,41 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
             hit.source_id
             for hit in store.lexical("风险市场", store.scope(workspace="w2", cutoff_us=123))
         ] == [origin.source_id]
+        # In a large index a phrase no chunk holds is matched only by its characters fewer than
+        # half the chunks hold; here every chunk that has Chinese holds them all. The precise
+        # mode's per-source window and a sealed read (evidence review's references) match every
+        # character, as their inputs name no index-wide count.
+        sealed = SourceOrigin(uuid7(), uuid7(), knowledge.SEALED_KIND, 123)
+        sealed_body = "A reference read as evidence. 市场风险已经增加。"
+        sealed_id = store.publish_revision(
+            workspace_id="w2",
+            metadata={"document": {"document_id": "filing.sealed"}, "revision": 1},
+            content=sealed_body,
+            origin=sealed,
+        )
+        sealed_chunks = store.index_chunks(
+            version_id=sealed_id, recipe_id=recipe, content=sealed_body
+        )
+        reading = {"workspace": "w2", "cutoff_us": 123}
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(knowledge, "COMMON_WORDS_FROM", 1)
+            assert store.lexical("风险市场", store.scope(kind="evidence", **reading)) == ()
+            assert [
+                hit.source_id
+                for hit in store.lexical(
+                    "风险市场", store.scope(kind="evidence", **reading), per_source=True
+                )
+            ] == [origin.source_id]
+            assert [
+                hit.source_id
+                for hit in store.lexical(
+                    "风险市场", store.scope(kind=knowledge.SEALED_KIND, **reading)
+                )
+            ] == [sealed.source_id]
+            assert [
+                hit.source_id
+                for hit in store.lexical("市场风险", store.scope(kind="evidence", **reading))
+            ] == [origin.source_id]
         assert store.lexical("市场风险", store.scope(workspace="w2", cutoff_us=122)) == ()
         with pytest.raises(DataError, match="source"):
             store.index_chunks(version_id="", recipe_id=recipe, content=body)
@@ -202,6 +237,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
         ] == [later.version]
         all_chunks = (
             *chunks,
+            *sealed_chunks,
             *store.index_chunks(version_id=middle_id, recipe_id=recipe, content=middle_body),
             *store.index_chunks(version_id=later_id, recipe_id=recipe, content=later_body),
         )
@@ -296,6 +332,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
                 intermediate.version: middle_body,
                 later.version: later_body,
                 newest.version: "市场风险再次增加。",
+                sealed.version: sealed_body,
             }
             other_recipe = store.recipe(
                 {
@@ -325,6 +362,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
             assert chinese.hits[0].text == bodies[newest.version]
             assert chinese.score_type == "LINEAR_FUSION"
             assert reranker.calls == 0
+            # The default path is the fused order: no cross-encoder call.
             english = search.retrieve("evidence", language="en", workspace="w1", cutoff_us=123)
             assert english.hits[0].hit.version == origin.version
             assert all(
@@ -332,11 +370,24 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
                 for hit in english.hits
             )
             assert english.score_type == "LINEAR_FUSION"
+            assert reranker.calls == 0
+            # A `depth` asks for the precise mode: English reranked, the fused order standing
+            # past the deadline.
+            precise = {"language": "en", "workspace": "w1", "cutoff_us": 123, "depth": 5}
+            assert search.retrieve("evidence", **precise).score_type == "LINEAR_FUSION"
             assert reranker.calls == 1
             reranker.deadline = False
-            english = search.retrieve("evidence", language="en", workspace="w1", cutoff_us=123)
+            english = search.retrieve("evidence", **precise)
             assert english.score_type == "CROSS_ENCODER_LOGIT"
             assert english.hits[0].hit.score == 0.25
+            # A sealed read reranks English without a depth, as evidence review's reads did.
+            calls = reranker.calls
+            sealed_read = search.retrieve(
+                "evidence", language="en", kind=knowledge.SEALED_KIND, **reading
+            )
+            assert sealed_read.score_type == "CROSS_ENCODER_LOGIT"
+            assert [hit.hit.source_id for hit in sealed_read.hits] == [sealed.source_id]
+            assert reranker.calls == calls + 1
             # Read per document: each source's best `depth` candidates are reranked, and each
             # group of sources takes its own `limit` of that order.
             calls = reranker.calls

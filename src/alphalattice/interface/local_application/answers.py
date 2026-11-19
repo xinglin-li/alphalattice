@@ -543,8 +543,8 @@ class ExperienceRecallAnswer(_Answer):
 
     model_config = ConfigDict(extra="forbid")
     score_type: str
-    """How hits are scored: LINEAR_FUSION (a query without a reranked English passage) or
-    CROSS_ENCODER_LOGIT (the reranker's score)."""
+    """How hits are scored: LINEAR_FUSION, the fused order of the full-text and vector channels;
+    recall calls no cross-encoder."""
     hits: list[dict[str, Any]]
     """Each hit, best first: its experience_id, version, score, text and classes, a mapping from
     each trial the experience is on to that trial's class as known then (null when unknown)."""
