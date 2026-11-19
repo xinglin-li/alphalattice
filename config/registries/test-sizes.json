@@ -1814,6 +1814,13 @@
       "size_contract": "nightly_only"
     },
     {
+      "pattern": "tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_workspace_on_one_plan[[]qa[]]",
+      "owner": "tests",
+      "reason": "Upgrades three copies of the recorded QA root alpha_development_outcomes (alpha-base, alpha-after-1, alpha-before-1), real workspaces the development sets do not give, so it runs only in the nightly (the person, 11-19); its held case keeps the plan's proof at merge.",
+      "admitted": "2026-11-19: the merge stage reads no QA copy (the person, 11-19); this was the one real-evidence node the commit tier still collected, skipped as an absent root on every settle leg without the QA store.",
+      "size_contract": "nightly_only"
+    },
+    {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "Runs a deferred daily, its in-place recovery and the following exchange session; it copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
@@ -2405,6 +2412,11 @@
       "budget": "large:tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "value": 900,
       "admitted": "2026-11-14: Cold input-revision setup ran 317-408 s in six nightly runs on 11-13 and 11-14; three times the slowest exceeds 900 s, so 900 s holds and no lower step fits"
+    },
+    {
+      "budget": "large:tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_workspace_on_one_plan[[]qa[]]",
+      "value": 900,
+      "admitted": "2026-11-19: A Large test is killed only as hung, at the large timeout of 900 s; its three QA-root upgrades run in the nightly"
     },
     {
       "budget": "large:tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
