@@ -44,6 +44,11 @@ from tests.workspace_maintenance.local_data_provider import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
+SHORT_HISTORY_FROM = (HISTORY_START + timedelta(days=183)).isoformat()
+"""A candidate whose bars start here holds less than the walk's two-year standard floor."""
+FULL_HISTORY = 400
+"""More sessions than any daily tail reads (the widest lookback is 274), fewer than the walk's two
+years: a computation over this many is the listing's whole history."""
 
 
 @pytest.fixture(scope="session")
@@ -439,7 +444,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             result = fetch(symbols, **kwargs)
             if "NEW" in result and clock_now == NOW:
                 result["NEW"] = tuple(
-                    row for row in result["NEW"] if row["session_date"] >= "2020-01-01"
+                    row for row in result["NEW"] if row["session_date"] >= SHORT_HISTORY_FROM
                 )
             return result
 
@@ -529,7 +534,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         if candidate_features_available == "recoverable_history":
             assert own_calls == []
         else:
-            assert len(own_calls) == 1 and not own_calls[0][1] and own_calls[0][2] > 2000
+            assert len(own_calls) == 1 and not own_calls[0][1] and own_calls[0][2] > FULL_HISTORY
         snapshot = PanelStateRepository(
             market.database, market_data=market
         ).feature_panel_snapshot_for_active("us-current-index-research")
@@ -583,7 +588,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             )
             assert raw_scope["candidate_listing_count"] == 1
             assert raw_scope["state_counts"] == {"FEATURE_READY": 1}
-        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+        assert sum(item[0] == entrant.listing_id and item[2] > FULL_HISTORY for item in calls) == 1
         assert not [
             q
             for q in PanelStateRepository(
@@ -625,7 +630,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         assert next_payload["chunks"][:-1] == payload["chunks"][:-1]
         assert market.membership_events("us-current-index-research") == events
         # Only one preparation consumed the entrant's full history.
-        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+        assert sum(item[0] == entrant.listing_id and item[2] > FULL_HISTORY for item in calls) == 1
 
 
 def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work(
@@ -888,7 +893,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
         result = fetch(symbols, **kwargs)
         if "NEWH" in result and (clock_now == NOW or not raw_admits):
             result["NEWH"] = tuple(
-                row for row in result["NEWH"] if row["session_date"] >= "2020-01-01"
+                row for row in result["NEWH"] if row["session_date"] >= SHORT_HISTORY_FROM
             )
         return result
 
@@ -1159,7 +1164,7 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
         retained_ids, provider="yfinance", requested_as_of=NOW.date()
     )
     assert len(history) == len(anchors) == len(rolling) == len(SYMBOLS)
-    assert all(len(bars) > 2000 for bars in history.values())
+    assert all(len(bars) > FULL_HISTORY for bars in history.values())
     observed_at = NOW + timedelta(minutes=6)
     symbols = (*SYMBOLS, "NEW")
     template = recording_provider(symbols=symbols, now=observed_at)

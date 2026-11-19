@@ -51,10 +51,10 @@ YEAR_END_AS_OF = date(2026, 1, 5)
 YEAR_END_OBSERVED_AT = datetime(2026, 1, 6, tzinfo=UTC)
 
 
-YEAR_END_HISTORY_START = date(2016, 1, 5)
-"""The ten-calendar-year anniversary of the backdated as-of, a trading day.
+YEAR_END_HISTORY_START = date(2024, 1, 5)
+"""The backdated as-of less the walk's two-year standard floor, a trading day.
 
-The seeded walk must answer the whole ten-year window, and the onboarding
+The seeded walk must answer the whole two-year window, and the onboarding
 fetch must start at the walk's first session: the recording provider the
 updates use stamps volumes by session ordinal, which agrees with the
 onboarding's window-relative stamp only when the two starts coincide.
@@ -86,8 +86,9 @@ def year_end(tmp_path_factory):
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(owner, "AS_OF", YEAR_END_AS_OF)
         patch.setattr(owner, "OBSERVED_AT", YEAR_END_OBSERVED_AT)
+        # The walk's two-year standard, from the patched as-of: YEAR_END_HISTORY_START.
         built = build_real_risk_workspace(
-            tmp_path_factory.mktemp("data-update-year-end"), fresh=True, standard=owner.FACTOR_SCALE
+            tmp_path_factory.mktemp("data-update-year-end"), fresh=True
         )
         publish_research_workspace_manifest(built.workspace, _manifest("data-update-qa"))
         _seed_foundation(built.workspace, built.panel_snapshot_hash)

@@ -1904,11 +1904,6 @@
       "reason": "Runs first-use preparation through recoverable sector exclusion and Feature readback."
     },
     {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_an_activation_computes_its_column_and_the_update_carries_every_other_value*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the qualified seed, activates a formula and runs the daily carrying all other columns."
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
       "owner": "tests.workspace_maintenance",
       "reason": "Runs three real daily updates across year-end and checks partition reuse and corrected values."
@@ -1917,11 +1912,6 @@
       "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
       "owner": "tests.feature_engine",
       "reason": "Builds and appends real Panel partitions, then exercises closure recovery and retention."
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs Feature activation, daily materialization and deactivation through the layered catalog."
     },
     {
       "pattern": "tests/integration/product_host/test_promotion_next_step.py::test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery*",
@@ -1984,7 +1974,7 @@
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate.",
+      "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate; on the two-year walk 60.2 s with setup under a four-worker mac1 leg (11-18), at the 60 s Medium bound.",
       "size_contract": "nightly_only"
     },
     {
@@ -2026,22 +2016,6 @@
       "reason": "Builds the sixty-member Panel and rematerializes its closure around a missing daily observation."
     },
     {
-      "pattern": "tests/integration/feature_engine/test_feature_extension_materialization.py::test_the_extension_factor_materializes_through_the_real_service*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Builds the external Feature workspace through its real materialization service and verifies published factors."
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs entrant-source requalification through the real daily data governance and Feature boundary."
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_due_raw_and_feature_rechecks_are_both_planned_and_executed*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Setup cold-builds the qualified Data and Feature seed before rechecks until the shared qualified seed is admitted.",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_alpha_cancel_keeps_complete_children_and_explicit_retry_reuses_them*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: setup cold-builds research input and Alpha prerequisites before cancellation until the shared Alpha seed is admitted.",
@@ -2051,12 +2025,6 @@
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_hard_process_death_recovers_the_same_task_without_reexecuting_complete_evidence*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold setup builds real Factor inputs before process-death recovery; retain this bound until the shared Factor input seed is available.",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs the complete daily Data and Feature update with candidate exclusion and persisted membership and audit readback.",
       "size_contract": "nightly_only"
     },
     {
@@ -2087,11 +2055,6 @@
       "reason": "Cold setup publishes two real sector experiments before retained evidence verification; retain this bound until a publication consumer seed is available."
     },
     {
-      "pattern": "tests/integration/feature_engine/test_feature_extension_materialization.py::test_installing_the_method_disturbs_no_shipped_identity*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Cold setup builds shipped and extension Feature workspaces before the unchanged identity comparison control."
-    },
-    {
       "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on*",
       "owner": "tests.alternative_evidence_desk",
       "reason": "Real multi-unit preparation and partial-failure recovery: historical 74.255 s; focused node 44.308 s on 2026-11-04, above the 30 s Medium bound.",
@@ -2102,12 +2065,6 @@
       "pattern": "tests/integration/local_application/test_review_completion_and_dispositions.py::test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_reviewed*",
       "owner": "tests.alternative_evidence_desk",
       "reason": "historical maximum 60.995 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_feature_observation_clock.py::test_every_installed_formula_consumes_exactly_what_its_clock_declares*",
-      "owner": "tests.feature_engine",
-      "reason": "historical maximum 84.117 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
@@ -2175,12 +2132,6 @@
       "admitted": "2026-11-03: measured at the Medium boundary; restore Medium when this journey is reduced"
     },
     {
-      "pattern": "tests/integration/feature_engine/test_experiment_authoring.py::test_the_same_document_and_authority_produce_the_same_program_identity*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 77.885 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 310.792 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
@@ -2215,32 +2166,6 @@
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 95.902 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_the_data_stage_opens_the_market_store_once*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 86.770 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_real_update_plan_run_reuse_and_foundation_readback[[]False[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 2534.133 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 3840,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_real_update_plan_run_reuse_and_foundation_readback[[]True[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 85.865 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
       "owner": "tests.workspace_readiness",
       "reason": "Runs first-use preparation with an incomplete qualified baseline and checks its offered next step.",
@@ -2265,27 +2190,6 @@
       "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
       "size_contract": "nightly_only",
       "admitted": "2026-11-16: 11 passes at most 51.8 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_published_update_survives_process_death",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 61 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 47.4 s and 1 red at 76 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_partial_membership_update_reopens_its_exact_approved_task[[]True[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 65 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     },
     {
       "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request",
@@ -2349,21 +2253,6 @@
     },
     {
       "budget": "large:tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/feature_engine/test_local_data_update_runs.py::test_published_update_survives_process_death",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_a_partial_membership_update_reopens_its_exact_approved_task[[]True[]]",
       "value": 900,
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
     },

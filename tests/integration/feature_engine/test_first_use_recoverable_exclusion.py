@@ -15,8 +15,10 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import r
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
+    FACTOR_SCALE,
     OBSERVED_AT,
     _source_loader_for,
+    history_start,
 )
 
 
@@ -28,13 +30,12 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
     from alphalattice.kernel.data.calendar import materialize_calendar_schedule
     from tests.researcher_methodology_surface.real_workspace import (
         AS_OF,
-        HISTORY_START,
         SeededWalkProvider,
     )
 
     symbols = tuple(f"F{i:03d}" for i in range(104))
     schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
+        ("XNAS",), start=history_start(FACTOR_SCALE), end=AS_OF, as_of_timestamp=OBSERVED_AT
     )
     provider = SeededWalkProvider(symbols, tuple(v["session_date"] for v in schedule.to_pylist()))
     # Three wide sectors keep every sector above the gateway minimum after one
@@ -44,7 +45,10 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
     missing = symbols[7]
     del provider.sectors[missing]
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider, live.data_source_loader = (
+        provider,
+        _source_loader_for(symbols, FACTOR_SCALE),
+    )
     with live:
         # Four pytest workers share the CPU; the full first-use scope is unchanged.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")

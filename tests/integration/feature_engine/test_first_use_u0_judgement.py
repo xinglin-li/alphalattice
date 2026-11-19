@@ -18,8 +18,10 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
+    FACTOR_SCALE,
     OBSERVED_AT,
     _source_loader_for,
+    history_start,
 )
 from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import RecordingProvider, recording_provider
@@ -27,7 +29,12 @@ from tests.workspace_maintenance.local_data_provider import RecordingProvider, r
 
 class LaggingProvider(RecordingProvider):
     def __init__(self, symbols, *, lag_sessions=1):
-        super().__init__(symbols, recording_provider(now=OBSERVED_AT, symbols=symbols).sessions)
+        super().__init__(
+            symbols,
+            recording_provider(
+                now=OBSERVED_AT, symbols=symbols, start=history_start(FACTOR_SCALE)
+            ).sessions,
+        )
         self.covered = dict.fromkeys(symbols, self.sessions[-lag_sessions - 1])
 
     def fetch_daily(self, requested, *, start, end):
@@ -54,7 +61,6 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
     from alphalattice.kernel.data.calendar import materialize_calendar_schedule
     from tests.researcher_methodology_surface.real_workspace import (
         AS_OF,
-        HISTORY_START,
         SeededWalkProvider,
     )
 
@@ -78,7 +84,7 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
 
     symbols = tuple(f"F{i:03d}" for i in range(104))
     schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
+        ("XNAS",), start=history_start(FACTOR_SCALE), end=AS_OF, as_of_timestamp=OBSERVED_AT
     )
     sessions = tuple(v["session_date"] for v in schedule.to_pylist())
     provider = VolumeShapedProvider(symbols, sessions)
@@ -91,7 +97,10 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
     # A: the last 64 volumes identical at first use.
     provider.volume_overrides[stale_unavailable] = dict.fromkeys(tail, 2_000_000)
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider, live.data_source_loader = (
+        provider,
+        _source_loader_for(symbols, FACTOR_SCALE),
+    )
     market = MarketDataRepository(tmp_path)
     corrected_at: list[str] = []
     original_run = WorkspaceMaintenanceCoordinator.run
@@ -247,7 +256,7 @@ def test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on(tm
     provider.covered.update(dict.fromkeys((*symbols[:2], *symbols[5:8]), AS_OF))
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols)
+    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
     with live:
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
         admitted = _json(
@@ -277,7 +286,10 @@ def test_a_lagging_provider_resumes_its_data_stage_before_any_feature_work(tmp_p
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "00000000-0000-4000-8000-0000000000d1")
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider, live.data_source_loader = (
+        provider,
+        _source_loader_for(symbols, FACTOR_SCALE),
+    )
     with live:
         agent = LocalResearchClient(tmp_path)
         goal = dict(kind="FIRST_USE", title="First use", objective="Build a reviewed book.")

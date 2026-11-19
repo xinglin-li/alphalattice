@@ -90,7 +90,13 @@ from tests.researcher_methodology_surface.real_workspace import SeededWalkProvid
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
 
 
-SESSIONS = tuple(pd.bdate_range("2018-01-02", periods=1_600).date)
+# Four calendar years in about two of sessions: a closed year's reuse reads the year before the
+# open one (2019 beside 2020, which ends in its first quarter), and 2017's last days make the
+# fourth year a rematerialization's three-year base cache evicts.
+SESSIONS = tuple(pd.bdate_range("2017-12-27", "2020-02-03").date)
+"""About two years of business days, through 2020-02-03: 2018 and 2019 closed and 2020 open in its
+first quarter, past the widest formula's 274 observations; fifteen listings and SPY over them stay
+within the development set's 10,000 bars a family."""
 
 
 def extended_formula_layer(

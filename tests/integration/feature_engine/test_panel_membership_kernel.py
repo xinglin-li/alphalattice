@@ -22,6 +22,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelCrossSectionKernel,
     cross_section_policy_hash,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FACTORS = ("factor_a", "factor_b")
 SECTORS = ("Energy", "Health", "Tech")
@@ -95,9 +96,20 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
     retained = (sessions[0], sessions[-1])
     resolver = ArtifactResolver(tmp_path / "artifacts")
     record = clip_observation_record(original)
-    resolver.publish_panel_clip_observation(
-        payload=record.model_dump(mode="json"), receipt_hash=record.receipt_hash
+    payload = record.model_dump(mode="json")
+    published = resolver.publish_panel_clip_observation(
+        payload=payload, receipt_hash=record.receipt_hash
     )
+    # A batch replayed under its receipt republishes the same document; another is refused.
+    assert (
+        resolver.publish_panel_clip_observation(payload=payload, receipt_hash=record.receipt_hash)
+        == published
+    )
+    other = {key: value for key, value in payload.items() if key != "record_hash"}
+    other["transformed_identity"] = "0" * 64  # another transformation under the same receipt
+    other["record_hash"] = canonical_hash(other)
+    with pytest.raises(ValueError, match="receipt was reused"):
+        resolver.publish_panel_clip_observation(payload=other, receipt_hash=record.receipt_hash)
     # The current closure has gained a later entrant. Its earlier recorded
     # union must reproduce the old batch's axis hash, without guessing a roster.
     future = SESSIONS[3]
@@ -451,6 +463,17 @@ def test_current_policy_uses_unchanged_coverage_for_missing_member_rows(missing_
         for item in legacy.availability
         if item["session_date"] == SESSIONS[0].isoformat()
     )
+    # A planted session on which every member's factor_a is the same value: all rows present,
+    # no dispersion, so that factor is unavailable that day by its own reason (an all-undefined
+    # session reads as coverage instead); the other factor is untouched.
+    flat = rows.copy()
+    flat.loc[flat.session_date == SESSIONS[1], "factor_a"] = 0.25
+    planted = kernel.materialize(feature_rows=flat, binding=_binding(current=True), **arguments)
+    assert [
+        (item["factor_id"], item["status"], item["reason"])
+        for item in planted.availability
+        if item["session_date"] == SESSIONS[1].isoformat()
+    ] == [("factor_a", "unavailable", "feature_mad_zero"), ("factor_b", "available", None)]
 
 
 @pytest.mark.parametrize("value", [np.inf, -np.inf])
