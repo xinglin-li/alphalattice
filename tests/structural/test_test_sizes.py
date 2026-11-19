@@ -1392,7 +1392,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         cwd=root,
         env=child_environment(
             PYTHONPATH=str(root / "src"),
-            ALPHALATTICE_TEST_LANE=lane,
+            # the registered node is nightly_only (the person, 11-19): collected in its own lane
+            ALPHALATTICE_TEST_LANE=lane or ("nightly" if registered else ""),
             ALPHALATTICE_PIPELINE_STAGE=post_stage,
         ),
         capture_output=True,
