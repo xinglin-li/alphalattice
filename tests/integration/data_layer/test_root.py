@@ -15,7 +15,13 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.project import lineage, register, uuid7
 from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import SCHEMA_VERSION, THREADS, catalog, duckdb_session
+from alphalattice.kernel.data_layer.root import (
+    SCHEMA_VERSION,
+    THREADS,
+    catalog,
+    duckdb_session,
+    seed_rows,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
 N = 10**9
@@ -241,6 +247,12 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
     assert (len(rows), {row[3:5] for row in rows}) == (119, {(1, 1)})
+    # A row the first log did not record names the count it came in at (first_seed_count), so a
+    # history seeded before it replays without it: the rows naming none are the first log's 106.
+    assert len(seed_rows(historical_count=0)) == 106, "a seed row added later names its first count"
+    # The eleven Alpha development rows came in at 119: a log of 118 replays without them, one of
+    # 119 with them.
+    assert [len(seed_rows(historical_count=n)) for n in (118, 119)] == [108, 119]
     assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]

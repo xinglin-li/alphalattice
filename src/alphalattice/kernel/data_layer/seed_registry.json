@@ -747,6 +747,7 @@
   "metrics": [
     {
       "name": "alpha_development_target",
+      "first_seed_count": 119,
       "unit": "target units",
       "direction": "none",
       "params": {},
@@ -754,6 +755,7 @@
     },
     {
       "name": "alpha_development_economic_return",
+      "first_seed_count": 119,
       "unit": "ratio",
       "direction": "none",
       "params": {},
@@ -761,6 +763,7 @@
     },
     {
       "name": "alpha_development_score",
+      "first_seed_count": 119,
       "unit": "score",
       "direction": "none",
       "params": {},
@@ -768,6 +771,7 @@
     },
     {
       "name": "alpha_mae",
+      "first_seed_count": 119,
       "unit": "target units",
       "direction": "lower",
       "params": {},
@@ -775,6 +779,7 @@
     },
     {
       "name": "alpha_mse",
+      "first_seed_count": 119,
       "unit": "squared target units",
       "direction": "lower",
       "params": {},
@@ -782,6 +787,7 @@
     },
     {
       "name": "alpha_zero_relative_oos_r2",
+      "first_seed_count": 119,
       "unit": "ratio",
       "direction": "higher",
       "params": {},
@@ -789,6 +795,7 @@
     },
     {
       "name": "alpha_gross_decile_spread",
+      "first_seed_count": 119,
       "unit": "target units",
       "direction": "higher",
       "params": {},
@@ -796,6 +803,7 @@
     },
     {
       "name": "alpha_formation_decile_turnover",
+      "first_seed_count": 119,
       "unit": "ratio",
       "direction": "lower",
       "params": {},
@@ -803,6 +811,7 @@
     },
     {
       "name": "alpha_fold_mse_std",
+      "first_seed_count": 119,
       "unit": "squared target units",
       "direction": "lower",
       "params": {},
@@ -909,6 +918,7 @@
   "artifact_types": [
     {
       "name": "alpha_development_chunk",
+      "first_seed_count": 119,
       "storage": "table",
       "table": "results.breakdown",
       "measures": [
@@ -921,6 +931,7 @@
     },
     {
       "name": "alpha_development_summary",
+      "first_seed_count": 119,
       "storage": "none",
       "table": null,
       "measures": [
