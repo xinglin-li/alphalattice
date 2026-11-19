@@ -407,6 +407,19 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
         return {"operation": "ACTIVITY_LIST", "limit": 200}
     if "update_task_id" in reasons:
         return {"operation": "TASKS"}
+    if "task_id" in reasons and request.get("operation") == "DATA_UPDATE_READBACK":
+        return {"operation": "TASKS"}
+    if set(reasons) == {"input_binding_hash"} and request.get("operation") == "EXPERIMENT_PLAN":
+        return {"operation": "RESEARCH_INPUTS"}
+    if set(reasons) == {"input_binding_hash"} and request.get("operation") == "EXPERIMENT_CONTROLS":
+        return {
+            "operation": "EXPERIMENT_CONTROLS",
+            **{
+                key: request[key]
+                for key in ("research_input_id", "experiment_kind")
+                if key in request
+            },
+        }
     if (
         request.get("operation") in {"TASK_RECOVERY", "RECOVER"}
         or request.get("recovery_task_id")

@@ -572,6 +572,11 @@
   "detail": "The Host failed on this request in a way it did not expect (`{subject}`; the same fingerprint means the same cause), and nothing it would have written was kept. Send the request once more; if it fails with the same fingerprint, report the request and the fingerprint, and go on with other work.",
   "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_FINGERPRINT"
  },
+ "model_training.component_selection_invalid": {
+  "message_id": "model_training.component_selection_invalid",
+  "detail": "The requested component is not installed for model training. Read the research strategy controls and use the training request for your intended component.",
+  "next_action": "RESEARCH_STRATEGY_CONTROLS"
+ },
  "model_training.preview_required": {
   "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the training inputs again (`training plan`) from the same input and component, then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_TRAINING_INPUTS_AGAIN"

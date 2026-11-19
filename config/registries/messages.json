@@ -520,6 +520,15 @@
         "zh-CN": "特征文档无效。读取提供的控制项或输入，修正无效字段后重新规划；保留你的研究选择。"
       }
     },
+    "model_training.component_selection_invalid": {
+      "owner": "alphalattice.control.product_host",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "The requested component is not installed for model training. Read the research strategy controls and use the training request for your intended component.",
+        "zh-CN": "请求的组件未安装，无法用于模型训练。请查看研究策略控制项，并使用与所需组件对应的训练请求。"
+      }
+    },
     "strategy.plan.declaration_invalid": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",

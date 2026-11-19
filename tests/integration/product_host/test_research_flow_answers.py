@@ -1023,7 +1023,7 @@ def test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on()
     assert unavailable and unavailable["next_action"] == "START_THE_WINDOW_AFTER_THE_LOOKBACK"
 
 
-def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, monkeypatch):
+def _check_book_support_refusal(live, monkeypatch):
     "A support refusal is worded with its cause and the book's way on."
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.control.product_host.composition.task_recovery import stop_detail
@@ -1063,6 +1063,72 @@ def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, m
     assert way["next_requests"]["portfolio_draft"]["task_id"] == "alpha-1" and asked == [task]
     host._stopped_way(task, "research_experiment.execution_binding_changed", "BLOCKED")
     assert asked == [task]
+
+
+@pytest.mark.parametrize(
+    ("operation", "binding", "expect_strategy_controls"),
+    [
+        (None, None, False),
+        ("MODEL_TRAINING_INPUT_PLAN", None, True),
+        ("EXPERIMENT_CONTROLS", "b" * 64, True),
+        ("EXPERIMENT_CONTROLS", "f" * 64, False),
+    ],
+    ids=("book-support", "training-component", "risk-known-binding", "risk-unknown-binding"),
+)
+def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(
+    live, monkeypatch, operation, binding, expect_strategy_controls
+) -> None:
+    """A research refusal keeps its reason and offers the read that can repair it."""
+    if operation is None:
+        _check_book_support_refusal(live, monkeypatch)
+        return
+
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceExperimentInput,
+        publish_research_workspace_manifest,
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_problem
+    from alphalattice.interface.local_application.failure_codes import owner_failure_code
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    host = live.operations
+    assert host is not None
+    manifest = host.workspace_manifest.with_bindings(
+        experiment_inputs=(
+            ResearchWorkspaceExperimentInput(input_id="selected", binding_hash="b" * 64),
+        )
+    )
+    publish_research_workspace_manifest(live.workspace, manifest)
+    host._hold(manifest)
+    if operation == "MODEL_TRAINING_INPUT_PLAN":
+        request = PortfolioResearchOperationRequest(
+            operation=operation, research_input_id="selected", component_id="UNKNOWN_COMPONENT"
+        )
+        failure_code = "model_training.component_selection_invalid"
+    else:
+        request = PortfolioResearchOperationRequest(
+            operation=operation,
+            research_input_id="unknown",
+            experiment_kind="risk.covariance-development",
+            input_binding_hash=binding,
+        )
+        failure_code = "research_experiment.input_not_admitted"
+    try:
+        answer = host.execute(request)
+    except ValueError as error:
+        answer = {"failure_code": owner_failure_code(error), "status": "REFUSED"}
+    assert answer["failure_code"] == failure_code
+    offers = answer.get("next_requests") or {}
+    if expect_strategy_controls:
+        assert offers.get("valid_values") == {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+        assert refusal_problem(answer) is None
+        controls = host.execute(PortfolioResearchOperationRequest(**offers["valid_values"]))
+        assert controls.get("status") == "AVAILABLE"
+    else:
+        assert offers["inputs"] == {"operation": "RESEARCH_INPUTS"}
+        assert "valid_values" not in offers
 
 
 def test_prepared_training_inputs_offer_their_components_study(tmp_path):

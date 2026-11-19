@@ -1624,6 +1624,18 @@ class PortfolioResearchOperations:
                     "research_experiment.input_not_admitted",
                     "research_experiment.input_selection_required",
                 }:
+                    offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
+                    if (
+                        code == "research_experiment.input_not_admitted"
+                        and request.operation == "EXPERIMENT_CONTROLS"
+                        and request.experiment_kind == "risk.covariance-development"
+                    ):
+                        inputs = self.workspace_manifest.experiment_inputs or ()
+                        if (
+                            len(inputs) == 1
+                            and inputs[0].binding_hash == request.input_binding_hash
+                        ):
+                            offers["valid_values"] = {"operation": "RESEARCH_STRATEGY_CONTROLS"}
                     return {
                         "status": "REFUSED",
                         "failure_code": code,
@@ -1637,7 +1649,7 @@ class PortfolioResearchOperations:
                             "prepare the workspace first if none exists."
                         ),
                         "next_action": "RESEARCH_INPUTS",
-                        "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
+                        "next_requests": offers,
                     }
                 located = getattr(error, "document_location", None)
                 return {
@@ -2873,16 +2885,27 @@ class PortfolioResearchOperations:
                 return self._strategy(request, caller=caller)
             case "MODEL_TRAINING_INPUT_PLAN":
                 assert request.research_input_id is not None and request.component_id is not None
-                return self.model_training_inputs.plan(
-                    request.research_input_id,
-                    request.input_binding_hash,
-                    request.component_id,
-                    **(
-                        {"model_lifecycle": request.model_lifecycle}
-                        if request.model_lifecycle
-                        else {}
-                    ),
-                )
+                try:
+                    return self.model_training_inputs.plan(
+                        request.research_input_id,
+                        request.input_binding_hash,
+                        request.component_id,
+                        **(
+                            {"model_lifecycle": request.model_lifecycle}
+                            if request.model_lifecycle
+                            else {}
+                        ),
+                    )
+                except ValueError as error:
+                    code = owner_failure_code(error)
+                    if code != "model_training.component_selection_invalid":
+                        raise
+                    return {
+                        **refused(code),
+                        "next_requests": {
+                            "valid_values": {"operation": "RESEARCH_STRATEGY_CONTROLS"},
+                        },
+                    }
             case "MODEL_TRAINING_INPUT_PREPARE":
                 return self._training_input(request, caller=caller)
             case "MODEL_TRAINING_INPUT_READBACK":
