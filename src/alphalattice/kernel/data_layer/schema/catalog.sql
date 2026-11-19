@@ -10,7 +10,7 @@
 -- for its recording time and the snapshot it names.
 -- (3) the log event `admission.committed`, naming the snapshot. A crash leaves at most one gap, and start-up closes
 -- it from the catalog alone: a snapshot whose commit info names an event the log lacks gets that event; files no
--- snapshot names are collected. Checked on DuckDB 1.5.5: lake.snapshots() returns commit_extra_info.
+-- snapshot names are collected. Each snapshot's commit_extra_info is in the catalog's ducklake_snapshot_changes.
 --
 -- DuckLake enforces no keys: each table's key is stated here and kept by the Host.
 -- Idle maintenance, bounded and cancellable: ducklake_flush_inlined_data, ducklake_merge_adjacent_files (small files
@@ -19,6 +19,11 @@ CALL lake.set_option('parquet_compression', 'zstd');
 CREATE SCHEMA IF NOT EXISTS world;
 CREATE SCHEMA IF NOT EXISTS derived;
 CREATE SCHEMA IF NOT EXISTS results;
+-- Results and derived rows are never inlined: each read and key check scans an inlined table's every row, and an
+-- inlined commit costs more per table, while a file per write is pruned by its artifact_id or input_digest range.
+-- World's small daily batches stay inlined (the ATTACH's 1000).
+CALL lake.set_option('data_inlining_row_limit', 0, schema => 'results');
+CALL lake.set_option('data_inlining_row_limit', 0, schema => 'derived');
 
 -- ===== world: what the outside world said, and when we knew it =====
 -- Append-only and bitemporal. Every table has its valid-time key and these five columns:

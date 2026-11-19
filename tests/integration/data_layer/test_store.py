@@ -28,6 +28,7 @@ from alphalattice.kernel.data_layer.log import HostLog, envelope
 from alphalattice.kernel.data_layer.store import (
     RESULTS_KEYS,
     WORLD_KEYS,
+    Derivation,
     StorePort,
     as_columns,
     delete,
@@ -762,14 +763,39 @@ def test_a_derived_partition_is_written_once_and_valid_only_for_its_inputs(root)
             with pytest.raises(DataError) as error:
                 port.derive(table, rows, recipe_key="r1", parts=named, compute_ms=1)
             refused.append(error.value.failure.code)
+
+        def risk(digest: str, recipe: str = "r1") -> list[Derivation]:
+            """A Risk stage's two tables on one day under `digest`, derived as one snapshot."""
+            day = pa.table({"part": ["2024-01-05"], "input_digest": [digest]})
+            row = {"recipe_key": "r1", "input_digest": digest, "as_of": "2024-01-05", "value": 0.1}
+            cov, specific = {"factor_i": "m", "factor_j": "m"}, {"listing_id": LISTING}
+            return [
+                Derivation("factor_cov", arrow([row | cov]), "r1", day, 1),
+                Derivation("specific_risk", arrow([row | specific]), recipe, day, 1),
+            ]
+
+        snapshots = "SELECT count(*) FROM lake.snapshots()"
+        before = port.lake.execute(snapshots).fetchall()[0][0]
+        batched = [port.derive_set(risk("k1"), rooted_by="w3"), port.derive_set(risk("k1"))]
+        taken = port.lake.execute(snapshots).fetchall()[0][0] - before
+        with pytest.raises(DataError) as error:  # k2's second names another recipe: none written
+            port.derive_set(risk("k2", recipe="r2"))
+        refused.append(error.value.failure.code)
+        risk_held = port.lake.execute(
+            "SELECT (SELECT count(*) FROM lake.derived.factor_cov),"
+            " (SELECT count(*) FROM lake.derived.specific_risk)"
+        ).fetchall()[0]
+        risk_rooted = log.read("SELECT count(*) FROM cache_root WHERE workspace_id = 'w3'")
         owed = repair(log, port.lake)  # a derived commit owes no event
         port.close()
+    assert batched == [[1, 1], [0, 0]] and taken == 1 and risk_held == (1, 1)
+    assert risk_rooted[0][0] == 2  # both tables' partitions, rooted together
     assert written == [4, 0, 2, 2, 4] and (dropped, collected) == (4, 6) and owed == []
     assert [tuple(row) for row in rooted] == [("w1", "d2")]  # derive rooted it under the writer
     assert held == (6, 0, 2, 4, "VARCHAR")  # d2's 2024 and d1's rooted 2023 alone
     assert hits == [False, True, True, False]  # the rooted inputs, its table alone
     mixed = ["data_layer.derived_rows_mixed"] * 2
-    assert refused == ["data_layer.derived_table_not_admitted", *mixed]
+    assert refused == ["data_layer.derived_table_not_admitted", *mixed, mixed[0]]
 
 
 @pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
@@ -784,7 +810,7 @@ def test_maintenance_keeps_an_owed_event_s_snapshot_then_frees_a_collected_parti
         derive(factors("d1", "momentum"), parts=parts("d1"))
         derive(factors("d2", "momentum"), parts=parts("d2"))
         files = partial(lambda: sum(f.stat().st_size for f in (root / "data").rglob("*.parquet")))
-        held = port.maintain(later)  # writes the inlined rows to files
+        held = port.maintain(later)  # merges the two derived files into one
         before = files()
         log.rooted("w1", FEATURES, roots(parts("d2")), exactly=True)
         port.collect(FEATURES)  # d1's file no longer read
@@ -795,7 +821,7 @@ def test_maintenance_keeps_an_owed_event_s_snapshot_then_frees_a_collected_parti
             f"SELECT count(*), any_value(input_digest) FROM lake.derived.{FEATURES}"
         ).fetchone()
         port.close()
-    assert held["expired"] > 0 and (held["deleted"], repaired) == (0, [owed])  # the DDL's alone
+    assert held["expired"] > 0 and (held["deleted"], repaired) == (2, [owed])  # the merged two
     assert freed["expired"] > 0 and freed["deleted"] > 0 and after < before
     assert read == (4, "d2")
 
@@ -1166,7 +1192,7 @@ def test_one_fact_is_one_version_however_it_is_staged(
                 admission = second.admission_id
                 if expected[3] or table == "corporate_action":  # retry after its owed event
 
-                    def failing(log, lake):
+                    def failing(*_):
                         monkeypatch.setattr(storeport, "repair", repair)
                         raise OSError("the repair failed")
 
