@@ -118,6 +118,7 @@ from tests.researcher_methodology_surface.factor_evidence_support import (
     DEVELOPMENT_REDUNDANCY_POLICY,
 )
 from tests.researcher_methodology_surface.real_workspace import (
+    FACTOR_SCALE,
     MARKET_PROFILE_ID,
     RealRiskWorkspace,
     publish_causal_outcomes,
@@ -208,15 +209,19 @@ class ExternalFactorRun:
 
 @pytest.fixture(scope="module")
 def external_outcomes(
-    external_factor_workspace: RealRiskWorkspace, outcome_catalog_root: Path
+    tmp_path_factory: pytest.TempPathFactory, outcome_catalog_root: Path
 ) -> RealRiskWorkspace:
     """The external workspace with the causal outcomes a Factor program reads, published once.
+    Its walk is FACTOR_SCALE's: the program runs the walk-forward policy, which needs it.
 
     Every test that runs a Factor program here names this rather than counting on another
     test to have published them first: a scheduler that starts the longest work first
     can run such a test first on its worker, where nothing published them.
     """
 
+    external_factor_workspace = build_external_factor_workspace(
+        tmp_path_factory.mktemp("external-factor-scale"), fresh=False, standard=FACTOR_SCALE
+    )
     publish_causal_outcomes(external_factor_workspace, at=_PUBLISHED_AT)
     return external_factor_workspace
 

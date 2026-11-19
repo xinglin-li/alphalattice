@@ -69,6 +69,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import (
+    factor_scale_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
 from tests.researcher_methodology_surface.factor_evidence_support import (
@@ -82,6 +85,13 @@ from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     publish_causal_outcomes,
 )
+
+
+@pytest.fixture(scope="session")
+def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    """FACTOR_SCALE's walk: these Factor studies run the walk-forward policy."""
+    return factor_scale_workspace(tmp_path_factory)
+
 
 CASE_ROOT = Path(__file__).resolve().parents[3] / "tests/researcher_methodology_surface"
 PLAYPEN_ROOT = CASE_ROOT.parents[1]

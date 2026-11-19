@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from alphalattice.foundation.market_data_ops.sources.universe import ResearchWhitelistStandard
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
-    HISTORY_START,
     OBSERVED_AT,
     SeededWalkProvider,
+    history_start,
 )
 
 
@@ -18,14 +20,16 @@ def unexplained_move(
     listings: int = 1,
     sessions: int = 1,
     sector_size: int = 5,
+    standard: ResearchWhitelistStandard = development_universe.STANDARD,
 ) -> tuple[SeededWalkProvider, tuple[str, ...]]:
     """A `count`-listing provider whose first `listings` listings each double their close on
     `sessions` sessions a week apart, with no event that explains them; a larger `sector_size`
-    leaves room to set one aside above the five-name sector floor."""
+    leaves room to set one aside above the five-name sector floor; its walk covers `standard`'s
+    history."""
     symbols = tuple(f"F{i:03d}" for i in range(count))
     schedule = materialize_calendar_schedule(
         ("XNAS",),
-        start=HISTORY_START,
+        start=history_start(standard),
         end=AS_OF,
         as_of_timestamp=OBSERVED_AT,
     )

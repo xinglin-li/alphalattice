@@ -238,8 +238,8 @@ def test_risk_recovery_reuses_verified_chunks_and_refuses_a_tampered_prefix(
     from alphalattice.investment.risk_research.experiments.observation import ObservingAdapter
 
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))
-    document["experiment"]["sessions"]["end"] = "2024-03-15"
-    document["experiment"]["sessions"]["as_of"]["session"] = "2024-03-20"
+    document["experiment"]["sessions"]["end"] = "2026-03-13"
+    document["experiment"]["sessions"]["as_of"]["session"] = "2026-03-18"
     workflow = _workflow(real_risk_workspace, tmp_path)
     arguments = {"actor_kind": ActorKind.HUMAN, "actor_id": "researcher"}
     calls = []

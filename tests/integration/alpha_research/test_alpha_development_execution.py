@@ -113,6 +113,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import (
+    factor_scale_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
 from tests.researcher_methodology_surface.alpha_development_support import (
@@ -125,6 +128,12 @@ from tests.researcher_methodology_surface.alpha_development_support import (
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
 )
+
+
+@pytest.fixture(scope="session")
+def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    """FACTOR_SCALE's walk: its Alpha studies read walk-forward Factor evidence."""
+    return factor_scale_workspace(tmp_path_factory)
 
 
 def test_shared_score_rows_bind_positions_availability_and_unique_cells():

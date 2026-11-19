@@ -17,12 +17,14 @@ from alphalattice.kernel.data_layer.history import carry_arrays
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
-    HISTORY_START,
+    FACTOR_SCALE,
     OBSERVED_AT,
+    READINESS_STANDARD,
     READINESS_UNIVERSE,
     SeededWalkProvider,
     _source_loader_for,
     build_real_risk_workspace,
+    history_start,
     publish_causal_outcomes,
 )
 
@@ -32,11 +34,12 @@ def fresh_prepared(tmp_path_factory):
     root = tmp_path_factory.mktemp("first-use")
     symbols = tuple(f"F{i:03d}" for i in range(120))
     schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
+        ("XNAS",), start=history_start(FACTOR_SCALE), end=AS_OF, as_of_timestamp=OBSERVED_AT
     )
     provider = SeededWalkProvider(symbols, tuple(v["session_date"] for v in schedule.to_pylist()))
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider = provider
+    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
     with live:
         # Bound execution width for the four-worker run, not its data or checks.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
@@ -153,7 +156,10 @@ def prepared(tmp_path_factory):
     """
     symbols, sector_size = READINESS_UNIVERSE
     data = build_real_risk_workspace(
-        tmp_path_factory.mktemp("prepared-input"), symbols=symbols, sector_size=sector_size
+        tmp_path_factory.mktemp("prepared-input"),
+        symbols=symbols,
+        sector_size=sector_size,
+        standard=READINESS_STANDARD,
     )
     root = data.workspace
     publish_research_workspace_manifest(root, ResearchWorkspaceManifest.research_only("prepared"))

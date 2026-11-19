@@ -262,7 +262,9 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
     first = _publish(workspace, hours=0)
     assert first.receipt.action == "PUBLISHED"
     snapshot_hash = first.manifest.snapshot_hash
-    assert first.manifest.development_chunks[0].first_formation_session > HISTORY_START
+    # An action dated before the walk's first session, so before every formation.
+    before = HISTORY_START - timedelta(days=1)
+    assert first.manifest.development_chunks[0].first_formation_session > before
 
     store = MarketDataRepository(workspace.workspace)
     listing = workspace.manifest.listings[0]
@@ -273,7 +275,7 @@ def test_a_re_derived_snapshot_keeps_its_one_seal_and_reuses_exactly_afterwards(
             CorporateActionEvent(
                 listing.listing_id,
                 workspace.manifest.profile.provider,
-                HISTORY_START,
+                before,
                 "CASH_DIVIDEND",
                 cash_amount=0.25,
             ),

@@ -5,13 +5,13 @@ experiment:
   data_snapshot_handle: current
   universe_handle: us-current-index-research
   sessions:
-    start: 2024-02-01
-    end: 2024-03-01
+    start: 2026-01-29
+    end: 2026-02-27
     # A decision event, not a date: a daily Feature for session T exists
     # only after close(T), so an unstated phase is refused rather than
     # assumed closed.
     as_of:
-      session: 2024-03-15
+      session: 2026-03-13
       phase: OFFICIAL_CLOSE
   budget:
     maximum_candidates: 8

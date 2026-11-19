@@ -39,6 +39,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
 from tests.researcher_methodology_surface.real_workspace import (
+    FACTOR_SCALE,
     OBSERVED_AT,
     _source_loader_for,
 )
@@ -461,7 +462,8 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
-    provider, symbols = unexplained_move()
+    # Its preparation runs a Factor study, whose walk-forward policy needs FACTOR_SCALE's history.
+    provider, symbols = unexplained_move(standard=FACTOR_SCALE)
     calls = []
     for name in ("fetch_daily", "fetch_action_history", "fetch_adjusted_close_history"):
         original = getattr(provider, name)
@@ -474,7 +476,7 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     root = tmp_path / "delegated"
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols)
+    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
     with live:
         registry, app = live.session.task_control_registry, live.operations.preparation
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})

@@ -69,6 +69,9 @@ from alphalattice.investment.sector_research.targets.execution import (
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind
 from tests._support.researcher_methodology_session_fixtures import (
+    factor_scale_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
 from tests.researcher_methodology_surface.real_workspace import (
@@ -76,6 +79,13 @@ from tests.researcher_methodology_surface.real_workspace import (
     _sector_revision,
     publish_causal_outcomes,
 )
+
+
+@pytest.fixture(scope="session")
+def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    """FACTOR_SCALE's walk: the campaign forecasts past its slowest method's warm-up."""
+    return factor_scale_workspace(tmp_path_factory)
+
 
 # --------------------------------------------------------------------- helpers
 

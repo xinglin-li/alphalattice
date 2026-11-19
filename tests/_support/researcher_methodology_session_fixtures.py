@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 from alphalattice.kernel.data_layer import history
+from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
+    FACTOR_SCALE,
     RealRiskWorkspace,
     build_real_risk_workspace,
     development_feature_catalog,
@@ -97,7 +99,18 @@ def external_factor_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealR
     return build_external_factor_workspace(tmp_path_factory.mktemp("external-factor"), fresh=False)
 
 
-def build_external_factor_workspace(root: Path, *, fresh: bool) -> RealRiskWorkspace:
+def factor_scale_workspace(factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    """The shared workspace's walk at FACTOR_SCALE. A module whose studies run the walk-forward
+    policy, which needs that history, overrides ``real_risk_workspace`` with it."""
+
+    return build_real_risk_workspace(
+        factory.mktemp("factor-scale-workspace"), factory=factory, standard=FACTOR_SCALE
+    )
+
+
+def build_external_factor_workspace(
+    root: Path, *, fresh: bool, standard=development_universe.STANDARD
+) -> RealRiskWorkspace:
     """The outside method's catalog revision and kernel registry, installed together."""
 
     from tests.researcher_methodology_surface.external_factor_method import (
@@ -110,6 +123,7 @@ def build_external_factor_workspace(root: Path, *, fresh: bool) -> RealRiskWorks
         feature_catalog=external_feature_catalog(),
         feature_kernels=external_kernel_registry(),
         fresh=fresh,
+        standard=standard,
     )
 
 
