@@ -560,7 +560,9 @@ class Explorer:
         if baseline is not None:
             variants = [("duplicate", request, "same admission")]
         elif kinds is None and variants:
-            state = re.sub(r"\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b", "<id>", where)
+            # Content refs differ per build, so the probed mistake is keyed on the state with
+            # every id and ref normalized, as mistake_key reads a finding's state.
+            state = re.sub(r"[0-9a-f-]{32,}", "<ref>", where)
             key = f"{self.scenario.id}|{state}|{operation}|{','.join(sorted(required))}"
             index = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(variants)
             variants = [variants[index]]
