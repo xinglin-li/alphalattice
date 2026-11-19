@@ -29,6 +29,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.root import (
     catalog_matches,
+    configure_read_cache,
     duckdb_session,
     schema_text,
     sql_path,
@@ -54,6 +55,7 @@ def reading_session(root: Path, *, log: bool = True) -> Any | None:
         return None
     machine = root / "machine"
     try:
+        configure_read_cache(connection)
         connection.execute("SET TimeZone = 'UTC'").complete()
         if log:
             path = sql_path(machine / "log.sqlite")

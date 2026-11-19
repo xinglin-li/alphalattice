@@ -24,6 +24,7 @@ from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
+from alphalattice.kernel.data_layer.governance import COPYING
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
 from alphalattice.kernel.data_layer.root import (
     FOLDERS,
@@ -393,54 +394,59 @@ def _files(root: Path, machine: Path) -> list[dict[str, Any]]:
 
 
 def backup_data_root(root: Path, repository: Path) -> Path:
-    """Snapshot index, log, catalog and admitted files; return the published generation."""
-    root, repository = root.resolve(), repository.resolve()
-    if repository.is_relative_to(root):
-        raise _refuse(
-            "backup_overlaps_root",
-            f"{repository} is inside {root}; choose an external backup repository",
-        )
-    catalog(root)  # a backup is a use of the catalog, which a root makes at its first use
-    generations, pool = repository / "generations", repository / "files"
-    name = uuid.uuid4().hex
-    partial, generation = generations / ("." + name + ".partial"), generations / name
-    try:
-        _real(generations).mkdir(parents=True, exist_ok=True)
-        for folder in ("data", "blobs"):
-            _real(pool / folder).mkdir(parents=True, exist_ok=True)
-        (partial / "machine").mkdir(parents=True)
-        for database in DATABASES:
-            _snapshot(root / "machine" / database, partial / "machine" / database)
-        head = _head(partial / "machine/log.sqlite")
-        _consistent(partial / "machine")
-        files = _files(root, partial / "machine")
-        with closing(
-            sqlite3.connect(sqlite_read_only_uri(partial / "machine/log.sqlite"), uri=True)
-        ) as saved_log:
-            copied = copy_files(
-                root, pool, files, read=lambda sql, args: saved_log.execute(sql, args).fetchall()
+    """Snapshot index, log, catalog and admitted files; return the published generation. No
+    collection removes a body the snapshot names while it copies (governance.COPYING)."""
+    with COPYING:
+        root, repository = root.resolve(), repository.resolve()
+        if repository.is_relative_to(root):
+            raise _refuse(
+                "backup_overlaps_root",
+                f"{repository} is inside {root}; choose an external backup repository",
             )
-        manifest = dict(
-            version=2,
-            databases=list(DATABASES),
-            head=head,
-            created_at=datetime.now(UTC).isoformat(),
-            copied_files=list(copied),
-            files=files,
-        )
-        (partial / "manifest.json").write_text(
-            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-        )
-        os.rename(partial, generation)
-        return generation
-    except (OSError, sqlite3.Error) as error:
-        raise _refuse(
-            "backup_unreadable",
-            f"machine backup of {root} could not copy {error}; restore access and retry",
-        ) from error
-    finally:
-        if partial.exists():
-            shutil.rmtree(partial)
+        catalog(root)  # a backup is a use of the catalog, which a root makes at its first use
+        generations, pool = repository / "generations", repository / "files"
+        name = uuid.uuid4().hex
+        partial, generation = generations / ("." + name + ".partial"), generations / name
+        try:
+            _real(generations).mkdir(parents=True, exist_ok=True)
+            for folder in ("data", "blobs"):
+                _real(pool / folder).mkdir(parents=True, exist_ok=True)
+            (partial / "machine").mkdir(parents=True)
+            for database in DATABASES:
+                _snapshot(root / "machine" / database, partial / "machine" / database)
+            head = _head(partial / "machine/log.sqlite")
+            _consistent(partial / "machine")
+            files = _files(root, partial / "machine")
+            with closing(
+                sqlite3.connect(sqlite_read_only_uri(partial / "machine/log.sqlite"), uri=True)
+            ) as saved_log:
+                copied = copy_files(
+                    root,
+                    pool,
+                    files,
+                    read=lambda sql, args: saved_log.execute(sql, args).fetchall(),
+                )
+            manifest = dict(
+                version=2,
+                databases=list(DATABASES),
+                head=head,
+                created_at=datetime.now(UTC).isoformat(),
+                copied_files=list(copied),
+                files=files,
+            )
+            (partial / "manifest.json").write_text(
+                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            )
+            os.rename(partial, generation)
+            return generation
+        except (OSError, sqlite3.Error) as error:
+            raise _refuse(
+                "backup_unreadable",
+                f"machine backup of {root} could not copy {error}; restore access and retry",
+            ) from error
+        finally:
+            if partial.exists():
+                shutil.rmtree(partial)
 
 
 def _relocate_catalog(catalog: Path, data: Path) -> None:

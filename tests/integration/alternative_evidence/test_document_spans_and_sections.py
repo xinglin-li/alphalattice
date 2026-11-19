@@ -28,6 +28,7 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
 )
 from alphalattice.evidence.alternative_evidence.sources.contracts import AcquiredEvidenceDocument
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.alternative_evidence_desk import development_documents as development
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _open_recorded,
 )
@@ -948,7 +949,8 @@ def test_a_malformed_character_range_refuses() -> None:
             )
 
 
-def test_document_quality_rejects_empty_and_duplicate_revisions() -> None:
+@pytest.mark.proves("alternative_evidence.recorded_documents_are_admitted_in_every_language")
+def test_document_quality_admits_every_language_and_rejects_empty_and_duplicate_revisions() -> None:
     def source(handle: str, content: bytes, *, revision: str) -> AcquiredEvidenceDocument:
         return AcquiredEvidenceDocument(
             semantic_handle=handle,
@@ -989,6 +991,18 @@ def test_document_quality_rejects_empty_and_duplicate_revisions() -> None:
         DocumentRejectionCode.EMPTY,
         DocumentRejectionCode.INVALID_ENCODING,
     )
+
+    # The development set: both languages admitted alike, a revision beside its original, and a
+    # retired document admitted only while its source still offers it.
+    for at, count in ((development.RETIRED_AT - timedelta(days=1), 21), (development.NOW, 20)):
+        admitted, rejected = canonicalize_source_documents(development.acquired(at))
+        labels = {value.revision for value in admitted}
+        assert not rejected and len(admitted) == count, rejected
+        assert {"aapl-en-03", development.REVISED.revision} <= labels
+        assert sum("-zh-" in label for label in labels) == (
+            10 if at < development.RETIRED_AT else 9
+        )
+        assert (development.RETIRED.revision in labels) == (at < development.RETIRED_AT)
 
 
 def _sec_source(handle: str, revision: str, content: bytes, *, document_type: str) -> Any:

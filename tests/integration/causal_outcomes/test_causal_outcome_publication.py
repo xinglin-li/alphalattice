@@ -48,6 +48,9 @@ from tests.researcher_methodology_surface.real_workspace import (
 
 
 def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, monkeypatch):
+    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
+        PanelClosureArtifactStore,
+    )
     from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
     from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
     from alphalattice.investment.risk_research.surfaces.returns import (
@@ -64,6 +67,7 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
         profile=SimpleNamespace(market_profile_id="fixture", daily_price_basis="split_adjusted"),
     )
     reads = []
+    missing_sessions = set()
 
     def bars(listing, *, start, through, **_kwargs):
         assert listing == "A"  # B's unrelated unavailable history must never be read.
@@ -81,6 +85,7 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
                 volume=1000,
             )
             for i, day in enumerate(scope)
+            if day not in missing_sessions
         )
 
     market = SimpleNamespace(
@@ -150,6 +155,28 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
                 required_listing_ids=invalid,
             )
     assert len(reads) == 2
+    missing_sessions.add(scope[10])
+    with pytest.raises(RiskReturnSurfaceError, match="return_source_session_missing"):
+        publisher.publish(
+            panel_manifest_ref="fixture",
+            market_profile_id="fixture",
+            required_sessions=scope,
+            required_listing_ids=("A",),
+        )
+    monkeypatch.setattr(
+        PanelClosureArtifactStore,
+        "verified_source_absences",
+        lambda *_: {(scope[10], "A")},
+        raising=False,
+    )
+    # A missing base-feature row is not proof that the listing did not trade.
+    with pytest.raises(RiskReturnSurfaceError, match="return_source_session_missing"):
+        publisher.publish(
+            panel_manifest_ref="fixture",
+            market_profile_id="fixture",
+            required_sessions=scope,
+            required_listing_ids=("A",),
+        )
 
 
 @pytest.fixture

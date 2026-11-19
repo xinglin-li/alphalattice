@@ -46,6 +46,14 @@ class _Contract(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class RiskFormationAxis(_Contract):
+    """The listing axis used for one development formation and its excluded names."""
+
+    formation_session: date
+    ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
+    excluded_listing_ids: tuple[str, ...]
+
+
 class RiskDevelopmentDiagnostics(_Contract):
     """Per-formation evaluations for one development build, any method.
 
@@ -115,6 +123,9 @@ class RiskDevelopmentCheckpoint(_Contract):
     chunks: tuple[HistoricalCovarianceChunk, ...]
     evaluations: tuple[RiskFormationEvaluation, ...]
     component_shrinkages: tuple[tuple[str, tuple[float, ...]], ...] = ()
+    formation_axes: tuple[RiskFormationAxis, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     checkpoint_hash: str = Field(pattern=_HASH)
 
     @classmethod
@@ -138,6 +149,10 @@ class RiskDevelopmentCheckpoint(_Contract):
             or sessions != tuple(e.formation_session for e in self.evaluations)
             or hashes != tuple(e.matrix_hash for e in self.evaluations)
             or any(len(series) != len(sessions) for _, series in self.component_shrinkages)
+            or (
+                self.formation_axes is not None
+                and tuple(axis.formation_session for axis in self.formation_axes) != sessions
+            )
             or self.checkpoint_hash
             != canonical_hash(self.model_dump(mode="json", exclude={"checkpoint_hash"}))
         ):
@@ -186,6 +201,9 @@ class RiskDevelopmentCovarianceSurface(_Contract):
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     chunks: tuple[HistoricalCovarianceChunk, ...] = Field(min_length=1)
+    formation_axes: tuple[RiskFormationAxis, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     diagnostics_hash: str = Field(pattern=_HASH)
     limitations: tuple[str, ...] = Field(min_length=1)
     surface_hash: str = Field(pattern=_HASH)
@@ -217,6 +235,7 @@ class RiskDevelopmentCovarianceSurface(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
+        """Verify the binding, formation axes, chunks and sealed surface identity."""
         # The surface's own method fields must agree with the Program binding it
         # carries. Without this the artifact could describe one method in its
         # envelope and a different one in its binding, and every hash on it would
@@ -229,8 +248,34 @@ class RiskDevelopmentCovarianceSurface(_Contract):
             raise ValueError("risk_research.development_surface_adapter_route_invalid")
         if sum(chunk.matrix_count for chunk in self.chunks) != len(self.formation_sessions):
             raise ValueError("risk_research.development_surface_count_invalid")
-        if any(chunk.asset_count != len(self.ordered_listing_ids) for chunk in self.chunks):
-            raise ValueError("risk_research.development_surface_axis_invalid")
+        if self.formation_axes is None:
+            if any(chunk.asset_count != len(self.ordered_listing_ids) for chunk in self.chunks):
+                raise ValueError("risk_research.development_surface_axis_invalid")
+        else:
+            if (
+                tuple(axis.formation_session for axis in self.formation_axes)
+                != self.formation_sessions
+            ):
+                raise ValueError("risk_research.development_surface_axis_invalid")
+            for axis in self.formation_axes:
+                selected = set(axis.ordered_listing_ids)
+                if (
+                    tuple(item for item in self.ordered_listing_ids if item in selected)
+                    != axis.ordered_listing_ids
+                    or tuple(item for item in self.ordered_listing_ids if item not in selected)
+                    != axis.excluded_listing_ids
+                ):
+                    raise ValueError("risk_research.development_surface_axis_invalid")
+            position = 0
+            for chunk in self.chunks:
+                axes = self.formation_axes[position : position + chunk.matrix_count]
+                if any(
+                    axis.ordered_listing_ids != axes[0].ordered_listing_ids
+                    or len(axis.ordered_listing_ids) != chunk.asset_count
+                    for axis in axes
+                ):
+                    raise ValueError("risk_research.development_surface_axis_invalid")
+                position += chunk.matrix_count
         computed = tuple(session for chunk in self.chunks for session in chunk.formation_sessions)
         # Order, not membership: the covariance axis is positional.
         if computed != tuple(self.formation_sessions):

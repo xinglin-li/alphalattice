@@ -929,15 +929,16 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputExecutionStatus
     from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
     from alphalattice.protocols.actor_execution import ActorKind
-    from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT, _source_loader_for
-    from tests.workspace_readiness.unexplained_move import unexplained_move
+    from tests._support import development_universe as universe
+    from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
-    provider, symbols = unexplained_move(listings=3)
+    # The development universe, three of whose members move with no event that explains them.
+    provider = universe.development_provider(moved=("DVE", "DVJ", "DVK"))
     live = LocalPortfolioWebSession.from_workspace(
         tmp_path / "first-use", clock=lambda: OBSERVED_AT
     )
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols)
+    live.data_source_loader = universe.source_loader
 
     def send(document: dict[str, Any], session: str = SESSION) -> tuple[int, dict[str, Any]]:
         path = tmp_path / f"request-{len(list(tmp_path.glob('request-*')))}.json"
@@ -1038,7 +1039,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             case = issue["case"]
             assert case["case_token"] in material and case["evidence_hash"] in material
             assert all(option["option_id"] in material for option in case["options"])
-        # Three names of 120 move at once, past the rule's 2%: the rule leaves each to the agent.
+        # Three of seventeen names move at once, past the rule's 2%: each is left to the agent.
         assert issues["escalated_by_rule"]["listing_count"] == 3, issues
         escalated = [
             e
@@ -1222,7 +1223,10 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             monkeypatch.setattr(owner, "update_research_workspace_manifest", written)
         live.dispatcher.drain_for_tests(timeout=900)
         continued = registry.task(stopped.task_id)
-        assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
+        # The development universe goes on to the Factor experiment, whose statistical floor of
+        # 100 listings stops it by name; the nightly's 120-listing first use runs on through it.
+        assert continued.lifecycle.value == "BLOCKED", continued.failure_code
+        assert continued.failure_code == "research_experiment.insufficient_listing_support:11<100"
         assert len(answered) == 2  # the experiment input's write, then the data update's
         assert not [body for body in answered if b"configuration_changed_restart" in body]
         assert [t.task_kind for t in registry.tasks()].count("workspace_preparation") == 1

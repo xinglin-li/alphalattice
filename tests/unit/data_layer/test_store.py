@@ -1,16 +1,28 @@
 """What StorePort refuses before it touches a file: a handle outside its folders, a row set it
-cannot admit."""
+cannot admit; and the collector's order against a backup and the catalog."""
 
 from __future__ import annotations
 
+import threading
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from functools import partial
+from types import SimpleNamespace
 
 import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.store import admissible, as_columns, delete, expirable
+from alphalattice.kernel.data_layer import governance
+from alphalattice.kernel.data_layer.store import (
+    admissible,
+    as_columns,
+    collect_unheld,
+    delete,
+    expirable,
+    remove_bodies,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
 
@@ -172,3 +184,89 @@ def test_expiry_takes_old_snapshots_short_of_the_newest_and_an_owed_admission(
     snapshots = [(1, old, None), (2, old, admitted), (3, old, None), (4, young, None)]
     snapshots.append((5, old, None))  # the newest by id, whatever its time
     assert expirable(snapshots, held, NOW) == expired
+
+
+class _Log:
+    """The Host's log as the collector uses it: `found` its unheld bodies and queued handles, the
+    events and deletion queue it is given kept in order."""
+
+    def __init__(self, found=(), queued=()):
+        self.found, self.queued, self.done = list(found), list(queued), []
+
+    def clock(self):
+        return 10**15
+
+    @contextmanager
+    def unit(self):
+        yield None
+
+    def read(self, sql, args=()):
+        return self.queued if "deletion_queue" in sql else self.found
+
+    def record(self, type_, subject, attrs):
+        self.done.append((type_, subject[1]))
+
+    def queue_deletion(self, handle, kind, error):
+        self.done.append(("queued", handle, kind))
+
+    def dequeue_deletion(self, handle):
+        self.done.append(("dequeued", handle))
+
+    def flush(self):
+        self.done.append(("flushed",))
+
+
+class _Lake:
+    """A catalog session that answers its results tables and keeps each statement it runs."""
+
+    def __init__(self):
+        self.ran = []
+
+    def execute(self, sql, args=None):
+        self.ran.append(" ".join(sql.split()[:3]))
+        return SimpleNamespace(
+            fetchall=lambda: [("alpha_score",), ("execution_outcome",)], complete=lambda: None
+        )
+
+    def register(self, name, table):
+        self.ran.append(f"register {table.num_rows}")
+
+    def unregister(self, name):
+        self.ran.append("unregister")
+
+
+@pytest.mark.proves("data_layer.a_backup_copy_excludes_collection")
+def test_a_collection_decides_nothing_while_a_backup_copies(tmp_path):
+    """A collection waits for the lock a backup holds while it copies, and decides its bodies
+    only once the copy lets it go."""
+    log = _Log(found=[("a", "inline")])
+    collect = partial(collect_unheld, tmp_path, log, _Lake(), threading.Lock())
+    with governance.COPYING:  # as backup_data_root holds it while it copies
+        collector = threading.Thread(target=collect)
+        collector.start()
+        collector.join(timeout=0.3)
+        during = list(log.done)
+    collector.join()
+    assert during == []
+    assert log.done == [("artifact.collected", "a"), ("flushed",)]
+
+
+@pytest.mark.proves("data_layer.collected_rows_leave_in_one_catalog_commit")
+def test_collected_rows_leave_every_results_table_in_one_commit_then_the_queue(tmp_path):
+    """The rows of each queued collected artifact leave every results table in one catalog
+    commit, and only then leave the deletion queue."""
+    log = _Log(queued=[("results/x", "rows"), ("results/y", "rows")])
+    lake = _Lake()
+    removed = remove_bodies(tmp_path, log, lake)
+    assert lake.ran == [
+        "SELECT table_name FROM",
+        "register 2",
+        "BEGIN",
+        "CALL lake.set_commit_message('host', 'collect',",
+        "DELETE FROM lake.results.alpha_score",
+        "DELETE FROM lake.results.execution_outcome",
+        "COMMIT",
+        "unregister",
+    ]
+    assert log.done == [("dequeued", "results/x"), ("dequeued", "results/y")]
+    assert removed == {"collected": ["results/x", "results/y"], "waiting": []}

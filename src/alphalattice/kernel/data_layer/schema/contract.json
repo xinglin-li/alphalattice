@@ -992,7 +992,7 @@
    ],
    "id": {
     "artifact_id": "link",
-    "root_kind": "standard: what holds the body: task, book, publication, trial, backup or workspace",
+    "root_kind": "standard: what holds the body: task, book, publication, trial, backup, workspace or pin",
     "root_id": "link"
    },
    "up": "artifact_id",

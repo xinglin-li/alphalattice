@@ -32,7 +32,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
-SCHEMA_VERSION: Final = 11
+SCHEMA_VERSION: Final = 12
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
@@ -212,6 +212,12 @@ def sqlite_read_only_uri(path: PurePath) -> str:
     if isinstance(path, PureWindowsPath):
         path = PureWindowsPath(_without_extended_prefix(path.as_posix()))
     return path.as_uri() + "?mode=ro"
+
+
+def configure_read_cache(connection: Any) -> None:
+    """Keep local Parquet data and its metadata in DuckDB's own caches."""
+    connection.execute("SET parquet_metadata_cache = true").complete()
+    connection.execute("SET cache_local_files = true").complete()
 
 
 def duckdb_session(root: Path) -> Any | None:

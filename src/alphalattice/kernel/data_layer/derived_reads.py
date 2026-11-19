@@ -10,12 +10,18 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.control.workspace_runtime import derived_views, panel_reads
-from alphalattice.kernel.data_layer.root import data_root, load_extensions, sql_path
+from alphalattice.kernel.data_layer.root import (
+    configure_read_cache,
+    data_root,
+    load_extensions,
+    sql_path,
+)
 
 
 def serve(connection: Any, views: Sequence[tuple[str, str]]) -> None:
     """Attach this process's data root's catalog as `lake`, read-only, unless the instance holds
     it already, and make each view a TEMP view of this connection."""
+    configure_read_cache(connection)
     if not connection.execute(
         "SELECT 1 FROM duckdb_databases() WHERE database_name = 'lake'"
     ).fetchall():

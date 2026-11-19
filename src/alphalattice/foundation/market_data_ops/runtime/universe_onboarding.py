@@ -37,7 +37,9 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     sanitize_payload,
 )
 from alphalattice.foundation.market_data_ops.sources.universe import (
+    ORIGINAL_RESEARCH_WHITELIST_STANDARD,
     CurrentUniverseBootstrap,
+    ResearchWhitelistStandard,
     candidate_manifest_document,
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
@@ -162,12 +164,16 @@ class ListingUnitObservation:
 ListingObserver = Callable[[ListingUnitObservation], None]
 
 
-def ten_calendar_year_anniversary(value: date) -> date:
-    """Return the date ten calendar years earlier, clipping leap days to February 28."""
+def history_floor(
+    value: date, standard: ResearchWhitelistStandard = ORIGINAL_RESEARCH_WHITELIST_STANDARD
+) -> date:
+    """The first session `standard` admits history from: its minimum history calendar years
+    before `value` (ten under the original standard), clipping leap days to February 28."""
+    years = standard.minimum_history_calendar_years
     try:
-        return value.replace(year=value.year - 10)
+        return value.replace(year=value.year - years)
     except ValueError:
-        return value.replace(year=value.year - 10, day=28)
+        return value.replace(year=value.year - years, day=28)
 
 
 def _onboarding_id(
@@ -289,7 +295,7 @@ class CurrentUniverseOnboarding:
         if self.hydration_workers < 1 or self.hydration_workers > 8:
             raise ValueError("hydration_workers must be between 1 and 8")
         if self.history_start is None:
-            self.history_start = ten_calendar_year_anniversary(self.as_of_session)
+            self.history_start = history_floor(self.as_of_session, self.bootstrap.standard)
         if self.history_start > self.as_of_session:
             raise ValueError("onboarding history start is after as_of session")
         self.acquisition_manifest = build_current_index_acquisition_manifest(
@@ -637,6 +643,8 @@ class CurrentUniverseOnboarding:
             self.acquisition_manifest,
             eligible_listing_ids=eligible_listing_ids,
             quality_admission_hash=quality_admission_hash,
+            # Another standard's floor carries over by name; the original's has none to carry.
+            qualification_obligations=self.acquisition_manifest.qualification_obligations or None,
         )
         self.store.bind_action_audit_receipts_to_manifest(
             self.acquisition_manifest,

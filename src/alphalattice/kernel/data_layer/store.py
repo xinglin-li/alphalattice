@@ -32,12 +32,14 @@ import sqlite3
 import threading
 from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
 import alphalattice.kernel.data_layer.derived_files as derived_files
+import alphalattice.kernel.data_layer.governance as governance
 from alphalattice.control.workspace_runtime.storage.capacity import (
     FREE_FLOOR_BYTES,
     free_floor_shortfall,
@@ -51,12 +53,16 @@ from alphalattice.kernel.data_layer.root import (
     bound_reads,
     catalog,
     catalog_matches,
+    configure_read_cache,
     load_extensions,
     schema_text,
     sql_path,
     statements,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
+
+if find_spec("pyarrow") is not None:
+    import pyarrow.acero  # noqa: F401  (load the admission grouping engine at process start)
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -246,6 +252,7 @@ class StorePort:
                 "threads": THREADS,
             },
         )
+        configure_read_cache(lake)
         load_extensions(lake)
         bound_reads(lake)
         catalog(root)  # made at the store's first open, not with the root
@@ -551,7 +558,7 @@ class StorePort:
         collect the table. A digest not kept yet is rooted by its keep. The caller marks the
         reads it noted first. The roots dropped, the bodies evicted and collected."""
         _file_table(table)
-        with self._writer:
+        with governance.COPYING, self._writer:
             kept = self.log.read(
                 "SELECT recipe_key, part, input_digest FROM cache_entry WHERE derived_table = ?"
                 " AND input_digest IN (SELECT value FROM json_each(?))",
@@ -569,12 +576,22 @@ class StorePort:
         collected = self.collect(table)
         return {"unrooted": dropped, "evicted": len(evicted), "collected": collected}
 
-    def collect(self, table: str) -> int:
+    def collect(self, table: str | None = None) -> int:
         """Drop a derived table's partitions whose cache entries no workspace roots (the log's
         cache_root), as one catalog snapshot, and those entries: a cache holds no fact, so a
         partition no workspace reads goes. A table held as files (derived_files) drops each such
         partition's body, then its entry; nothing outside the data root is touched. The rows
-        dropped, or for a file table the bodies."""
+        dropped, or for a file table the bodies. With no table, every family: each derived
+        table the log caches, then the artifact bodies no live reference holds (`collect_unheld`),
+        each artifact counted once."""
+        if table is None:
+            cached = self.log.read("SELECT DISTINCT derived_table FROM cache_entry ORDER BY 1")
+            found = sum(self.collect(str(row[0])) for row in cached)
+            return found + len(self.collect_unheld())
+        with governance.COPYING:
+            return self._collect(table)
+
+    def _collect(self, table: str) -> int:
         import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
         if table in derived_files.TABLES:
@@ -630,6 +647,10 @@ class StorePort:
                 self.lake.unregister("collect_parts")
             self.log.collect_cached(table)
         return count
+
+    def collect_unheld(self) -> list[str]:
+        """`collect_unheld` under this StorePort's writer: the artifacts collected."""
+        return collect_unheld(self.root, self.log, self.lake, self._writer)
 
     def _feature_set(self, table: str, target: str) -> None:
         """A feature set's wide table as catalog.sql declares it, made on its first partition and
@@ -1298,6 +1319,9 @@ def start(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
     the catalog does not name.
     """
     report: dict[str, list[str]] = {"repaired": repair(log, lake), "collected": [], "waiting": []}
+    removed = remove_bodies(root, log, lake)  # what a collection queued before a crash
+    report["collected"] += removed["collected"]
+    report["waiting"] += removed["waiting"]
     queued = [row[0] for row in log.read("SELECT handle FROM deletion_queue ORDER BY handle")]
     staging, data = root / "staging", root / "data"
     admissions = {Path(handle).name for handle in queued if handle.startswith("staging/")}
@@ -1330,6 +1354,74 @@ def start(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
     for handle in dict.fromkeys(handles):
         report["collected" if delete(root, log, handle) else "waiting"].append(handle)
     log.flush()
+    return report
+
+
+def collect_unheld(
+    root: Path, log: HostLog, lake: Any, writer: AbstractContextManager[Any]
+) -> list[str]:
+    """Collect each artifact body no live reference holds, produced over `governance.UNHELD`
+    ago, holding `governance.COPYING` and then `writer`, the order every collection takes. Its
+    `artifact.collected` and its body's place in the deletion queue are decided in one log unit,
+    so no hold slips between the read and the event, and committed before the body goes, so a
+    crash over-retains and the next start finishes it; an inline body goes with the event. The
+    artifacts collected."""
+    with governance.COPYING, writer:
+        before = log.clock() - governance.UNHELD // timedelta(microseconds=1)
+        with log.unit():
+            found = governance.unheld(log.read, before)
+            for artifact, storage in found:
+                log.record("artifact.collected", ("artifact", artifact), {})
+                if storage in governance.BODY_HANDLES:
+                    folder, kind = governance.BODY_HANDLES[storage]
+                    log.queue_deletion(f"{folder}/{artifact}", kind, "collected")
+        log.flush()
+        remove_bodies(root, log, lake)
+    return [artifact for artifact, _ in found]
+
+
+def remove_bodies(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
+    """Remove the bodies of collected artifacts the deletion queue names: each blob, and the
+    rows of every `results/<artifact_id>` from each results table in one catalog commit. Run
+    under the writer, or at the start before any; the handles removed, and those still held."""
+    import pyarrow as pa  # lazy: the optional data extra, as DuckDB
+
+    queued = log.read(
+        "SELECT handle, kind FROM deletion_queue WHERE kind IN ('blob', 'rows') ORDER BY handle"
+    )
+    report: dict[str, list[str]] = {"collected": [], "waiting": []}
+    for handle in (str(row[0]) for row in queued if row[1] == "blob"):
+        report["collected" if delete(root, log, handle) else "waiting"].append(handle)
+    rows = [str(row[0]) for row in queued if row[1] == "rows"]
+    if not rows:
+        return report
+    tables = lake.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'lake'"
+        " AND schema_name = 'results' ORDER BY table_name"
+    ).fetchall()
+    ids = pa.table({"artifact_id": pa.array([Path(handle).name for handle in rows], pa.string())})
+    lake.register("collected_ids", ids)
+    try:
+        lake.execute("BEGIN").complete()
+        try:
+            info = canonical({"collected": len(rows)}).decode()
+            lake.execute(
+                "CALL lake.set_commit_message('host', 'collect', extra_info => ?)", (info,)
+            ).complete()
+            for (name,) in tables:
+                lake.execute(
+                    f"DELETE FROM lake.results.{name} WHERE artifact_id IN"
+                    " (SELECT artifact_id FROM collected_ids)"
+                ).complete()
+            lake.execute("COMMIT").complete()
+        except BaseException:
+            lake.execute("ROLLBACK").complete()
+            raise
+    finally:
+        lake.unregister("collected_ids")
+    for handle in rows:
+        log.dequeue_deletion(handle)
+    report["collected"] += rows
     return report
 
 

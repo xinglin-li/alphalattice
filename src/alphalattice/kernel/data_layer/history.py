@@ -140,6 +140,8 @@ _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
 _attached: dict[str, tuple[Path, Any]] = {}
 """Outside a Host, the log attached read-only for derived file reads, with its root."""
+_catalog_surfaces: dict[Path, Any] = {}
+_catalog_lock = threading.Lock()
 _reads: dict[str, set[str]] = {}
 """The file partitions (by table, their digests) the Host read since their last mark."""
 
@@ -190,11 +192,13 @@ def store() -> StorePort | None:
     closes; None outside a Host whose history is open, and without the data extra. Its opening
     reads the log, so it takes the log's guard before this module's lock, in the order a writer
     holding a log unit takes them when it records: the other order deadlocks the first open from
-    a worker thread against a writer's unit."""
+    a worker thread against a writer's unit. Once open, outside both, the Host's start collects the
+    bodies nothing holds (`StorePort.collect_unheld`); a restore's own opening never does."""
     port: StorePort | None = _open.get("store")
     log: HostLog | None = _open.get("log")
     if port is not None or log is None:
         return port
+    opened = None
     with log.reading(), _lock:
         port = _open.get("store")
         if (
@@ -205,8 +209,30 @@ def store() -> StorePort | None:
         ):
             from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
 
-            port = _open["store"] = StorePort.open(Path(_open["root"]), _open["log"])
-        return port
+            port = opened = _open["store"] = StorePort.open(Path(_open["root"]), _open["log"])
+    if opened is not None:  # the collector takes the backup's lock first, so never under the guard
+        opened.started["unheld"] = opened.collect_unheld()
+    return port
+
+
+@contextmanager
+def catalog_session() -> Iterator[Any | None]:
+    """A cursor on this process's attached catalog, without attaching its SQLite log."""
+    port = store()
+    if port is not None:
+        cursor = port.lake.cursor()
+    else:
+        root = data_root()
+        with _catalog_lock:
+            surface = _catalog_surfaces.get(root)
+            if surface is None and (root / "machine" / "catalog.sqlite").is_file():
+                surface = _catalog_surfaces[root] = reading_session(root, log=False)
+        cursor = None if surface is None else surface.cursor()
+    try:
+        yield cursor
+    finally:
+        if cursor is not None:
+            cursor.close()
 
 
 def workspace_on_log(
@@ -527,11 +553,25 @@ def write_execution_outcome(
                 "meaning": "The realized execution outcomes for a sealed chunk.",
                 "content_digest": content_hash,
                 "row_count": table.num_rows,
+                "held": _open["workspace"] is not None,  # its workspace keeps it (governance)
             }
             log.record(
                 "artifact.produced",
                 ("artifact", artifact),
                 attrs,
+                workspace=_open["workspace"],
+                node="host",
+            )
+            log.flush()
+        elif _open["workspace"] is not None and not log.read(
+            "SELECT 1 FROM live_ref WHERE artifact_id = ? AND root_kind = 'workspace'"
+            " AND root_id = ?",
+            (artifact, _open["workspace"]),
+        ):  # another workspace's equal outcome: this one keeps it too
+            log.record(
+                "artifact.held",
+                ("artifact", artifact),
+                {},
                 workspace=_open["workspace"],
                 node="host",
             )

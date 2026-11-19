@@ -1,0 +1,83 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "9abe488c480a37c0ef060305347aeee18e4010623af545b8787e0d108fb0a6ec",
+   "successor": "e3b74cfc664107ee7f5a53ea17bc66941ceccb6b6599bbb758bee0917b2e72fd",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "a418a49f0636ba90554dc4458505bacea5b54a2eebe9704417f0767d884c5349",
+   "successor": "70c4472b35fe616b29ccc8a7d43ddccc6534fe5ac6bc704f4ae465e4652d51f8",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "232a2b3dc9fb73f7e91febcf081b74c62bd6b2500535e238ab844d85d87c8a30",
+   "successor": "a918a486261fc48c3d4867aab494337bac2d08a732a257921da1fe9a536fcfcd",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "dd8a80cee63d50dd26ae892e42eeaca064bb33efefffacd684b42cb3a48304de",
+   "successor": "e7b351bf1393e050e596117c838f2b9ab1b416e2689011a44fceab8bbaa069ac",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "19e88c551a68b554b23d8650e0065dc1b31b1edbbc91c588d670a6e47dc6db4e",
+   "successor": "4b2faa62dbbf68b8b8a860ec46bed859d955c59ecc28933b113f6a017f38ef5c",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "896124f34f8b5a42e2b9ae85b6d48f85e4444c4aa7cd08745a968f4b29768c7d",
+   "successor": "a5b562d63023703fa711343ff1e39847a112c499c7dd167003d72d62003e4c51",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "f8ebe2a10e346e3cdc7edb13ac01de60f1ef00608023098d863824e919f7900b",
+   "successor": "7cba91e0a0365ca8bb04bf20d0e8cc131f46434c50ff68d36a2a6473bed8360f",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "205f5421ceb50606c7f4fc81e2274d3ec98b5ea67713b6575fd0158c5afda79b",
+   "successor": "061831b879cccfdcd22ae9fb58b82b6c9f4bc30c42f36c946150926a7bd51d1a",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "a6d423e9d2f4e591ecdda428c0539e8e0bda772b45a9a41c1a238910a08ba826",
+   "successor": "da79883bcacdcdfaa7531badc5e0daed5f4e521aae1344ae1bdb86409a25379e",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "91e7536a1f559a48e09753211fc739b2c0d8692436bde2e7b6eda774f2bd6ebb",
+   "successor": "fdcd6a22bb19eae45a552b0c7246b1a0c33352d00dd191fec80ac64c6a2da657",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "713d92b995b96aa83683a34472d2a032df348d8205d12748c8fe5cd44798281c",
+   "successor": "6252c0c20911781867063594693cbab88caab351c86f6e63820ac5844a1c358f",
+   "change": "Keep Risk return publication fail closed when market bars are missing",
+   "reason": "the same Risk change recomposed: the surface and its readers account for verified gap pairs; with no gap the rows and identities stay byte-identical, and without verified Panel closure evidence the refusal stands"
+  }
+ ]
+}

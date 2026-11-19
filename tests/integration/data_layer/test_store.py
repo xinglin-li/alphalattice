@@ -20,7 +20,7 @@ import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
+from alphalattice.kernel.data_layer import create_data_root, governance
 from alphalattice.kernel.data_layer import log as host
 from alphalattice.kernel.data_layer import store as storeport
 from alphalattice.kernel.data_layer.chain import canonical
@@ -1223,3 +1223,93 @@ def test_an_append_waits_no_longer_while_a_large_admission_is_staged(root):
     assert len(during) > 20
     assert statistics.median(during) <= 2 * statistics.median(ordinary) + 0.002
     assert statistics.quantiles(during, n=10)[-1] <= 2 * max(ordinary) + 0.005
+
+
+BLOB = {"type": "model", "type_version": 1, "meaning": "a fitted model", "identity_kind": "content"}
+
+
+def _produced(log: HostLog, artifact: str, storage: str) -> None:
+    """Record `artifact` with a `storage` body: a blob's file, an inline body or no rows yet."""
+    attrs = BLOB | {"storage": storage, "content_digest": f"blake3:{artifact}"}
+    body = b"model" if storage == "inline" else None
+    log.record("artifact.produced", ("artifact", artifact), attrs, body=body)
+
+
+def _holds(log: HostLog, holder: str) -> None:
+    """Give artifact `a` the holder a case names, by its root's own events."""
+    log.record("workspace.created", ("workspace", "w1"), {"name": "w1"})
+    if holder in ("workspace", "deleted workspace"):
+        log.record("artifact.held", ("artifact", "a"), {}, workspace="w1")
+    if holder in ("pin", "unpinned"):
+        log.record("artifact.pinned", ("artifact", "a"), {"pin_id": "p1"})
+    if holder == "unpinned":
+        log.record("artifact.unpinned", ("artifact", "a"), {"pin_id": "p1"})
+    if holder == "deleted workspace":
+        log.record("workspace.status_changed", ("workspace", "w1"), {"status": "deleted"})
+
+
+@pytest.mark.proves("data_layer.a_body_goes_only_when_nothing_holds_it")
+@pytest.mark.parametrize(
+    ("holder", "unheld", "kept"),
+    [
+        pytest.param("workspace", timedelta(0), True, id="held by its workspace"),
+        pytest.param("pin", timedelta(0), True, id="held by a pin"),
+        pytest.param("none", timedelta(days=7), True, id="held by the window"),
+        pytest.param("none", timedelta(0), False, id="collected when none holds it"),
+        pytest.param("unpinned", timedelta(0), False, id="collected once unpinned"),
+        pytest.param(
+            "deleted workspace", timedelta(0), False, id="collected once unheld by delete"
+        ),
+    ],
+)
+def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_it(
+    root, monkeypatch, holder, unheld, kept
+):
+    """The collector takes a body no live reference, pin or window holds: its event first, then
+    its file; a held one, or one younger than the window, stays."""
+    monkeypatch.setattr(governance, "UNHELD", unheld)
+    with HostLog.open(root) as log:
+        _produced(log, "a", "blob")
+        _holds(log, holder)
+        (root / "blobs" / "a").write_bytes(b"model")
+        port = StorePort.open(root, log)
+        collected = port.collect_unheld()
+        port.close()
+        state = log.read("SELECT body_state FROM artifact WHERE artifact_id = 'a'")[0][0]
+    assert collected == ([] if kept else ["a"])
+    assert (state, (root / "blobs" / "a").exists()) == (
+        ("present", True) if kept else ("collected", False)
+    )
+
+
+@pytest.mark.proves("data_layer.every_body_kind_is_collected_and_a_crash_finishes_at_start")
+def test_each_body_kind_goes_and_a_crash_after_the_event_is_finished_at_the_next_start(
+    root, monkeypatch
+):
+    """A blob, an inline body and a table's rows are collected; the event commits before a body
+    goes, so a crash between them leaves the body queued, removed at the next start, and a
+    collected body is never held again."""
+    monkeypatch.setattr(governance, "UNHELD", timedelta(0))
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        with stage(root, "execution_outcome", None, arrow([outcome("2024-01-02")])) as staged:
+            port.commit(staged)
+        for artifact, storage in (("b", "blob"), ("i", "inline"), ("art-1", "table")):
+            _produced(log, artifact, storage)
+        (root / "blobs" / "b").write_bytes(b"model")
+        monkeypatch.setattr(storeport, "remove_bodies", lambda *_: None)  # a crash: none removed
+        collected = port.collect()
+        port.close()
+        queued = [row[0] for row in log.read("SELECT handle FROM deletion_queue ORDER BY 1")]
+        monkeypatch.undo()
+        port = StorePort.open(root, log)
+        rows = port.lake.execute("SELECT count(*) FROM lake.results.execution_outcome").fetchone()
+        port.close()
+        with pytest.raises(DataError) as refused:
+            log.record("artifact.held", ("artifact", "b"), {})
+        left = log.read("SELECT count(*) FROM deletion_queue")[0][0]
+        inline = log.read("SELECT count(*) FROM artifact_body")[0][0]
+    assert (collected, queued) == (3, ["blobs/b", "results/art-1"])
+    assert (rows[0], left, inline, (root / "blobs" / "b").exists()) == (0, 0, 0, False)
+    assert sorted(port.started["collected"]) == ["blobs/b", "results/art-1"]
+    assert refused.value.failure.code == "data_layer.artifact_held_collected"

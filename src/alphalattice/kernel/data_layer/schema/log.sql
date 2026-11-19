@@ -652,11 +652,11 @@ CREATE TABLE tag (
 CREATE INDEX tag_lookup ON tag(key_id, value, subject_kind);
 
 -- What keeps an artifact's body from collection: a running task, an active book, a publication, a kept trial, a
--- backup, a workspace that keeps it (an array it cites). A body no row holds is collected 7 days after it was
--- produced. A crash may over-retain, never under-retain.
+-- backup, a workspace that keeps it (an array it cites), a person's pin. A body no row holds is collected 7 days
+-- after it was produced (data_layer.governance). A crash may over-retain, never under-retain.
 CREATE TABLE live_ref (
   artifact_id TEXT NOT NULL REFERENCES artifact(artifact_id),
-  root_kind TEXT NOT NULL CHECK (root_kind IN ('task', 'book', 'publication', 'trial', 'backup', 'workspace')),
+  root_kind TEXT NOT NULL CHECK (root_kind IN ('task', 'book', 'publication', 'trial', 'backup', 'workspace', 'pin')),
   root_id TEXT NOT NULL,
   since_seq INTEGER NOT NULL,
   PRIMARY KEY (artifact_id, root_kind, root_id)
@@ -781,10 +781,11 @@ CREATE TABLE workspace_task_projection (
   updated_us INTEGER NOT NULL  -- its last activity, on the registry's clock
 ) STRICT, WITHOUT ROWID;
 
--- Files to delete that another process still holds open; retried, never blocking.
+-- Files to delete that another process still holds open, and the bodies of collected artifacts until they are gone
+-- (a blob, or `results/<artifact_id>` for its rows in the catalog's results tables); retried, never blocking.
 CREATE TABLE deletion_queue (
   handle TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('file', 'blob', 'staging')),
+  kind TEXT NOT NULL CHECK (kind IN ('file', 'blob', 'staging', 'rows')),
   queued_us INTEGER NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT

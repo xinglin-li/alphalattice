@@ -608,18 +608,27 @@ READINESS_UNIVERSE = (tuple(f"F{i:03d}" for i in range(120)), 6)
 def warm_real_risk_golden(
     *, external: bool = False, symbols: Sequence[str] | None = None, sector_size: int = 5
 ) -> None:
-    """Publish each golden the session uses before any test's timer: a timer cut a build short."""
+    """Publish each golden the session uses before any test's timer: a timer cut a build short.
+
+    A build opens this process's history at the session's data root (a Host holds its root until
+    it closes); the warm closes the root it opened, so a test that opens its own root after
+    collection is not refused (`data_layer.root_held`): a cold golden runs as a warm one."""
     symbols = SYMBOLS if symbols is None else symbols
     variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
     if external:  # the outside method's variant, when a collected test asks for its workspace
         from tests.researcher_methodology_surface import external_factor_method as method
 
         variants.append((method.external_feature_catalog(), method.external_kernel_registry()))
-    for catalog, kernels in variants:
-        key = _golden_key(catalog, kernels, symbols, sector_size)
-        with _golden_lease(golden := _golden_root() / key):
-            if not golden.exists():
-                _materialize_golden(golden, key, catalog, kernels, symbols, sector_size)
+    held_before = history.holding() is not None
+    try:
+        for catalog, kernels in variants:
+            key = _golden_key(catalog, kernels, symbols, sector_size)
+            with _golden_lease(golden := _golden_root() / key):
+                if not golden.exists():
+                    _materialize_golden(golden, key, catalog, kernels, symbols, sector_size)
+    finally:
+        if not held_before and history.holding() is not None:
+            history.close_history()
 
 
 def warm_before_tests() -> None:

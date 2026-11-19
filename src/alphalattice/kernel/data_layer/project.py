@@ -433,9 +433,15 @@ def _folder_moves(con: Con, workspace: str, folder: str | None) -> None:
 
 @on("workspace.status_changed")
 def _workspace_status(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """A deleted workspace holds nothing: its live references go, and what no other root holds is
+    collected by the age rule (data_layer.governance)."""
     con.execute(
         "UPDATE workspace SET status = ? WHERE workspace_id = ?", (a["status"], e["subject_id"])
     )
+    if a["status"] == "deleted":
+        con.execute(
+            "DELETE FROM live_ref WHERE root_kind = 'workspace' AND root_id = ?", (e["subject_id"],)
+        )
 
 
 @on("setting.changed")
@@ -1157,10 +1163,37 @@ def _book_retired(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("artifact.held")
 def _held(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     """A workspace keeps an artifact's body: one live_ref per workspace, however often it holds."""
-    known = con.execute("SELECT 1 FROM artifact WHERE artifact_id = ?", (e["subject_id"],))
-    if known.fetchone() is None:
-        raise _refuse("artifact_held_unknown", "a hold follows its artifact's profile")
+    _holdable(con, e)
     _hold(con, e)
+
+
+@on("artifact.pinned")
+def _pinned(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """The person's pin holds an artifact's body: one live_ref per pin."""
+    _holdable(con, e)
+    con.execute(
+        "INSERT OR IGNORE INTO live_ref VALUES (?, 'pin', ?, ?)",
+        (e["subject_id"], a["pin_id"], e["seq"]),
+    )
+
+
+@on("artifact.unpinned")
+def _unpinned(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    con.execute(
+        "DELETE FROM live_ref WHERE artifact_id = ? AND root_kind = 'pin' AND root_id = ?",
+        (e["subject_id"], a["pin_id"]),
+    )
+
+
+def _holdable(con: Con, e: Row) -> None:
+    """A hold names an artifact whose body is present: a collected one is gone for good."""
+    known = con.execute(
+        "SELECT body_state FROM artifact WHERE artifact_id = ?", (e["subject_id"],)
+    ).fetchone()
+    if known is None:
+        raise _refuse("artifact_held_unknown", "a hold follows its artifact's profile")
+    if known[0] == "collected":
+        raise _refuse("artifact_held_collected", "a collected body is gone; produce it again")
 
 
 def _hold(con: Con, e: Row) -> None:

@@ -1853,11 +1853,14 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         for path in blobs:
             if path.startswith("config/") and (path in text or path.rsplit("/", 1)[-1] in text):
                 config_dependencies.add(path)
-    # These files are named by environment setup and by the maintained gate.
+    # These files are named by environment setup and by the maintained gate; the identity
+    # successor sets are read as one directory by scripts/identity_readout.py, as the ledger is.
     config_dependencies.update(
         p
         for p in blobs
-        if p.startswith("config/requirements-") or p.startswith("config/registries/")
+        if p.startswith("config/requirements-")
+        or p.startswith("config/registries/")
+        or p.startswith("config/identity-successors/")
     )
     initial = [
         dict(path=p, kind=classify(p, runtime, tests, config_dependencies, declared=declared)[0])

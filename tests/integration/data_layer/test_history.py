@@ -175,6 +175,24 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             assert not history.recording() and history.holding() is None
         finally:
             history.close_history()
+    # The same process shares the attached catalog but closes each reader's cursor.
+    import duckdb
+
+    from alphalattice.kernel.data_layer.root import catalog
+
+    assert catalog(root) is not None
+    monkeypatch.setattr(history, "data_root", lambda: root)
+    surfaces = []
+    try:
+        for _ in range(2):
+            with history.catalog_session() as cursor:
+                assert cursor.execute("SELECT 1").fetchone() == (1,)
+                surfaces.append(history._catalog_surfaces[root])
+            with pytest.raises(duckdb.ConnectionException, match="closed"):
+                cursor.execute("SELECT 1")
+        assert surfaces[0] is surfaces[1]
+    finally:
+        history._catalog_surfaces.pop(root).close()
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"

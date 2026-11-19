@@ -38,8 +38,8 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.history import catalog_session as session
 from alphalattice.kernel.data_layer.project import definition_id
-from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import sql_path
 
 from . import world
@@ -63,7 +63,6 @@ WORKSPACE: Final = {
     "action_revisions": "corporate_action_revision",
 }
 """The workspace's own market tables, by the name a value read gives each relation."""
-_held: dict[Path, Any] = {}
 _served: dict[tuple[str, str, str, str], tuple[bool, int]] = {}
 """Each verdict, by catalog, database and its file's fingerprint: whether world serves it, and
 the catalog snapshot it was reached at."""
@@ -87,28 +86,6 @@ def chosen() -> str:
             code="market_data.market_reads_unknown",
         )
     return value
-
-
-@contextmanager
-def session() -> Iterator[Any | None]:
-    """A cursor on world's reading surface, closed after the block; None when this process's data
-    root has no catalog yet. The Host's is its StorePort's session, which sees its own commits;
-    another process attaches the catalog read-only once and takes a cursor per read."""
-    port = history.store()
-    if port is not None:
-        cursor = port.lake.cursor()
-    else:
-        root = history.data_root()
-        with _lock:
-            surface = _held.get(root)
-            if surface is None and (root / "machine" / "catalog.sqlite").is_file():
-                surface = _held[root] = reading_session(root, log=False)
-        cursor = None if surface is None else surface.cursor()
-    try:
-        yield cursor
-    finally:
-        if cursor is not None:
-            cursor.close()
 
 
 @contextmanager

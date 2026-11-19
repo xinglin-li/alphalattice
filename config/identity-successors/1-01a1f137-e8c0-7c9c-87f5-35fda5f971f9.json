@@ -1,0 +1,153 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "9342647a868efa0f64695b9c950aaf270ee636dfcf2b01e724264ccce8b7d6c8",
+   "successor": "50146f4ac6fffe62da6ec19eef901e3d4dc1e8124aa98e883d106f097c1e8573",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0afb931c2133d280cf07ece4e0fa0db18712d80dead54f1f423cdeab8c048eae",
+   "successor": "50960edce7a25f620bdbe3160ec7034620769d93c6f72d7fe041348ce8f53c57",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "17e4c73618c36cdef22f7dc1987d15b7a5ea2f431d419803d8e33b8b2f9fcdb5",
+   "successor": "72c7b11da44bf744d13e5d0b7574953ce679d7bf0cdd92948ff470ba010c007e",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e3b74cfc664107ee7f5a53ea17bc66941ceccb6b6599bbb758bee0917b2e72fd",
+   "successor": "aa96cb673131eadcb9a9b6220d28e857b846bcedc1d92e474b9efb87b5607850",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "70c4472b35fe616b29ccc8a7d43ddccc6534fe5ac6bc704f4ae465e4652d51f8",
+   "successor": "c779356b67806e2833d6cad176b9a6a0ad7ccbf7b313f4f7e6fd3f07c762a8a3",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "a918a486261fc48c3d4867aab494337bac2d08a732a257921da1fe9a536fcfcd",
+   "successor": "e505e215399e7ac5ed653dbf955561559e53354f4cc83091f42d75f6733fb389",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "7f5f00515de491605d8aecc872fb9e1393d69e0f45ead5bdf23cf1af49316cbf",
+   "successor": "f6dae77fbfac7b93e9fc35015a8b8610cd30f56e2f35415952ac8cfdd9160bb8",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "ab45e9ba656dc8941761d21241da863336f40eaff97b2124db51f8b65c30ab7c",
+   "successor": "98e4d6db78ebeb2844f5e4cc3f53c076cf60fcb76745f9f2054f60fef0b63c1c",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "4999c19effdb57937f3fd9d9d94cd050a2bb46cc380754858a0c1058671e87d4",
+   "successor": "2b64b21486ed1199c92f7f5a6fae5fa38eabef80d04dbfd7518e0ccbbf953b5b",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "085d6c87e1ce0664a01f433b502ad33470b7526dd4efc32571dd2c27bcd4cdea",
+   "successor": "86088ce434d3cdf4b8abbf8d7d2bc36b0291bc46a3eccfe0753029dc4f101a7b",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "cc81430425416fed8ce199febb09ca1bda260534547c4624e8464bed050b0a3e",
+   "successor": "f12cc3c18c92841d1ae0df38006f8cb92c96cdb034817d1e0b528f2ce04ea93b",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "e7b351bf1393e050e596117c838f2b9ab1b416e2689011a44fceab8bbaa069ac",
+   "successor": "5b6201429688a3196b34eb6c9d82339a7eb0d56e91199f60ecd3cc998421be6f",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "4b2faa62dbbf68b8b8a860ec46bed859d955c59ecc28933b113f6a017f38ef5c",
+   "successor": "e96d8b0d919ccbe52d31d280be4301c6d90129957d6e12c68f837b3ddc39a150",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "95ead64a018af9ffda1430a920a34c71a4670a79573676a7c4b7e8213b8ab9d9",
+   "successor": "782d093f7d9c70877a4c38b4fd110c954a17b091543e544f67d8a38e5eac1f9a",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "b8996ac00ff389a5c171c97640a7db94e151a0b610789b2ca492be3571d4221c",
+   "successor": "4bce28dceb8a155ea6b1eb3c363e693f42d053782fe658fe5994a8260d7bb824",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "successor": "46690b8b8b818ab56d5951b82e0ccff570fb834eb3a40564aab6c5baa6ca9835",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "successor": "46690b8b8b818ab56d5951b82e0ccff570fb834eb3a40564aab6c5baa6ca9835",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "2fb4f291556743cd980362cd3657b745bf22c0475674fe82c4cc47ed4678b9aa",
+   "successor": "6562521ac0804e3f53a62fc03afc98fd2b4d50aa48307b5215ef1dd61e09ecc3",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "db8e667e09ab7d76ad66c10db99eb8d44eb49dd0130b0308dd51e9762454e134",
+   "successor": "2f3c2ac8c62bf85d3c0f201ed237604631423d8c1c1cd3f15116407935a17397",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "a5b562d63023703fa711343ff1e39847a112c499c7dd167003d72d62003e4c51",
+   "successor": "4fc276db912a6ed82d4a1c4c19a5fc8338adb9884da91bde58b607d45fd53024",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "7cba91e0a0365ca8bb04bf20d0e8cc131f46434c50ff68d36a2a6473bed8360f",
+   "successor": "942531f10e566d80b57a595caf0b4ace924a7aa19dbfc7f9ad17e215d282fe68",
+   "change": "The research history floor follows the universe standard",
+   "reason": "the development data set card recomposed with develop's newer merges: its own change is unchanged (the history floor reads the universe standard, ten years by default, the original universe's hashes byte-equal); the extra moved roles come from the composition"
+  }
+ ]
+}

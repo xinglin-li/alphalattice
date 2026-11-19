@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast, overload
 
 import numpy as np
 import pyarrow as pa
@@ -36,6 +36,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.investment.risk_research.contracts import (
     CausalRiskReturnChunk,
     CausalRiskReturnSurface,
+    RiskReturnOmissions,
     RiskUniverseEpoch,
     seal_contract,
 )
@@ -78,6 +79,15 @@ class RiskReturnClosure:
     surface_hash: str
     chunk_count: int
     closure_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class RiskReturnWindow:
+    """A complete return window and the listings excluded for recorded gaps."""
+
+    ordered_listing_ids: tuple[str, ...]
+    excluded_listing_ids: tuple[str, ...]
+    returns: FloatArray
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,6 +380,7 @@ def derive_risk_return_rows(
     bars: Sequence[RawDailyBar],
     actions: Sequence[CorporateActionEvent],
     required_sessions: tuple[date, ...],
+    traded_sessions: Sequence[date] | None = None,
 ) -> tuple[dict[str, object], ...]:
     """Derive adjacent-session log gross returns from split-adjusted opens and dividends.
 
@@ -380,6 +391,7 @@ def derive_risk_return_rows(
         bars: Raw daily bars projected through the declared price basis.
         actions: Corporate actions used by the source projection.
         required_sessions: Ordered source sessions whose adjacent pairs form return rows.
+        traded_sessions: Sessions the Panel says traded; None retains strict complete coverage.
 
     Returns:
         Sealed row mappings with entry/exit/action source identities and canonical row_hash.
@@ -399,11 +411,18 @@ def derive_risk_return_rows(
     if len(by_session) != len(projected):
         raise RiskReturnSurfaceError("risk_research.return_source_duplicate")
     rows: list[dict[str, object]] = []
+    traded = None if traded_sessions is None else set(traded_sessions)
     for previous_session, formation_session in pairwise(required_sessions):
         previous = by_session.get(previous_session)
         current = by_session.get(formation_session)
         if previous is None or current is None:
-            raise RiskReturnSurfaceError("risk_research.return_source_session_missing")
+            if (
+                traded is None
+                or (previous is None and previous_session in traded)
+                or (current is None and formation_session in traded)
+            ):
+                raise RiskReturnSurfaceError("risk_research.return_source_session_missing")
+            continue
         value = open_to_open_log_return(
             entry_open=previous.open_split_adjusted,
             exit_open=current.open_split_adjusted,
@@ -464,6 +483,7 @@ def listing_returns(
     listing: Any,
     sessions: tuple[date, ...],
     sources: Mapping[str, tuple[tuple[Any, ...], tuple[Any, ...]]],
+    traded_sessions: Sequence[date] | None = None,
 ) -> tuple[dict[str, object], ...]:
     """One listing's causal returns over `sessions`, from its bars and actions in `sources`."""
     bars, actions = sources[listing.listing_id]
@@ -474,6 +494,7 @@ def listing_returns(
         bars=bars,
         actions=actions,
         required_sessions=sessions,
+        traded_sessions=traded_sessions,
     )
 
 
@@ -575,13 +596,26 @@ class CausalRiskReturnSurfacePublisher:
         source_watermark_hash = str(watermark["watermark_hash"])
         rows_by_year: dict[int, list[dict[str, object]]] = {}
         sources = listing_sources(self.store, listings, sessions)
+        omissions: list[RiskReturnOmissions] = []
         for index_value, listing in enumerate(listings, start=1):
-            for row in listing_returns(manifest, listing, sessions, sources):
+            listing_rows = listing_returns(manifest, listing, sessions, sources)
+            absent_formations = {row["formation_session"] for row in listing_rows}
+            pairs = tuple(
+                (start, end) for start, end in pairwise(sessions) if end not in absent_formations
+            )
+            if pairs:
+                omissions.append(
+                    RiskReturnOmissions(
+                        listing_id=listing.listing_id, count=len(pairs), pairs=pairs
+                    )
+                )
+            for row in listing_rows:
                 formation = row["formation_session"]
                 if not isinstance(formation, date):
                     raise RiskReturnSurfaceError("risk_research.return_formation_session_invalid")
                 rows_by_year.setdefault(formation.year, []).append(row)
             self.progress(f"risk_return_source {index_value}/{len(listing_ids)}")
+        omissions.sort(key=lambda item: listing_ids.index(item.listing_id))
         chunks: list[CausalRiskReturnChunk] = []
         with self.mutation_gate.try_hold(timeout_seconds=30.0):
             for _year, rows in sorted(rows_by_year.items()):
@@ -607,6 +641,7 @@ class CausalRiskReturnSurfacePublisher:
                     ),
                     "Valid market tail returns are retained without winsorization.",
                 ),
+                **({"omissions": tuple(omissions)} if omissions else {}),
             )
             descriptor = self.artifacts.publish_manifest(surface)
         if self.artifacts.load_manifest(surface.surface_hash) != surface:
@@ -674,36 +709,51 @@ class CausalRiskReturnReader:
         for chunk in surface.chunks:
             table = pq.read_table(self._resolve_chunk(chunk), columns=["formation_session"])
             sessions.update(table.column("formation_session").to_pylist())
+        sessions.update(end for item in surface.omissions or () for _start, end in item.pairs)
         ordered = tuple(sorted(sessions))
         if len(ordered) != surface.formation_count:
             raise RiskReturnSurfaceError("risk_research.return_session_count_invalid")
         self._available_cache = (surface.surface_hash, ordered)
         return ordered
 
+    @overload
     def read_sessions(
         self,
         surface: CausalRiskReturnSurface,
         formation_sessions: tuple[date, ...],
-    ) -> FloatArray:
-        """Read finite session-by-listing returns in the exact requested and declared axis order.
+        *,
+        _mode: Literal["matrix"] = "matrix",
+    ) -> FloatArray: ...
 
-        A matching cached contiguous window returns a read-only view. Otherwise verified chunk rows
-        are reconstructed into a complete read-only matrix; bounded matrices may be cached.
+    @overload
+    def read_sessions(
+        self,
+        surface: CausalRiskReturnSurface,
+        formation_sessions: tuple[date, ...],
+        *,
+        _mode: Literal["window"],
+    ) -> RiskReturnWindow: ...
 
-        Args:
-            surface: Sealed return surface selecting chunks and ordered listings.
-            formation_sessions: Nonempty sorted unique requested formation sessions.
+    @overload
+    def read_sessions(
+        self,
+        surface: CausalRiskReturnSurface,
+        formation_sessions: tuple[date, ...],
+        *,
+        _mode: Literal["prepare"],
+    ) -> None: ...
 
-        Returns:
-            Non-writeable float64 matrix with requested sessions as rows and epoch listings as
-            columns.
-
-        Raises:
-            RiskReturnSurfaceError: Requested axes, chunk content, duplicate/missing cells or
-                finiteness violate the read contract.
-        """
+    def read_sessions(
+        self,
+        surface: CausalRiskReturnSurface,
+        formation_sessions: tuple[date, ...],
+        *,
+        _mode: Literal["matrix", "window", "prepare"] = "matrix",
+    ) -> FloatArray | RiskReturnWindow | None:
+        """Read verified returns; finite subsets are exposed through read_window."""
         if not formation_sessions or formation_sessions != tuple(sorted(set(formation_sessions))):
             raise RiskReturnSurfaceError("risk_research.return_read_axis_invalid")
+        matrix: FloatArray | None = None
         cached = self._window_cache
         if cached is not None and cached.surface_hash == surface.surface_hash:
             try:
@@ -712,61 +762,105 @@ class CausalRiskReturnReader:
                 start = -1
             stop = start + len(formation_sessions)
             if start >= 0 and cached.formation_sessions[start:stop] == formation_sessions:
-                view = cached.matrix[start:stop]
-                view.setflags(write=False)
-                return view
-        requested = set(formation_sessions)
-        chunks = tuple(
-            chunk
-            for chunk in surface.chunks
-            if chunk.first_formation_session <= formation_sessions[-1]
-            and chunk.last_formation_session >= formation_sessions[0]
-        )
-        tables = tuple(
-            pq.read_table(
-                self._resolve_chunk(chunk),
-                columns=["formation_session", "listing_id", "open_total_return_log"],
-                filters=[("formation_session", "in", list(formation_sessions))],
+                matrix = cached.matrix[start:stop]
+                matrix.setflags(write=False)
+        if matrix is None:
+            requested = set(formation_sessions)
+            chunks = tuple(
+                chunk
+                for chunk in surface.chunks
+                if chunk.first_formation_session <= formation_sessions[-1]
+                and chunk.last_formation_session >= formation_sessions[0]
             )
-            for chunk in chunks
-        )
-        if not tables:
-            raise RiskReturnSurfaceError("risk_research.return_read_empty")
-        table = pa.concat_tables(tables).combine_chunks()
-        sessions = table.column("formation_session").to_pylist()
-        listings = table.column("listing_id").to_pylist()
-        values = np.asarray(
-            pc.cast(table.column("open_total_return_log"), pa.float64()).to_numpy(
-                zero_copy_only=False
-            ),
-            dtype=np.float64,
-        )
-        session_positions = {value: index for index, value in enumerate(formation_sessions)}
-        listing_positions = {
-            value: index for index, value in enumerate(surface.epoch.ordered_listing_ids)
-        }
-        matrix: FloatArray = np.full(
-            (len(formation_sessions), len(listing_positions)), np.nan, dtype=np.float64
-        )
-        seen: set[tuple[int, int]] = set()
-        for row_index, (session, listing_id) in enumerate(zip(sessions, listings, strict=True)):
-            if session not in requested or listing_id not in listing_positions:
-                raise RiskReturnSurfaceError("risk_research.return_read_axis_mismatch")
-            key = (session_positions[session], listing_positions[listing_id])
-            if key in seen:
-                raise RiskReturnSurfaceError("risk_research.return_read_duplicate")
-            seen.add(key)
-            matrix[key] = values[row_index]
-        if len(seen) != matrix.size or not np.isfinite(matrix).all():
+            tables = tuple(
+                pq.read_table(
+                    self._resolve_chunk(chunk),
+                    columns=["formation_session", "listing_id", "open_total_return_log"],
+                    filters=[("formation_session", "in", list(formation_sessions))],
+                )
+                for chunk in chunks
+            )
+            if not tables:
+                raise RiskReturnSurfaceError("risk_research.return_read_empty")
+            table = pa.concat_tables(tables).combine_chunks()
+            sessions = table.column("formation_session").to_pylist()
+            listings = table.column("listing_id").to_pylist()
+            values = np.asarray(
+                pc.cast(table.column("open_total_return_log"), pa.float64()).to_numpy(
+                    zero_copy_only=False
+                ),
+                dtype=np.float64,
+            )
+            session_positions = {value: index for index, value in enumerate(formation_sessions)}
+            listing_positions = {
+                value: index for index, value in enumerate(surface.epoch.ordered_listing_ids)
+            }
+            matrix = np.full(
+                (len(formation_sessions), len(listing_positions)), np.nan, dtype=np.float64
+            )
+            seen: set[tuple[int, int]] = set()
+            for row_index, (session, listing_id) in enumerate(zip(sessions, listings, strict=True)):
+                if session not in requested or listing_id not in listing_positions:
+                    raise RiskReturnSurfaceError("risk_research.return_read_axis_mismatch")
+                key = (session_positions[session], listing_positions[listing_id])
+                if key in seen:
+                    raise RiskReturnSurfaceError("risk_research.return_read_duplicate")
+                seen.add(key)
+                matrix[key] = values[row_index]
+            declared = {
+                (session_positions[end], listing_positions[item.listing_id])
+                for item in surface.omissions or ()
+                for _start, end in item.pairs
+                if end in session_positions
+            }
+            if (
+                matrix.size - len(seen) != len(declared)
+                or any(key in seen for key in declared)
+                or not np.isfinite(values).all()
+            ):
+                raise RiskReturnSurfaceError("risk_research.return_read_incomplete")
+            matrix.setflags(write=False)
+            if matrix.nbytes <= _READ_WINDOW_CACHE_CAP_BYTES:
+                self._window_cache = _CachedReturnWindow(
+                    surface_hash=surface.surface_hash,
+                    formation_sessions=formation_sessions,
+                    matrix=matrix,
+                )
+        if _mode == "prepare":
+            return None
+        if _mode == "window":
+            requested = set(formation_sessions)
+            excluded = {
+                item.listing_id
+                for item in surface.omissions or ()
+                if any(end in requested for _start, end in item.pairs)
+            }
+            axis = surface.epoch.ordered_listing_ids
+            selected = tuple(item for item in axis if item not in excluded)
+            if not selected:
+                raise RiskReturnSurfaceError("risk_research.return_read_empty")
+            values = matrix[:, [index for index, item in enumerate(axis) if item not in excluded]]
+            if not np.isfinite(values).all():
+                raise RiskReturnSurfaceError("risk_research.return_read_incomplete")
+            values.setflags(write=False)
+            return RiskReturnWindow(
+                selected, tuple(item for item in axis if item in excluded), values
+            )
+        if not np.isfinite(matrix).all():
             raise RiskReturnSurfaceError("risk_research.return_read_incomplete")
-        matrix.setflags(write=False)
-        if matrix.nbytes <= _READ_WINDOW_CACHE_CAP_BYTES:
-            self._window_cache = _CachedReturnWindow(
-                surface_hash=surface.surface_hash,
-                formation_sessions=formation_sessions,
-                matrix=matrix,
-            )
         return matrix
+
+    def read_window(
+        self, surface: CausalRiskReturnSurface, formation_sessions: tuple[date, ...]
+    ) -> RiskReturnWindow:
+        """Read a finite window, excluding listings with recorded gaps in it."""
+        return self.read_sessions(surface, formation_sessions, _mode="window")
+
+    def prepare_windows(
+        self, surface: CausalRiskReturnSurface, formation_sessions: tuple[date, ...]
+    ) -> None:
+        """Verify and retain the bounded source for subsequent finite window reads."""
+        self.read_sessions(surface, formation_sessions, _mode="prepare")
 
 
 __all__ = [
@@ -775,5 +869,6 @@ __all__ = [
     "RiskReturnArtifactStore",
     "RiskReturnClosure",
     "RiskReturnSurfaceError",
+    "RiskReturnWindow",
     "derive_risk_return_rows",
 ]

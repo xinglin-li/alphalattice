@@ -16422,6 +16422,10 @@
 "category": "RESOURCE_EXHAUSTED",
 "classification_note": "The model validates the same publication-capacity count that resolve_development_input_binding checks before binding the requested formation axis. The declaration, not the validator location, establishes its resource-budget meaning."
 },
+"risk_research.development_realized_axis_empty": {
+"owner": "risk_research",
+"category": "FAILED_PRECONDITION"
+},
 "risk_research.development_surface_adapter_route_invalid": {
 "owner": "risk_research",
 "category": "INVALID_ARGUMENT"
@@ -16742,6 +16746,10 @@
 "risk_research.return_listing_scope_invalid": {
 "owner": "risk_research",
 "category": "FAILED_PRECONDITION"
+},
+"risk_research.return_omission_invalid": {
+"owner": "risk_research",
+"category": "INVALID_ARGUMENT"
 },
 "risk_research.return_price_basis_unsupported": {
 "owner": "risk_research",

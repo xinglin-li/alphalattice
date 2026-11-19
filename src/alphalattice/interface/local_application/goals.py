@@ -448,21 +448,18 @@ def _earliest_entry(formation: date) -> str | None:
     formation's history would start before their first session; else nothing."""
 
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
-        ten_calendar_year_anniversary,
+        history_floor,
     )
     from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
-    if ten_calendar_year_anniversary(formation) >= floor:
+    if history_floor(formation) >= floor:
         return None
     named = date(floor.year + 10, floor.month, min(floor.day, 28))
     while True:
         reading = target_sessions(named)
-        if (
-            ten_calendar_year_anniversary(date.fromisoformat(str(reading["formation_session"])))
-            >= floor
-        ):
+        if history_floor(date.fromisoformat(str(reading["formation_session"]))) >= floor:
             return str(reading["entry_session"])
         named += timedelta(days=1)
 

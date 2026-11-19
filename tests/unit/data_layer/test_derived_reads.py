@@ -29,6 +29,7 @@ def test_the_catalog_is_attached_read_only_once_and_each_view_made_per_connectio
     monkeypatch.setattr(derived_reads, "data_root", lambda: Path("D:/root"))
     monkeypatch.setattr(derived_reads, "load_extensions", lambda connection: run.append("LOAD"))
     derived_reads.serve(SimpleNamespace(execute=execute), VIEWS)
+    assert run[:2] == ["SET parquet_metadata_cache = true", "SET cache_local_files = true"]
     attaches = [sql for sql in run if sql.startswith("ATTACH")]
     assert len(attaches) == attached and run.count("LOAD") == attached
     assert all("READ_ONLY" in sql and "D:/root/machine/catalog.sqlite" in sql for sql in attaches)

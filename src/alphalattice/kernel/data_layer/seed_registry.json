@@ -620,6 +620,28 @@
       "description": "A workspace keeps an artifact's body: its live_ref until the workspace lets it go."
     },
     {
+      "name": "artifact.pinned",
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "pin_id"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person pins an artifact's body: the pin `pin_id` holds it until it is unpinned."
+    },
+    {
+      "name": "artifact.unpinned",
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "pin_id"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person lets the pin `pin_id` go; the body is collected once nothing holds it."
+    },
+    {
       "name": "publication.released",
       "work": false,
       "subject": "artifact",

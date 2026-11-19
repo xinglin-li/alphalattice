@@ -118,6 +118,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "alternative_evidence.recorded_documents_are_admitted_in_every_language": {
+      "description": "If recorded issuer documents in Chinese, a revision or a source's retirement were mishandled, development evidence would lose documents the full corpus keeps.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Canonicalization reaches the section reader's lazy module loader, which the unit layer's contract refuses, so admission is proved where it runs."
+    },
     "alternative_evidence.review_rerun_joins_its_preparation": {
       "description": "A repeated book review joins the preparation in flight at any cutoff, reads no filing index beside it, and a parked one is handed back without a person.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -320,6 +327,20 @@
     "composition.workspace_binding_usage_unknown": {
       "description": "An unreadable workspace-owned Session binding makes usage unavailable without hiding other readable Session results or treating the binding as absent.",
       "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.a_backup_copy_excludes_collection": {
+      "description": "A collection waits while a backup copies the data root and decides no body until the copy ends.",
+      "lower_layer": "The lock is the one backup_data_root holds; the log is a fake that keeps what the collector does.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.a_body_goes_only_when_nothing_holds_it": {
+      "description": "The collector removes an artifact body only when no live reference, pin or retention window holds it, recording its collection before the body goes.",
+      "lower_layer": "Holds are live_ref rows the projection writes from real events in a SQLite log; the body is a file in a real data root.",
+      "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
     },
@@ -652,6 +673,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.collected_rows_leave_in_one_catalog_commit": {
+      "description": "The rows of collected artifacts leave every results table in one catalog commit before they leave the deletion queue.",
+      "lower_layer": "A fake catalog session keeps the statements; the integration crash case runs them on a real catalog.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.configured_export_scrubs_secrets": {
       "description": "A configured span exporter receives admitted secret values redacted, with prompt and result content off unless the person enables it; the local span record stays independent.",
       "owner": "alphalattice.kernel.data_layer",
@@ -697,6 +725,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.every_body_kind_is_collected_and_a_crash_finishes_at_start": {
+      "description": "A collected blob, inline body and table rows all go; a crash after the collection event leaves the body queued and the next start removes it, and a collected body is never held again.",
+      "lower_layer": "A real log, DuckLake catalog and data root.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.experience_reads_without_bodies": {
       "description": "The reading views and compare read profiles and measures only: with every artifact body removed, experience returns each trial with its measures and two artifacts compare across a convertible metric version.",
       "lower_layer": "The views are DuckDB SQL over the attached SQLite log; only both engines run them.",
@@ -739,15 +774,15 @@
     },
     "data_layer.host_history_records_or_defers": {
       "description": "A Host's history records its workspace, its own definitions, begun spans as started then ended with flattened attributes, and facts with their text in their span, and nothing while another Host holds the data root.",
-      "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
+      "lower_layer": "The lock is an operating-system file lock, the history a real SQLite log, and the catalog uses DuckDB.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5,
       "retired": "2026-11-15: the history is no longer deferred; a Host whose log does not open does not start, which data_layer.host_history_records_or_refuses proves."
     },
     "data_layer.host_history_records_or_refuses": {
-      "description": "A Host's history records its workspace and definitions and closes with its process's last Host; a Host whose data root another holds, or whose log or views do not open, is refused by name and keeps no lock.",
-      "lower_layer": "The lock is an operating-system file lock and the history a real SQLite log.",
+      "description": "A Host's history records its workspace and definitions, closes with its last Host, shares a catalog surface and closes its cursors, and refuses an unavailable log, views or held data root without retaining a lock.",
+      "lower_layer": "The lock is an operating-system file lock, the history a real SQLite log, and the catalog uses DuckDB.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 5
@@ -1436,6 +1471,12 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 10
+    },
+    "market_data_ops.a_standard_names_its_history_floor": {
+      "description": "If onboarding floored history at a fixed ten years, or a manifest named the original standard whatever floor was applied, a shorter standard would be refused or admitted under a false identity.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
     },
     "market_data_ops.an_action_is_one_world_row": {
       "description": "A 0.2.7 corporate action becomes one world row keeping its kind as its id and its original payload digest as source metadata, or is refused by name.",
