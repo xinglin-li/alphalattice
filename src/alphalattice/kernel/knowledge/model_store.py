@@ -680,9 +680,9 @@ def recipe_pack_statuses(store: Path, recipe: str) -> tuple[PackStatus, PackStat
     Raises:
         ModelStoreError: The recipe identifier is unsupported.
     """
-    if recipe not in RECIPE_PACKS:
+    if recipe not in INSTALLABLE:
         raise ModelStoreError(f"model_store.recipe_unsupported:{recipe}")
-    encoder, reranker = RECIPE_PACKS[recipe]
+    encoder, reranker = INSTALLABLE[recipe]
     return pack_status(store, encoder), pack_status(store, reranker)
 
 

@@ -93,6 +93,7 @@ from alphalattice.evidence.alternative_evidence.documents.canonicalization impor
 from alphalattice.evidence.alternative_evidence.documents.workspace import (
     AlternativeEvidenceDocumentPublisher,
 )
+from alphalattice.evidence.alternative_evidence.retrieval.service import store_capability
 from alphalattice.evidence.alternative_evidence.runtime.coverage import index_quiet, sources_short
 from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
@@ -133,14 +134,10 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid import (
-    probe_hybrid_retrieval_capabilities,
-)
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     NEW_BUILD_RECIPE,
     RECIPE_MINILM_CPU,
     SUPPORTED_RECIPES,
-    HybridIndexSpec,
     setup_recipe,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -739,6 +736,10 @@ class _Setup:
         """
         runtime_ready = load()
         arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
+        if _model_store(arguments) != model_store.default_store_root().resolve():
+            # The Host's review verifies and searches with the application model store alone:
+            # packs sealed from another store would be refused at the review's first check.
+            raise OptionRefused("evidence_review.model_store_not_the_hosts", "model_store")
         try:
             semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
         except ValueError as error:
@@ -751,9 +752,7 @@ class _Setup:
             raise OptionRefused(
                 "evidence_review.semantic_model_outside_workspace", "semantic_model"
             ) from error
-        capability = probe_hybrid_retrieval_capabilities(
-            semantic_root, HybridIndexSpec.for_recipe(recipe)
-        )
+        capability = store_capability(_model_store(arguments))  # the verifier's own check
         if capability.status != "READY":
             raise RuntimeError("evidence_review.semantic_capability_not_ready")
         return semantic_relative, str(capability.logical_hash)
@@ -1194,48 +1193,49 @@ def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceCons
     )
 
 
-def _installed_recipe(workspace: Path) -> str | None:
-    """The installed authority's recipe, read to choose the default; it is verified later."""
+def _installed_manifest(workspace: Path) -> EvidenceReviewWorkspaceManifest | None:
+    """The installed authority's manifest as written; its bytes are verified later."""
     binding = read_research_workspace_manifest(workspace).evidence_review
     if binding is None:
         return None
     manifest = (workspace / binding.relative_path).read_bytes()
-    recipe: str = EvidenceReviewWorkspaceManifest.model_validate_json(manifest).retrieval_recipe
-    return recipe
+    return EvidenceReviewWorkspaceManifest.model_validate_json(manifest)
 
 
-def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: str) -> Path:
-    """Where the recipe's packs are read from, inside the workspace.
+def _installed_recipe(workspace: Path) -> str | None:
+    """The installed authority's recipe, read to choose the default; it is verified later."""
+    installed = _installed_manifest(workspace)
+    return None if installed is None else installed.retrieval_recipe
 
-    Every recipe is bound from the application model store: a small directory
-    of links pointing at the store's verified packs, so one physical copy serves
-    every workspace and a pack not installed is a refusal naming it. The retained
-    recipe keeps its own layout under `evidence-cro-authority/semantic-model`
-    (the encoder at the root), or an explicit `--semantic-model` directory;
-    a later recipe's is `semantic-model-<recipe>`. Packs are installed with
-    scripts/install_retrieval_pack.py, never here.
-    """
-    store = (
+
+def _model_store(arguments: argparse.Namespace) -> Path:
+    """The model store the setup reads packs from: `--model-store`, else the application's."""
+    return (
         Path(arguments.model_store).resolve()
         if arguments.model_store
         else model_store.default_store_root()
     )
-    if recipe == RECIPE_MINILM_CPU:
-        if arguments.semantic_model is not None:
-            return Path(arguments.semantic_model).resolve()
-        try:
-            return cast(
-                Path,
-                model_store.bind_retained_recipe(
-                    store, workspace / "evidence-cro-authority" / "semantic-model"
-                ),
-            )
-        except model_store.ModelStoreError as error:
-            raise ValueError(str(error)) from error
+
+
+def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: str) -> Path:
+    """Where the review's packs are read from, inside the workspace.
+
+    Every recipe binds the retrieval store's packs from the application model store, the packs
+    every review searches with: a small directory of links pointing at the store's verified
+    packs (`semantic-model-retrieval-store`), so one physical copy serves every workspace and a
+    pack not installed is a refusal naming it. The retained recipe's explicit `--semantic-model`
+    directory is kept as named. Packs are installed with scripts/install_retrieval_pack.py,
+    never here.
+    """
+    if recipe == RECIPE_MINILM_CPU and arguments.semantic_model is not None:
+        return Path(arguments.semantic_model).resolve()
+    name = model_store.RETRIEVAL_STORE
     try:
         return Path(
             model_store.bind_recipe(
-                store, recipe, workspace / "evidence-cro-authority" / f"semantic-model-{recipe}"
+                _model_store(arguments),
+                name,
+                workspace / "evidence-cro-authority" / f"semantic-model-{name}",
             )
         )
     except model_store.ModelStoreError as error:
@@ -1266,15 +1266,15 @@ def _rebind_installed(
     binding = read_research_workspace_manifest(workspace).evidence_review
     if binding is None:
         raise ValueError("evidence_review.rebind_requires_installed_authority")
-    # The pack was probed once above; the installed manifest must declare
-    # that same capability, which is what the verifier checks with it -- unless
-    # a recipe is named, when the installed authority is verified with its
-    # own packs (a real probe) before its successor is sealed.
+    # The installed authority is read back as it was sealed (its own capability, which may be
+    # an earlier index's), every other child verified; its successor is sealed under the store
+    # capability probed above, the one a review's workspace is checked against.
+    sealed = _installed_manifest(workspace)
     verified = verify_evidence_review_workspace(
         workspace=workspace,
         binding=binding,
-        semantic_capability_reader=(
-            None if arguments.recipe else (lambda _runtime: capability_hash)
+        semantic_capability_reader=lambda _runtime: (
+            capability_hash if sealed is None else sealed.semantic_capability_hash
         ),
     )
     verified.runtime.close()
@@ -1289,11 +1289,14 @@ def _rebind_installed(
             "evidence_review.installed_matter_selection_retired:"
             "rebind with --matter-selection INTEGRATED_TOPIC_ROUTING"
         )
-    if installed.semantic_model_relative_path != semantic_relative and (
-        recipe == installed.retrieval_recipe
+    if (
+        installed.semantic_model_relative_path != semantic_relative
+        and recipe == installed.retrieval_recipe
+        and installed.semantic_capability_hash == capability_hash
     ):
-        # The pack under an installed authority is never swapped silently; an
-        # explicit `--recipe` names a different recipe and its own packs.
+        # The pack under an installed authority is never swapped silently; an explicit
+        # `--recipe` names a different recipe and its own packs, and an authority sealed under
+        # an earlier capability moves to the store's packs with it.
         raise OptionRefused("evidence_review.rebind_semantic_model_mismatch", "semantic_model")
     entities = tuple(sorted({value.entity_id for value in verified.documents.documents}))
     listing = _listing_authority(universe, verified.registry, entities)
@@ -1542,8 +1545,6 @@ def _acquire_sec_sources(
         runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
             artifact_root=workspace / "runtime" / "artifacts",
             workspace_root=workspace / "runtime" / "evidence-knowledge",
-            model_root=_semantic_root(arguments, workspace=workspace, recipe=recipe),
-            retrieval_recipe=recipe,
         )
         transport = getattr(source, "_transport", None)
         counters = {

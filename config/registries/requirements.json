@@ -125,6 +125,13 @@
       "seconds": 5,
       "lower_layer": "Canonicalization reaches the section reader's lazy module loader, which the unit layer's contract refuses, so admission is proved where it runs."
     },
+    "alternative_evidence.retrieval_change_keeps_or_records_beside": {
+      "description": "A selection made again after a retrieval change keeps the earlier result's identity when every question's passages are the same, and otherwise leaves its receipt sealed and records the change beside it, never as a successor.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "lower_layer": "The comparison reads both receipts and their sealed span sets back from a real workspace artifact store over the Host's retrieval store.",
+      "seconds": 20
+    },
     "alternative_evidence.retrieval_reads_world_evidence_as_of": {
       "description": "Retrieval keys evidence chunks by world's document and version and reads bodies from world at the cutoff, never returning superseded versions.",
       "lower_layer": "World's evidence documents and the store's projections are a real DuckLake catalog and a real log, so the as-of read needs both.",
@@ -155,6 +162,13 @@
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "integration",
       "seconds": 5
+    },
+    "alternative_evidence.store_hits_delivered_by_matched_line": {
+      "description": "A store hit is cut to the lines its question states, one candidate a line, so over the development evidence set every issuer-topic cell the line chunks reached holds evidence and a delivered span is the matched sentence.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "lower_layer": "The selection's cell allocation reads the spans a real review delivers from the Host's retrieval store over the development documents.",
+      "seconds": 20
     },
     "alternative_evidence.world_body_reads_refuse_by_name": {
       "description": "A world evidence body is returned only when its bytes match world's digest and size, and an unknown body is refused by name.",

@@ -11,6 +11,9 @@ import pytest
 
 from alphalattice.capabilities.portfolio_backtesting.metrics import evaluate_net_simple_return_path
 from alphalattice.interface.local_application.cli import main
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.portfolio_strategy_lab.activation_review_support import (
     PACKAGE,
     activation_cli,
@@ -18,6 +21,8 @@ from tests.portfolio_strategy_lab.activation_review_support import (
 )
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.local_web_support import _json
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 
 @pytest.mark.parametrize("reviewed", [True], ids=["reviewed"])

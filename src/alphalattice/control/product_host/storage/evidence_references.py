@@ -18,7 +18,7 @@ from alphalattice.control.product_host.storage.contracts import PhysicalAvailabi
 from alphalattice.control.product_host.storage.retention import file_content_hash
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
-    AlternativeEvidenceRetrievalGeneration,
+    HybridV4RetrievalGeneration,
     RetrievalGenerationRecord,
 )
 from alphalattice.evidence.alternative_evidence.storage.inventory import (
@@ -145,7 +145,7 @@ class EvidenceStorageReferences(EvidenceStorageInventory):
             payload_available = False
             payload_proof = NO_PAYLOAD_COMMITMENT
             corpus_hash: str | None = None
-            if isinstance(record, AlternativeEvidenceRetrievalGeneration):
+            if isinstance(record, HybridV4RetrievalGeneration):
                 corpus_hash = record.corpus_hash
                 payload_path = f"{VECTOR_PAYLOAD_ROOT}/{record.vector_payload_sha256}.f32"
                 # One file at the digest's address, or the sidecar and the
@@ -173,7 +173,7 @@ class EvidenceStorageReferences(EvidenceStorageInventory):
                     index_id=index_id,
                     generation_format=(
                         record.generation_format
-                        if isinstance(record, AlternativeEvidenceRetrievalGeneration)
+                        if isinstance(record, HybridV4RetrievalGeneration)
                         else LEGACY_HYBRID_INDEX_SCHEMA_VERSION
                     ),
                     corpus_hash=corpus_hash,

@@ -943,13 +943,12 @@ def _plan_corpus(generation: RetrievalGenerationRecord) -> str:
     """What a reading plan's identity binds of the index it reads.
 
     What a reading plan's identity binds of the index it reads: the
-    corpus commitment -- the same bytes under another request are the
-    same plan, which is what lets a reused selection be continued -- and,
-    for a legacy generation that commits to no corpus, the generation
-    itself.
+    corpus under the spec (`index_id`) -- the same bytes under another
+    request are the same plan, which is what lets a reused selection be
+    continued -- and, for an earlier generation, the generation itself.
     """
     if isinstance(generation, AlternativeEvidenceRetrievalGeneration):
-        return generation.corpus_hash
+        return generation.index_id
     return generation.generation_hash
 
 
@@ -2186,6 +2185,8 @@ def select_routed_evidence(
                 kind=query.kind,
                 scope_windows=sum(last - first + 1 for _k, first, last in scope),
                 reranked_pairs=result.reranked_pairs,
+                score_type=result.score_type,
+                hit_scores=tuple(hit.retrieval_score for hit in result.hits),
             )
         )
         local_ranks: dict[str, int] = {}

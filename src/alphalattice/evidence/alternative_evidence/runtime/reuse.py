@@ -59,6 +59,7 @@ from ..contracts import (
     AlternativeEvidenceSnapshot,
 )
 from ..documents.contracts import AlternativeEvidenceDocumentSet
+from ..documents.library import EvidenceDocumentUnverifiable
 from ..publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
@@ -399,7 +400,7 @@ class SealedCanonicals:
             return None
         try:
             _revision, content = self._publisher.library.read_revision(*located)
-        except KnowledgeRetrievalError:
+        except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable):
             self.damaged += 1
             return None
         self.reused += 1
@@ -452,9 +453,9 @@ class SealedSelections:
             }
         )
         return (
-            generation.corpus_hash,
-            generation.index_manifest_hash,
-            generation.vector_payload_sha256,
+            generation.index_id,
+            generation.chunk_set_hash,
+            generation.vector_set_hash,
             generation.index_spec_hash,
             latest(RETRIEVAL_BINDING_ROLE, generation.retrieval_binding_hash),
             generation.reading_depth.value,

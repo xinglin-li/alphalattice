@@ -36,11 +36,6 @@ from alphalattice.control.workspace_runtime import database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from tests.alternative_evidence_desk.document_intelligence_support import (
-    _built,
-    _counted_runtime,
-)
-from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.workspace_task_runner.lock_order import LockOrder, lock_order, record_lock_order
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -182,29 +177,6 @@ def test_the_workbench_build_replaces_an_asset_a_reader_holds(
         reading.close()
     page = (tmp_path / "workbench.html").read_bytes()
     assert page.startswith(b"<!DOCTYPE html>") and b'<script src="/workbench.' in page
-
-
-def test_an_index_a_session_reads_is_not_evicted_from_under_it(tmp_path: Path) -> None:
-    """Suspect 5: a storage clean-up evicts a hybrid index while a retriever holds it open.
-    The retrieval service refuses while any session on the generation is open, under its
-    lease lock, and evicts once the session ends."""
-
-    runtime, _passes = _counted_runtime(tmp_path)
-    request, document_set, generation = _built(runtime)
-    (database,) = sorted((tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob("*.db"))
-    relative = database.resolve().relative_to((tmp_path / "workspace").resolve()).as_posix()
-    session = runtime.retrieval.open_session(
-        document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
-    )
-    try:
-        with pytest.raises(ValueError, match="retrieval_index_in_use"):
-            runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-        assert database.is_file()
-    finally:
-        session.close()
-    runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-    assert not database.is_file()
-    runtime.close()
 
 
 @pytest.mark.proves("workspace_runtime.background_task_gate_wait_and_cancel")

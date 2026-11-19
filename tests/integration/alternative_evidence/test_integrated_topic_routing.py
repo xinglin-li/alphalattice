@@ -29,6 +29,7 @@ from alphalattice.evidence.alternative_evidence.analysis.matters import (
     TOPIC_LANES_ALLOCATION_ID,
 )
 from alphalattice.evidence.alternative_evidence.analysis.packet import (
+    CANDIDATE_READS_PER_ISSUER,
     EVIDENCE_QUERY_PROGRAM,
     MATTER_FAMILIES,
     MAXIMUM_PACKET_SPANS,
@@ -609,7 +610,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
             document_set=other_set, built_at=_NOW + timedelta(hours=1)
         )
         assert other_generation.generation_hash != generation.generation_hash
-        assert other_generation.corpus_hash == generation.corpus_hash
+        assert other_generation.index_id == generation.index_id
         rotated, rotated_spans = runtime.select_evidence(
             request=other, document_set=other_set, generation=other_generation
         )
@@ -686,14 +687,22 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         successor_plan = successor.routing.candidates()
         assert read and all(h.startswith("SPAN-C02-") for h in read)
         first_plan = routing.candidates()
-        assert not any(c.state == "PENDING" for c in successor_plan)
+        # A candidate still pending waits only behind an issuer that read its whole share this
+        # session (the next continuation reads it).
+        waiting = [c for c in successor_plan if c.state == "PENDING"]
+        read_now = [c for c in successor_plan if c.state == "READ" and c.session_index == 2]
+        assert all(
+            sum(1 for c in read_now if c.entity_id == w.entity_id) == CANDIDATE_READS_PER_ISSUER
+            for w in waiting
+        )
         covered = [c for c in successor_plan if c.state == "COVERED"]
         assert covered, "the fixture's windows hold whole candidates"
         # What the continuation's own windows came to hold whole is covered
         # in this session, not read; the rest of the pending is read.
         covered_now = [c for c in covered if c.session_index == 2]
         assert covered_now, "the second session's windows cover more"
-        assert len(read) == sum(1 for c in first_plan if c.state == "PENDING") - len(covered_now)
+        pending_first = sum(1 for c in first_plan if c.state == "PENDING")
+        assert len(read) == pending_first - len(covered_now) - len(waiting)
         assert sum(c.candidates_covered for c in successor.routing.cells) == len(covered)
         assert sum(c.candidates_read for c in successor.routing.cells) == len(read)
         by_handle = {s.span_handle: s for s in successor_spans}
@@ -1874,8 +1883,11 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
         assert len(read) == min(
             sum(1 for c in plan if c.state == "PENDING") - len(covered_now), SPANS_PER_ISSUER
         ), "sixteen an issuer a session, from the frontier, less what this session covered"
+        # Covered by this session's own windows, or by a typed statement already delivered: a
+        # candidate is a matched line, so a statement can hold it whole.
         assert all(
-            c.covered_by is not None and c.covered_by.startswith("SPAN-M") for c in covered_now
+            c.covered_by is not None and c.covered_by.startswith(("SPAN-M", "SPAN-T"))
+            for c in covered_now
         )
         assert {c.span_handle for c in second_plan if c.state == "READ"} == set(read)
         # The read candidates are read round by round over the cells in the

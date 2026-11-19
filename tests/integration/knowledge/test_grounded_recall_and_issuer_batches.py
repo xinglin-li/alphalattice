@@ -47,6 +47,8 @@ from tests.alternative_evidence_desk.gate_9c6e_grounded_recall import (
     load_casebook,
 )
 
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # review runs on the Host's store
+
 _GROUNDED_FACT = "The Company recorded an impairment charge of twenty three million dollars."
 
 

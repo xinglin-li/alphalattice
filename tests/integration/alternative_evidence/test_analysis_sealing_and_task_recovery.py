@@ -73,6 +73,7 @@ from tests.alternative_evidence_desk.planted_corpus import (
     _CitingActor,
     _recorded_document,
     _runtime,
+    tampered_reference,
 )
 
 
@@ -509,20 +510,15 @@ def test_a_tampered_workspace_document_is_a_named_packet_refusal(tmp_path: Path)
     assert completed is not None and completed.lifecycle is TaskLifecycle.SUCCEEDED
     packet = adapter.prepared_packet(completed.task_id, now=_NOW)
     reference = packet.document_set.documents[0]
-    # The canonical blob the packet reads, not the original bytes the source
-    # store keeps beside it (a recorded markdown source has the same size).
-    blob = next(
-        path
-        for path in (tmp_path / "workspace" / "knowledge" / "blobs").rglob("*")
-        if path.is_file() and path.stat().st_size == reference.byte_count
-    )
-    original = blob.read_bytes()
-    blob.write_bytes(original[:-1] + bytes([original[-1] ^ 0x01]))
-    try:
-        with pytest.raises(ValueError, match="brief_document_unverifiable:retrieval\\."):
-            adapter.prepared_packet(completed.task_id, now=_NOW)
-    finally:
-        blob.write_bytes(original)
+    # The canonical text the packet reads, in the Host's log, not the original bytes the
+    # source store keeps.
+    with (
+        tampered_reference(reference.workspace_document_id),
+        pytest.raises(
+            ValueError, match=r"brief_document_unverifiable:alternative_evidence.workspace_document"
+        ),
+    ):
+        adapter.prepared_packet(completed.task_id, now=_NOW)
     assert adapter.prepared_packet(completed.task_id, now=_NOW) == packet
     runtime.close()
 
@@ -628,19 +624,21 @@ def test_a_stage_failure_names_the_owners_own_code(
         )
         monkeypatch.setattr(authority.evidence_runtime, "whole_delivery", lambda *_: False)
         if untyped == "citation":
-            from hashlib import sha256
+            from alphalattice.kernel.data.errors import DataError
+            from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
 
-            from alphalattice.kernel.knowledge import retrieval
+            index_chunks = KnowledgeStore.index_chunks
 
-            citation = retrieval.KnowledgeCitation
-            bad_content = sha256(bad.text.encode("utf-8")).hexdigest()
+            def refused_chunks(store: object, *, version_id: str, recipe_id: str, content: str):
+                if content == bad.text:
+                    raise DataError(
+                        "the source chunks differ", code="data_layer.knowledge_source_conflict"
+                    )
+                return index_chunks(
+                    store, version_id=version_id, recipe_id=recipe_id, content=content
+                )
 
-            def invalid_citation(**fields: object) -> object:
-                if fields["content_sha256"] == bad_content:
-                    fields["heading_path"] = ("",)
-                return citation(**fields)
-
-            monkeypatch.setattr(retrieval, "KnowledgeCitation", invalid_citation)
+            monkeypatch.setattr(KnowledgeStore, "index_chunks", refused_chunks)
         if untyped == "need":
             from alphalattice.evidence.alternative_evidence.analysis.contracts import (
                 EvidenceNeedRecord,
@@ -727,10 +725,16 @@ def test_a_stage_failure_names_the_owners_own_code(
             assert state["failed_stage"] == (
                 "build_retrieval_generation" if untyped == "citation" else "select_evidence_spans"
             )
-            assert state.get("exception_type") == "ValidationError"
+            assert state.get("exception_type") == (
+                "DataError" if untyped == "citation" else "ValidationError"
+            )
             assert bad.entity_id in state["exception_message"]
             assert bad.revision in state["exception_message"]
-            field = "heading_path" if untyped == "citation" else "EvidenceNeedRecord"
+            field = (
+                "data_layer.knowledge_source_conflict"
+                if untyped == "citation"
+                else "EvidenceNeedRecord"
+            )
             assert field in state["exception_message"]
             if untyped == "need":
                 assert "invariant=status_requires_span" in state["exception_message"]
@@ -746,7 +750,12 @@ def test_a_stage_failure_names_the_owners_own_code(
 
             answer = review_evidence_view({}, {}, completed, resuming=False)
             assert answer["failed_units"] == completed["failed_units"]
-            assert failure["next_action"] == "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            assert failure["next_action"] == (
+                # A coded store refusal is prepared again before it is reported.
+                "PREPARE_AGAIN_THEN_REPORT_THE_CODE"
+                if untyped == "citation"
+                else "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            )
             return
         assert state["failure_code"] == _failure_code(raised)
         assert state["failed_stage"] == "canonicalize_documents"

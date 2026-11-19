@@ -106,6 +106,18 @@ def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
             assert refusal_problem(worded_refusal(answer)) is None, variant
 
 
+def _builds(adapter: Any) -> int:
+    """How many generations this runtime's retrieval built, each once: the store embeds a
+    chunk when its revision is published, so a build encodes what the cache lacks or nothing,
+    and every build counts here whichever it was."""
+    retrieval = adapter.runtime.retrieval
+    return int(
+        retrieval.passage_embedding_pass_count
+        + retrieval.incremental_build_count
+        + retrieval.generation_reuse_count
+    )
+
+
 def _packet(body: dict[str, Any]) -> dict[str, str]:
     """The one packet request a body hands out, selected as a client selects
     it: by its operation, whatever key names the unit."""
@@ -171,7 +183,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert again["disposition"] == "REUSED_EXACT" and again["task_id"] == str(source_id)
     assert _packet(again) == _packet(prepared)
     assert len(service.registry.tasks()) == count + 1
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
     # With a packet prepared and no analysis, the section names that packet
     # and hands out the bound read of it; no state re-verifies or embeds.
     section = service.evidence_cro()
@@ -180,7 +192,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert section["evidence_as_of"] == prepared["evidence_as_of"]
     assert _packet(section) == _packet(prepared)
     assert set(section["next_requests"]) == {f"packet_{ONE_UNIT}", "preview"}
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
     exported = client.request(_packet(section))
     assert (
         service.get(
@@ -313,7 +325,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert pinned["state"] == "REVIEW_PUBLISHED"
     assert pinned["available_actions"] == []
     assert pinned["next_requests"] == section["next_requests"]
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
 
 
 def test_a_captured_preparation_is_reused_after_time_moves_on(
@@ -358,7 +370,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         service.drain()
         task_id = prepared["task_id"]
         adapter = service.review.evidence_task_adapter
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(adapter) == 1
 
         # Two hours later the same captured intent is the completed preparation:
         # no Task, no corpus pass, and the packet it names still answers as of
@@ -369,7 +381,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert again["evidence_as_of"] == _NOW.isoformat()
         assert _packet(again)["task_id"] == task_id
         assert len(service.registry.tasks()) == count + 1
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(adapter) == 1
         packet = client.request(_packet(again))
         assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
         later_preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
@@ -482,8 +494,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert bare["disposition"] == "ADMITTED" and bare["task_id"] != task_id
         assert bare["evidence_as_of"] == now[0].isoformat()
         service.drain()
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
-        assert adapter.runtime.retrieval.generation_reuse_count == 0
+        assert _builds(adapter) == 1
         assert adapter.runtime.generation_builds_avoided == 1
         assert len(service.registry.tasks()) == count + 2
         # A preparation sealed under a canonicalization binding this code has
@@ -541,7 +552,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         # The authority (and its runtime counters) outlives the service: the
         # reopen added no corpus pass to the one the first service made.
         reopened_adapter = service.review.evidence_task_adapter
-        assert reopened_adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(reopened_adapter) == 1
         now[0] = _NOW + timedelta(days=1, minutes=1)
         expired = client.request(captured)
         assert expired["disposition"] == "REFUSED_PREPARATION_EXPIRED"
@@ -1107,70 +1118,6 @@ def test_a_service_without_a_runtime_or_an_actor_refuses_with_no_work(
 # ======================================== the real composition, no credential
 
 
-def _install_semantic_pack(monkeypatch: pytest.MonkeyPatch, model_root: Path) -> None:
-    """Stand in for the one artifact this environment cannot hold.
-
-    `probe_semantic_pack` verifies a pinned MiniLM ONNX pack by sha256, then
-    checks onnxruntime, sentencepiece and sqlite-vec versions, the CPU
-    execution provider and the loaded vector extension. Everything but the two
-    model files is really installed here and really runs; the pack itself is
-    about half a gigabyte, is absent from this machine, and can only be
-    obtained over a network this gate forbids. So exactly two file hashes are
-    substituted and nothing else about the probe is bypassed.
-    """
-
-    from alphalattice.kernel.knowledge import _embeddings as embeddings
-    from alphalattice.kernel.knowledge.hybrid_contracts import (
-        MODEL_ARTIFACT_SHA256,
-        TOKENIZER_SHA256,
-    )
-
-    (model_root / "onnx").mkdir(parents=True, exist_ok=True)
-    (model_root / "onnx" / "model.onnx").write_bytes(b"absent-model-pack-placeholder")
-    (model_root / "sentencepiece.bpe.model").write_bytes(b"absent-tokenizer-placeholder")
-    real = embeddings._hash_file
-    pinned = {"model.onnx": MODEL_ARTIFACT_SHA256, "sentencepiece.bpe.model": TOKENIZER_SHA256}
-
-    def hash_file(path: Path) -> str:
-        return pinned.get(path.name) or str(real(path))
-
-    monkeypatch.setattr(embeddings, "_hash_file", hash_file)
-
-    # The cross-encoder pack is bound the same way, and stood in for the same
-    # way: its two file hashes are substituted, and the adapter that would load
-    # the real ONNX graph is replaced by the deterministic stand-in the unit
-    # tests use, so nothing about the probe, the identity or the packet path is
-    # bypassed except the model bytes this environment cannot hold.
-    from alphalattice.kernel.knowledge import _reranking as reranking
-    from alphalattice.kernel.knowledge.hybrid_contracts import RERANKER_PACK
-    from tests.alternative_evidence_desk.planted_corpus import _FakeReranker
-
-    # The reranker pack is stood in for the same way and no further: every file
-    # the loader consumes is really created, so presence, the refusal of an
-    # unadmitted extra file, each per-file comparison and the manifest hash all
-    # really run. Only the bytes-to-digest mapping and the two library version
-    # strings are substituted, because this environment holds neither the pack
-    # nor FastEmbed; the private real-evidence acceptance suite runs all of it for
-    # real in the declared environment.
-    pack = model_root / "reranker"
-    reranker_pinned: dict[str, str] = {}
-    for name, digest in RERANKER_PACK:
-        artifact = pack / name
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_bytes(f"absent-reranker-artifact:{name}".encode())
-        reranker_pinned[str(artifact)] = digest
-    real_reranker_hash = reranking._hash_file
-
-    def reranker_hash_file(path: Path) -> str:
-        return reranker_pinned.get(str(path)) or str(real_reranker_hash(path))
-
-    monkeypatch.setattr(reranking, "_hash_file", reranker_hash_file)
-    monkeypatch.setattr(reranking, "_runtime_versions", lambda: ("0.8.0", "0.23.2"))
-    monkeypatch.setattr(
-        reranking, "LocalCrossEncoderAdapter", lambda _root, _spec, **_: _FakeReranker()
-    )
-
-
 def _forbid_outbound_network(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     """Any connection off the loopback fails the test and is recorded."""
 
@@ -1196,9 +1143,6 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     """The real composition starts and refuses without a provider credential."""
 
     workspace = http_book[0]
-    authority_root = workspace / "authority" / "semantic-model"
-    authority_root.mkdir(parents=True, exist_ok=True)
-    _install_semantic_pack(monkeypatch, authority_root)
 
     # The manifest must declare the capability the real reader computes.
     from alphalattice.evidence.alternative_evidence.runtime.service import (
@@ -1208,7 +1152,6 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     probe = AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=workspace / "runtime" / "artifacts",
         workspace_root=workspace / "runtime" / "evidence-knowledge",
-        model_root=authority_root,
     )
     try:
         capability = probe.retrieval.capability()

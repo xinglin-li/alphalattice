@@ -264,6 +264,10 @@
 "category": "DEADLINE_EXCEEDED",
 "classification_note": "A later unit waited out its bound for the book's first unit, which never prepared or failed; the later unit fails by name so the stuck first unit is seen."
 },
+"alternative_evidence.host_history_unavailable": {
+"owner": "alternative_evidence",
+"category": "FAILED_PRECONDITION"
+},
 "alternative_evidence.table_view_correspondence_unproved": {
 "owner": "alternative_evidence",
 "category": "FAILED_PRECONDITION",
@@ -7105,6 +7109,10 @@
 "evidence_review.model_profile_identity_invalid": {
 "owner": "evidence_review",
 "category": "INVALID_ARGUMENT"
+},
+"evidence_review.model_store_not_the_hosts": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION"
 },
 "evidence_review.package_path_escapes_workspace": {
 "owner": "evidence_review",

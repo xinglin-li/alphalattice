@@ -232,16 +232,12 @@ def coverage_authority(
     from alphalattice.evidence.alternative_evidence.runtime.service import (
         AlternativeEvidenceDocumentIntelligenceRuntime,
     )
-    from tests.alternative_evidence_desk.planted_corpus import _index_factory, _retriever_factory
 
     listings = tuple(value.listing_id for value in report.window_end_book.positions)
     if runtime is None:
         runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
             artifact_root=workspace / "runtime" / "artifacts",
             workspace_root=workspace / "runtime" / "evidence-knowledge",
-            model_root=workspace / "runtime" / "models",
-            index_factory=_index_factory,
-            retriever_factory=_retriever_factory,
         )
     listing_authority = coverage_listing_authority(
         listings, entities=entities, omit=omit, shared=shared

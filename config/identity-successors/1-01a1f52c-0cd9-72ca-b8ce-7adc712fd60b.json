@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "d4e87ce6199820036b37e6dc7651d6a7488f60efafa4f077d30cec161a177faf",
+   "successor": "6997f4b24ca8cecb006c3dc75811a07c3f8f3ae8ac0ed99d2c12b4ffc09a10cb",
+   "change": "Search evidence reviews in the local retrieval store",
+   "reason": "the same four evidence roles as the head signed earlier today, re-recorded after the reached-test repairs to the chunk scope and a develop merge; the move to the retrieval store is the lawful change and earlier receipts stay readable"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476",
+   "successor": "c7dfc78c2d484e5def7c7ecb48c7e68bf8e68b812e5218627d9cb506d31781d8",
+   "change": "Search evidence reviews in the local retrieval store",
+   "reason": "the same four evidence roles as the head signed earlier today, re-recorded after the reached-test repairs to the chunk scope and a develop merge; the move to the retrieval store is the lawful change and earlier receipts stay readable"
+  },
+  {
+   "role": "alternative_evidence.publication_binding",
+   "predecessor": "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5",
+   "successor": "de51d84886d01785762b505aff96d63246c9c205972842714f5e5fdaab90b01b",
+   "change": "Search evidence reviews in the local retrieval store",
+   "reason": "the same four evidence roles as the head signed earlier today, re-recorded after the reached-test repairs to the chunk scope and a develop merge; the move to the retrieval store is the lawful change and earlier receipts stay readable"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457",
+   "successor": "cc33d7ce0e274c75f4ac9450cabb90c606f2039c5a68eb13f4779ea9d0230aec",
+   "change": "Search evidence reviews in the local retrieval store",
+   "reason": "the same four evidence roles as the head signed earlier today, re-recorded after the reached-test repairs to the chunk scope and a develop merge; the move to the retrieval store is the lawful change and earlier receipts stay readable"
+  }
+ ]
+}

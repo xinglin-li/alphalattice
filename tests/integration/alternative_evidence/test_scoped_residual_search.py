@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from tests.alternative_evidence_desk.document_intelligence_support import (
+    _NOW,
     _document_with_text,
     _open_recorded,
+    _registry,
+    _request,
 )
 from tests.alternative_evidence_desk.litigation_support import BOILERPLATE, _filing, _matter
 
@@ -40,14 +43,29 @@ def _open_two_filings(tmp_path: Path) -> tuple[Any, ...]:
 def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Path) -> None:
     """Control: Scoped search scores and returns only scoped chunks."""
 
-    runtime, request, _registry, _snapshot, document_set, generation = _open_two_filings(tmp_path)
+    runtime, request, _held, _snapshot, document_set, generation = _open_two_filings(tmp_path)
     try:
+        # A previous review's filing in the same workspace, holding the same debt note.
+        debt = next(d for d in document_set.documents if d.entity_id == "MSFT")
+        _snapshot, earlier = runtime.acquire_recorded(
+            request=_request(("NVDA",)),
+            registry=_registry(("NVDA",)),
+            documents=(
+                _document_with_text(
+                    "NVDA", text=_DEBT * 3 + BOILERPLATE, form="10-Q", revision="nvda-10q"
+                ),
+            ),
+            published_at=_NOW,
+        )
+        earlier_set = runtime.canonicalize(source_set=earlier, published_at=_NOW, as_of=_NOW)
+        runtime.build_retrieval(document_set=earlier_set, built_at=_NOW)
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
         )
         try:
             documents = {d.entity_id: d for d in session.inspect_documents()}
             msft = documents["MSFT"]
+            assert msft.document_id == debt.workspace_document_id
             note_start = msft.text.index("NOTE 9. DEBT")
             note_end = msft.text.index("NOTE 8. SEGMENT INFORMATION")
             question = "Was there a revolving credit facility and were borrowings outstanding?"
@@ -55,6 +73,10 @@ def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Pat
             scope = session.scope_for({msft.document_id: [(note_start, note_end)]})
             assert scope and all(entry[0] == msft.document_id for entry in scope)
             scoped = session.search(query=question, top_k=5, reranker_depth=12, scope=scope)
+            # Unscoped, the search reads only the open set: the earlier filing is no candidate.
+            assert {hit.entity_id for hit in everywhere.hits} <= {"AAPL", "MSFT"}
+            outside = (earlier_set.documents[0].workspace_document_id, 0, 10**6)
+            assert session.search(query=question, top_k=5, scope=(outside,)).status == "EMPTY"
             assert everywhere.reranked_pairs > scoped.reranked_pairs > 0
             assert session.reranked_pairs == everywhere.reranked_pairs + scoped.reranked_pairs
             assert scoped.hits and all(hit.entity_id == "MSFT" for hit in scoped.hits)

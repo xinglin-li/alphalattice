@@ -1213,6 +1213,10 @@
   "detail": "The named evidence artifact does not verify against its recorded identity. Inspect storage and backup list; restore a verified copy into a new directory before reading it there.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_VERIFIED_EVIDENCE"
  },
+ "alternative_evidence.workspace_document_tampered": {
+  "detail": "The named evidence document does not verify against the body it was published with. Inspect storage and `alphalattice backup list`; restore a verified copy into a new directory before reviewing it there.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_VERIFIED_EVIDENCE"
+ },
  "alternative_evidence.artifact_unavailable": {
   "detail": "The named evidence artifact could not be read. Its contents are unknown. Inspect storage and backup list; restore a generation that holds it into a new directory before reading it there.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_READABLE_EVIDENCE"

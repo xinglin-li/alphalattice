@@ -126,7 +126,7 @@ def acquisition(monkeypatch: pytest.MonkeyPatch, installer_universe: dict[str, s
     transport.probes = []
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: (
             transport.probes.append(1)
             or SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH)
@@ -418,7 +418,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     transport = SecFixtureTransport()
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
     args = setup._parser().parse_args(
@@ -480,7 +480,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
         def missing_pack(*_args):
             raise setup.model_store.ModelStoreError("model_store.pack_not_installed:fixture:ABSENT")
 
-        missing_runtime.setattr(setup.model_store, "bind_retained_recipe", missing_pack)
+        missing_runtime.setattr(setup.model_store, "bind_recipe", missing_pack)
         missing_runtime.setattr(args, "semantic_model", None)
         with pytest.raises(
             (RuntimeError, ValueError), match=r"semantic_capability_not_ready|pack_not_installed"
@@ -493,7 +493,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     with monkeypatch.context() as unavailable:
         unavailable.setattr(
             setup,
-            "probe_hybrid_retrieval_capabilities",
+            "store_capability",
             lambda *_: SimpleNamespace(status="UNAVAILABLE"),
         )
         with pytest.raises(RuntimeError, match="semantic_capability_not_ready") as raised:
@@ -637,7 +637,7 @@ def test_recorded_source_conversion_does_not_claim_a_new_sec_capture(
     installer_universe.update({"AAPL": "US-AAPL"})
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
     args = setup._parser().parse_args(
@@ -749,7 +749,7 @@ def _rr5f_book(
     universe.update({ticker: f"US-{ticker}" for ticker in tickers})
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
     monkeypatch.setattr(
@@ -981,7 +981,7 @@ def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_t
 knowledge root's own case is the recorded import's above."""
 
 
-@pytest.mark.parametrize("option", sorted(_OPTION_CASES))
+@pytest.mark.parametrize("option", sorted(_OPTION_CASES), ids=str)
 def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offers_table(
     option, tmp_path, monkeypatch, capsys, installer_universe
 ):
@@ -1009,7 +1009,7 @@ def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offe
     installer_universe.update({"AAPL": "US-AAPL"})
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
     pack = tmp_path / "outside" if option == "semantic_model" else workspace / "authority/pack"
@@ -1076,7 +1076,7 @@ def test_listing_authority_admits_the_universe_and_rebinds_offline(
     installer_universe.update({"AAPL": "US-AAPL", "ZZZZ": "US-ZZZZ", "brk.b": "US-BRKB"})
     monkeypatch.setattr(
         setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
     args = setup._parser().parse_args(

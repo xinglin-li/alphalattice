@@ -1,4 +1,4 @@
-"""A retrieval generation names the machine class of an int8 recipe's numbers, in its identity.
+"""A hybrid-v4 generation names the machine class of an int8 recipe's numbers, in its identity.
 
 The field is absent at None, so every generation sealed before it, and every one of a recipe a
 sealed canary fixes, keeps its hash; a generation that names another machine is another
@@ -17,7 +17,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
 )
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
-    AlternativeEvidenceRetrievalGeneration,
+    HybridV4RetrievalGeneration,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -41,10 +41,8 @@ FIELDS: dict[str, object] = {
 
 @pytest.mark.proves("alternative_evidence.int8_generation_names_its_machine_class")
 def test_the_machine_class_is_identity_when_named_and_absent_when_not() -> None:
-    def seal(**extra: object) -> AlternativeEvidenceRetrievalGeneration:
-        return seal_contract(
-            AlternativeEvidenceRetrievalGeneration, "generation_hash", **FIELDS, **extra
-        )
+    def seal(**extra: object) -> HybridV4RetrievalGeneration:
+        return seal_contract(HybridV4RetrievalGeneration, "generation_hash", **FIELDS, **extra)
 
     retained = seal()
     payload = retained.model_dump(mode="json", exclude={"generation_hash"})
@@ -55,6 +53,4 @@ def test_the_machine_class_is_identity_when_named_and_absent_when_not() -> None:
     here = seal(execution_class="AMD64; Intel64 Family 6 Model 183; X86_V2+X86_V3")
     there = seal(execution_class="arm64; arm; NEON+ASIMD+ASIMDDP")
     assert len({retained.generation_hash, here.generation_hash, there.generation_hash}) == 3
-    assert (
-        AlternativeEvidenceRetrievalGeneration.model_validate_json(here.model_dump_json()) == here
-    )
+    assert HybridV4RetrievalGeneration.model_validate_json(here.model_dump_json()) == here

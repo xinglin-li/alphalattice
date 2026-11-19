@@ -150,7 +150,16 @@ class EvidenceQueryRecord(AlternativeEvidenceContract):
     (the residual search); None for the unconditional program."""
     reranked_pairs: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
     """How many (question, passage) pairs the cross-encoder scored for this
-    question, as the kernel's trace reported; None when not recorded."""
+    question, as the search reported; None when not recorded."""
+    score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    """What `hit_scores` mean: the cross-encoder's logit, or the store's linear fusion (a
+    Chinese question, or a rerank past its deadline). None for a receipt sealed before the
+    store, which keeps its hash."""
+    hit_scores: tuple[float, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
+    """Each hit's score, in `hit_span_handles` order, so a replay that ranks the same passages
+    differently is seen by its scores as well as its order."""
 
 
 class EvidenceSpanGroup(AlternativeEvidenceContract):
@@ -1698,8 +1707,11 @@ class AlternativeEvidenceRetrievalAccessReceipt(AlternativeEvidenceContract):
     another request over the same document references, generation content,
     program and policy, without a session -- its queries, reads and typed
     and matter entries are that receipt's; its request, document set and
-    generation are this one's. Absent on a receipt sealed by its own
-    session."""
+    generation are this one's. On a receipt sealed by its own session, the
+    receipt of the same request under an earlier retrieval binding whose
+    passages, revisions and score types this session delivered unchanged:
+    the same evidence, recorded as an edge while the earlier binding stays
+    historical. Absent otherwise."""
     span_set_hash: str | None = Field(
         default=None, pattern=_HASH, exclude_if=lambda value: value is None
     )
@@ -2303,6 +2315,84 @@ class CROAlternativeEvidencePackage(AlternativeEvidenceContract):
         raise KeyError(finding_handle)
 
 
+class EvidenceQuerySupersession(AlternativeEvidenceContract):
+    """One question's delivered passages and score type before and after a retrieval change.
+
+    A passage is `<document handle>/<document id>@<revision>#<body sha256>:<utf-8 start>-<utf-8
+    end>`: the sealed revision, the hash of its body and the byte range in it. `removed` were
+    delivered for the question before and are not now, `added` the reverse. Each side's score type
+    says what its order was ranked by (None for a receipt sealed before the store recorded one); a
+    change of score type alone is a change.
+    """
+
+    query_id: str = Field(pattern=r"^Q-[A-Z0-9-]{1,48}$")
+    prior_score_type: str | None = None
+    score_type: str | None = None
+    removed: tuple[str, ...] = ()
+    added: tuple[str, ...] = ()
+
+
+class RetrievalSupersessionRecord(AlternativeEvidenceContract):
+    """A sealed selection a retrieval change answered with other passages.
+
+    The request's receipt under the earlier retrieval binding (`prior_receipt_hash`) stays sealed
+    and reads back as history; the receipt sealed now (`receipt_hash`) is a different result, not
+    a successor of it, so no identity successor is written. This record is the workspace's account
+    of the change: why, and each question whose delivered passages differ. A selection whose
+    passages are the same records none; its receipt names the prior one as its reuse.
+    """
+
+    kind: Literal["RetrievalSupersessionRecord"] = "RetrievalSupersessionRecord"
+    request_hash: str = Field(pattern=_HASH)
+    prior_receipt_hash: str = Field(pattern=_HASH)
+    receipt_hash: str = Field(pattern=_HASH)
+    reason: str = Field(min_length=1, max_length=300)
+    queries: tuple[EvidenceQuerySupersession, ...] = Field(max_length=26)
+    supersession_hash: str = Field(pattern=_HASH)
+
+    def model_post_init(self, context: object, /) -> None:
+        """Refuse a record whose `supersession_hash` is not its identity, at its seal and at
+        every read; `seal_retrieval_supersession` seals it, never `seal_contract`, whose draft
+        is built with a placeholder hash."""
+        validate_contract_identity(self, "supersession_hash")
+
+
+def seal_retrieval_supersession(
+    *,
+    request_hash: str,
+    prior_receipt_hash: str,
+    receipt_hash: str,
+    reason: str,
+    queries: tuple[EvidenceQuerySupersession, ...],
+) -> RetrievalSupersessionRecord:
+    """The record with its identity: the hash of its JSON without `supersession_hash`.
+
+    Args:
+        request_hash: The request both receipts answer.
+        prior_receipt_hash: Its receipt under the earlier retrieval binding.
+        receipt_hash: Its receipt sealed now.
+        reason: Why the passages changed.
+        queries: Each question whose delivered passages differ.
+
+    Returns:
+        The sealed record, validated by its own identity check.
+    """
+    fields = {
+        "request_hash": request_hash,
+        "prior_receipt_hash": prior_receipt_hash,
+        "receipt_hash": receipt_hash,
+        "reason": reason,
+    }
+    body = {
+        "kind": "RetrievalSupersessionRecord",
+        **fields,
+        "queries": [query.model_dump(mode="json") for query in queries],
+    }
+    return RetrievalSupersessionRecord(
+        **fields, queries=queries, supersession_hash=canonical_hash(body)
+    )
+
+
 __all__ = [
     "ANALYST_ANSWER_TEXT_FIELDS",
     "COMPLETION_SCHEMA_V3",
@@ -2324,6 +2414,7 @@ __all__ = [
     "EvidenceDirection",
     "EvidenceLifecycle",
     "EvidenceQueryRecord",
+    "EvidenceQuerySupersession",
     "EvidenceSpanGroup",
     "EvidenceStructureState",
     "EvidenceTopic",
@@ -2333,6 +2424,7 @@ __all__ = [
     "LitigationRegionRecord",
     "MatterWindowRecord",
     "ProvisionalMatterRecord",
+    "RetrievalSupersessionRecord",
     "SelectedWindowFacet",
     "StructuralScanRecord",
     "TableViewRecord",
@@ -2346,4 +2438,5 @@ __all__ = [
     "UnitCorrespondenceRecord",
     "WholeFilingsRecord",
     "seal_research_obligation",
+    "seal_retrieval_supersession",
 ]

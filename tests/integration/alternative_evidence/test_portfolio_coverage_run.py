@@ -105,7 +105,15 @@ def book(built_book: Any, tmp_path: Path) -> Any:
 
 
 def _embedding_passes(service: Any) -> int:
-    return int(service.review.evidence_task_adapter.runtime.retrieval.passage_embedding_pass_count)
+    """How many generations this runtime's retrieval built, each once: the store embeds a
+    chunk when its revision is published, so a build encodes what the cache lacks or nothing,
+    and every build counts here whichever it was."""
+    retrieval = service.review.evidence_task_adapter.runtime.retrieval
+    return int(
+        retrieval.passage_embedding_pass_count
+        + retrieval.incremental_build_count
+        + retrieval.generation_reuse_count
+    )
 
 
 @pytest.fixture

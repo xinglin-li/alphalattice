@@ -10,14 +10,7 @@ from uuid import UUID
 
 from alphalattice.control.workspace_runtime.core import Workspace
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
-from alphalattice.kernel.knowledge.retrieval import WorkspaceKnowledgeLibrary
-from alphalattice.kernel.knowledge.retrieval_contracts import (
-    KnowledgeAccessClass,
-    KnowledgeMediaType,
-    KnowledgeNamespace,
-    KnowledgeSourceCommitment,
-    WorkspaceKnowledgeDocument,
-)
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
@@ -36,6 +29,7 @@ from .contracts import (
     AlternativeEvidenceDocumentRejection,
     AlternativeEvidenceDocumentSet,
 )
+from .library import EvidenceLibrary
 
 
 class AlternativeEvidenceDocumentPublisher:
@@ -44,7 +38,18 @@ class AlternativeEvidenceDocumentPublisher:
     def __init__(self, workspace_root: Path) -> None:
         """Bind document publication to one confined workspace."""
         self.workspace = Workspace.create(workspace_root)
-        self.library = WorkspaceKnowledgeLibrary(self.workspace)
+        self._library: EvidenceLibrary | None = None
+
+    @property
+    def library(self) -> EvidenceLibrary:
+        """The canonical documents in the Host's store, held from the first use; refused by name
+        outside a Host whose history records, which alone holds the store's writer."""
+        if self._library is None:
+            opened = history.opened_log()
+            if opened is None:
+                raise ValueError("alternative_evidence.host_history_unavailable")
+            self._library = EvidenceLibrary(*opened)
+        return self._library
 
     # ------------------------------------------------------- source objects
 
@@ -167,63 +172,32 @@ class AlternativeEvidenceDocumentPublisher:
         if not documents:
             raise ValueError("alternative_evidence.document_set_empty")
         if admit is not None:
-            # The bytes this publication adds: canonical blobs the library does
-            # not hold yet (content-addressed, so a filing already in the
-            # library adds nothing) and one small manifest per revision.
-            new_blobs = 0
-            for value in documents:
-                blob = self.workspace.root / "knowledge" / "blobs" / value.canonical_content_hash
-                if not blob.is_file():
-                    new_blobs += value.byte_count
-            admit(new_blobs + 4096 * len(documents))
+            # The bytes this publication may add to the Host's log: each canonical body and one
+            # small manifest per revision (a revision the store holds already adds nothing).
+            admit(sum(value.byte_count for value in documents) + 4096 * len(documents))
         revisions = []
         references = []
         for value in sorted(documents, key=lambda item: item.semantic_handle):
             document_id = _workspace_document_id(value)
-            access_class = (
-                KnowledgeAccessClass.SYSTEM
-                if value.source_name == "SEC_EDGAR"
-                else KnowledgeAccessClass.USER_PRIVATE
-            )
-            namespace = (
-                KnowledgeNamespace.SYSTEM_REFERENCE
-                if access_class is KnowledgeAccessClass.SYSTEM
-                else KnowledgeNamespace.USER_REFERENCE
-            )
-            document = WorkspaceKnowledgeDocument.create(
-                document_id=document_id,
-                namespace=namespace,
-                title=value.title[:160],
-                media_type=KnowledgeMediaType.MARKDOWN,
-            )
-            source = KnowledgeSourceCommitment(
-                source_id=f"ae.{value.source_name.casefold().replace('_', '-')}",
-                source_revision=1,
-                source_logical_hash=value.canonical_content_hash,
-                license_id=(
-                    "SEC-PUBLIC-FILING"
-                    if value.source_name == "SEC_EDGAR"
-                    else "USER-PROVIDED-LOCAL-RESEARCH"
-                ),
-                access_class=access_class,
-                available_at=value.available_at,
-            )
             receipt = self.library.publish_revision(
-                document=document,
-                revision=1,
-                source=source,
-                # Dated by the evidence, not by the task that happened to read
-                # it. The document id is content-addressed, so a second book
-                # asking about a filing already in the library republishes the
-                # same id; with the task's clock here the manifest differed and
-                # the immutable store refused it, so only the first evidence
-                # refresh in a workspace could ever succeed. `available_at` is
-                # a property of the filing, which makes the republish
-                # byte-identical and takes the library's replay path.
-                created_at=value.available_at,
-                content=value.canonical_markdown,
+                document_id=document_id,
+                title=value.title[:160],
+                # Dated by the evidence, not by the task that happened to read it: the document id
+                # is content-addressed, so a second book asking about a filing already published
+                # republishes the same revision, byte for byte.
+                source={
+                    "source_id": f"ae.{value.source_name.casefold().replace('_', '-')}",
+                    "source_logical_hash": value.canonical_content_hash,
+                    "license_id": (
+                        "SEC-PUBLIC-FILING"
+                        if value.source_name == "SEC_EDGAR"
+                        else "USER-PROVIDED-LOCAL-RESEARCH"
+                    ),
+                    "available_at": value.available_at.isoformat(),
+                },
+                content=value.canonical_markdown.decode("utf-8"),
             )
-            revisions.append(receipt.revision)
+            revisions.append(receipt)
             references.append(
                 AlternativeEvidenceDocumentReference(
                     semantic_handle=value.semantic_handle,
@@ -249,14 +223,7 @@ class AlternativeEvidenceDocumentPublisher:
                 )
             )
         ordered_revisions = tuple(
-            sorted(
-                revisions,
-                key=lambda item: (
-                    item.document.namespace.value,
-                    item.document.document_id,
-                    item.revision,
-                ),
-            )
+            sorted(revisions, key=lambda item: (item.document.document_id, item.revision))
         )
         snapshot_id = _stable_uuid(
             canonical_hash(

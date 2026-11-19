@@ -9,7 +9,7 @@ from alphalattice.control.task_control.contracts import (
     StageFailureCause,
     failure_code_from,
 )
-from alphalattice.kernel.knowledge.runtime import build_chunks
+from alphalattice.kernel.data_layer import recall
 
 from ..documents.contracts import AlternativeEvidenceDocumentSet
 
@@ -41,26 +41,22 @@ def failure_detail(
         )
     ):
         return _need_failure_detail(error, documents)
-    if (
-        stage != "build_retrieval_generation"
-        or not isinstance(error, ValidationError)
-        or error.title != "KnowledgeCitation"
-    ):
+    if stage != "build_retrieval_generation":
         return str(error)
-    errors = error.errors(include_input=False, include_url=False)
-    fields = ", ".join(".".join(map(str, row["loc"])) or "citation" for row in errors)
     issuer, filing = "UNKNOWN", "UNKNOWN"
     frame = error.__traceback__
     while frame is not None:
-        if frame.tb_frame.f_code is build_chunks.__code__:
+        # The store's build takes each filing in turn (`recall.index_references`): the one it
+        # held when it failed is named.
+        if frame.tb_frame.f_code is recall.index_references.__code__:
+            document = frame.tb_frame.f_locals.get("document")
             revision = frame.tb_frame.f_locals.get("revision")
-            document = getattr(revision, "document", None)
             try:
                 matches = [
                     item
                     for item in documents().documents
-                    if item.workspace_document_id == getattr(document, "document_id", None)
-                    and item.workspace_revision == getattr(revision, "revision", None)
+                    if item.workspace_document_id == document
+                    and item.workspace_revision == revision
                 ]
             except Exception:
                 matches = []  # Preserve the original failure when diagnostics are unavailable.
@@ -70,7 +66,8 @@ def failure_detail(
                 filing = f"{ref.semantic_handle} ({ref.document_type}, {ref.revision_label})"
             break
         frame = frame.tb_next
-    return f"Issuer {issuer}; filing {filing}; rejected field {fields or 'UNKNOWN'}. {error}"
+    code = getattr(getattr(error, "failure", None), "code", None) or getattr(error, "code", None)
+    return f"Issuer {issuer}; filing {filing}; refused {code or type(error).__name__}. {error}"
 
 
 def _need_failure_detail(

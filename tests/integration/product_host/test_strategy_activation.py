@@ -50,6 +50,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     portfolio_research_task_input,
 )
 from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.portfolio_strategy_lab.activation_review_support import (
     activation_cli,
     publish_activation_review,
@@ -58,6 +61,8 @@ from tests.portfolio_strategy_lab.local_web_support import _json, _request
 from tests.pytest_environment import upgraded
 from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
 from u0_probe import _copy
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 PACKAGE = "RETURN_G6_MU_ONLY"
 HELD_DATA_CLOCK = datetime(2026, 9, 11, tzinfo=UTC)

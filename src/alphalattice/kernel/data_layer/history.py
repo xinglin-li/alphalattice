@@ -68,6 +68,7 @@ from alphalattice.kernel.data_layer.root import (
 from alphalattice.kernel.shared_kernel.environment import offline
 
 if TYPE_CHECKING:
+    from alphalattice.kernel.data_layer.knowledge import Retrieved
     from alphalattice.kernel.data_layer.store import StorePort
 
 OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
@@ -2494,7 +2495,9 @@ def recall_experiences(
         log, root = _open.get("log"), _open.get("root")
         if log is None or root is None or _open.get("reading") is None:
             return None
-        log.flush()
+    # Flushed after `_lock` is let go: a registry write holds the log's guard and then asks
+    # `held()` for `_lock`, so flushing under `_lock` would take the two locks in the other order.
+    log.flush()
     found, trials = recall.recall(
         log,
         Path(root),
@@ -2520,6 +2523,53 @@ def recall_experiences(
             for item in found.hits
         ],
     }
+
+
+def index_references(
+    *, workspace: str, revisions: Sequence[tuple[str, int]]
+) -> recall.ReferenceIndex | None:
+    """Chunk and embed the reference revisions `workspace` published (`recall.index_references`);
+    None while the history is not open."""
+    with _lock:
+        log = _open.get("log")
+        if log is None or _open.get("reading") is None:
+            return None
+    # Flushed after `_lock` is let go: a registry write holds the log's guard and then asks
+    # `held()` for `_lock`, so flushing under `_lock` would take the two locks in the other order.
+    log.flush()
+    return recall.index_references(log, workspace=workspace, revisions=revisions)
+
+
+def search_references(
+    query: str,
+    *,
+    workspace: str,
+    cutoff_us: int,
+    ranges: tuple[tuple[str, int, int], ...],
+    groups: tuple[tuple[str, ...], ...],
+    depth: int | None,
+    limit: int,
+) -> Retrieved | None:
+    """The reference chunks of `workspace` most like `query` (`recall.search_references`, one
+    gen_ai.retrieval span); None while the history is not open."""
+    with _lock:
+        log, root = _open.get("log"), _open.get("root")
+        if log is None or root is None or _open.get("reading") is None:
+            return None
+    # Flushed after `_lock` is let go: a registry write holds the log's guard and then asks
+    # `held()` for `_lock`, so flushing under `_lock` would take the two locks in the other order.
+    log.flush()
+    return recall.search_references(
+        log,
+        Path(root),
+        query,
+        workspace=workspace,
+        cutoff_us=cutoff_us,
+        ranges=ranges,
+        groups=groups,
+        depth=depth,
+        limit=limit,
+    )
 
 
 def read_experience_brief(

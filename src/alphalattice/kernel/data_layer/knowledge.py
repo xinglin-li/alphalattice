@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager, ExitStack, contextmanager, nullco
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import RLock
-from typing import Any, Literal, Protocol, Self
+from typing import Any, Final, Literal, Protocol, Self
 
 import numpy as np
 from numpy.typing import NDArray
@@ -98,6 +98,8 @@ class SearchHit:
     chunk: Chunk
     score: float
     rowid: int
+    channels: tuple[str, ...] = ()
+    """The channels that found the chunk: "lexical", "vector" or both, in that order."""
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,8 @@ class Retrieved:
 
     hits: tuple[RetrievedHit, ...]
     score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"]
+    reranked: int = 0
+    """(query, passage) pairs the cross-encoder scored, a shortlist past its deadline included."""
 
 
 def fuse(
@@ -133,7 +137,11 @@ def fuse(
     lexical_scores, vector_scores = normalized(lexical), normalized(vector)
     hits = {hit.chunk.chunk_id: hit for hit in (*lexical, *vector)}
     ranked = (
-        replace(hit, score=0.5 * lexical_scores.get(key, 0.0) + 0.5 * vector_scores.get(key, 0.0))
+        replace(
+            hit,
+            score=0.5 * lexical_scores.get(key, 0.0) + 0.5 * vector_scores.get(key, 0.0),
+            channels=("lexical",) * (key in lexical_scores) + ("vector",) * (key in vector_scores),
+        )
         for key, hit in hits.items()
     )
     return tuple(sorted(ranked, key=lambda hit: (-hit.score, hit.rowid))[:limit])
@@ -150,6 +158,9 @@ class Scope:
     kind: str | None = None
     superseded: bool | None = False
     evidence: EvidenceVersions = frozenset()
+    ranges: tuple[tuple[str, int, int], ...] = ()
+    """When given, only chunks inside one of these (source id, first ordinal, last ordinal)
+    ranges: a residual search within the passages a review has already inspected."""
 
 
 class VectorPort(Protocol):
@@ -157,8 +168,11 @@ class VectorPort(Protocol):
 
     recipe_id: str
 
-    def search(self, query: Matrix, scope: Scope, *, limit: int = 50) -> tuple[SearchHit, ...]:
-        """The top `limit` chunks in `scope` by similarity to `query`, ties in source row order."""
+    def search(
+        self, query: Matrix, scope: Scope, *, limit: int = 50, per_source: bool = False
+    ) -> tuple[SearchHit, ...]:
+        """The top `limit` chunks in `scope` by similarity to `query` (each source's top `limit`
+        when `per_source`), ties in source row order."""
         ...
 
     def close(self) -> None:
@@ -592,9 +606,16 @@ class KnowledgeStore:
             con.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES ('optimize')")
 
     def lexical(
-        self, query: str, scope: Scope, *, recipe_id: str | None = None, limit: int = 50
+        self,
+        query: str,
+        scope: Scope,
+        *,
+        recipe_id: str | None = None,
+        limit: int = 50,
+        per_source: bool = False,
     ) -> tuple[SearchHit, ...]:
-        """Search the FTS index within an admitted workspace and source-time boundary."""
+        """Search the FTS index within an admitted workspace and source-time boundary: the best
+        `limit` matches, or each source's best `limit` when `per_source`."""
         terms = _TERMS.findall(query)
         if not terms or limit < 1:
             return ()
@@ -621,7 +642,16 @@ class KnowledgeStore:
             " AND (? IS NULL OR c.recipe_id = ?)"
             " AND EXISTS (SELECT 1 FROM knowledge_workspace_source w"
             " WHERE w.workspace_id = ? AND w.version_id = v.version_id)"
-            " ORDER BY rank, c.rowid LIMIT ?"
+            " AND (? = '[]' OR EXISTS (SELECT 1 FROM json_each(?) r"
+            " WHERE r.value ->> 0 = s.source_id"
+            " AND c.ordinal BETWEEN r.value ->> 1 AND r.value ->> 2))"
+        )
+        sql = (
+            "SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY source_id"
+            f" ORDER BY rank, rowid) AS place FROM ({sql})) WHERE place <= ?"
+            " ORDER BY rank, rowid"
+            if per_source
+            else sql + " ORDER BY rank, c.rowid LIMIT ?"
         )
         filters = (
             cutoff_us,
@@ -637,6 +667,8 @@ class KnowledgeStore:
             recipe_id,
             recipe_id,
             scope.workspace,
+            ranges := json.dumps(scope.ranges),
+            ranges,
             limit,
         )
         with self.log.reading() as con:
@@ -650,7 +682,9 @@ class KnowledgeStore:
                 )
                 rows = con.execute(sql, (loose, *filters)).fetchall()
         return tuple(
-            SearchHit(row[0], row[1], row[2], Chunk(*row[3:7]), -float(row[7]), row[8])
+            SearchHit(
+                row[0], row[1], row[2], Chunk(*row[3:7]), -float(row[7]), row[8], ("lexical",)
+            )
             for row in rows
         )
 
@@ -818,8 +852,10 @@ class NumpyVectorIndex:
                     "the vector model is missing", code="data_layer.knowledge_model_missing"
                 )
             rows = con.execute(
-                "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id"
-                " FROM knowledge_chunk c LEFT JOIN knowledge_embedding e"
+                "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id, v.source_id,"
+                " c.ordinal FROM knowledge_chunk c"
+                " JOIN knowledge_source_version v ON v.version_id = c.version_id"
+                " LEFT JOIN knowledge_embedding e"
                 " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
                 " AND e.model_id = ? WHERE c.recipe_id = ? ORDER BY c.rowid",
                 (model_id, recipe_id),
@@ -837,6 +873,8 @@ class NumpyVectorIndex:
         self._codes = np.fromiter(
             (self._version_codes[value] for value in versions), dtype=np.int32
         )
+        self._places: list[tuple[str, int]] = [(str(row[4]), int(row[5])) for row in rows]
+        self._index_places()
         self._dimension = int(model[0])
         self._precision = str(model[1])
         self._delta = np.empty((1024, self._dimension), dtype=np.float32)
@@ -917,8 +955,10 @@ class NumpyVectorIndex:
         with self._guard:
             with self.store.log.reading() as con:
                 rows = con.execute(
-                    "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id"
-                    " FROM knowledge_chunk c LEFT JOIN knowledge_embedding e"
+                    "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id, v.source_id,"
+                    " c.ordinal FROM knowledge_chunk c"
+                    " JOIN knowledge_source_version v ON v.version_id = c.version_id"
+                    " LEFT JOIN knowledge_embedding e"
                     " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
                     " AND e.model_id = ? WHERE c.recipe_id = ? ORDER BY c.rowid",
                     (self.model_id, self.recipe_id),
@@ -952,17 +992,24 @@ class NumpyVectorIndex:
                 self._codes = np.fromiter(
                     (self._version_codes[value] for value in self._versions), dtype=np.int32
                 )
+                self._places.extend((str(row[4]), int(row[5])) for row in new)
+                self._index_places()
             self._current = {str(row[0]) for row in rows}
             self.refresh_scopes()
             self._rebuild_required = False
             return True
 
-    def search(self, query: Matrix, scope: Scope, *, limit: int = 50) -> tuple[SearchHit, ...]:
-        """Score one matrix with BLAS, then select the eligible top-k with stable ties."""
+    def search(
+        self, query: Matrix, scope: Scope, *, limit: int = 50, per_source: bool = False
+    ) -> tuple[SearchHit, ...]:
+        """Score one matrix with BLAS, then select the eligible top-k (each source's top-k when
+        `per_source`) with stable ties."""
         with self._guard:
-            return self._search(query, scope, limit)
+            return self._search(query, scope, limit, per_source)
 
-    def _search(self, query: Matrix, scope: Scope, limit: int) -> tuple[SearchHit, ...]:
+    def _search(
+        self, query: Matrix, scope: Scope, limit: int, per_source: bool
+    ) -> tuple[SearchHit, ...]:
         if self._rebuild_required:
             raise DataError(
                 "the vector index requires its background rebuild",
@@ -996,19 +1043,34 @@ class NumpyVectorIndex:
         for code, key in self._evidence.items():
             allowed[code] = key in scope.evidence
         eligible_mask &= allowed[codes]
+        if scope.ranges:
+            eligible_mask &= self._in_ranges(scope.ranges)[scoped]
         eligible = scoped[eligible_mask]
         if not len(eligible):
             return ()
         scores = np.concatenate((self.matrix @ query, self._delta[: self._delta_count] @ query))
         values = scores[eligible]
-        count = min(limit, len(eligible))
-        candidate = np.argpartition(-values, count - 1)[:count]
-        boundary = values[candidate].min()
-        candidate = np.flatnonzero(values >= boundary)
-        order = np.lexsort((eligible[candidate], -values[candidate]))[:count]
-        positions = eligible[candidate[order]]
+        if per_source:  # each source's best `limit`, in one global order
+            order = np.lexsort((eligible, -values))
+            sources = self._row_sources[eligible[order]]
+            grouped = np.argsort(sources, kind="stable")
+            starts = np.r_[0, np.flatnonzero(np.diff(sources[grouped])) + 1]
+            place = np.empty(len(order), dtype=np.int64)
+            place[grouped] = np.arange(len(order)) - np.repeat(
+                starts, np.diff(np.r_[starts, len(order)])
+            )
+            order = order[place < limit]
+            positions = eligible[order]
+            scores = [float(values[index]) for index in order]
+        else:
+            count = min(limit, len(eligible))
+            candidate = np.argpartition(-values, count - 1)[:count]
+            boundary = values[candidate].min()
+            candidate = np.flatnonzero(values >= boundary)
+            order = np.lexsort((eligible[candidate], -values[candidate]))[:count]
+            positions = eligible[candidate[order]]
+            scores = [float(values[candidate[index]]) for index in order]
         selected = [self._ids[int(position)] for position in positions]
-        scores = [float(values[candidate[index]]) for index in order]
         with self.store.log.reading() as con:
             rows = con.execute(
                 "SELECT s.source_id, v.version, c.ordinal, c.chunk_id, c.char_start, c.char_end,"
@@ -1019,9 +1081,37 @@ class NumpyVectorIndex:
                 (json.dumps(selected),),
             ).fetchall()
         return tuple(
-            SearchHit(row[0], row[1], row[2], Chunk(*row[3:7]), score, row[7])
+            SearchHit(row[0], row[1], row[2], Chunk(*row[3:7]), score, row[7], ("vector",))
             for row, score in zip(rows, scores, strict=True)
         )
+
+    def _index_places(self) -> None:
+        """Each row's source as a code and its chunk ordinal, for range scopes."""
+        self._source_codes: dict[str, int] = {}
+        self._row_sources = np.fromiter(
+            (
+                self._source_codes.setdefault(source, len(self._source_codes))
+                for source, _ in self._places
+            ),
+            dtype=np.int32,
+            count=len(self._places),
+        )
+        self._ordinals = np.fromiter(
+            (ordinal for _, ordinal in self._places), dtype=np.int32, count=len(self._places)
+        )
+
+    def _in_ranges(self, ranges: tuple[tuple[str, int, int], ...]) -> np.ndarray:
+        """Which rows lie inside one of `ranges`: (source id, first ordinal, last ordinal)."""
+        inside = np.zeros(len(self._places), dtype=np.bool_)
+        for source, first, last in ranges:
+            code = self._source_codes.get(source)
+            if code is not None:
+                inside |= (
+                    (self._row_sources == code)
+                    & (self._ordinals >= first)
+                    & (self._ordinals <= last)
+                )
+        return inside
 
     def close(self) -> None:
         """Release the mapping and the temporary file owned by this Host index."""
@@ -1036,6 +1126,13 @@ class NumpyVectorIndex:
     def __exit__(self, *_: object) -> None:
         """Close the index whether or not the block raised."""
         self.close()
+
+
+WINDOW: Final = 32
+"""Candidates each source supplies per channel when a search reads per document: the window
+the per-document rerank depth is bounded by."""
+SHORTLIST: Final = 20
+"""Pairs the cross-encoder reads under one deadline (encoders.SHORTLIST)."""
 
 
 def _no_span(_query: str) -> AbstractContextManager[None]:
@@ -1078,24 +1175,60 @@ class HybridSearch:
         kind: str | None = None,
         superseded: bool | None = False,
         limit: int = 5,
+        ranges: tuple[tuple[str, int, int], ...] = (),
+        groups: tuple[tuple[str, ...], ...] = (),
+        depth: int | None = None,
     ) -> Retrieved:
-        """Fuse both scoped channels and rerank English only within the model's deadline."""
+        """Fuse both scoped channels and rerank English only, each shortlist within the model's
+        deadline.
+
+        `ranges` limits the search to those (source, first ordinal, last ordinal) ranges. With a
+        `depth`, each source supplies its own candidate window and its best `depth` fused
+        candidates are reranked (in shortlists, each under the deadline; past any deadline the
+        fused order stands). With `groups`, each group of source ids takes its own `limit` of the
+        final order, and sources in no group share one trailing group; ranks stay global.
+        """
         if language not in ("en", "zh"):
             raise DataError(
                 "the query language is unsupported", code="data_layer.knowledge_language_invalid"
             )
-        if not query.strip() or len(query) > 512 or not 1 <= limit <= 20:
+        if (
+            not query.strip()
+            or len(query) > 512
+            or not 1 <= limit <= 20
+            or (depth is not None and not 1 <= depth <= WINDOW)
+        ):
             raise DataError(
                 "the query or result limit is invalid", code="data_layer.knowledge_query_invalid"
             )
         with RETRIEVAL_SPAN(query):
             query_vector = self.encoder.embed_query(query)
-            scope = self.store.scope(
-                workspace=workspace, cutoff_us=cutoff_us, kind=kind, superseded=superseded
+            scope = replace(
+                self.store.scope(
+                    workspace=workspace, cutoff_us=cutoff_us, kind=kind, superseded=superseded
+                ),
+                ranges=ranges,
             )
-            lexical = self.store.lexical(query, scope, recipe_id=self.vector.recipe_id)
-            dense = self.vector.search(query_vector, scope)
-            ranked = list(fuse(lexical, dense))
+            window, per_source = (WINDOW, True) if depth else (50, False)
+            lexical = self.store.lexical(
+                query,
+                scope,
+                recipe_id=self.vector.recipe_id,
+                limit=window,
+                per_source=per_source,
+            )
+            dense = self.vector.search(query_vector, scope, limit=window, per_source=per_source)
+            ranked = list(fuse(lexical, dense, limit=len(lexical) + len(dense)))
+            if depth:  # each source's best `depth` fused candidates
+                taken: dict[str, int] = {}
+                considered = []
+                for hit in ranked:
+                    if taken.get(hit.source_id, 0) < depth:
+                        taken[hit.source_id] = taken.get(hit.source_id, 0) + 1
+                        considered.append(hit)
+                ranked = considered
+            else:
+                ranked = ranked[:50]
             score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"] = "LINEAR_FUSION"
             bodies: dict[tuple[str, str], str] = {}
             texts: dict[str, str] = {}
@@ -1113,15 +1246,23 @@ class HybridSearch:
                 texts[hit.chunk.chunk_id] = text
                 return text
 
+            reranked = 0
             if language == "en" and ranked:
-                first = ranked[:20]
-                scores = self.reranker.score(query, tuple(read(hit) for hit in first))
-                if scores is not None:
-                    if len(scores) != len(first) or not np.isfinite(scores).all():
+                first = ranked if depth else ranked[:SHORTLIST]
+                scores: list[float] = []
+                for start in range(0, len(first), SHORTLIST):
+                    batch = first[start : start + SHORTLIST]
+                    scored = self.reranker.score(query, tuple(read(hit) for hit in batch))
+                    reranked += len(batch)
+                    if scored is None:  # past a deadline: the fused order stands
+                        break
+                    if len(scored) != len(batch) or not np.isfinite(scored).all():
                         raise DataError(
                             "the reranker returned invalid scores",
                             code="data_layer.knowledge_embedding_invalid",
                         )
+                    scores.extend(scored)
+                else:
                     rescored = [
                         replace(hit, score=float(score))
                         for hit, score in zip(first, scores, strict=True)
@@ -1131,7 +1272,26 @@ class HybridSearch:
             return Retrieved(
                 tuple(
                     RetrievedHit(hit, texts.get(hit.chunk.chunk_id) or read(hit))
-                    for hit in ranked[:limit]
+                    for hit in _cut(ranked, limit, groups)
                 ),
                 score_type,
+                reranked,
             )
+
+
+def _cut(
+    ranked: Sequence[SearchHit], limit: int, groups: tuple[tuple[str, ...], ...]
+) -> list[SearchHit]:
+    """The final cut: one global `limit`, or `limit` for each group of source ids, sources in no
+    group sharing one trailing group; the order, and so each hit's rank, is unchanged."""
+    if not groups:
+        return list(ranked[:limit])
+    group_of = {source: index for index, group in enumerate(groups) for source in group}
+    taken: dict[int, int] = {}
+    selected = []
+    for hit in ranked:
+        group = group_of.get(hit.source_id, len(groups))
+        if taken.get(group, 0) < limit:
+            taken[group] = taken.get(group, 0) + 1
+            selected.append(hit)
+    return selected

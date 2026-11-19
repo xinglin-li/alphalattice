@@ -1435,7 +1435,6 @@
           "src/alphalattice/kernel/knowledge/_reranking.py:308",
           "src/alphalattice/kernel/knowledge/_reranking.py:315",
           "src/alphalattice/kernel/knowledge/_reranking.py:470",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:519",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:12",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:20",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:30",

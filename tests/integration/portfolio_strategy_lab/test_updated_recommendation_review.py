@@ -52,6 +52,9 @@ from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import 
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     PortfolioReviewTaskAdapter,
 )
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
@@ -66,6 +69,8 @@ from tests.portfolio_strategy_lab.synthetic_numerical import (
     prepared_for,
     snapshot_for,
 )
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 
 @pytest.fixture(

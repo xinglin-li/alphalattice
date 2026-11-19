@@ -41,6 +41,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from tests.alternative_evidence_desk.document_intelligence_support import _document_with_text
 from tests.alternative_evidence_desk.litigation_support import BOILERPLATE, _filing
 from tests.alternative_evidence_desk.matter_selection_support import _long_matter
+from tests.alternative_evidence_desk.planted_corpus import tampered_reference
 from tests.alternative_evidence_desk.review_http_support import (
     _continue,
     _operation,
@@ -196,6 +197,7 @@ def test_continuation_is_an_executable_product_operation_over_pending_scope(
         assert adapter.runtime.artifacts.write_count == writes_after_preparation
 
         # The continuation: one Task of one stage, its own packet.
+        encoded = adapter.runtime.retrieval.embedded_chunk_count
         outcome = _continue(service, request, session_limit=5, window_limit=320)
         assert outcome["disposition"] == "ADMITTED", outcome
         continued_id = outcome["task_id"]
@@ -207,7 +209,7 @@ def test_continuation_is_an_executable_product_operation_over_pending_scope(
         assert [item.stage_id for item in continued_task.plan.work_items] == [
             "select_evidence_spans"
         ]
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1, "no re-embedding"
+        assert adapter.runtime.retrieval.embedded_chunk_count == encoded, "no re-embedding"
         parts = _parts(
             service, {"operation": "EVIDENCE_PACKET", **selected, "task_id": continued_id}
         )
@@ -563,23 +565,14 @@ def test_a_cumulative_allowance_is_honest_and_a_continuation_survives_restart_an
         assert again["disposition"] == "REUSED_EXACT"
         assert again["task_id"] == str(interrupted_id)
 
-        # Tamper: a changed source byte blocks a fresh session by name and
+        # Tamper: a changed canonical byte in the Host's log blocks a fresh session by name and
         # publishes nothing; the restored bytes read again under a new Task
         # of the same input.
         document_set = adapter._document_set(second.registry.task(UUID(task_id)), ONE_UNIT)
         ten_k = next(d for d in document_set.documents if d.document_type == "10-K")
-        blob = next(
-            path
-            for path in (tmp_path / "evidence" / "workspace" / "knowledge" / "blobs").rglob("*")
-            if path.is_file() and path.stat().st_size == ten_k.byte_count
-        )
-        original = blob.read_bytes()
         writes = adapter.runtime.artifacts.write_count
-        blob.write_bytes(original[:-1] + bytes([original[-1] ^ 0x01]))
-        try:
+        with tampered_reference(ten_k.workspace_document_id):
             blocked = _continue(second, request, session_limit=2, window_limit=320)
-        finally:
-            blob.write_bytes(original)
         assert blocked["disposition"] == "ADMITTED"
         blocked_task = second.registry.task(UUID(blocked["task_id"]))
         assert blocked_task.lifecycle is TaskLifecycle.BLOCKED

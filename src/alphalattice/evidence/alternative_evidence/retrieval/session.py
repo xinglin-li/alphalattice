@@ -9,22 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from uuid import UUID
 
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    HybridIndexSpec,
-    HybridKnowledgeRetrievalRequest,
-)
-from alphalattice.kernel.knowledge.retrieval import WorkspaceKnowledgeLibrary
-from alphalattice.kernel.knowledge.retrieval_contracts import (
-    KnowledgeAccessClass,
-    KnowledgeCitation,
-    KnowledgeNamespace,
-)
 from alphalattice.kernel.live_evidence.online_sources import not_carried_tables
 
 from ..documents.canonicalization import SecTableCarry
 from ..documents.contracts import AlternativeEvidenceDocumentSet
+from ..documents.library import EvidenceLibrary, EvidenceRevision
 from ..documents.structure import DocumentStructure
 from ..documents.tables import (
     TablePlaceholder,
@@ -35,7 +25,6 @@ from ..documents.tables import (
 )
 from .contracts import (
     AlternativeEvidenceResolvedSpan,
-    AlternativeEvidenceRetrievalGeneration,
     AlternativeEvidenceSearchHit,
     AlternativeEvidenceSearchResult,
     RetrievalGenerationRecord,
@@ -169,6 +158,23 @@ source commitment; None when no original is retained (a recorded text)."""
 
 
 @dataclass(frozen=True, slots=True)
+class SpanCitation:
+    """Where a handle's passage is: the document revision and the SHA-256 of its UTF-8 body, the
+    exact character range, `chunk_id` (the SHA-256 of document, revision, body hash and range:
+    the same range always reproduces it) and `chunk_hash` (`passage_hash` of the range). Its
+    lines and UTF-8 byte offsets are derived from the body, read and verified against
+    `content_sha256` when the passage is read."""
+
+    document_id: str
+    revision: int
+    content_sha256: str
+    character_start: int
+    character_end: int
+    chunk_id: str
+    chunk_hash: str
+
+
+@dataclass(frozen=True, slots=True)
 class InspectedDocument:
     """Hold verified filing text and its scanned structure.
 
@@ -263,27 +269,30 @@ class AlternativeEvidenceRetrievalSession:
     def __init__(
         self,
         *,
-        library: WorkspaceKnowledgeLibrary,
-        retriever: Any,
+        library: EvidenceLibrary,
+        search: Callable[..., Any],
+        chunks: Mapping[str, tuple[tuple[int, int], ...]],
         document_set: AlternativeEvidenceDocumentSet,
         generation: RetrievalGenerationRecord,
-        index_spec: HybridIndexSpec,
         evidence_as_of: datetime,
-        on_close: Callable[[], None] | None = None,
         original_for: OriginalReader | None = None,
     ) -> None:
-        """Bind one verified generation to its read and accounting budgets."""
+        """Bind one verified generation to its search, its chunks and its budgets.
+
+        `search` is the store's hybrid search of this workspace's references
+        (`history.search_references`); `chunks` holds each document's chunks in ordinal order
+        as `(character start, character end)`, what a scope is cut from.
+        """
         self.library = library
-        self.retriever = retriever
-        self._on_close = on_close
+        self._search_store = search
         self._original_for = original_for
         self._originals: dict[str, tuple[bytes, str, str] | None] = {}
         self._table_views: dict[str, tuple[TablePlaceholder, int]] = {}
         """Per issued table-view handle: the placeholder and the first row."""
         self.document_set = document_set
         self.generation = generation
-        self.index_spec = index_spec
         self.evidence_as_of = evidence_as_of
+        self._cutoff_us = round(evidence_as_of.timestamp() * 1_000_000)
         self.search_count = 0
         self.span_read_count = 0
         self.issued_source_span_count = 0
@@ -295,11 +304,20 @@ class AlternativeEvidenceRetrievalSession:
         self._structures: dict[str, DocumentStructure] = {}
         self._revisions: dict[str, Any] = {}
         self._texts: dict[str, str] = {}
-        self._chunk_index: dict[str, tuple[tuple[int, int, int], ...]] | None = None
-        """Each document's proved chunks as `(ordinal, character_start,
-        character_end)`, read once from the open generation for scoping."""
+        self._chunk_index = {
+            document: tuple((ordinal, start, end) for ordinal, (start, end) in enumerate(held))
+            for document, held in chunks.items()
+        }
+        """Each document's chunks as `(ordinal, character_start, character_end)`."""
+        self._scope_ranges: dict[tuple[str, int, int], tuple[tuple[int, int], ...]] = {}
+        """The character ranges each `scope_for` entry was named from: a scoped chunk with no
+        matched line delivers its leading sentence from inside them, though the chunk may begin
+        before them."""
         self.reranked_pairs = 0
         """Pairs the cross-encoder scored over this session's searches."""
+        self.score_types: list[str] = []
+        """Each search's score type, in order: `CROSS_ENCODER_LOGIT`, or `LINEAR_FUSION` for a
+        Chinese query or a rerank past its deadline."""
         self.read_handles: list[str] = []
         self._references = {value.workspace_document_id: value for value in document_set.documents}
         self._worker = ThreadPoolExecutor(
@@ -309,48 +327,29 @@ class AlternativeEvidenceRetrievalSession:
         self._closed = False
 
     def close(self) -> None:
-        """Release this session and its retrieval lease."""
-        if self._closed:
-            return
-        try:
-            self._worker.submit(self._close_retriever).result()
-            self._worker.shutdown(wait=True)
-        finally:
+        """Release this session's worker."""
+        if not self._closed:
             self._closed = True
-            if self._on_close is not None:
-                # The lease this session held on its generation ends here,
-                # after the reader's handle is closed, whatever closing cost.
-                self._on_close()
+            self._worker.shutdown(wait=True)
 
-    def _close_retriever(self) -> None:
-        close = getattr(self.retriever, "close", None)
-        if callable(close):
-            close()
-
-    def seal_pair_scores(self) -> tuple[Any, ...]:
-        """Seal the session's cross-encoder pair scores.
-
-        Seal what the cross-encoder scored in this session under the
-        storage admission the reader was opened with; the sealed blocks
-        (`SealedPairScoreBlock`), for the runtime to commit and the receipt
-        to name. Empty for a reader without an admission or a session that
-        scored nothing.
-        """
-        seal = getattr(self.retriever, "seal_pair_scores", None)
-        if not callable(seal):
-            return ()
-        return tuple(self._worker.submit(seal).result())
-
-    def pair_score_facts(self) -> dict[str, int]:
-        """Report pair-score storage counts for accounting.
-
-        The reader's pair-score store counts (hits, misses, blocks,
-        unanchored, missing, sealed and unsealed pairs), for accounting.
-        """
-        facts = getattr(self.retriever, "pair_score_facts", None)
-        if not callable(facts):
-            return {}
-        return dict(self._worker.submit(facts).result())
+    def _open_ranges(
+        self, scope: tuple[tuple[str, int, int], ...]
+    ) -> tuple[tuple[str, int, int], ...]:
+        """What a search may read, before it ranks: the open generation's documents and chunk
+        ranges, cut to `scope` when one is given. The workspace's other references (a previous
+        review's included) are never candidates."""
+        held = {
+            document: (chunks[0][0], chunks[-1][0])
+            for document, chunks in self._chunk_index.items()
+            if chunks and document in self._references
+        }
+        if not scope:
+            return tuple((document, *held[document]) for document in sorted(held))
+        return tuple(
+            (document, max(first, held[document][0]), min(last, held[document][1]))
+            for document, first, last in scope
+            if document in held and max(first, held[document][0]) <= min(last, held[document][1])
+        )
 
     def _document_groups(self) -> tuple[tuple[str, ...], ...]:
         """Group document keys by issuer for bounded reranking.
@@ -392,12 +391,13 @@ class AlternativeEvidenceRetrievalSession:
         if value is None:
             raise ValueError("alternative_evidence.span_handle_unknown")
         citation, _reference = value
+        _revision, text = self._document(citation.document_id)
         return (
             str(citation.document_id),
             int(citation.revision),
             str(citation.chunk_id),
-            int(citation.start_line),
-            int(citation.end_line),
+            text.count("\n", 0, citation.character_start) + 1,
+            text.count("\n", 0, citation.character_end) + 1,
         )
 
     def span_content_hash(self, span_handle: str) -> str:
@@ -429,6 +429,8 @@ class AlternativeEvidenceRetrievalSession:
         One search of the open generation; with `scope` (chunk ranges
         from `scope_for`), only the scoped chunks are candidates, fused or
         scored -- enforced by the kernel's filter before any channel limit.
+        A scoped chunk with no matched line delivers its leading sentence from
+        inside the character ranges the scope was named from.
         """
         if self._closed:
             raise ValueError("alternative_evidence.retrieval_session_closed")
@@ -482,26 +484,42 @@ class AlternativeEvidenceRetrievalSession:
                     first = previous = ordinal
             if first is not None and previous is not None:
                 entries.append((document_id, first, previous))
+        for entry in entries:
+            self._scope_ranges[entry] = tuple(ranges[entry[0]])
         return tuple(sorted(entries))
 
     def _chunks_by_document(self) -> dict[str, tuple[tuple[int, int, int], ...]]:
-        if self._chunk_index is None:
-            request = self._binding_request(query="structural window inventory", top_k=1)
-            index: dict[str, list[tuple[int, int, int]]] = {}
-            for window in self.retriever.inventory(request):
-                citation = window.citation
-                reference = self._references.get(citation.document_id)
-                if reference is None or citation.revision != reference.workspace_revision:
-                    raise ValueError("alternative_evidence.retrieval_document_lineage_invalid")
-                index.setdefault(str(citation.document_id), []).append(
-                    (
-                        int(window.ordinal),
-                        int(citation.character_start),
-                        int(citation.character_end),
-                    )
-                )
-            self._chunk_index = {key: tuple(sorted(value)) for key, value in index.items()}
         return self._chunk_index
+
+    def _document(self, document_id: str) -> tuple[EvidenceRevision, str]:
+        """A document of the open set, its revision and verified text, read once."""
+        reference = self._references.get(document_id)
+        if reference is None:
+            raise ValueError("alternative_evidence.retrieval_document_lineage_invalid")
+        if document_id not in self._texts:
+            revision, content = self.library.read_revision(
+                document_id, reference.workspace_revision
+            )
+            self._revisions[document_id] = revision
+            self._texts[document_id] = content.decode("utf-8")
+        return self._revisions[document_id], self._texts[document_id]
+
+    def _citation(self, document_id: str, start: int, end: int) -> SpanCitation:
+        """The citation of an exact character range of a document of the open set."""
+        revision, text = self._document(document_id)
+        reference = self._references[document_id]
+        return SpanCitation(
+            document_id=document_id,
+            revision=reference.workspace_revision,
+            content_sha256=revision.content_sha256,
+            character_start=start,
+            character_end=end,
+            chunk_id=hashlib.sha256(
+                f"{document_id}:{reference.workspace_revision}:{revision.content_sha256}"
+                f":{start}:{end}".encode()
+            ).hexdigest(),
+            chunk_hash=passage_hash(text, start, end),
+        )
 
     def _structure_for(self, citation: Any, reference: Any) -> DocumentStructure:
         """Scan and cache a document's verified filing structure.
@@ -645,12 +663,9 @@ class AlternativeEvidenceRetrievalSession:
         self, *, document_id: str, ranges: tuple[tuple[int, int], ...], series: str
     ) -> tuple[str, ...]:
         reference = self._references.get(document_id)
-        revision = self._revisions.get(document_id)
         text = self._texts.get(document_id)
-        if reference is None or revision is None or text is None:
+        if reference is None or text is None or document_id not in self._structures:
             raise ValueError("alternative_evidence.document_not_inspected")
-        generation = self.generation
-        structure = self._structures[document_id]
         handles: list[str] = []
         counters = {
             "T": "issued_source_span_count",
@@ -674,29 +689,7 @@ class AlternativeEvidenceRetrievalSession:
         for start, end in ranges:
             issued = int(getattr(self, counter)) + 1
             setattr(self, counter, issued)
-            anchor = text[start:end]
-            byte_start = len(text[:start].encode("utf-8"))
-            byte_end = byte_start + len(anchor.encode("utf-8"))
-            chunk_hash = passage_hash(text, start, end)
-            chunk_id = hashlib.sha256(
-                f"{document_id}:{reference.workspace_revision}:{revision.content_sha256}:{start}:{end}".encode()
-            ).hexdigest()
-            citation = KnowledgeCitation(
-                document_id=document_id,
-                revision=reference.workspace_revision,
-                snapshot_id=_snapshot_id(generation.workspace_snapshot_id),
-                snapshot_logical_hash=generation.workspace_snapshot_hash,
-                content_sha256=revision.content_sha256,
-                heading_path=structure.locate(start, end).path[:6],
-                start_line=text.count("\n", 0, start) + 1,
-                end_line=text.count("\n", 0, end) + 1,
-                character_start=start,
-                character_end=end,
-                utf8_byte_start=byte_start,
-                utf8_byte_end=byte_end,
-                chunk_id=chunk_id,
-                chunk_hash=chunk_hash,
-            )
+            citation = self._citation(document_id, start, end)
             handle = f"SPAN-{series}-R{issued:04d}"
             self._spans[handle] = (citation, reference)
             handles.append(handle)
@@ -961,58 +954,6 @@ class AlternativeEvidenceRetrievalSession:
         self.typed_span_read_count += 1
         return self._resolve_spans(span_handles)
 
-    def _binding_request(
-        self,
-        *,
-        query: str,
-        top_k: int,
-        reranker_depth: int | None = None,
-        scope: tuple[tuple[str, int, int], ...] = (),
-    ) -> Any:
-        generation = self.generation
-        # The record's commitments anchor the open: a committed generation names
-        # its corpus and its manifest. A pre-v4 generation is history (D2): its
-        # record and index stay accounted for storage, and it is never opened.
-        if not isinstance(generation, AlternativeEvidenceRetrievalGeneration):
-            raise ValueError("alternative_evidence.retrieval_generation_retired")
-        return HybridKnowledgeRetrievalRequest.create(
-            index_schema=generation.generation_format,
-            index_id=generation.index_id,
-            snapshot_id=_snapshot_id(generation.workspace_snapshot_id),
-            snapshot_logical_hash=generation.workspace_snapshot_hash,
-            index_spec_logical_hash=generation.index_spec_hash,
-            corpus_logical_hash=generation.corpus_hash,
-            index_manifest_logical_hash=generation.index_manifest_hash,
-            query=query,
-            allowed_namespaces=tuple(
-                sorted(
-                    {
-                        KnowledgeNamespace.SYSTEM_REFERENCE
-                        if item.source_name == "SEC_EDGAR"
-                        else KnowledgeNamespace.USER_REFERENCE
-                        for item in self.document_set.documents
-                    },
-                    key=lambda value: value.value,
-                )
-            ),
-            allowed_access_classes=tuple(
-                sorted(
-                    {
-                        KnowledgeAccessClass.SYSTEM
-                        if item.source_name == "SEC_EDGAR"
-                        else KnowledgeAccessClass.USER_PRIVATE
-                        for item in self.document_set.documents
-                    },
-                    key=lambda value: value.value,
-                )
-            ),
-            as_of=self.evidence_as_of,
-            top_k=top_k,
-            document_groups=self._document_groups(),
-            reranker_depth_per_document=reranker_depth,
-            scope=scope,
-        )
-
     def _search(
         self,
         *,
@@ -1024,39 +965,74 @@ class AlternativeEvidenceRetrievalSession:
         if self.search_count >= MAXIMUM_SEARCHES:
             raise ValueError("alternative_evidence.search_budget_exhausted")
         self.search_count += 1
-        request = self._binding_request(
-            query=query, top_k=top_k, reranker_depth=reranker_depth, scope=scope
-        )
-        result = self.retriever.retrieve(request)
-        reranked = getattr(result.trace, "reranked_count", None)
-        self.reranked_pairs += int(reranked or 0)
-        hits = []
-        for hit in result.hits:
-            reference = self._references.get(hit.citation.document_id)
-            if reference is None or hit.citation.revision != reference.workspace_revision:
-                raise ValueError("alternative_evidence.retrieval_document_lineage_invalid")
-            handle = f"SPAN-S{self.search_count:02d}-R{hit.rank:02d}"
-            self._spans[handle] = (hit.citation, reference)
-            hits.append(
-                AlternativeEvidenceSearchHit(
-                    span_handle=handle,
-                    document_handle=reference.semantic_handle,
-                    entity_id=reference.entity_id,
-                    source_name=reference.source_name,
-                    title=reference.title,
-                    preview=hit.preview[:1600],
-                    rank=hit.rank,
-                    retrieval_score=hit.rrf_score,
-                    channels=tuple(value.value for value in hit.channels),
-                    available_at=reference.available_at,
-                )
+        ranges = self._open_ranges(scope)
+        if not ranges:  # nothing open to read: an empty range set would read every reference
+            self.score_types.append("LINEAR_FUSION")
+            return AlternativeEvidenceSearchResult(
+                query=query,
+                status="EMPTY",
+                hits=(),
+                remaining_searches=MAXIMUM_SEARCHES - self.search_count,
+                reranked_pairs=0,
+                score_type="LINEAR_FUSION",
             )
+        found = self._search_store(
+            query,
+            cutoff_us=self._cutoff_us,
+            ranges=ranges,
+            groups=self._document_groups(),
+            depth=reranker_depth,
+            limit=top_k,
+        )
+        self.reranked_pairs += found.reranked
+        self.score_types.append(found.score_type)
+        hits: list[AlternativeEvidenceSearchHit] = []
+        taken: dict[str, int] = {}  # each issuer's group keeps its own top_k, as the store's cut
+        named: dict[str, list[tuple[int, int]]] = {}
+        for entry in scope:
+            named.setdefault(entry[0], []).extend(self._scope_ranges.get(entry, ()))
+        for item in found.hits:
+            hit = item.hit
+            reference = self._references.get(hit.source_id)
+            if reference is None or int(hit.version) != reference.workspace_revision:
+                raise ValueError("alternative_evidence.retrieval_document_lineage_invalid")
+            _revision, text = self._document(hit.source_id)
+            lead = min(
+                (
+                    max(hit.chunk.start, first)
+                    for first, last in named.get(hit.source_id, ())
+                    if first < hit.chunk.end and hit.chunk.start < last
+                ),
+                default=hit.chunk.start,
+            )
+            for start, end in _matched_lines(text, hit.chunk.start, hit.chunk.end, query, lead):
+                if taken.get(reference.entity_id, 0) >= top_k:
+                    break
+                taken[reference.entity_id] = taken.get(reference.entity_id, 0) + 1
+                rank = len(hits) + 1
+                handle = f"SPAN-S{self.search_count:02d}-R{rank:02d}"
+                self._spans[handle] = (self._citation(hit.source_id, start, end), reference)
+                hits.append(
+                    AlternativeEvidenceSearchHit(
+                        span_handle=handle,
+                        document_handle=reference.semantic_handle,
+                        entity_id=reference.entity_id,
+                        source_name=reference.source_name,
+                        title=reference.title,
+                        preview=text[start:end][:1600],
+                        rank=rank,
+                        retrieval_score=hit.score,
+                        channels=hit.channels,
+                        available_at=reference.available_at,
+                    )
+                )
         return AlternativeEvidenceSearchResult(
             query=query,
-            status=result.status.value,
+            status="OK" if hits else "EMPTY",
             hits=tuple(hits),
             remaining_searches=MAXIMUM_SEARCHES - self.search_count,
-            reranked_pairs=int(reranked or 0),
+            reranked_pairs=found.reranked,
+            score_type=found.score_type,
         )
 
     def read_spans(
@@ -1184,12 +1160,11 @@ def _validate_read_request(span_handles: tuple[str, ...]) -> None:
 
 
 def _verified_anchor(text: str, *, content: bytes, citation: Any) -> str:
-    """Prove the citation still names the bytes it was issued against.
+    """Prove the citation's range lies in the body it was issued against.
 
-    This is the check that used to sit after the excerpt was cut. It has to run
-    before the excerpt grows, because once context is added the delivered range
-    is deliberately not the citation's range, and a comparison against the
-    citation would then be meaningless rather than strict.
+    The body is already proved by its SHA-256, so the range's lines and bytes are
+    the ones it was issued with. This runs before the excerpt grows, because once
+    context is added the delivered range is deliberately not the citation's range.
     """
     start, end = citation.character_start, citation.character_end
     if start < 0 or end <= start or end > len(text):
@@ -1197,12 +1172,8 @@ def _verified_anchor(text: str, *, content: bytes, citation: Any) -> str:
     anchor = text[start:end]
     byte_start = len(text[:start].encode("utf-8"))
     byte_end = byte_start + len(anchor.encode("utf-8"))
-    if byte_start != citation.utf8_byte_start or byte_end != citation.utf8_byte_end:
-        raise ValueError("alternative_evidence.span_byte_offset_stale")
     if content[byte_start:byte_end].decode("utf-8") != anchor:
         raise ValueError("alternative_evidence.span_byte_round_trip_invalid")
-    if text.count("\n", 0, start) + 1 != citation.start_line:
-        raise ValueError("alternative_evidence.span_line_range_invalid")
     return anchor
 
 
@@ -1251,6 +1222,56 @@ def _sentence_end(text: str, end: int, budget: int) -> int:
     if space != -1:
         return end + space
     return end
+
+
+_QUERY_WORD = re.compile(r"\w+")
+
+
+def _matched_lines(text: str, start: int, end: int, query: str, lead: int) -> list[tuple[int, int]]:
+    """The lines of a retrieved chunk that its query matches, as ranges of the source text.
+
+    The store retrieves a chunk, offsets into the source; a chunk can hold a whole short filing,
+    so delivering it whole would hand every question that retrieves the filing the same passage.
+    A query word counts by its five-letter stem, so an inflection still counts, and only where it
+    locates something: a word most of a chunk's several lines state (its boilerplate) does not. The
+    lines stating the most counted words are each a candidate of their own, by position, so a
+    question whose best line another question already holds keeps its next equal one, as when
+    each line was a chunk. `_readable_source_span` widens a delivered range to whole sentences. A
+    chunk no line of which states a counted word (a vector-only match, boilerplate alone, or a
+    query in another language) is one candidate, its leading sentence: the chunk's first text
+    (at or after `lead`, where a scope's named range begins inside the chunk) to the first
+    sentence edge after it, which the delivery widens back to where that sentence began, so
+    every delivered passage is sentence-sized.
+    """
+    stems = {word[:5] for word in _QUERY_WORD.findall(query.casefold()) if len(word) > 3}
+    lines: list[tuple[int, int, set[str]]] = []
+    line_start = start
+    for line in text[start:end].split("\n"):
+        line_end = line_start + len(line)
+        first, last = line_start, line_end
+        while first < last and text[first].isspace():
+            first += 1
+        while last > first and text[last - 1].isspace():
+            last -= 1
+        if first < last:
+            words = _QUERY_WORD.findall(line.casefold())
+            stated = {stem for stem in stems if any(word.startswith(stem) for word in words)}
+            lines.append((first, last, stated))
+        line_start = line_end + 1
+    common = {stem for stem in stems if 2 * sum(stem in held for *_, held in lines) > len(lines)}
+    if len(lines) == 1:  # a chunk of one line has no boilerplate: that line is all it states
+        common = set()
+    counted = [(len(held - common), first, last) for first, last, held in lines]
+    best = max((stated for stated, _first, _last in counted), default=0)
+    if not best:
+        opening = next((max(line, lead) for line, last, _held in lines if last > lead), None)
+        if opening is None:
+            return [(start, end)]
+        while opening < end and text[opening].isspace():
+            opening += 1
+        edge = _sentence_end(text, opening, SPAN_CONTEXT_BUDGET)
+        return [(opening, max(opening + 1, min(end, edge)))]
+    return [(first, last) for stated, first, last in counted if stated == best]
 
 
 def _readable_source_span(
@@ -1312,10 +1333,6 @@ def _readable_source_span(
     return excerpt, character_start, character_end, was_bounded
 
 
-def _snapshot_id(value: str) -> Any:
-    return UUID(value)
-
-
 __all__ = [
     "MATTER_VIEW_BYTES",
     "MAXIMUM_ISSUED_MATTER_WINDOWS",
@@ -1326,5 +1343,6 @@ __all__ = [
     "MAXIMUM_TYPED_SPAN_READS",
     "AlternativeEvidenceRetrievalSession",
     "InspectedDocument",
+    "SpanCitation",
     "sentence_ends",
 ]

@@ -26,6 +26,9 @@ from alphalattice.interface.local_application.evidence_cro import (
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.alternative_evidence_desk.portfolio_coverage_support import (
     COVERAGE_BOOK_SIZE,
     COVERAGE_ENTITIES,
@@ -41,6 +44,8 @@ from tests.alternative_evidence_desk.portfolio_coverage_support import (
     start_coverage_service,
 )
 from tests.alternative_evidence_desk.review_dossiers import ControlledRisk, controlled_answer
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 QUIET = "QA05"
 MISSING = "QA17"

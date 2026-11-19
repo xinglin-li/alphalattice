@@ -30,6 +30,8 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import Acquire
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alternative_evidence_desk import development_documents as development
 from tests.alternative_evidence_desk.document_intelligence_support import (
+    _built,
+    _counted_runtime,
     _open_recorded,
 )
 from tests.alternative_evidence_desk.planted_corpus import (
@@ -1303,3 +1305,43 @@ def test_a_headingless_filing_s_cover_ends_before_its_body() -> None:
     )
     labelled = DocumentStructure(with_item, document_type="8-K")
     assert labelled.cover_end < with_item.index("Item 5.07")
+
+
+# What the old core's line chunks delivered for the development set (develop 3cd714b33): each
+# issuer's residual evidence in these six topics. The store chunks a short filing whole, so each
+# question's hit is cut to its matched lines, one candidate a line.
+_TOPICS_REACHED = (
+    "CAPITAL_DILUTION",
+    "COMMERCIAL_COUNTERPARTY",
+    "LEGAL_REGULATORY",
+    "LIQUIDITY_GOING_CONCERN",
+    "OPERATIONS_SUPPLY",
+    "PRODUCT_SAFETY_CYBER",
+)
+
+
+@pytest.mark.proves("alternative_evidence.store_hits_delivered_by_matched_line")
+def test_the_development_set_reaches_each_topic_with_sentence_sized_spans(tmp_path: Path) -> None:
+    """Over the development evidence set every issuer-topic cell the line chunks reached holds
+    evidence, and every delivered span is a sentence -- the matched one, or a no-match chunk's
+    leading one -- not the filing that holds it."""
+
+    runtime, _passes = _counted_runtime(tmp_path)
+    try:
+        request, document_set, generation = _built(
+            runtime, entities=development.ENTITIES, documents=development.DOCUMENTS
+        )
+        receipt, spans = runtime.select_evidence(
+            request=request, document_set=document_set, generation=generation
+        )
+    finally:
+        runtime.close()
+
+    cells = receipt.model_dump(mode="json")["routing"]["cells"]
+    reached = {(cell["entity_id"], cell["topic"]) for cell in cells if cell["residual_hits"]}
+    expected = {(entity, topic) for entity in development.ENTITIES for topic in _TOPICS_REACHED}
+    assert expected <= reached, sorted(expected - reached)
+    # A chunk with no matched line delivers its leading sentence, so every span is one.
+    long = [span.excerpt for span in spans if "\n" in span.excerpt.strip()]
+    assert spans and not long, long
+    assert max(len(span.excerpt) for span in spans) <= 200, "a sentence, not a filing"

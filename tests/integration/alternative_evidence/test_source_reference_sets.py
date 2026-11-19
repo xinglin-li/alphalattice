@@ -25,6 +25,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceSourceReferenceSet,
     parse_source_set,
 )
+from alphalattice.evidence.alternative_evidence.storage import world_reads
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _counted_runtime,
     _registry,
@@ -39,7 +40,12 @@ def _objects(tmp_path: Path) -> list[Path]:
     return sorted(root.iterdir()) if root.is_dir() else []
 
 
-def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Path) -> None:
+def test_source_bytes_are_kept_once_and_referenced_by_every_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The workspace's source objects are the authority here: world serves no body, as it
+    # serves none to a Host whose world holds no evidence.
+    monkeypatch.setattr(world_reads, "serving", lambda: None)
     runtime, _passes = _counted_runtime(tmp_path)
     documents = (
         _recorded_document(),

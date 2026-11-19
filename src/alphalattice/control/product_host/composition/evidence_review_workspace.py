@@ -480,12 +480,9 @@ def verify_evidence_review_workspace(
     documents = _read_bound(
         root, manifest.recorded_documents, RecordedEvidenceDocumentBundle, "bundle_hash"
     )
-    semantic_root = _confined(root, manifest.semantic_model_relative_path)
     runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=root / "runtime" / "artifacts",
         workspace_root=root / "runtime" / "evidence-knowledge",
-        model_root=semantic_root,
-        retrieval_recipe=manifest.retrieval_recipe,
     )
     try:
         capability_hash = (

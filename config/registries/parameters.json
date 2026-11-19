@@ -1279,7 +1279,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::26": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::32": {
 "class": "LIMIT",
@@ -11228,6 +11228,31 @@
 "class": "METHOD",
 "count": 1,
 "description": "The shipped research standard's Factor listing floor, read by the Factor experiment's evidence and redundancy policies."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::_cutoff_us::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the evidence cutoff from seconds to the microseconds the Host's retrieval store reads."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::common::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A query stem most of a chunk's lines state (more than half of them) locates no line, so it does not count."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::stems::3": {
+"class": "METHOD",
+"count": 1,
+"description": "A query word counts from four letters, so short function words locate nothing."
+},
+"src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::300": {
+"class": "LIMIT",
+"count": 1,
+"description": "A retrieval supersession record's reason is one sentence of at most 300 characters."
+},
+"src/alphalattice/evidence/alternative_evidence/documents/library.py::known_us::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert a document's availability time from seconds to the store's microsecond known time."
 }
 },
 "note": "Six registries name what the product is made of. Three are already held where they live: the packages (``config/package-architecture.json``, the structural guards), the operations (``operations.py``, ``operation_registry``) and the identity roles (``config/identity-roles.json``, the source-identity guards). The other three are held here, each against a baseline in ``config/registries/`` that may only shrink:",

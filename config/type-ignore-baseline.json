@@ -505,7 +505,6 @@
     "tests/integration/alternative_evidence/test_alternative_evidence_runtime.py::type-ignore[attr-defined]": 1,
     "tests/integration/alternative_evidence/test_evidence_continuation.py::type-ignore[attr-defined]": 1,
     "tests/integration/alternative_evidence/test_evidence_continuation.py::type-ignore[method-assign]": 2,
-    "tests/integration/alternative_evidence/test_evidence_index_storage.py::type-ignore[union-attr]": 3,
     "tests/integration/alternative_evidence/test_evidence_review_http_route.py::type-ignore[arg-type]": 1,
     "tests/integration/alternative_evidence/test_integrated_topic_routing.py::type-ignore[index]": 1,
     "tests/integration/alternative_evidence/test_official_source_composition.py::type-ignore[attr-defined]": 4,

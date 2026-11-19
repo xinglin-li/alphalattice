@@ -10,6 +10,9 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.evidence.alternative_evidence.analysis.contracts import (
+    RetrievalSupersessionRecord,
+)
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     AlternativeEvidenceArtifactStore,
@@ -18,18 +21,17 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 )
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     AlternativeEvidenceResolvedSpanSet,
-    PairScoreCommitmentRecord,
 )
 from alphalattice.evidence.alternative_evidence.runtime.reuse import (
-    PAIR_SCORE_COMMITMENT_CATEGORY,
     RECEIPT_CATEGORY,
     SPAN_SET_CATEGORY,
 )
-from alphalattice.kernel.knowledge import _reranking as reranking
+from alphalattice.evidence.alternative_evidence.runtime.service import SUPERSESSION_CATEGORY
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
     _counted_runtime,
 )
+from tests.alternative_evidence_desk.planted_corpus import _FakeReranker
 
 
 class _Note(BaseModel):
@@ -208,9 +210,6 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         damaged_set = original_set.replace(b'"spans":[', b'"spans":[ ', 1)
         assert damaged_set != original_set
         set_path.write_bytes(damaged_set)
-        # The first process's sealed selection retired the index; it is restored first,
-        # so the admissions below are the publication's alone.
-        later.rebuild_retrieval(str(generation.index_id))
         admitted.clear()
         later.storage_admission = admitted.append
         with pytest.raises(AlternativeEvidencePublicationError, match="artifact_identity_reused"):
@@ -219,8 +218,7 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         assert set_path.read_bytes() == damaged_set
         # The set restored: the recomputed selection delivers the same spans
         # and names the held set, and places its receipt alone, admitted at
-        # its own bytes (another receipt: this process's session served
-        # the committed pair scores and committed no block of its own).
+        # its own bytes.
         set_path.write_bytes(original_set)
         recomputed, recomputed_spans = later.select_evidence(
             request=request, document_set=document_set, generation=generation
@@ -235,45 +233,95 @@ def test_a_selection_is_published_only_over_verified_artifacts(
         later.close()
 
 
-def test_a_commitment_already_under_its_name_is_verified_not_assumed(
+@pytest.mark.proves("alternative_evidence.retrieval_change_keeps_or_records_beside")
+def test_a_selection_under_an_earlier_retrieval_binding_is_kept_or_recorded_beside(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A commitment already under its name is verified not assumed."""
+    """A selection made again under a new binding is sealed under the current generation, naming
+    the newest earlier receipt when passages and score types match, else recording the change
+    beside it; a late rerank, a stop between the two writes and two upgrades included."""
 
-    monkeypatch.setattr(reranking, "PAIR_SCORE_BLOCK_MINIMUM", 1)
-    runtime, _passes = _counted_runtime(tmp_path)
-    try:
-        request, document_set, generation = _built(runtime)
-        original_place = runtime.artifacts.place
+    def select(folder: Path, *, binding: str | None, rerank: str, stop: bool = False) -> Any:
+        runtime, _passes = _counted_runtime(folder)
+        with monkeypatch.context() as patch:
+            if binding is not None:
+                for owner in (runtime, runtime.retrieval):
+                    patch.setattr(owner, "retrieval_binding_hash", binding)
+            if stop:  # the Host stops after the receipt is written, before its change's record
+                place = runtime.artifacts.place
 
-        def placing(members: Any, *, admit: Any) -> int:
-            if members[0][0] == PAIR_SCORE_COMMITMENT_CATEGORY:
-                raise AlternativeEvidencePublicationError(
-                    "alternative_evidence.artifact_identity_reused"
+                def refused(items: Any, **options: Any) -> Any:
+                    kept = [item for item in items if item[0] != SUPERSESSION_CATEGORY]
+                    if len(kept) == len(items):
+                        return place(items, **options)
+                    place(kept, **options)
+                    raise RuntimeError("stop")
+
+                patch.setattr(runtime.artifacts, "place", refused)
+            if rerank == "past the deadline":  # as the cross-encoder answers past its deadline
+                patch.setattr(_FakeReranker, "score", lambda self, query, passages: None)
+            if rerank == "reversed":
+                score = _FakeReranker.score
+                patch.setattr(
+                    _FakeReranker,
+                    "score",
+                    lambda self, query, passages: tuple(-v for v in score(self, query, passages)),
                 )
-            return int(original_place(members, admit=admit))
-
-        monkeypatch.setattr(runtime.artifacts, "place", placing)
-        with pytest.raises(AlternativeEvidencePublicationError, match="artifact_identity_reused"):
-            runtime.select_evidence(
+            request, document_set, generation = _built(runtime)
+            receipt, _spans = runtime.select_evidence(
                 request=request, document_set=document_set, generation=generation
             )
-        assert runtime.pair_score_commitments_refused == 0
-        commitments = runtime.artifacts.values(
-            PAIR_SCORE_COMMITMENT_CATEGORY, PairScoreCommitmentRecord
-        )
-        assert commitments == ()
+        return runtime, receipt
 
-        def refusing(members: Any, *, admit: Any) -> int:
-            if members[0][0] == PAIR_SCORE_COMMITMENT_CATEGORY:
-                raise RuntimeError("storage.managed_capacity_exceeded")
-            return int(original_place(members, admit=admit))
-
-        monkeypatch.setattr(runtime.artifacts, "place", refusing)
-        receipt, spans = runtime.select_evidence(
-            request=request, document_set=document_set, generation=generation
-        )
-        assert spans and receipt.pair_score_commitment_hash is None
-        assert runtime.pair_score_commitments_refused == 1
-    finally:
-        runtime.close()
+    for name, before, now in (
+        ("same", "scored", "scored"),
+        ("changed", "reversed", "scored"),
+        ("deadline", "scored", "past the deadline"),
+        ("twice", "reversed", "scored"),
+    ):
+        earlier, prior = select(tmp_path / name, binding="e" * 64, rerank=before)
+        earlier.close()
+        if name == "twice":  # changed under one binding, then equal under the next
+            earlier, prior = select(tmp_path / name, binding="9" * 64, rerank=now)
+            earlier.close()
+        if name == "changed":
+            with pytest.raises(RuntimeError, match="stop"):
+                select(tmp_path / name, binding=None, rerank=now, stop=True)
+        runtime, receipt = select(tmp_path / name, binding=None, rerank=now)
+        try:
+            records = runtime.artifacts.values(SUPERSESSION_CATEGORY, RetrievalSupersessionRecord)
+            assert (
+                runtime.artifacts.load(RECEIPT_CATEGORY, prior.receipt_hash, type(prior)) == prior
+            ), "the earlier receipt stays as sealed"
+            if name == "twice":  # the newest earlier receipt is the one whose evidence it is
+                (record,) = records
+                assert record.receipt_hash == prior.receipt_hash
+                assert receipt.reused_from_receipt_hash == prior.receipt_hash
+            elif name == "same":  # the current chain, naming the receipt whose evidence it is
+                assert receipt.retrieval_generation_hash != prior.retrieval_generation_hash
+                assert receipt.reused_from_receipt_hash == prior.receipt_hash and records == ()
+                runtime.close()
+                runtime, again = select(tmp_path / name, binding=None, rerank=now)
+                assert again == receipt
+            elif name == "deadline":  # the fused order stands, recorded beside, and replays alike
+                (record,) = records
+                assert {(q.prior_score_type, q.score_type) for q in record.queries} == {
+                    ("CROSS_ENCODER_LOGIT", "LINEAR_FUSION")
+                }
+                runtime.close()
+                runtime, again = select(tmp_path / name, binding=None, rerank=now)
+                assert again.receipt_hash == receipt.receipt_hash
+                assert runtime.artifacts.values(
+                    SUPERSESSION_CATEGORY, RetrievalSupersessionRecord
+                ) == (record,)
+            else:
+                assert receipt.reused_from_receipt_hash is None
+                (record,) = records
+                assert (record.prior_receipt_hash, record.receipt_hash) == (
+                    prior.receipt_hash,
+                    receipt.receipt_hash,
+                )
+                assert record.queries and all(q.removed or q.added for q in record.queries)
+                assert {q.score_type for q in record.queries} <= {"CROSS_ENCODER_LOGIT"}
+        finally:
+            runtime.close()

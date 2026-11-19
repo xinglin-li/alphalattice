@@ -229,6 +229,24 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
                 (intermediate.version, 0.5),
                 (later.version, 0.0),
             ]
+            # Each fused hit names the channels that found it.
+            assert [hit.channels for hit in fused] == [
+                ("lexical", "vector"),
+                ("lexical",),
+                ("vector",),
+            ]
+            # A range scope admits only the chunks inside it, in both channels.
+            inside = replace(
+                store.scope(workspace="w1", cutoff_us=123),
+                ranges=((origin.source_id, first_hit.ordinal, first_hit.ordinal),),
+            )
+            outside = replace(inside, ranges=((origin.source_id, 999, 999),))
+            assert [hit.chunk for hit in index.search(query_vector, inside)] == [first_hit.chunk]
+            assert index.search(query_vector, outside) == ()
+            assert {hit.ordinal for hit in store.lexical("evidence", inside)} <= {first_hit.ordinal}
+            assert store.lexical("evidence", outside) == ()
+            # A per-source window is each source's best, in one order.
+            assert len(index.search(query_vector, inside, limit=1, per_source=True)) == 1
             newest = SourceOrigin(origin.source_id, uuid7(), "evidence", 400)
             newest_id = store.publish_revision(
                 workspace_id="w1",
@@ -319,6 +337,28 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
             english = search.retrieve("evidence", language="en", workspace="w1", cutoff_us=123)
             assert english.score_type == "CROSS_ENCODER_LOGIT"
             assert english.hits[0].hit.score == 0.25
+            # Read per document: each source's best `depth` candidates are reranked, and each
+            # group of sources takes its own `limit` of that order.
+            calls = reranker.calls
+            deep = search.retrieve(
+                "evidence",
+                language="en",
+                workspace="w1",
+                cutoff_us=123,
+                limit=1,
+                depth=1,
+                groups=((origin.source_id,), ("another source",)),
+            )
+            assert [hit.hit.source_id for hit in deep.hits] == [origin.source_id]
+            assert deep.score_type == "CROSS_ENCODER_LOGIT" and reranker.calls == calls + 1
+            scoped = search.retrieve(
+                "evidence",
+                language="en",
+                workspace="w1",
+                cutoff_us=123,
+                ranges=((origin.source_id, 999, 999),),
+            )
+            assert scoped.hits == ()
             with pytest.raises(DataError, match="query"):
                 search.retrieve("x" * 513, language="en", workspace="w1", cutoff_us=123)
             retirement = store.retire(origin.source_id, known_us=500)

@@ -21,7 +21,6 @@ from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.retrieval_environment import fill_command
 from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import NEW_BUILD_RECIPE
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 if TYPE_CHECKING:
@@ -76,6 +75,10 @@ SETUP_OPTIONS: dict[str, str] = {
     "model_name": (
         "an optional managed analyst and reviewer model, named with its --deepseek-base-url, or "
         "neither for native analysis"
+    ),
+    "model_store": (
+        "the application model store the Host searches with (ALPHALATTICE_MODEL_STORE, else the "
+        "application-data folder), or no --model-store at all"
     ),
     "research_input_hash": (
         "that input's exact sealed binding, also named by `study show <id>`, never inferred from "
@@ -157,23 +160,24 @@ def evidence_setup(
                 "before": "The running Host installs it as a Task; nothing is stopped.",
             }
         }
-    store, packs = model_store.default_store_root(), model_store.RECIPE_PACKS[NEW_BUILD_RECIPE]
+    # The retrieval store's packs: what every review searches with and the setup seals.
+    name, store = model_store.RETRIEVAL_STORE, model_store.default_store_root()
+    packs = model_store.RETRIEVAL_STORE_PACKS
     pack: dict[str, object] = {
-        "recipe": NEW_BUILD_RECIPE,
+        "recipe": name,
         # Where the packs are read from, whether they are there and what a download takes;
         # the setup verifies them by hash.
         "store": str(store),
         "present": all(model_store.pack_directory(store, value).is_dir() for value in packs),
         "download_bytes": sum(value.approximate_bytes for value in packs),
         "check": f"{retrieval} scripts/install_retrieval_pack.py --status --view summary",
-        "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
-        f"{NEW_BUILD_RECIPE} --network",
+        "install": f"{retrieval} scripts/install_retrieval_pack.py --install {name} --network",
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 
         pack["check"] = join(pack_command("--status", "--view", "summary"), shell())
-        pack["install"] = join(pack_command("--install", NEW_BUILD_RECIPE, "--network"), shell())
+        pack["install"] = join(pack_command("--install", name, "--network"), shell())
     if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = join(fill_command(), shell())  # the one command, on either leg
     scope = " ".join(

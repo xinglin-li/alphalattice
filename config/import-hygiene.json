@@ -96,7 +96,6 @@
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.acquire::import msvcrt": 1,
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.close::import fcntl": 1,
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.close::import msvcrt": 1,
-    "src/alphalattice/evidence/alternative_evidence/retrieval/service.py::AlternativeEvidenceRetrievalService.work_accounting::from alphalattice.kernel.knowledge.runtime import MODEL_WORK": 1,
     "src/alphalattice/evidence/alternative_evidence/runtime/execution.py::below_normal_thread::from ctypes import wintypes": 1,
     "src/alphalattice/evidence/alternative_evidence/runtime/execution.py::below_normal_thread::import ctypes": 1,
     "src/alphalattice/foundation/market_data_ops/runtime/universe_maintenance.py::CurrentUniverseMaintenance._publish_progress::from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate": 1,

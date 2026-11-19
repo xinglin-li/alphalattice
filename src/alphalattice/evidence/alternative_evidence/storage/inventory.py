@@ -32,9 +32,9 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
 from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 
 from ..retrieval.contracts import (
-    AlternativeEvidenceRetrievalGeneration,
+    HybridV3RetrievalGeneration,
+    HybridV4RetrievalGeneration,
     RetrievalGenerationRecord,
-    WholeFilingsGeneration,
     parse_retrieval_generation,
 )
 from ..runtime.task_adapter import TASK_KIND
@@ -111,9 +111,10 @@ class EvidenceStorageInventory:
     # ---------------------------------------------------------------- records
 
     def generation_records(self) -> tuple[RetrievalGenerationRecord, ...]:
-        """Return every generation record that names an index.
+        """Return every generation record that names an index file.
 
-        A unit delivered whole (W4) built none, so there is nothing of it to account or evict.
+        A unit delivered whole built none, and a generation of the Host's retrieval store
+        searches the store, so there is nothing of either to account or evict.
 
         Returns:
             The records, by file name.
@@ -130,7 +131,7 @@ class EvidenceStorageInventory:
             value = parse_retrieval_generation(json.loads(path.read_bytes()))
             if value.generation_hash != path.stem:
                 raise ValueError("storage.evidence_generation_record_misfiled")
-            if not isinstance(value, WholeFilingsGeneration):
+            if isinstance(value, HybridV4RetrievalGeneration | HybridV3RetrievalGeneration):
                 records.append(value)
         return tuple(records)
 
@@ -144,7 +145,7 @@ class EvidenceStorageInventory:
         Returns:
             The index database's relative path.
         """
-        if isinstance(record, AlternativeEvidenceRetrievalGeneration):
+        if isinstance(record, HybridV4RetrievalGeneration):
             return (
                 f"{INDEX_ROOT}/{HYBRID_INDEX_SCHEMA_VERSION}/"
                 f"{record.corpus_hash}-{record.index_spec_hash}.db"
@@ -157,7 +158,7 @@ class EvidenceStorageInventory:
     # ------------------------------------------------------------ references
 
     def payload_references(
-        self, record: AlternativeEvidenceRetrievalGeneration
+        self, record: HybridV4RetrievalGeneration
     ) -> tuple[str, ...] | KnowledgeRetrievalError:
         """Return the vector objects one committed generation holds, proved, or the refusal.
 
@@ -193,7 +194,7 @@ class EvidenceStorageInventory:
         unproved = []
         seen: set[str] = set()
         for record in self.generation_records():
-            if not isinstance(record, AlternativeEvidenceRetrievalGeneration):
+            if not isinstance(record, HybridV4RetrievalGeneration):
                 continue
             proof = self.payload_references(record)
             if not isinstance(proof, KnowledgeRetrievalError) or record.index_id in seen:
@@ -349,7 +350,7 @@ class EvidenceStorageInventory:
         root = self.binding.knowledge_root
         referenced: set[Path] = set()
         for record in self.generation_records():
-            if not isinstance(record, AlternativeEvidenceRetrievalGeneration):
+            if not isinstance(record, HybridV4RetrievalGeneration):
                 continue
             proof = self.payload_references(record)
             if isinstance(proof, KnowledgeRetrievalError):

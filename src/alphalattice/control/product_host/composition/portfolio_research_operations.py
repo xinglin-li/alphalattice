@@ -5702,7 +5702,6 @@ class PortfolioResearchOperations:
         adapter = None if self.review is None else self.review.evidence_task_adapter
         if adapter is not None:
             adapter.runtime.storage_admission = self.storage.admit_evidence_bytes
-            adapter.runtime.retrieval.generation_retirement = self.storage.retire_evidence_index
             # A preparation's counts reach the workspace's progress projection, as a
             # data preparation's do (the stage, its count and unit, the unit it is).
             publisher = WorkspaceProgressPublisher(self.workspace_session.workspace / "artifacts")
@@ -6210,13 +6209,7 @@ class PortfolioResearchOperations:
             )
         runtime = adapter.runtime
         return EvidenceStorageBinding(
-            knowledge_root=runtime.retrieval.workspace.root,
-            artifact_root=runtime.artifacts.root,
-            active_index_ids=runtime.retrieval.active_index_ids,
-            evict=lambda relative, plan_hash, evicted_at: runtime.retrieval.evict_generation(
-                relative, plan_hash=plan_hash, evicted_at=evicted_at
-            ),
-            rebuild=runtime.rebuild_retrieval,
+            knowledge_root=runtime.retrieval.workspace.root, artifact_root=runtime.artifacts.root
         )
 
     def _spec(self, document: dict[str, object]) -> PortfolioResearchSpec:

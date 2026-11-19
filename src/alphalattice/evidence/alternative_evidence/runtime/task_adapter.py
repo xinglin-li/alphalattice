@@ -79,6 +79,7 @@ from ..documents.contracts import (
     AlternativeEvidenceDocumentReference,
     AlternativeEvidenceDocumentSet,
 )
+from ..documents.library import EvidenceDocumentUnverifiable
 from ..documents.structure import DocumentStructure
 from ..documents.tables import TableViewError, render_table_view, table_catalogue
 from ..publication.analysis import AlternativeEvidenceAnalysisPublicationView
@@ -2207,9 +2208,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
         # travels in the refusal instead of escaping as an untyped error.
         try:
             self.runtime.documents.verify(document_set)
-        except KnowledgeRetrievalError as error:
+        except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable) as error:
             raise ValueError(
-                f"alternative_evidence.brief_document_unverifiable:{error.failure.code}"
+                f"alternative_evidence.brief_document_unverifiable:{_refusal_code(error)}"
             ) from error
         references = {value.semantic_handle: value for value in document_set.documents}
         contents: dict[str, bytes] = {}
@@ -2235,9 +2236,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
                             reference.workspace_document_id, reference.workspace_revision
                         )
                     )
-                except KnowledgeRetrievalError as error:
+                except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable) as error:
                     raise ValueError(
-                        f"alternative_evidence.brief_document_unverifiable:{error.failure.code}"
+                        f"alternative_evidence.brief_document_unverifiable:{_refusal_code(error)}"
                     ) from error
             content = contents[span.document_handle]
             text = content.decode("utf-8")
@@ -2825,6 +2826,13 @@ def _failure_code(error: Exception) -> str:
     if isinstance(error, HostStopping):
         raise error
     return _diagnostic_failure_code(error)
+
+
+def _refusal_code(error: KnowledgeRetrievalError | EvidenceDocumentUnverifiable) -> str:
+    """The code a document refusal names: the store library's, or the kernel's."""
+    if isinstance(error, EvidenceDocumentUnverifiable):
+        return error.code
+    return str(error.failure.code)
 
 
 __all__ = [

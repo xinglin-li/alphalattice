@@ -34,6 +34,7 @@ _OPTION_CASES = {
         "1.5",
     ),
     "model_name": ("--acquire-sec", "--entities", "AAPL", "--model-name", "fixture-model"),
+    "model_store": ("--acquire-sec", "--entities", "AAPL", "--model-store", "another-store"),
     "research_input_id": (
         "--acquire-sec",
         "--entities",

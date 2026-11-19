@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import nullcontext
 from dataclasses import fields, replace
 from datetime import datetime
 from pathlib import Path
@@ -358,17 +357,12 @@ class EvidenceReviewBundles:
                     "agent_bundle.analyst_unit_required:"
                     + ",".join(unit.unit_id for unit in run.units)
                 )
-            # The bundle the lead waits on runs above the book's other units: their
-            # model work waits at its next call while it is written (F2).
-            with adapter.runtime.foreground() if adapter is not None else nullcontext():
-                packet, context, *_ = self.app._book_packet(
-                    chosen, task_id=task_id, unit_id=unit_id
-                )
-                bundle = render_analyst_bundle(
-                    packet,
-                    task_procedure=procedure,
-                    earlier=self._earlier_findings(packet.request),
-                )
+            packet, context, *_ = self.app._book_packet(chosen, task_id=task_id, unit_id=unit_id)
+            bundle = render_analyst_bundle(
+                packet,
+                task_procedure=procedure,
+                earlier=self._earlier_findings(packet.request),
+            )
             submission = self.app._analysis_submission(
                 chosen,
                 task_id=task_id,

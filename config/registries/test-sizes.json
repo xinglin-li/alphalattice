@@ -518,11 +518,6 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/alternative_evidence/test_evidence_index_storage.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
       "pattern": "tests/integration/alternative_evidence/test_evidence_need_compatibility.py*",
       "owner": "tests.alternative_evidence_desk",
       "size": "medium"
@@ -549,11 +544,6 @@
     },
     {
       "pattern": "tests/integration/knowledge/test_grounded_recall_and_issuer_batches.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_hybrid_generation_reuse.py*",
       "owner": "tests.alternative_evidence_desk",
       "size": "medium"
     },

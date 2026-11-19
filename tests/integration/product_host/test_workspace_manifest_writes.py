@@ -258,7 +258,7 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
     )
     monkeypatch.setattr(
         evidence_authority_setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash="c" * 64),
     )
     entered, parent_thread = Event(), get_ident()

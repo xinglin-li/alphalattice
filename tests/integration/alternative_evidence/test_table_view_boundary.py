@@ -25,6 +25,7 @@ from alphalattice.evidence.alternative_evidence.documents.tables import (
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     AlternativeEvidenceResolvedSpan,
 )
+from alphalattice.evidence.alternative_evidence.storage import world_reads
 from alphalattice.kernel.live_evidence.online_sources import not_carried_tables, table_lines
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
@@ -45,6 +46,13 @@ from tests.alternative_evidence_desk.table_view_support import (
     original_html,
     year_headed_html,
 )
+
+
+@pytest.fixture(autouse=True)
+def _objects_are_the_authority(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A view renders from the workspace's retained original here: world serves no body,
+    as it serves none to a Host whose world holds no evidence."""
+    monkeypatch.setattr(world_reads, "serving", lambda: None)
 
 
 def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
