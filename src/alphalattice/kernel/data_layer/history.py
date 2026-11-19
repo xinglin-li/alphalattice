@@ -54,6 +54,7 @@ from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import (
     CONDITION_METRICS,
     CONDITION_TYPE,
+    CatalogReader,
     LogReader,
     condition_events,
     reading_session,
@@ -165,7 +166,7 @@ _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
 _attached: dict[str, tuple[Path, Any]] = {}
 """Outside a Host, the log attached read-only for derived file reads, with its root."""
-_catalog_surfaces: dict[Path, Any] = {}
+_catalog_surfaces: dict[Path, CatalogReader] = {}
 _catalog_lock = threading.Lock()
 _reads: dict[str, set[str]] = {}
 """The file partitions (by table, their digests) the Host read since their last mark."""
@@ -247,17 +248,46 @@ def catalog_session() -> Iterator[Any | None]:
     if port is not None:
         cursor = port.lake.cursor()
     else:
-        root = data_root()
         with _catalog_lock:
-            surface = _catalog_surfaces.get(root)
-            if surface is None and (root / "machine" / "catalog.sqlite").is_file():
-                surface = _catalog_surfaces[root] = reading_session(root, log=False)
-        cursor = None if surface is None else surface.cursor()
+            surface = _catalog_surface(data_root().resolve())
+            cursor = None if surface is None else surface.cursor()
     try:
         yield cursor
     finally:
         if cursor is not None:
             cursor.close()
+
+
+def _catalog_surface(root: Path) -> CatalogReader | None:
+    """The process's catalog outside a Host, opened under the catalog lock."""
+    surface = _catalog_surfaces.get(root)
+    if surface is None and (root / "machine" / "catalog.sqlite").is_file():
+        connection = reading_session(root, log=False)
+        if connection is not None:
+            surface = _catalog_surfaces[root] = CatalogReader(connection)
+    return surface
+
+
+@contextmanager
+def catalog_projection(
+    stage: str, query: str, parameters: Sequence[Any], *, root: Path | None = None
+) -> Iterator[Any | None]:
+    """Read one shaped result on the held catalog. Materialize it inside this context."""
+    with _catalog_lock:
+        host_root = _open.get("root") if recording() else None
+        where = (root or host_root or data_root()).resolve()
+        if host_root is not None and host_root.resolve() == where:
+            surface = _open.get("catalog_reader")
+            if surface is None and (port := _open.get("store")) is not None:
+                # A catalog made on the first write was absent when the Host opened.
+                surface = _open["catalog_reader"] = CatalogReader(port.lake.cursor())
+        else:
+            surface = _catalog_surface(where)
+    if surface is None:
+        yield None
+    else:
+        with surface.projection(stage, query, parameters) as result:
+            yield result
 
 
 def workspace_on_log(
@@ -310,7 +340,10 @@ def open_history(
             try:  # the views' DuckDB, checked here without the log, which only the reader opens
                 session = reading_session(where, log=False)
                 if session is not None:
-                    session.close()
+                    if (where / "machine" / "catalog.sqlite").is_file():
+                        _open["catalog_reader"] = CatalogReader(session)
+                    else:
+                        session.close()
                 _open["reading"] = None if session is None else LogReader(where)
             except Exception as error:  # DuckDB raises its own errors too
                 close_history()  # the data root's lock goes with it, so the next start can open it
@@ -480,6 +513,8 @@ def close_history() -> None:
         _open.pop("hosts", None)
         _open.pop("remote", None)
         port = _open.pop("store", None)
+        with _catalog_lock:
+            catalog_reader = _open.pop("catalog_reader", None)
         reading = _open.pop("reading", None)
         log = _open.pop("log", None)
         _open.pop("workspace", None)
@@ -492,6 +527,8 @@ def close_history() -> None:
         logger.shutdown()
     if provider is not None:
         provider.shutdown()  # every span ended before the log closes
+    if catalog_reader is not None:
+        catalog_reader.close()
     if port is not None:
         port.close()
     recall.close()
@@ -503,9 +540,6 @@ def close_history() -> None:
         outcome_reading = _open.pop("outcome_reading", None)
         if outcome_reading is not None:
             outcome_reading.close()
-        benchmark_reading = _open.pop("benchmark_reading", None)
-        if benchmark_reading is not None:
-            benchmark_reading.close()
         attached = _attached.pop("log", None)
         if attached is not None:
             attached[1].close()
@@ -1615,19 +1649,16 @@ def read_portfolio_result(
     kind: str, digest: str, *, result_table: str
 ) -> tuple[dict[str, Any], Any]:
     """Read a registered Portfolio profile and its catalog rows."""
-    if result_table not in {"series", "holding"}:
+    if result_table not in _PORTFOLIO_PROJECTIONS:
         raise ValueError("portfolio result table is invalid")
-    with _read_lock:
-        profile = _portfolio_read_profile(kind, digest)
-        connection, owned = _portfolio_reader()
-        try:
-            artifact = str(uuid.UUID(str(profile[0])))
-            table = connection.sql(
-                f"EXECUTE portfolio_{result_table}('{artifact}')"
-            ).to_arrow_table()
-        finally:
-            if owned:
-                connection.close()
+    profile = _portfolio_read_profile(kind, digest)
+    artifact = str(uuid.UUID(str(profile[0])))
+    with catalog_projection(
+        f"portfolio_{result_table}", _PORTFOLIO_PROJECTIONS[result_table], (artifact,)
+    ) as result:
+        if result is None:
+            raise DataError("portfolio catalog unavailable", code="data_layer.history_unavailable")
+        table = result.to_arrow_table()
     return json.loads(profile[2]), table
 
 
@@ -1647,48 +1678,33 @@ def _portfolio_read_profile(kind: str, digest: str) -> Any:
     return profile
 
 
-def _portfolio_reader() -> tuple[Any, bool]:
-    """Prepare point reads once per held connection; its owner closes it."""
-    owned = not recording()
-    connection = _open.get("benchmark_reading")
-    if connection is None:
-        connection = reading_session(_open.get("root") or data_root(), log=False)
-        if connection is None:
-            raise DataError("portfolio catalog unavailable", code="data_layer.history_unavailable")
-        for statement in (
-            "PREPARE portfolio_series AS SELECT name, session_date, value FROM lake.results.series"
-            " WHERE artifact_id = ? ORDER BY name, session_date",
-            "PREPARE portfolio_holding AS SELECT as_of, listing_id, weight, shares"
-            " FROM lake.results.holding WHERE artifact_id = ? ORDER BY as_of, listing_id",
-            "PREPARE portfolio_pair AS SELECT 'series' AS kind, name, session_date, value,"
-            " NULL::DATE AS as_of, NULL::VARCHAR AS listing_id, NULL::DOUBLE AS weight,"
-            " NULL::DOUBLE AS shares FROM lake.results.series WHERE artifact_id = ? UNION ALL"
-            " SELECT 'holding', NULL, NULL, NULL, as_of,"
-            " CAST(listing_id AS VARCHAR), weight, shares"
-            " FROM lake.results.holding WHERE artifact_id = ?",
-        ):
-            connection.execute(statement)
-        if not owned:
-            _open["benchmark_reading"] = connection
-    return connection, owned
+_PORTFOLIO_PROJECTIONS: Final = {
+    "series": "SELECT name, session_date, value FROM lake.results.series"
+    " WHERE artifact_id = ? ORDER BY name, session_date",
+    "holding": "SELECT as_of, listing_id, weight, shares FROM lake.results.holding"
+    " WHERE artifact_id = ? ORDER BY as_of, listing_id",
+}
+_PORTFOLIO_PAIR: Final = (
+    "SELECT 'series' AS kind, name, session_date, value,"
+    " NULL::DATE AS as_of, NULL::VARCHAR AS listing_id, NULL::DOUBLE AS weight,"
+    " NULL::DOUBLE AS shares FROM lake.results.series WHERE artifact_id = ? UNION ALL"
+    " SELECT 'holding', NULL, NULL, NULL, as_of,"
+    " CAST(listing_id AS VARCHAR), weight, shares"
+    " FROM lake.results.holding WHERE artifact_id = ?"
+)
 
 
 def read_portfolio_pair(series_digest: str, holding_digest: str) -> tuple[Any, Any]:
     """Read a ledger's series and its report's holdings in one catalog query."""
     import pyarrow.compute as pc  # lazy: only catalog result reads need the data extra
 
-    with _read_lock:
-        series = _portfolio_read_profile("portfolio_execution_series", series_digest)
-        holding = _portfolio_read_profile("portfolio_report_holding", holding_digest)
-        connection, owned = _portfolio_reader()
-        try:
-            series_id, holding_id = str(uuid.UUID(str(series[0]))), str(uuid.UUID(str(holding[0])))
-            table = connection.sql(
-                f"EXECUTE portfolio_pair('{series_id}', '{holding_id}')"
-            ).to_arrow_table()
-        finally:
-            if owned:
-                connection.close()
+    series = _portfolio_read_profile("portfolio_execution_series", series_digest)
+    holding = _portfolio_read_profile("portfolio_report_holding", holding_digest)
+    ids = (str(uuid.UUID(str(series[0]))), str(uuid.UUID(str(holding[0]))))
+    with catalog_projection("portfolio_pair", _PORTFOLIO_PAIR, ids) as result:
+        if result is None:
+            raise DataError("portfolio catalog unavailable", code="data_layer.history_unavailable")
+        table = result.to_arrow_table()
     first = table.filter(pc.equal(table["kind"], "series")).select(
         ["name", "session_date", "value"]
     )

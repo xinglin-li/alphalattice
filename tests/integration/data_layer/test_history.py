@@ -246,6 +246,33 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         assert surfaces[0] is surfaces[1]
     finally:
         history._catalog_surfaces.pop(root).close()
+    # The Host keeps the stage's prepared reader and the writer's transaction separate.
+    query = (
+        "SELECT value FROM lake.results.series WHERE artifact_id IN (SELECT unnest(?::VARCHAR[]))"
+    )
+    artifact = "test's artifact"
+    with history.own_root(tmp_path / "results-root") as results_root:
+        history.open_history("catalog-test", "Catalog test", tmp_path / "results", results_root)
+        with history.catalog_projection("series", query, ([artifact],)) as result:
+            assert result is None  # the write owner has yet to open the catalog
+        port = history.store()
+        assert port is not None
+        port.lake.execute("BEGIN TRANSACTION").complete()
+        try:
+            port.lake.execute(
+                "INSERT INTO lake.results.series VALUES (?, 'net', DATE '2024-11-18', 1.5)",
+                (artifact,),
+            ).complete()
+            with history.catalog_projection("series", query, ([artifact],)) as result:
+                assert result is not None and result.fetchall() == []
+        except BaseException:
+            port.lake.execute("ROLLBACK").complete()
+            raise
+        port.lake.execute("COMMIT").complete()
+        with history.catalog_projection("series", query, (["another artifact"],)) as result:
+            assert result is not None and result.fetchall() == []
+        with history.catalog_projection("series", query, ([artifact],)) as result:
+            assert result is not None and result.fetchall() == [(1.5,)]
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"

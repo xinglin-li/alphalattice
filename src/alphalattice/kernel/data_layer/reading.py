@@ -19,10 +19,11 @@ import sqlite3
 import struct
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
+from threading import Lock
 from typing import IO, Any
 
 import alphalattice.kernel.data_layer.return_series as return_series
@@ -82,6 +83,42 @@ def reading_session(root: Path, *, log: bool = True) -> Any | None:
         connection.close()
         raise
     return connection
+
+
+class CatalogReader:
+    """Hold the catalog and one prepared SQL shape per named stage for its lifetime."""
+
+    def __init__(self, connection: Any) -> None:
+        """Take ownership of the catalog connection and its prepared statements."""
+        self._connection = connection
+        self._lock = Lock()
+        self._plans: dict[str, tuple[str, str]] = {}
+
+    def cursor(self) -> Any:
+        """Give a caller a separate short-lived cursor for an unprepared read."""
+        with self._lock:
+            return self._connection.cursor()
+
+    @contextmanager
+    def projection(self, stage: str, query: str, parameters: Sequence[Any]) -> Iterator[Any]:
+        """Execute on a fresh statement snapshot and consume it before sharing the cursor."""
+        from duckdb import ConstantExpression  # lazy: the catalog needs the optional data extra
+
+        with self._lock:
+            previous, name = self._plans.get(stage, ("", f"result_{len(self._plans)}"))
+            if previous != query:
+                self._connection.execute(f"PREPARE {name} AS {query}").complete()
+                self._plans[stage] = (query, name)
+            # DuckDB's SQL EXECUTE cannot itself bind placeholders. Use the engine's typed
+            # literal rendering so caller values never enter the statement as SQL.
+            arguments = ", ".join(str(ConstantExpression(value)) for value in parameters)
+            call = f"EXECUTE {name}({arguments})" if arguments else f"EXECUTE {name}"
+            yield self._connection.sql(call)
+
+    def close(self) -> None:
+        """Close the held connection after its last stage consumes its result."""
+        with self._lock:
+            self._connection.close()
 
 
 class LogReader:
