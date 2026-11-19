@@ -1,7 +1,7 @@
 {
  "schema": "alphalattice.schema-contract.v1",
  "rules": {
-  "coverage": "Every table in log.sql, catalog.sql and index.sql has one entry here, and every entry has its table.",
+  "coverage": "Every table in log.sql and catalog.sql has one entry here, and every entry has its table.",
   "key": "An entry's key is its table's key: the DDL's primary key, or for the catalog, whose engine enforces none, its key comment, which every catalog table states.",
   "id": "Each key part declares its source: Host-minted UUIDv7, log seq, another record's id, or an immutable scalar/fixed vocabulary/dated-alias fact (value, with its reason). An outside code identifying the thing it names is external and requires permanence[part] with a cited reference and its guarantee that the code never changes, retires or becomes reassigned; no such outside code is admitted today. A recomputed home may use a content address. A digest, caller's value or packed string is a break.",
   "up": "A record stores one upward link, and links no table its upward chain already reaches, except by an edge: a declared link, with its reason, to another record of that table.",
@@ -476,41 +476,6 @@
    "versions": {
     "lag_rule_version": "definition"
    }
-  },
-  "index.index_meta": {
-   "home": "index",
-   "key": [
-    "key"
-   ],
-   "id": {
-    "key": "value: a fixed name of an index setting: embedding_model, dims or cursor_seq"
-   }
-  },
-  "index.passage": {
-   "home": "index",
-   "key": [
-    "passage_id"
-   ],
-   "id": {
-    "passage_id": "seq"
-   },
-   "times": {
-    "made_seq": "log_seq"
-   }
-  },
-  "index.passage_fts": {
-   "home": "index",
-   "key": [
-    "rowid"
-   ],
-   "id": {}
-  },
-  "index.passage_vec": {
-   "home": "index",
-   "key": [
-    "passage_id"
-   ],
-   "id": {}
   },
   "log.artifact": {
    "home": "projection",
@@ -1003,6 +968,147 @@
    "edges": {
     "workspace_id": "the parent of a hypothesis under no goal its workspace holds; a CHECK keeps exactly one parent"
    }
+  },
+  "log.knowledge_chunk": {
+   "home": "cache",
+   "key": [
+    "chunk_id"
+   ],
+   "id": {
+    "chunk_id": "uuid7"
+   },
+   "up": "version_id",
+   "links": [
+    "recipe_id"
+   ]
+  },
+  "log.knowledge_embedding": {
+   "home": "cache",
+   "key": [
+    "embedding_id"
+   ],
+   "id": {
+    "embedding_id": "uuid7"
+   },
+   "up": "batch_id",
+   "links": [
+    "model_id",
+    "recipe_id"
+   ],
+   "edges": {
+    "model_id": "The lookup key names the model; its composite foreign key holds it equal to the batch's model."
+   }
+  },
+  "log.knowledge_embedding_batch": {
+   "home": "cache",
+   "key": [
+    "batch_id"
+   ],
+   "id": {
+    "batch_id": "uuid7"
+   },
+   "up": "model_id"
+  },
+  "log.knowledge_fts": {
+   "home": "index",
+   "key": [
+    "rowid"
+   ],
+   "id": {
+    "rowid": "seq"
+   }
+  },
+  "log.knowledge_model": {
+   "home": "cache",
+   "key": [
+    "model_id"
+   ],
+   "id": {
+    "model_id": "uuid7"
+   }
+  },
+  "log.knowledge_recipe": {
+   "home": "cache",
+   "key": [
+    "recipe_id"
+   ],
+   "id": {
+    "recipe_id": "uuid7"
+   }
+  },
+  "log.knowledge_snapshot": {
+   "home": "projection",
+   "key": [
+    "snapshot_id"
+   ],
+   "id": {
+    "snapshot_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "links": [
+    "metadata_seq"
+   ],
+   "times": {
+    "metadata_seq": "log_seq"
+   }
+  },
+  "log.knowledge_snapshot_revision": {
+   "home": "projection",
+   "key": [
+    "membership_id"
+   ],
+   "id": {
+    "membership_id": "uuid7"
+   },
+   "up": "snapshot_id",
+   "links": [
+    "version_id"
+   ]
+  },
+  "log.knowledge_source": {
+   "home": "projection",
+   "key": [
+    "source_id"
+   ],
+   "id": {
+    "source_id": "uuid7"
+   }
+  },
+  "log.knowledge_source_version": {
+   "home": "projection",
+   "key": [
+    "version_id"
+   ],
+   "id": {
+    "version_id": "uuid7"
+   },
+   "up": "source_id",
+   "links": [
+    "body_seq",
+    "registered_seq"
+   ],
+   "times": {
+    "known_us": "utc_us",
+    "superseded_us": "utc_us",
+    "body_seq": "log_seq",
+    "registered_seq": "log_seq"
+   },
+   "versions": {
+    "version": "own: the immutable version named by the source's existing authority"
+   }
+  },
+  "log.knowledge_workspace_source": {
+   "home": "projection",
+   "key": [
+    "membership_id"
+   ],
+   "id": {
+    "membership_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "links": [
+    "version_id"
+   ]
   },
   "log.ledger_entry": {
    "home": "projection",

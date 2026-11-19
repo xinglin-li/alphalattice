@@ -30,7 +30,6 @@ dependencies = [
     "protobuf>=7.35.1,<8",
     "opentelemetry-instrumentation-system-metrics>=0.66b2,<1",
     "opentelemetry-processor-baggage>=0.66b2,<1",  # stamps our baggage ids on spans and records
-    "sqlite-vec>=0.1.9,<0.2",
     # Already locked; process telemetry is runtime, not only a test dependency.
     "psutil>=7,<8",
     "pydantic>=2.12,<3",
@@ -113,8 +112,10 @@ quant = [
 semantic = [
     "numpy>=2.5,<3",
     "onnxruntime==1.27.0",
+    "semantic-text-splitter==0.33.3",
     "sentencepiece==0.2.1",
     "sqlite-vec==0.1.9",
+    "tokenizers==0.23.2",
 ]
 
 [dependency-groups]
@@ -179,7 +180,7 @@ DEP001 = ["tokenizers", "fastembed", "torch"]
 # Wheels loaded by DuckDB, the calendar, timezone database, CVXPY's solver, and
 # the semantic runtimes are consumed dynamically. Keep dotenv and Optuna in the
 # existing install profile for compatibility (Optuna is also a documented research tool).
-DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "clarabel", "optuna", "onnxruntime", "sentencepiece"]
+DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "clarabel", "optuna", "onnxruntime", "sentencepiece", "sqlite-vec"]
 # These imports are in src/devtools, which is not included in the product wheel;
 # they are correctly declared in the development dependency group.
 DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging"]

@@ -43,7 +43,9 @@ from urllib.parse import urlsplit
 
 import alphalattice.kernel.data_layer.derived_files as derived_files
 import alphalattice.kernel.data_layer.experiences as experiences
+import alphalattice.kernel.data_layer.knowledge as knowledge
 import alphalattice.kernel.data_layer.project as project
+import alphalattice.kernel.data_layer.recall as recall
 import alphalattice.kernel.data_layer.return_series as return_series
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
@@ -87,6 +89,11 @@ _EVIDENCE_TEXT: Final = "What one research trial's Desk run did: its program, in
 _RETURN_SERIES_TEXT: Final = "A trial's headline monthly return series, kept with its profile."
 _CONDITION_TEXT: Final = "A market's condition at a selection's cutoff, as registered metrics."
 STEPS: Final = {
+    "gen_ai.retrieval": (
+        [],
+        "none",
+        "One source-scoped hybrid retrieval.",
+    ),
     "host.request": (
         ["operation"],
         "none",
@@ -487,6 +494,7 @@ def close_history() -> None:
         provider.shutdown()  # every span ended before the log closes
     if port is not None:
         port.close()
+    recall.close()
     if log is not None:
         _mark_reads(log)
     with _read_lock:
@@ -2459,6 +2467,45 @@ def read_experience_class(
     )
 
 
+def recall_experiences(
+    *, query: str, workspace: str, cutoff_us: int, superseded: bool | None = False, limit: int = 5
+) -> dict[str, Any] | None:
+    """The experiences most like `query` in `workspace` as known at `cutoff_us`
+    (`recall.recall`, one gen_ai.retrieval span), each hit with its text and, for each trial its
+    experience is on, that trial's class as known then (`read_experience_class`); None while the
+    history is not open."""
+    with _lock:
+        log, root = _open.get("log"), _open.get("root")
+        if log is None or root is None or _open.get("reading") is None:
+            return None
+        log.flush()
+    found, trials = recall.recall(
+        log,
+        Path(root),
+        query=query,
+        workspace=workspace,
+        cutoff_us=cutoff_us,
+        superseded=superseded,
+        limit=limit,
+    )
+    classes: dict[str, dict[str, Any] | None] = {}
+    for named in dict.fromkeys(trial for held in trials.values() for trial in held):
+        classes[named] = read_experience_class(trial=named, cutoff_us=cutoff_us)
+    return {
+        "score_type": found.score_type,
+        "hits": [
+            {
+                "experience_id": item.hit.source_id,
+                "version": int(item.hit.version),
+                "score": item.hit.score,
+                "text": item.text,
+                "classes": {trial: classes[trial] for trial in trials[item.hit.source_id]},
+            }
+            for item in found.hits
+        ],
+    }
+
+
 def read_experience_brief(
     *, goal: str, budget: int, cutoff_us: int | None = None
 ) -> dict[str, Any] | None:
@@ -2794,3 +2841,16 @@ def trace_carrier() -> dict[str, str]:
     from alphalattice.kernel.data_layer.spans import carrier  # lazy: the SDK, once open
 
     return carrier() if trace.get_current_span().get_span_context().is_valid else {}
+
+
+@contextmanager
+def _retrieval_span(query: str) -> Iterator[None]:
+    """One store retrieval's span; the query text rides on it only where content is admitted."""
+    attributes = {"gen_ai.operation.name": "retrieval"}
+    if os.environ.get(OTLP_CONTENT_ENV) == "1":
+        attributes["gen_ai.input.messages"] = query
+    with step("gen_ai.retrieval", {}, **attributes):
+        yield
+
+
+knowledge.RETRIEVAL_SPAN = _retrieval_span  # the store's searches run in the Host's span

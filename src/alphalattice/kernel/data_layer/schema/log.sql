@@ -1,9 +1,8 @@
 -- log.sqlite: the machine's one event log, and every table projected from it. Only the Host writes.
 -- Shape tiers (plan 0.2.8): [1] strict core  [2] versioned definitions  [3] contract content  [4] opaque bodies.
 -- Rule: `event` is the only truth. Every other table here is a projection the Host updates in the event's own
--- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. Five tables are the Host's private
--- working state or caches and are not projections: cache_entry, cache_root, deletion_queue,
--- workspace_task_heartbeat_at and workspace_task_projection.
+-- transaction, and dropping them and replaying the log rebuilds them ALL EQUAL. The Host's private
+-- working state or caches and are not projections: the working-state sections below declare them.
 -- Times are integer microseconds since the Unix epoch, UTC (`*_us`). Every `*_seq` is a position in event.seq.
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;  -- FULL for the commits that cannot be obtained again (an answer, a paid call, a download)
@@ -846,4 +845,108 @@ CREATE TABLE deletion_queue (
   queued_us INTEGER NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
+) STRICT, WITHOUT ROWID;
+
+-- ===== Knowledge sources and their immutable versions =====
+-- Evidence and experience use their authority's existing id and version. A reference gets an
+-- id from the Host. Workspace membership is an edge: it never gives a source another identity.
+CREATE TABLE knowledge_source (
+  source_id TEXT PRIMARY KEY CHECK (length(source_id) > 0),
+  kind TEXT NOT NULL CHECK (kind IN ('evidence', 'experience', 'reference'))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE knowledge_source_version (
+  version_id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES knowledge_source(source_id),
+  version TEXT NOT NULL CHECK (length(version) > 0),
+  known_us INTEGER NOT NULL,
+  superseded_us INTEGER,
+  body_digest TEXT NOT NULL,
+  body_seq INTEGER REFERENCES event(seq),  -- reference text only; world/experience own their bodies
+  registered_seq INTEGER NOT NULL REFERENCES event(seq),
+  UNIQUE (source_id, version),
+  CHECK (superseded_us IS NULL OR superseded_us >= known_us)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE knowledge_workspace_source (
+  membership_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
+  document_id TEXT NOT NULL,  -- the library contract's retained document name
+  revision INTEGER NOT NULL CHECK (revision > 0),
+  version_id TEXT NOT NULL REFERENCES knowledge_source_version(version_id),
+  metadata TEXT NOT NULL CHECK (json_valid(metadata)),  -- this workspace's sealed publication
+  UNIQUE (workspace_id, document_id, revision)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX knowledge_workspace_version ON knowledge_workspace_source(workspace_id, version_id);
+
+CREATE TABLE knowledge_snapshot (
+  snapshot_id TEXT PRIMARY KEY,
+  reference_id TEXT NOT NULL,  -- the retained library contract's caller-owned snapshot name
+  workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
+  metadata_seq INTEGER NOT NULL REFERENCES event(seq),
+  UNIQUE (workspace_id, reference_id)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE knowledge_snapshot_revision (
+  membership_id TEXT PRIMARY KEY,
+  snapshot_id TEXT NOT NULL REFERENCES knowledge_snapshot(snapshot_id),
+  version_id TEXT NOT NULL REFERENCES knowledge_source_version(version_id),
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  UNIQUE (snapshot_id, version_id),
+  UNIQUE (snapshot_id, ordinal)
+) STRICT, WITHOUT ROWID;
+
+-- ===== Rebuildable knowledge working state =====
+-- Recipes and models are registered once by their complete settings/consumed pack manifest.
+-- These ids name rows; a digest is a cache key, never a source or a model identity.
+CREATE TABLE knowledge_recipe (
+  recipe_id TEXT PRIMARY KEY,
+  spec TEXT NOT NULL UNIQUE CHECK (json_valid(spec))
+) STRICT, WITHOUT ROWID;
+CREATE TABLE knowledge_model (
+  model_id TEXT PRIMARY KEY,
+  manifest TEXT NOT NULL CHECK (json_valid(manifest)),
+  dimension INTEGER NOT NULL CHECK (dimension > 0),
+  precision TEXT NOT NULL CHECK (precision IN ('float16', 'int8')),
+  UNIQUE (manifest, dimension, precision)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE knowledge_chunk (
+  chunk_id TEXT PRIMARY KEY,
+  version_id TEXT NOT NULL REFERENCES knowledge_source_version(version_id),
+  recipe_id TEXT NOT NULL REFERENCES knowledge_recipe(recipe_id),
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  char_start INTEGER NOT NULL CHECK (char_start >= 0),
+  char_end INTEGER NOT NULL CHECK (char_end > char_start),
+  chunk_digest TEXT NOT NULL,
+  UNIQUE (version_id, recipe_id, ordinal)
+) STRICT;
+CREATE INDEX knowledge_chunk_source ON knowledge_chunk(version_id, recipe_id);
+-- A chunk's terms, keyed by its rowid and never stored twice: the text is its source's. A chunk
+-- row is never deleted, so the table takes no contentless_delete option, which the SQLite inside
+-- DuckDB's sqlite scanner cannot parse; a reading session attaches this log and lists its tables.
+CREATE VIRTUAL TABLE knowledge_fts USING fts5(
+  fts_text, content='',
+  tokenize='unicode61', detail=full
+);
+INSERT INTO knowledge_fts(knowledge_fts, rank) VALUES ('automerge', 0);
+
+-- One float32 scale per dimension of an encoded batch; appending another batch leaves every
+-- cached vector and its scales unchanged. Many cache entries share this small scale array.
+CREATE TABLE knowledge_embedding_batch (
+  batch_id TEXT PRIMARY KEY,
+  model_id TEXT NOT NULL REFERENCES knowledge_model(model_id),
+  vectors BLOB NOT NULL,
+  scales BLOB,
+  count INTEGER NOT NULL CHECK (count > 0),
+  UNIQUE (batch_id, model_id)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE knowledge_embedding (
+  embedding_id TEXT PRIMARY KEY,
+  chunk_digest TEXT NOT NULL,
+  recipe_id TEXT NOT NULL REFERENCES knowledge_recipe(recipe_id),
+  model_id TEXT NOT NULL REFERENCES knowledge_model(model_id),
+  batch_id TEXT NOT NULL,
+  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+  UNIQUE (chunk_digest, recipe_id, model_id),
+  FOREIGN KEY (batch_id, model_id) REFERENCES knowledge_embedding_batch(batch_id, model_id)
 ) STRICT, WITHOUT ROWID;

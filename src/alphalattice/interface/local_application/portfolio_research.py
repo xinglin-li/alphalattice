@@ -154,6 +154,7 @@ type PortfolioResearchOperation = Literal[
     "EXPERIENCE_READ",
     "EXPERIENCE_BRIEF",
     "EXPERIENCE_CLASS",
+    "EXPERIENCE_RECALL",
     "EXPERIENCE_RECORD",
     "EXPERIMENT_COMPARE",
     "EXPERIMENT_ALPHA_COMPARE",
@@ -430,6 +431,8 @@ class PortfolioResearchOperationRequest:
     experience_width: str | None = None
     experience_known_at: str | None = None
     experience_budget: int | None = None
+    experience_query: str | None = None
+    experience_limit: int | None = None
     review_subject: str | None = None
     review_verdict: str | None = None
     review_note: dict[str, Any] | None = None
@@ -787,6 +790,15 @@ class PortfolioResearchOperationRequest:
                 raise LocalApplicationError("experience.known_at_invalid") from error
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise LocalApplicationError("experience.known_at_invalid")
+        if self.experience_query is not None and (
+            type(self.experience_query) is not str
+            or not 1 <= len(self.experience_query) <= 512
+            or (
+                self.experience_limit is not None
+                and (type(self.experience_limit) is not int or not 1 <= self.experience_limit <= 20)
+            )
+        ):
+            raise LocalApplicationError("experience.recall_query_invalid")
         if self.review_read_at is not None:
             try:
                 parsed = datetime.fromisoformat(str(self.review_read_at))
@@ -876,6 +888,10 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     absent."""
     experience_budget: int | None = Field(default=None, ge=100, le=32_000, strict=True)
     """A brief's budget in tokens, 100 to 32,000; 2,000 when absent."""
+    experience_query: str | None = Field(default=None, min_length=1, max_length=512)
+    """The text to recall experiences like, 1 to 512 characters."""
+    experience_limit: int | None = Field(default=None, ge=1, le=20, strict=True)
+    """How many experiences a recall returns, 1 to 20; 5 when absent."""
     review_subject: str | None = Field(
         default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
     )

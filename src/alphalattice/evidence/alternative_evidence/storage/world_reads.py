@@ -64,6 +64,57 @@ replaces it for a read of the document's current state, never for a reference th
 exact bytes."""
 
 
+def visible(port: Any, cutoff_us: int) -> frozenset[tuple[str, str]]:
+    """World document versions visible at the cutoff, before retrieval candidate selection."""
+    with closing(port.lake.cursor()) as cursor:
+        rows = cursor.execute(
+            "SELECT CAST(doc_id AS VARCHAR), CAST(version_id AS VARCHAR) FROM evidence_doc_asof(?)",
+            [cutoff_us],
+        ).fetchall()
+    return frozenset((str(doc_id), str(version_id)) for doc_id, version_id in rows)
+
+
+def identity(port: Any, content: bytes, cutoff_us: int) -> tuple[str, str, int]:
+    """Find the world-minted document and version for admitted bytes visible at the cutoff."""
+    body_digest = blake3(content).hexdigest()
+    with closing(port.lake.cursor()) as cursor:
+        rows = cursor.execute(
+            "SELECT CAST(doc_id AS VARCHAR), CAST(version_id AS VARCHAR), epoch_us(known_asof)"
+            " FROM evidence_doc_asof(?) WHERE doc_digest = ? AND byte_count = ?",
+            [cutoff_us, body_digest, len(content)],
+        ).fetchall()
+    if len(rows) != 1:
+        raise DataError(
+            f"world evidence body {body_digest} is not known uniquely at {cutoff_us}",
+            code="alternative_evidence.source_object_missing",
+        )
+    doc_id, version_id, known_us = rows[0]
+    return str(doc_id), str(version_id), int(known_us)
+
+
+def exact(port: Any, doc_id: str, version_id: str, cutoff_us: int) -> bytes:
+    """Read the exact world document version visible at the cutoff, with no workspace fallback."""
+    with closing(port.lake.cursor()) as cursor:
+        row = cursor.execute(
+            "SELECT doc_digest, byte_count FROM evidence_doc_asof(?)"
+            " WHERE doc_id = ?::UUID AND version_id = ?::UUID",
+            [cutoff_us, doc_id, version_id],
+        ).fetchone()
+    if row is None:
+        raise DataError(
+            f"world evidence document {doc_id}@{version_id} is not known at {cutoff_us}",
+            code="alternative_evidence.source_object_missing",
+        )
+    digest, byte_count = row
+    content = _blob(port.root / "blobs" / digest)
+    if len(content) != byte_count or blake3(content).hexdigest() != digest:
+        raise DataError(
+            f"world evidence body {doc_id}@{version_id} differs from its digest",
+            code="alternative_evidence.source_object_tampered",
+        )
+    return content
+
+
 def body(port: Any, reference: AcquiredEvidenceDocumentReference, as_of: datetime) -> Served:
     """The reference's original bytes as world knew them at `as_of`: the version of its source
     document whose body is the reference's own (its length and SHA-256), known by then. A

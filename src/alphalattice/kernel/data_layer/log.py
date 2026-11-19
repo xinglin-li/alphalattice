@@ -137,6 +137,10 @@ class HostLog:
         self._con, self._lock_file = con, lock
         self._batch, self._seconds = batch, seconds
         self._guard = RLock()
+        con.create_function("uuid7", 0, uuid7)
+        self.knowledge_cache_lock = threading.Lock()
+        # Claim an embedding miss before inference, outside the SQLite writer. Every cache
+        # reader of this Host shares it, so two workspaces never encode the same miss at once.
         self._pending = 0
         self._units = 0  # how many `unit`s hold the transaction open; none commits inside one
         self._owed = False  # a durable event was appended inside a unit: commit when it ends

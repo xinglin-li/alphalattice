@@ -537,6 +537,19 @@ class ExperienceClassAnswer(_Answer):
     completed and failed."""
 
 
+class ExperienceRecallAnswer(_Answer):
+    """The experiences most like a query in a workspace as the history knew them at a time, each
+    with its text and the classes of the trials it is on: what a recalled experience rests on."""
+
+    model_config = ConfigDict(extra="forbid")
+    score_type: str
+    """How hits are scored: LINEAR_FUSION (a query without a reranked English passage) or
+    CROSS_ENCODER_LOGIT (the reranker's score)."""
+    hits: list[dict[str, Any]]
+    """Each hit, best first: its experience_id, version, score, text and classes, a mapping from
+    each trial the experience is on to that trial's class as known then (null when unknown)."""
+
+
 class ExperienceRecordAnswer(_Answer):
     """A review's note as the Host recorded it, with the run it rests on; its experience is
     rendered after this reply."""
@@ -741,6 +754,7 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "EXPERIENCE_READ": ExperienceAnswer,
     "EXPERIENCE_BRIEF": ExperienceBriefAnswer,
     "EXPERIENCE_CLASS": ExperienceClassAnswer,
+    "EXPERIENCE_RECALL": ExperienceRecallAnswer,
     "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),

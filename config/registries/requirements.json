@@ -125,6 +125,13 @@
       "seconds": 5,
       "lower_layer": "Canonicalization reaches the section reader's lazy module loader, which the unit layer's contract refuses, so admission is proved where it runs."
     },
+    "alternative_evidence.retrieval_reads_world_evidence_as_of": {
+      "description": "Retrieval keys evidence chunks by world's document and version and reads bodies from world at the cutoff, never returning superseded versions.",
+      "lower_layer": "World's evidence documents and the store's projections are a real DuckLake catalog and a real log, so the as-of read needs both.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30
+    },
     "alternative_evidence.review_rerun_joins_its_preparation": {
       "description": "A repeated book review joins the preparation in flight at any cutoff, reads no filing index beside it, and a parked one is handed back without a person.",
       "owner": "alphalattice.evidence.alternative_evidence",
@@ -148,6 +155,12 @@
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "integration",
       "seconds": 5
+    },
+    "alternative_evidence.world_body_reads_refuse_by_name": {
+      "description": "A world evidence body is returned only when its bytes match world's digest and size, and an unknown body is refused by name.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
     },
     "alternative_evidence.world_holds_each_document_once": {
       "description": "A workspace open admits each acquired evidence document into world once per machine, its body kept under blobs/ by its BLAKE3 and an amendment naming its original.",
@@ -794,6 +807,26 @@
       "layer": "integration",
       "seconds": 15
     },
+    "data_layer.knowledge_embedding_cache_survives_its_readers": {
+      "description": "A chunk's recipe-and-model embedding is encoded once in the Host's shared cache and reused by another reader or a rebuild at its calibrated storage precision.",
+      "lower_layer": "Reuse crosses store instances through real SQLite rows and their vector blobs, which a unit double cannot prove.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.knowledge_fusion_weighs_both_channels": {
+      "description": "Retrieval scales each channel's scores to [0, 1] and sums them with equal weight, so a chunk both the full-text and the vector channel find outranks one channel's top hit alone; equal scores keep source row order.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.knowledge_publications_replay_with_their_sources": {
+      "description": "A knowledge revision and snapshot retain their source identity, known time and workspace membership when the Host replays its log.",
+      "lower_layer": "The authority is the event transaction and its normalized SQLite projections, so replay must read and rebuild a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.legacy_rows_are_known_from_their_lag_rule": {
       "description": "StorePort preserves typed catalog rows, derives legacy knowledge from the market's next session close and lag rule, and keeps market and session identities through MIC changes.",
       "lower_layer": "The lag rule is read from a real log's definition and the session close from a real DuckLake catalog.",
@@ -863,6 +896,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.model_head_tensors_read_as_float32": {
+      "description": "The reranker's head files read as named float32 tensors with their shapes, and a tensor of another dtype is refused by name.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.native_events_split_an_agents_gap": {
       "description": "The time between a conversation's calls splits by its native records into waits on the person, the agent's tools and model requests, each moment counted once, the remainder unattributed; with no records the whole gap stays inferred.",
       "owner": "alphalattice.kernel.data_layer",
@@ -895,6 +934,28 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.recall_finds_experiences_as_known": {
+      "description": "Recall finds each experience known at its cutoff with its trials, projecting new experiences first, never encoding a cached vector again, and reranking English only.",
+      "lower_layer": "The corpus is a projection of the log's experiences through the store's SQLite tables and FTS5, so the catch-up and the as-of filters need a real log.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.recall_meets_its_speed_at_100k": {
+      "description": "At 100,000 chunks with the real CPU models, recall answers its first query and its p95 within one second in English and Chinese.",
+      "lower_layer": "The target is the whole query path over a real SQLite store, its FTS5 index, the mapped matrix and the installed model packs, so it needs them all.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 300,
+      "exception": {
+        "kinds": [
+          "large",
+          "over_budget"
+        ],
+        "why": "the retrieval store's speed target is read at 100,000 chunks with the real CPU models",
+        "decided": "2026-11-18: granted, nightly_only; the requirement is the recall speed at 100,000 chunks, so the scale is the test; the store build embeds 100k chunks on the CPU models (about 100 s)"
+      }
+    },
     "data_layer.recipe_key_is_its_content": {
       "description": "A recipe's key is the digest of its method's lineage, version, parameters and upstream recipes, whatever order they are written in, and never a name.",
       "owner": "alphalattice.kernel.data_layer",
@@ -914,6 +975,12 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
       "seconds": 10
+    },
+    "data_layer.reranker_head_scores_the_first_token": {
+      "description": "The reranker's head scores each pair by its first token through Dense, exact GELU, LayerNorm and a final Dense.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.research_records_are_named_by_ids": {
       "description": "Every research record is named by an id, so equal facts never collide or split across workspaces, trials, versions, renames or number forms.",
@@ -1007,7 +1074,8 @@
       "lower_layer": "The index is a SQLite database on disk, built through the extension loader.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-18: the data root makes no index.sqlite and loads no extension; the knowledge store's search lives in log.sqlite as FTS5 and a NumPy matrix, proved by data_layer.knowledge_embedding_cache_survives_its_readers"
     },
     "data_layer.workspace_copy_carries_its_lanes": {
       "description": "A workspace copy opened on its own data root reads every lane its source held, carried in the old lane form and moved onto its own log when its Host opens.",
@@ -1321,6 +1389,12 @@
     },
     "local_application.a_goal_is_found_by_its_declaration_hash": {
       "description": "A reopened goal is found by its declaration's typed binary hash with its opener and encoding version, never by JSON text.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "local_application.a_recall_query_and_limit_are_bounded_before_a_model_runs": {
+      "description": "If a recall's empty, over-long or out-of-range query or limit reached a model, the model would embed or rank an unbounded request before the Host named the error.",
       "owner": "alphalattice.interface.local_application",
       "layer": "unit",
       "seconds": 1

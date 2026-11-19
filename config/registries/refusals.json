@@ -80,6 +80,8 @@
 "experience.brief_budget_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A brief's budget was outside 100 to 32,000 tokens."},
 "experience.known_at_invalid": {"owner": "alphalattice.interface.local_application", "category": "INVALID_ARGUMENT", "classification_note": "A class read's known time was not an ISO-8601 time with its offset."},
 "experience.history_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "The Host's history is not open, so it cannot answer or register the hypothesis."},
+"experience.recall_models_missing": {"owner": "alphalattice.control.product_host.composition", "category": "FAILED_PRECONDITION", "classification_note": "The retrieval-store model packs are not installed, so a recall cannot embed its query; nothing was read."},
+"experience.recall_query_invalid": {"owner": "alphalattice.control.product_host.composition", "category": "INVALID_ARGUMENT", "classification_note": "A recall query was empty or over 512 characters, or its limit was outside 1 to 20; nothing was read."},
 "experience.note_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A note did not say its hypothesis, method and conclusion, or held a blank lesson; nothing was recorded."},
 "experience.layer_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A note named something other than a trial, a Task or a goal."},
 "experience.verdict_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A verdict other than success, failure or inconclusive."},

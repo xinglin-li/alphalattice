@@ -1215,7 +1215,7 @@
       "summary": "the Evidence knowledge workspace and its hybrid index: source objects, documents, passages, full-text postings and dense vectors",
       "class": "derived",
       "tier": 4,
-      "home": "index passage, passage_fts and passage_vec; documents as catalog world.evidence_doc",
+      "home": "log knowledge_source, knowledge_chunk, knowledge_fts and knowledge_embedding; documents as catalog world.evidence_doc",
       "location": "workspace-runtime",
       "bytes": null,
       "covers": [
@@ -3757,7 +3757,7 @@
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, index.sqlite (index.sql), the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<table>/<digest>.<suffix>, each derived partition held as one file (a Panel chunk's body, derived_files), placed once per digest",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, with the knowledge store's tables, the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<table>/<digest>.<suffix>, each derived partition held as one file (a Panel chunk's body, derived_files), placed once per digest",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [

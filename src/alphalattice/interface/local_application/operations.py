@@ -776,6 +776,13 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Reads every trial of a trial's class, across goals, workspaces and agents, as known at "
         "a time: each member and its measures, each metric's spread and the search's size.",
     ),
+    "EXPERIENCE_RECALL": Command(
+        "experience",
+        "recall",
+        "Recalls the experiences most like a query in a workspace, as known at a time, each with "
+        "its text and its trials' classes; refused by name until the retrieval models are "
+        "installed.",
+    ),
     "EXPERIENCE_RECORD": Command(
         "experience",
         "record",
@@ -1126,6 +1133,8 @@ FLAGS: Final[dict[str, str]] = {
     "experience_width": "width",
     "experience_known_at": "known-at",
     "experience_budget": "budget",
+    "experience_limit": "limit",
+    "experience_query": "query",
     "review_subject": "reviews",
     "review_verdict": "verdict",
     "incident_key": "incident",

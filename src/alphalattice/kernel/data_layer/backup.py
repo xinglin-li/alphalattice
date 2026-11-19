@@ -37,7 +37,7 @@ from alphalattice.kernel.data_layer.root import (
 from alphalattice.kernel.data_layer.store import StorePort
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
-DATABASES: Final = ("index.sqlite", "log.sqlite", "catalog.sqlite")
+DATABASES: Final = ("log.sqlite", "catalog.sqlite")
 DIGESTS: Final = {"blake3:v1": blake3, "blake3": blake3, "sha256": sha256}
 
 

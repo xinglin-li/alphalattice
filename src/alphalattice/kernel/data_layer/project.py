@@ -60,6 +60,11 @@ PROJECTED: Final = (
     "chain_checkpoint",
     "chain_head",
     "daily_span",
+    "knowledge_source",
+    "knowledge_source_version",
+    "knowledge_workspace_source",
+    "knowledge_snapshot",
+    "knowledge_snapshot_revision",
 )
 """Every table replay rebuilds from the events alone."""
 MACHINE_TEXT: Final = frozenset(
@@ -74,6 +79,8 @@ MACHINE_TEXT: Final = frozenset(
         "execution.started",
         "stage.verified",
         "command.accepted",
+        "knowledge.revision_published",
+        "knowledge.snapshot_published",
     }
 )
 """The types whose text is never forgotten: a definition's, which replay rebuilds the registry
@@ -1371,6 +1378,79 @@ def _checkpoint(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a.get("note"),
             a.get("chain_version", CHAIN_VERSION),
         ),
+    )
+
+
+@on("knowledge.revision_published")
+def _knowledge_revision(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """Rebuild source identity, version and workspace membership in the publication's unit."""
+    payload = json.loads(text or "{}")
+    source, version = a["source_id"], a["version_id"]
+    con.execute("INSERT OR IGNORE INTO knowledge_source VALUES (?, ?)", (source, a["kind"]))
+    con.execute(
+        "UPDATE knowledge_source_version SET superseded_us = ? WHERE source_id = ?"
+        " AND version_id != ? AND known_us < ?"
+        " AND (superseded_us IS NULL OR superseded_us > ?)",
+        (a["known_us"], source, version, a["known_us"], a["known_us"]),
+    )
+    con.execute(
+        "INSERT OR IGNORE INTO knowledge_source_version VALUES (?, ?, ?, ?,"
+        " (SELECT min(boundary) FROM ("
+        " SELECT known_us AS boundary FROM knowledge_source_version"
+        " WHERE source_id = ? AND known_us > ?"
+        " UNION ALL SELECT CAST(json_extract(attrs, '$.known_us') AS INTEGER)"
+        " FROM event WHERE type = 'knowledge.source_retired' AND subject_id = ?"
+        " AND CAST(json_extract(attrs, '$.known_us') AS INTEGER) >= ?)),"
+        " ?, ?, ?)",
+        (
+            version,
+            source,
+            a["version"],
+            a["known_us"],
+            source,
+            a["known_us"],
+            source,
+            a["known_us"],
+            a["body_digest"],
+            e["seq"] if a["kind"] == "reference" else None,
+            e["seq"],
+        ),
+    )
+    con.execute(
+        "INSERT INTO knowledge_workspace_source VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            a["membership_id"],
+            e["workspace_id"],
+            a["document_id"],
+            a["revision"],
+            version,
+            canonical(payload["metadata"]).decode(),
+        ),
+    )
+
+
+@on("knowledge.source_retired")
+def _knowledge_retired(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """End only versions current at the authority's retirement time."""
+    con.execute(
+        "UPDATE knowledge_source_version SET superseded_us = ? WHERE source_id = ?"
+        " AND known_us <= ? AND (superseded_us IS NULL OR superseded_us > ?)",
+        (a["known_us"], e["subject_id"], a["known_us"], a["known_us"]),
+    )
+
+
+@on("knowledge.snapshot_published")
+def _knowledge_snapshot(con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """Rebuild the snapshot's ordered, constrained membership from its sealed text."""
+    con.execute(
+        "INSERT INTO knowledge_snapshot VALUES (?, ?, ?, ?)",
+        (e["subject_id"], a["reference_id"], e["workspace_id"], e["seq"]),
+    )
+    con.execute(
+        "INSERT INTO knowledge_snapshot_revision"
+        " SELECT json_extract(value, '$.membership_id'), ?, json_extract(value, '$.version_id'),"
+        " CAST(key AS INTEGER) FROM json_each(?, '$.members')",
+        (e["subject_id"], text),
     )
 
 

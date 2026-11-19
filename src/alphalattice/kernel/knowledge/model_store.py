@@ -32,7 +32,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_MODEL_ARTIFACT_SHA256,
@@ -186,6 +186,55 @@ QWEN3_RERANKER = PackDefinition(
     "TORCH_CUDA_CAUSAL_LM",
     1_207_471_008,
 )
+STATIC_ENCODER = PackDefinition(
+    "bekko-static-512-int8",
+    "hotchpotch/bekko-static-embedding-v1",
+    "c18167b8f244c1bc6de21ce9b710bac8a29c4615",
+    (
+        (
+            "onnx/model_int8_dim512.onnx",
+            "2b906189a954cc1df2fa8ccc463a7e304dfc088f9aa2e6e0b928b24ae4200f22",
+        ),
+        ("tokenizer.json", "308823060352e35bf9fff6b42ef343f31cc68fa800e284568cc44e9cc0f70a73"),
+    ),
+    "MIT",
+    "ONNX_CPU",
+    108_305_839,
+    variant="512-int8",
+)
+ETTIN_RERANKER = PackDefinition(
+    "ettin17-int8",
+    "cross-encoder/ettin-reranker-17m-v1",
+    "9e4aa35321a6dd1a43ca313f500c4b4f7cfb5cc6",
+    (
+        (
+            "onnx/model_qint8_avx512.onnx",
+            "b485f6bf9da93544a6caee44c3170d12db4d5aa35350ea21d1dfd4a8281ed903",
+        ),
+        ("tokenizer.json", "28c5e078e4c52aa37cf0e6de1a212878f3dbd58dd1c70466298efe0b6b86db35"),
+        (
+            "2_Dense/model.safetensors",
+            "85e9596d9250a871deb159fb5db6979e910b4cf181d05c806733c49bc43d47c8",
+        ),
+        (
+            "3_LayerNorm/model.safetensors",
+            "de99fa351fb4badb74b56e85fa70b5bbd3fcf4d0e74de79eb749dba1e9e28b4a",
+        ),
+        (
+            "4_Dense/model.safetensors",
+            "654827171b89c76d19d663162243f38d63d1ba812ac1ec9c1b36512f1a8e9ce8",
+        ),
+    ),
+    "Apache-2.0",
+    "ONNX_CPU",
+    20_976_635,
+    variant="int8",
+)
+RETRIEVAL_STORE_PACKS: tuple[PackDefinition, PackDefinition] = (STATIC_ENCODER, ETTIN_RERANKER)
+"""The retrieval store's encoder and English reranker (kernel/data_layer/encoders.py), every file
+upstream at its pinned revision; the retrieval measurement chose them."""
+RETRIEVAL_STORE: Final = "retrieval-store"
+"""The name the pack installer takes for RETRIEVAL_STORE_PACKS, beside the recipes'."""
 PACKS: tuple[PackDefinition, ...] = (
     MINILM_ENCODER,
     MSMARCO_RERANKER,
@@ -206,6 +255,11 @@ RECIPE_PACKS: dict[str, tuple[PackDefinition, PackDefinition]] = {
 """Encoder and reranker of every supported recipe; the two presets a user
 chooses between are recipes, never a free pairing."""
 assert set(RECIPE_PACKS) == set(SUPPORTED_RECIPES)
+INSTALLABLE: dict[str, tuple[PackDefinition, PackDefinition]] = {
+    **RECIPE_PACKS,
+    RETRIEVAL_STORE: RETRIEVAL_STORE_PACKS,
+}
+"""Every pair of packs the installer takes by name."""
 
 PACK_ABSENT = "ABSENT"
 PACK_STAGED = "STAGED_INCOMPLETE"

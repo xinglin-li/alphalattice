@@ -1789,6 +1789,13 @@
   ],
   "large": [
     {
+      "pattern": "tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
+      "owner": "tests",
+      "reason": "Builds and embeds a store of 100,000 chunks with the real CPU models to read the retrieval store's speed target.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-18: the 100k build took 88 s and its index 12 s on the main PC; the goal reads the speed target from the nightly."
+    },
+    {
       "pattern": "tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
       "owner": "tests.structural",
       "reason": "Runs Semgrep's real rule cases and the whole tracked source; its one-file pass alone uses most of the commit budget.",
@@ -2399,6 +2406,11 @@
     }
   ],
   "budget_admissions": [
+    {
+      "budget": "large:tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
+      "value": 900,
+      "admitted": "2026-11-18: The 100,000-chunk build and its 62 timed queries ran 73 s on mac1 and about 100 s on the main PC; a Large test is killed only as hung, at the large timeout of 900 s"
+    },
     {
       "budget": "large:tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "value": 900,
@@ -3074,6 +3086,17 @@
     }
   ],
   "quarantine": [
+    {
+      "node": "tests/integration/data_layer/test_store.py::test_an_append_waits_no_longer_while_a_large_admission_is_staged",
+      "owner": "tests",
+      "reason": "Compares wall-clock medians with a 2 ms slack under a real child process, so a loaded node fails it; a proof of the order by an event replaces it.",
+      "until": "2026-11-21",
+      "class": "unstable",
+      "since": "2026-11-19",
+      "seen_on": [
+        "mac1"
+      ]
+    },
     {
       "node": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[True-False]",
       "owner": "tests.portfolio_strategy_lab",

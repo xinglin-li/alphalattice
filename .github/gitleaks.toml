@@ -18,6 +18,9 @@ regexes = [
   '''^cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865$''',
   '''^d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66$''',
   '''^def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a$''',
+  # SHA-256 pins of the retrieval store's tokenizer files: src/alphalattice/kernel/knowledge/model_store.py
+  '''^28c5e078e4c52aa37cf0e6de1a212878f3dbd58dd1c70466298efe0b6b86db35$''',
+  '''^308823060352e35bf9fff6b42ef343f31cc68fa800e284568cc44e9cc0f70a73$''',
   # recording keys: src/alphalattice/kernel/resources/recorded_demo_v1/command.json
   '''^0e46fcc8df7e6780abacf6126ed1f7dc1e22384b6e2e7b1cb62f32874c204d6f$''',
   '''^1d86e24b28087e833beb6b10ab669cb17410095a4abc503ce7cbeb964a47c366$''',

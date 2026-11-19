@@ -4,6 +4,7 @@ workspaces hold one document."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
@@ -32,6 +33,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import plan_sec_filing_selection
 from alphalattice.evidence.alternative_evidence.storage import world, world_reads
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alternative_evidence_desk.document_intelligence_support import _registry, _request
@@ -222,6 +224,27 @@ def test_a_workspace_open_admits_each_document_once_with_its_facts(tmp_path, hos
     ]
     assert known[1][1] == [micros(AMENDED)] * 2  # linked by its next version, a 0.2.7 fact too
     assert {kind: (host / "blobs" / d).read_bytes() for kind, d in digest.items()} == bodies
+    doc_id, version_id = lake.execute(
+        "SELECT CAST(doc_id AS VARCHAR), CAST(version_id AS VARCHAR)"
+        " FROM evidence_doc_asof(?) WHERE source_ref = ?",
+        [micros(ACCEPTED), f"{ORIGINAL}/aapl.htm"],
+    ).fetchone()
+    assert world_reads.identity(history.store(), bodies["10-K"], micros(ACCEPTED)) == (
+        doc_id,
+        version_id,
+        micros(ACCEPTED),
+    )
+    with pytest.raises(DataError, match="not known"):
+        world_reads.identity(history.store(), bodies["10-K"], micros(ACCEPTED) - 1)
+    assert (
+        world_reads.exact(history.store(), doc_id, version_id, micros(ACCEPTED)) == bodies["10-K"]
+    )
+    with pytest.raises(DataError, match="not known"):
+        world_reads.exact(history.store(), doc_id, version_id, micros(ACCEPTED) - 1)
+    with pytest.raises(DataError, match="not known"):
+        world_reads.exact(
+            history.store(), doc_id, "00000000-0000-0000-0000-000000000000", micros(ACCEPTED)
+        )
 
 
 @pytest.mark.proves("alternative_evidence.world_holds_each_document_once")
@@ -346,3 +369,130 @@ def test_a_workspace_of_sixty_documents_is_admitted_in_events_of_a_fixed_size(tm
         ({"SEC_EDGAR": 1}, 0),
     ]
     assert len(sizes) == 2 and abs(sizes[0][0] - sizes[1][0]) <= 1  # the same size, 60 or 1
+
+
+@pytest.mark.proves("alternative_evidence.retrieval_reads_world_evidence_as_of")
+def test_knowledge_retrieves_the_world_body_by_document_version_and_cutoff(
+    tmp_path, host, monkeypatch
+):
+    """Retrieval keys an evidence chunk by world's document and version, reads its body from
+    world at the query's cutoff, never a workspace copy, and returns no version world has
+    superseded at that cutoff, from either channel."""
+    import numpy as np
+
+    from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
+
+    original = b"<html>annual evidence and market risk</html>"
+    monkeypatch.delenv(history.OTLP_CONTENT_ENV, raising=False)
+    acquire(tmp_path / "w1", filing(ORIGINAL, "10-K", original, ACCEPTED))
+    admit(tmp_path / "w1", "w1")
+    for held in source_objects(tmp_path / "w1").iterdir():
+        held.unlink()
+    port = history.store()
+    doc_id, version_id, known = world_reads.identity(port, original, micros(ACCEPTED))
+    store = KnowledgeStore(
+        history.held(host), evidence_asof=lambda cutoff: world_reads.visible(port, cutoff)
+    )
+    origin = SourceOrigin(doc_id, version_id, "evidence", known)
+    source = store.publish_revision(
+        workspace_id="w1",
+        metadata={"document": {"document_id": "filing"}, "revision": 1},
+        content=original.decode(),
+        origin=origin,
+    )
+    assert store.read_revision("w1", "filing", 1).content is None
+    recipe = store.recipe(
+        {
+            "splitter": "semantic-text-splitter",
+            "version": "0.33.3",
+            "capacity": 512,
+            "overlap": 0,
+            "trim": True,
+        }
+    )
+    model = store.model({"model": "test"}, dimension=2)
+    chunks = store.index_chunks(version_id=source, recipe_id=recipe, content=original.decode())
+    with pytest.raises(DataError, match="world is unavailable"):  # no world reader, no scope
+        KnowledgeStore(history.held(host)).scope(workspace="w1", cutoff_us=known)
+    store.embeddings(
+        tuple(chunk.digest for chunk in chunks),
+        recipe_id=recipe,
+        model_id=model,
+        encode=lambda missing: np.asarray([(1, 0)] * len(missing), dtype=np.float32),
+    )
+
+    class Encoder:
+        def embed_query(self, _: str) -> np.ndarray:
+            return np.asarray([1, 0], dtype=np.float32)
+
+    class Reranker:
+        def score(self, *_: object) -> None:
+            return None
+
+    def source_body(hit, cutoff):
+        return world_reads.exact(port, hit.source_id, hit.version, cutoff).decode()
+
+    with store.vector_index(recipe_id=recipe, model_id=model, directory=host) as index:
+        search = HybridSearch(store, index, Encoder(), Reranker(), source_body)
+        assert not search.retrieve(
+            "annual", language="en", workspace="w1", cutoff_us=known - 1
+        ).hits
+        hit = search.retrieve("annual", language="en", workspace="w1", cutoff_us=known).hits[0]
+        assert (hit.hit.source_id, hit.hit.version, hit.hit.ordinal) == (doc_id, version_id, 0)
+        assert hit.text == original.decode()
+        assert not search.retrieve("annual", language="en", workspace="other", cutoff_us=known).hits
+        monkeypatch.setenv(history.OTLP_CONTENT_ENV, "1")
+        assert search.retrieve("market", language="en", workspace="w1", cutoff_us=known).hits
+        revised = b"<html>revised annual evidence and market risk</html>"
+        revised_at = ACCEPTED + timedelta(days=1)
+        acquire(tmp_path / "w1", filing(ORIGINAL, "10-K", revised, revised_at))
+        admit(tmp_path / "w1", "w1")
+        cutoff = micros(revised_at)
+        # World has superseded the old version before the local cache has noticed. Neither
+        # channel may return that stale candidate, including with the retired selector.
+        assert not search.retrieve("annual", language="en", workspace="w1", cutoff_us=cutoff).hits
+        new_doc, new_version, new_known = world_reads.identity(port, revised, cutoff)
+        assert new_doc == doc_id and new_version != version_id
+        new_source = store.publish_revision(
+            workspace_id="w1",
+            metadata={"document": {"document_id": "filing"}, "revision": 2},
+            content=revised.decode(),
+            origin=SourceOrigin(new_doc, new_version, "evidence", new_known),
+        )
+        new_chunks = store.index_chunks(
+            version_id=new_source, recipe_id=recipe, content=revised.decode()
+        )
+        store.embeddings(
+            tuple(chunk.digest for chunk in new_chunks),
+            recipe_id=recipe,
+            model_id=model,
+            encode=lambda missing: np.asarray([(1, 0)] * len(missing), dtype=np.float32),
+        )
+        assert index.refresh()
+        assert (
+            search.retrieve("annual", language="en", workspace="w1", cutoff_us=cutoff)
+            .hits[0]
+            .hit.version
+            == new_version
+        )
+        assert (
+            search.retrieve("annual", language="en", workspace="w1", cutoff_us=known)
+            .hits[0]
+            .hit.version
+            == version_id
+        )
+        assert not search.retrieve(
+            "annual", language="en", workspace="w1", cutoff_us=cutoff, superseded=True
+        ).hits
+    log = history.held(host)
+    log.flush()
+    spans = [
+        json.loads(row[0])
+        for row in log.read(
+            "SELECT attrs FROM event WHERE type = 'gen_ai.retrieval'"
+            " AND phase = 'completed' ORDER BY seq"
+        )
+    ]
+    assert len(spans) == 8
+    assert all("gen_ai.input.messages" not in attrs for attrs in spans[:3])
+    assert spans[3]["gen_ai.input.messages"] == "market"

@@ -1,6 +1,6 @@
 """Experience read and the research run's explicit hypothesis."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 from alphalattice.control.product_host.composition.plain_refusals import refused
@@ -67,6 +67,41 @@ def read_experience_class(request: "PortfolioResearchOperationRequest") -> dict[
         )
     except DataError as error:  # the read's own code, or the history unavailable
         return refused(public_failure(error, "experience.history_unavailable"))
+    return refused("experience.history_unavailable") if found is None else found
+
+
+_RECALL_REFUSALS = {
+    "data_layer.knowledge_model_unavailable": "experience.recall_models_missing",
+    "data_layer.knowledge_query_invalid": "experience.recall_query_invalid",
+}
+
+
+def recall_experience(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+    """The experiences most like the request's query in its workspace (the Host's when none is
+    named), as known at its known time, each with its trials' classes
+    (`history.recall_experiences`); refused by name when the retrieval models are not installed
+    or the query is not admitted."""
+    assert request.experience_query is not None
+    opened = history.opened_log()
+    workspace = request.experience_workspace or (opened[1] if opened else None)
+    known = request.experience_known_at
+    cutoff_us = (
+        round(datetime.now(UTC).timestamp() * 1_000_000)
+        if known is None
+        else round(datetime.fromisoformat(known).timestamp() * 1_000_000)
+    )
+    if workspace is None:
+        return refused("experience.history_unavailable")
+    try:
+        found = history.recall_experiences(
+            query=request.experience_query,
+            workspace=workspace,
+            cutoff_us=cutoff_us,
+            limit=request.experience_limit or 5,
+        )
+    except DataError as error:  # the recall's own code, or the history unavailable
+        code = public_failure(error, "experience.history_unavailable")
+        return refused(_RECALL_REFUSALS.get(code, code))
     return refused("experience.history_unavailable") if found is None else found
 
 

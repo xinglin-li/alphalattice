@@ -7014,6 +7014,76 @@
         "type": "string"
       }
     },
+    "answer:EXPERIENCE_RECALL.error_info": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ErrorInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "answer:EXPERIENCE_RECALL.hits": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_RECALL.score_type": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.category": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.domain": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.field_violations": {
+      "required": true,
+      "schema": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.message": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.message_id": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
+    "answer:EXPERIENCE_RECALL/ErrorInfo.reason": {
+      "required": true,
+      "schema": {
+        "type": "string"
+      }
+    },
     "answer:EXPERIENCE_RECORD.cost_usd": {
       "required": true,
       "schema": {
@@ -27509,6 +27579,11 @@
         "EXPERIENCE_READ"
       ]
     },
+    "command:experience recall": {
+      "operations": [
+        "EXPERIENCE_RECALL"
+      ]
+    },
     "command:experience record": {
       "operations": [
         "EXPERIENCE_RECORD"
@@ -29037,6 +29112,17 @@
         "history_limit"
       ],
       "required": []
+    },
+    "operation:EXPERIENCE_RECALL": {
+      "allowed": [
+        "experience_known_at",
+        "experience_limit",
+        "experience_query",
+        "experience_workspace"
+      ],
+      "required": [
+        "experience_query"
+      ]
     },
     "operation:EXPERIENCE_RECORD": {
       "allowed": [
@@ -38359,6 +38445,137 @@
       "type": "Path"
     },
     "option:experience list/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--choices": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience recall/--format": {
+      "choices": [
+        "json",
+        "yaml",
+        "html"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience recall/--from-workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--known-at": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--limit": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--list-next": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--max-wait": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience recall/--next-from": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "int"
+    },
+    "option:experience recall/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience recall/--query": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:experience recall/--section": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--wait": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:experience recall/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:experience recall/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -58019,6 +58236,7 @@
     "refusal:data_layer.data_folder_unreadable": {},
     "refusal:data_layer.definition_not_owner": {},
     "refusal:data_layer.definition_superseded": {},
+    "refusal:data_layer.derived_files_need_host": {},
     "refusal:data_layer.event_attrs_form": {},
     "refusal:data_layer.event_attrs_missing": {},
     "refusal:data_layer.event_secret": {},
@@ -58183,6 +58401,8 @@
     "refusal:experience.known_at_invalid": {},
     "refusal:experience.layer_unknown": {},
     "refusal:experience.note_incomplete": {},
+    "refusal:experience.recall_models_missing": {},
+    "refusal:experience.recall_query_invalid": {},
     "refusal:experience.trial_unknown": {},
     "refusal:experience.trials_malformed": {},
     "refusal:experience.unit_unknown": {},
@@ -58376,6 +58596,7 @@
     "refusal:feature_closure.root_unavailable": {},
     "refusal:feature_closure.row_hash_digest_input_invalid": {},
     "refusal:feature_closure.sector_map_capture_failed": {},
+    "refusal:feature_closure.sector_map_unserved": {},
     "refusal:feature_closure.store_readback_mismatch": {},
     "refusal:feature_engine.availability_policy_identity_invalid": {},
     "refusal:feature_engine.calendar_formula_declares_skip": {},
@@ -58462,6 +58683,8 @@
     "refusal:feature_panel.base_closure_incomplete": {},
     "refusal:feature_panel.base_formula_request_invalid": {},
     "refusal:feature_panel.base_row_not_materialized": {},
+    "refusal:feature_panel.chunk_unserved": {},
+    "refusal:feature_panel.derived_reads_unserved": {},
     "refusal:feature_panel.identity_migration_cas_failed": {},
     "refusal:feature_panel.legacy_base_source_missing": {},
     "refusal:feature_panel.legacy_replay_layout_invalid": {},
@@ -58472,6 +58695,7 @@
     "refusal:feature_panel.membership_epochs_missing": {},
     "refusal:feature_panel.membership_epochs_overlap": {},
     "refusal:feature_panel.membership_session_missing": {},
+    "refusal:feature_panel.panel_reads_unknown": {},
     "refusal:feature_panel.recipe_input_mismatch": {},
     "refusal:feature_panel.reference_population_empty": {},
     "refusal:feature_panel.rematerialization_content_mismatch": {},
@@ -60556,6 +60780,7 @@
     "refusal:risk_research.development_input_binding_identity_invalid": {},
     "refusal:risk_research.development_input_session_axis_invalid": {},
     "refusal:risk_research.development_input_window_too_wide": {},
+    "refusal:risk_research.development_realized_axis_empty": {},
     "refusal:risk_research.development_surface_adapter_route_invalid": {},
     "refusal:risk_research.development_surface_axis_invalid": {},
     "refusal:risk_research.development_surface_capability_route_invalid": {},
@@ -60636,6 +60861,7 @@
     "refusal:risk_research.return_chunk_uri_invalid": {},
     "refusal:risk_research.return_formation_session_invalid": {},
     "refusal:risk_research.return_listing_scope_invalid": {},
+    "refusal:risk_research.return_omission_invalid": {},
     "refusal:risk_research.return_price_basis_unsupported": {},
     "refusal:risk_research.return_read_axis_invalid": {},
     "refusal:risk_research.return_read_axis_mismatch": {},
@@ -62066,12 +62292,44 @@
         "default": null
       }
     },
+    "request:Request.experience_limit": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "request:Request.experience_method": {
       "required": false,
       "schema": {
         "anyOf": [
           {
             "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.experience_query": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "maxLength": 512,
             "minLength": 1,
             "type": "string"
           },
@@ -64027,6 +64285,7 @@
         "EXPERIENCE_READ",
         "EXPERIENCE_BRIEF",
         "EXPERIENCE_CLASS",
+        "EXPERIENCE_RECALL",
         "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",

@@ -296,6 +296,130 @@ def test_the_host_renders_a_note_into_an_experience_it_versions_and_replaces(
     for body, size in log.read("SELECT body, size FROM experience_version"):
         kept = (root / "blobs" / body.removeprefix("blake3:")).read_bytes()
         assert (digest(kept), len(kept)) == (body, size)
+    if path == "render-and-version":
+        from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
+
+        store = KnowledgeStore(log)
+        version_id = store.publish_experience(
+            workspace_id="w1", experience_id=current, version=1, blobs=root / "blobs"
+        )
+        assert version_id == store.publish_experience(
+            workspace_id="w1", experience_id=current, version=1, blobs=root / "blobs"
+        )
+        admitted = store.read_revision("w1", current, 1)
+        assert (admitted.origin.kind, admitted.origin.source_id, admitted.origin.version) == (
+            "experience",
+            current,
+            "1",
+        )
+        assert admitted.content is None
+        known = admitted.origin.known_us
+        content = store.experience_body(
+            workspace_id="w1",
+            experience_id=current,
+            version=1,
+            blobs=root / "blobs",
+            cutoff_us=known,
+        )
+        assert "conclusion 0" in content
+        with pytest.raises(DataError, match="experience"):
+            store.experience_body(
+                workspace_id="w1",
+                experience_id=current,
+                version=1,
+                blobs=root / "blobs",
+                cutoff_us=known - 1,
+            )
+        with pytest.raises(DataError, match="experience"):
+            store.publish_experience(
+                workspace_id="w2", experience_id=current, version=1, blobs=root / "blobs"
+            )
+    if path == "replace-with-the-old-kept":
+        import numpy as np
+
+        from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore
+
+        store = KnowledgeStore(log)
+        recipe = store.recipe(
+            {
+                "splitter": "semantic-text-splitter",
+                "version": "0.33.3",
+                "capacity": 512,
+                "overlap": 0,
+                "trim": True,
+            }
+        )
+        model = store.model({"model": "test"}, dimension=2)
+        for source in ids:
+            version_id = store.publish_experience(
+                workspace_id="w1", experience_id=source, version=1, blobs=root / "blobs"
+            )
+            named = _one(
+                log, "SELECT body FROM experience_version WHERE experience_id = ?", source
+            )[0]
+            body = (root / "blobs" / named.removeprefix("blake3:")).read_text(encoding="utf-8")
+            chunks = store.index_chunks(version_id=version_id, recipe_id=recipe, content=body)
+            store.embeddings(
+                tuple(chunk.digest for chunk in chunks),
+                recipe_id=recipe,
+                model_id=model,
+                encode=lambda missing: np.asarray([(1, 0)] * len(missing), dtype=np.float32),
+            )
+        retired_at = _one(
+            log,
+            "SELECT e.recorded_us FROM experience_made m JOIN event e ON e.seq = m.replaced_seq"
+            " WHERE m.experience_id = ?",
+            ids[0],
+        )[0]
+        with store.vector_index(recipe_id=recipe, model_id=model, directory=root) as index:
+            for cutoff, expected in ((retired_at - 1, ids[0]), (retired_at, ids[1])):
+                lexical = store.lexical("conclusion", store.scope(workspace="w1", cutoff_us=cutoff))
+                vector = index.search(
+                    np.asarray([1, 0], dtype=np.float32),
+                    store.scope(workspace="w1", cutoff_us=cutoff),
+                )
+                assert {hit.source_id for hit in lexical} == {expected}
+                assert {hit.source_id for hit in vector} == {expected}
+            for superseded, expected in ((True, {ids[0]}), (None, set(ids))):
+                lexical = store.lexical(
+                    "conclusion",
+                    store.scope(workspace="w1", cutoff_us=retired_at, superseded=superseded),
+                )
+                vector = index.search(
+                    np.asarray([1, 0], dtype=np.float32),
+                    store.scope(workspace="w1", cutoff_us=retired_at, superseded=superseded),
+                )
+                assert {hit.source_id for hit in lexical} == expected
+                assert {hit.source_id for hit in vector} == expected
+
+            class Encoder:
+                def embed_query(self, _: str) -> np.ndarray:
+                    return np.asarray([1, 0], dtype=np.float32)
+
+            class Reranker:
+                def score(self, *_: object) -> None:
+                    return None
+
+            def body(hit, cutoff):
+                return store.experience_body(
+                    workspace_id="w1",
+                    experience_id=hit.source_id,
+                    version=int(hit.version),
+                    blobs=root / "blobs",
+                    cutoff_us=cutoff,
+                )
+
+            search = HybridSearch(store, index, Encoder(), Reranker(), body)
+            hit = search.retrieve(
+                "conclusion", language="en", workspace="w1", cutoff_us=retired_at
+            ).hits[0]
+            assert hit.hit.source_id == ids[1] and hit.hit.version == "1"
+            assert "conclusion 1" in hit.text
+            assert _one(
+                log,
+                "SELECT task_id FROM experience_made WHERE experience_id = ?",
+                hit.hit.source_id,
+            ) == ("k1",)
     assert experiences.render_pending(log, root / "blobs") == []  # nothing is rendered twice
 
 
@@ -332,3 +456,99 @@ def test_a_grown_log_replays_its_experiences_equal(tmp_path):
         assert tuple(replaced) == (20,)
         named = again.execute("SELECT count(*) FROM trial_experience WHERE role = 'reviewed'")
         assert tuple(named.fetchone()) == (29,)
+
+
+@pytest.mark.proves("data_layer.recall_finds_experiences_as_known")
+def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatch, tmp_path):
+    """Recall projects each experience the store lacks before it searches, finds it as known at
+    the cutoff with the trial its note is on, reranks English only, and after the search is
+    dropped rebuilds from the cache without encoding a vector again."""
+    import re
+    import zlib
+
+    import numpy as np
+
+    from alphalattice.kernel.data_layer import encoders, recall
+    from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
+    from alphalattice.kernel.knowledge import model_store
+
+    root, log = world
+    encoded, reranked, stops = [], [], []
+
+    class Encoder:  # a stand-in for the static model: shared words or Han characters, vectors near
+        def __init__(self, _pack: Path) -> None:
+            pass
+
+        def embed_passages(self, texts):
+            if stops:  # the Host stops while a catch-up encodes
+                raise RuntimeError(stops.pop())
+            encoded.extend(texts)
+            rows = np.full((len(texts), 512), 1e-3, dtype=np.float32)
+            for row, text in enumerate(texts):
+                for word in re.findall(r"[一-鿿]|\w+", text.lower()):
+                    rows[row, zlib.crc32(word.encode()) % 512] += 1
+            return rows / np.linalg.norm(rows, axis=1, keepdims=True)
+
+        def embed_query(self, text):
+            return self.embed_passages((text,))[0]
+
+    class Reranker:
+        def __init__(self, _pack: Path) -> None:
+            pass
+
+        def score(self, query, passages):
+            reranked.append(query)
+            return tuple(float(len(passage)) for passage in passages)
+
+    monkeypatch.setattr(encoders, "StaticEncoder", Encoder)
+    monkeypatch.setattr(encoders, "Reranker", Reranker)
+    # The packs stand installed in a model store of the test's own: the stand-ins read no file.
+    monkeypatch.setattr(model_store, "default_store_root", lambda: tmp_path / "models")
+    monkeypatch.setattr(model_store, "verify_directory", lambda directory, pack: None)
+    english = experiences.note_text("Momentum pays", "12-1 momentum", "It paid after costs", [])
+    _note(log, "trial", "t0", text=english)
+    (first,) = experiences.render_pending(log, root / "blobs")
+    later = T0 + 10**12
+    try:
+        found, trials = recall.recall(
+            log, root, query="momentum costs", workspace="w1", cutoff_us=later
+        )
+        assert {hit.hit.source_id for hit in found.hits} == {first}
+        assert trials == {first: ("t0",)}
+        assert found.score_type == "CROSS_ENCODER_LOGIT" and reranked == ["momentum costs"]
+        assert all("It paid after costs" in hit.text for hit in found.hits)  # the verified slice
+        chinese = experiences.note_text("动量有效", "动量策略", "市场风险上升时失效", [])
+        _note(log, "trial", "t1", text=chinese)
+        (second,) = experiences.render_pending(log, root / "blobs")
+        stops.append("stopped after chunking, before the vectors")
+        with pytest.raises(RuntimeError, match="before the vectors"):
+            recall.recall(log, root, query="市场风险", workspace="w1", cutoff_us=later)
+        found, trials = recall.recall(log, root, query="市场风险", workspace="w1", cutoff_us=later)
+        assert found.hits[0].hit.source_id == second and trials[second] == ("t1",)
+        assert found.score_type == "LINEAR_FUSION" and reranked == ["momentum costs"]
+        made = _one(
+            log,
+            "SELECT e.recorded_us FROM experience_version v JOIN event e ON e.seq = v.recorded_seq"
+            " WHERE v.experience_id = ?",
+            second,
+        )[0]
+        found, _ = recall.recall(log, root, query="市场风险", workspace="w1", cutoff_us=made - 1)
+        assert second not in {hit.hit.source_id for hit in found.hits}
+        # A version published before a stop, never chunked, is still caught up: t0's next note.
+        _note(log, "trial", "t0", text=experiences.note_text("价值回归", "价值", "估值修复", []))
+        (third,) = experiences.render_pending(log, root / "blobs")
+        (version,) = _one(
+            log, "SELECT max(version) FROM experience_version WHERE experience_id = ?", third
+        )
+        KnowledgeStore(log).publish_experience(
+            workspace_id="w1", experience_id=third, version=version, blobs=root / "blobs"
+        )
+        found, trials = recall.recall(log, root, query="估值修复", workspace="w1", cutoff_us=later)
+        assert (found.hits[0].hit.source_id, found.hits[0].hit.version) == (third, str(version))
+        assert trials[third] == ("t0",)
+        held = len(encoded)
+        recall.close()
+        found, _ = recall.recall(log, root, query="动量", workspace="w1", cutoff_us=later)
+        assert found.hits and len(encoded) == held + 1  # the query alone: every chunk is cached
+    finally:
+        recall.close()

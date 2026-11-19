@@ -13,6 +13,8 @@
  "experience.brief_budget_invalid": {"detail": "A brief's budget is 100 to 32,000 tokens.", "next_action": "GIVE_A_BUDGET_IN_RANGE"},
  "experience.known_at_invalid": {"detail": "A known time is an ISO-8601 time with its offset.", "next_action": "GIVE_THE_TIME_WITH_ITS_OFFSET"},
  "experience.history_unavailable": {"detail": "The Host's research history is unavailable, so its trial experience could not be read.", "next_action": "RESTORE_THE_HOST_HISTORY"},
+ "experience.recall_models_missing": {"detail": "The retrieval models are not installed, so experiences cannot be recalled. Install the retrieval-store packs with scripts/install_retrieval_pack.py --install retrieval-store --network.", "next_action": "INSTALL_THE_RETRIEVAL_STORE_PACKS"},
+ "experience.recall_query_invalid": {"detail": "A recall query is 1 to 512 characters and its limit 1 to 20.", "next_action": "GIVE_A_QUERY_AND_LIMIT_IN_RANGE"},
  "experience.note_incomplete": {"detail": "A note says its hypothesis, method and conclusion, each a sentence, and each lesson is a sentence.", "next_action": "COMPLETE_THE_NOTE_AND_RECORD_AGAIN"},
  "experience.layer_unknown": {"detail": "A note reviews a trial, a Task or a goal.", "next_action": "NAME_WHAT_THE_NOTE_REVIEWS"},
  "experience.verdict_unknown": {"detail": "A verdict is success, failure or inconclusive.", "next_action": "NAME_THE_VERDICT"},

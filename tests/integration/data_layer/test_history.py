@@ -18,14 +18,16 @@ from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
     read_experience_brief,
     read_experience_class,
+    recall_experience,
     record_experience,
 )
 from alphalattice.interface.local_application.answers import (
     ExperienceAnswer,
+    ExperienceRecallAnswer,
     ExperienceRecordAnswer,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import experiences, history
+from alphalattice.kernel.data_layer import encoders, experiences, history, recall
 from alphalattice.kernel.data_layer.log import HostLog
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
@@ -112,6 +114,57 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             assert unknown["failure_code"] == "experience.trial_unknown"
             ask = SimpleNamespace(goal_id="none", experience_budget=None, experience_known_at=None)
             assert read_experience_brief(ask)["failure_code"] == "experience.goal_unknown"
+            # A recall finds the goal's review note, rendered, as the history knows it; with the
+            # retrieval models not installed it is refused by name.
+            import re
+            import zlib
+
+            import numpy as np
+
+            class Encoder:  # a stand-in for the static model: shared words or Han characters
+                def __init__(self, _pack: Path) -> None:
+                    pass
+
+                def embed_passages(self, texts):
+                    rows = np.full((len(texts), 512), 1e-3, dtype=np.float32)
+                    for row, text in enumerate(texts):
+                        for word in re.findall(r"[一-鿿]|\w+", text.lower()):
+                            rows[row, zlib.crc32(word.encode()) % 512] += 1
+                    return rows / np.linalg.norm(rows, axis=1, keepdims=True)
+
+                def embed_query(self, text):
+                    return self.embed_passages((text,))[0]
+
+            class Reranker:
+                def __init__(self, _pack: Path) -> None:
+                    pass
+
+                def score(self, query, passages):
+                    return tuple(float(len(passage)) for passage in passages)
+
+            history.render_experiences()  # the note's experience, unless its renderer wrote it
+            ask = SimpleNamespace(
+                experience_query="C",
+                experience_workspace=None,
+                experience_known_at=None,
+                experience_limit=None,
+            )
+            from alphalattice.kernel.knowledge import model_store
+
+            with monkeypatch.context() as models:
+                models.setattr(encoders, "StaticEncoder", Encoder)
+                models.setattr(encoders, "Reranker", Reranker)
+                models.setattr(model_store, "verify_directory", lambda _dir, _pack: None)
+                found = ExperienceRecallAnswer.model_validate(recall_experience(ask))
+                assert found.score_type == "CROSS_ENCODER_LOGIT" and len(found.hits) == 1
+                assert found.hits[0]["experience_id"] and found.hits[0]["classes"] == {}
+            recall.close()
+
+            with monkeypatch.context() as models:  # a pack not installed whole
+                models.setattr(model_store, "verify_directory", lambda _dir, _pack: "missing")
+                refused = recall_experience(ask)
+            assert refused["failure_code"] == "experience.recall_models_missing"
+            recall.close()
             # A new selection is made whether or not world can be read: this Host's reader holds
             # no world catalog, so no market condition is recorded and nothing is refused.
             window = {"cutoff_us": 1, "universe": "sp500"}

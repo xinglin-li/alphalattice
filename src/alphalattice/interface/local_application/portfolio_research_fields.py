@@ -102,6 +102,12 @@ requirements = {
         frozenset({"experience_trial"}),
         frozenset({"experience_trial", "experience_width", "experience_known_at"}),
     ),
+    "EXPERIENCE_RECALL": (
+        frozenset({"experience_query"}),
+        frozenset(
+            {"experience_query", "experience_workspace", "experience_known_at", "experience_limit"}
+        ),
+    ),
     "EXPERIENCE_RECORD": (
         frozenset({"review_subject", "review_verdict", "review_note"}),
         frozenset({"review_subject", "review_verdict", "review_note"}),

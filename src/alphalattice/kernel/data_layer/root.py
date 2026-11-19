@@ -1,8 +1,8 @@
-"""The 0.2.8 data root: its folders, its event log holding the seed registry, its search index.
+"""The 0.2.8 data root: its folders and its event log holding the seed registry and the knowledge
+store.
 
 machine/log.sqlite      the event log and every table projected from it (schema/log.sql), with
-                        the seed registry
-machine/index.sqlite    the search index (schema/index.sql), its vector table through sqlite-vec
+                        the seed registry and the knowledge store's sources, chunks and embeddings
 machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), made at its first use by the
                         store (`catalog`), using the installed extension wheels when the data
                         extra is present; nothing is ever fetched
@@ -27,8 +27,6 @@ from importlib import resources
 from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
-import sqlite_vec
-
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
 from alphalattice.kernel.shared_kernel.environment import (
@@ -37,14 +35,13 @@ from alphalattice.kernel.shared_kernel.environment import (
     thread_share,
 )
 
-SCHEMA_VERSION: Final = 14
+SCHEMA_VERSION: Final = 15
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
 any schema file takes the next number, so a root an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
 DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
 """Names the folder of this process's data root; unset, the application data folder."""
-INDEX_DEFERRED: Final = "index: vector table deferred (extension loading unavailable)"
 SPEC_FIELDS: Final = {
     "event_types": ("event_type", ("work", "subject", "required", "text", "durable")),
     "metrics": ("metric", ("unit", "direction", "params")),
@@ -67,11 +64,10 @@ and over local files it is faster: on a 1,100-file catalog, every row in 0.14 s 
 
 @dataclass(frozen=True)
 class DataRoot:
-    """What one call made now, and the parts no call makes yet, each with why."""
+    """What one call made now."""
 
     path: Path
     created: tuple[str, ...]
-    deferred: tuple[str, ...]
 
 
 def data_root() -> Path:
@@ -87,7 +83,7 @@ def data_root() -> Path:
 
 
 def schema_text(name: str) -> str:
-    """One DDL file of the package: log.sql, catalog.sql, views.sql or index.sql."""
+    """One DDL file of the package: log.sql, catalog.sql or views.sql."""
     return resources.files(__package__).joinpath("schema", name).read_text(encoding="utf-8")
 
 
@@ -164,54 +160,33 @@ def view_statements(table_ids: Mapping[str, str]) -> Iterator[str]:
     yield from statements(schema_text("views.sql"))
 
 
-def _build_index(connection: sqlite3.Connection) -> None:
-    """index.sql whole when sqlite-vec loads; without extension loading (an interpreter built
-    without it, or a policy refusing it) every table but the vector table (INDEX_DEFERRED)."""
-    try:
-        connection.enable_load_extension(True)
-        sqlite_vec.load(connection)
-        connection.enable_load_extension(False)
-        vectors = True
-    except (AttributeError, sqlite3.OperationalError):
-        vectors = False
-    for statement in statements(schema_text("index.sql")):
-        if vectors or "USING vec0" not in statement:
-            connection.execute(statement)
-
-
-def _tables(connection: sqlite3.Connection) -> frozenset[str]:
-    return frozenset(name for (name,) in connection.execute("SELECT name FROM sqlite_master"))
-
-
-def _database(path: Path, build) -> tuple[bool, frozenset[str]]:
-    """The database at `path` and its tables: built whole under a temporary name and moved into
-    place, so a crash leaves none or all of it. An existing one is only read, and refused unless it
-    is this schema's version; the read is immutable, so a WAL database gains no -shm or -wal file,
-    and it needs no extension, since it reads only the schema."""
+def _database(path: Path, build) -> bool:
+    """Whether the database at `path` was made now: built whole under a temporary name and moved
+    into place, so a crash leaves none or all of it. An existing one is only read, and refused
+    unless it is this schema's version; the read is immutable, so a WAL database gains no -shm or
+    -wal file."""
     if path.exists():
         uri = f"file:{path.as_posix()}?mode=ro&immutable=1"
         with closing(sqlite3.connect(uri, uri=True)) as connection:
             found = connection.execute("PRAGMA user_version").fetchone()[0]
-            tables = _tables(connection)
         if found != SCHEMA_VERSION:
             raise DataError(
                 f"{path} is schema version {found}; this product reads version {SCHEMA_VERSION}",
                 code="data_layer.schema_mismatch",
             )
-        return False, tables
+        return False
     partial = path.with_name(f".{path.name}.{os.getpid()}.partial")
     partial.unlink(missing_ok=True)
     with closing(sqlite3.connect(partial, isolation_level=None)) as connection:
         build(connection)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        tables = _tables(connection)
     os.replace(partial, path)
-    return True, tables
+    return True
 
 
 def load_extensions(connection) -> None:
     """Load engine-matched binaries from the installed wheels, never INSTALL or a repository."""
-    import duckdb  # lazy: data is optional; log/index creation works without DuckDB
+    import duckdb  # lazy: data is optional; log creation works without DuckDB
 
     version = dict(package_versions(("duckdb",)))["duckdb"]
     for name in ("sqlite_scanner", "ducklake"):
@@ -370,13 +345,6 @@ def create_data_root(path: Path) -> DataRoot:
         if not (path / folder).is_dir():
             (path / folder).mkdir(parents=True, exist_ok=True)
             created.append(folder)
-    tables: frozenset[str] = frozenset()
-    for name, build in (("log.sqlite", build_log), ("index.sqlite", _build_index)):
-        made, tables = _database(path / "machine" / name, build)
-        if made:
-            created.append(f"machine/{name}")
-    return DataRoot(
-        path=path,
-        created=tuple(created),
-        deferred=(INDEX_DEFERRED,) * ("passage_vec" not in tables),
-    )
+    if _database(path / "machine" / "log.sqlite", build_log):
+        created.append("machine/log.sqlite")
+    return DataRoot(path=path, created=tuple(created))

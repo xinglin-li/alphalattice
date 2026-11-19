@@ -1343,6 +1343,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/experience", "EXPERIENCE_READ"),
     ("GET", "/api/experience-brief", "EXPERIENCE_BRIEF"),
     ("GET", "/api/experience-class", "EXPERIENCE_CLASS"),
+    ("GET", "/api/experience-recall", "EXPERIENCE_RECALL"),
     ("POST", "/api/experience", "EXPERIENCE_RECORD"),
     ("GET", "/api/upgrade", "UPGRADE_OVERVIEW"),
     ("POST", "/api/upgrade/acknowledge", "UPGRADE_ACKNOWLEDGE"),
@@ -2087,6 +2088,7 @@ def _dispatch_routes(
                     ) from error
             for name in (
                 "history_limit",
+                "experience_limit",
                 "delivery_part",
                 "delivery_budget_bytes",
                 "session_limit",

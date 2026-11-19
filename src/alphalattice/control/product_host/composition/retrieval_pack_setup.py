@@ -171,17 +171,23 @@ def _status(store: Path) -> dict[str, object]:
         "recipes": {
             recipe: model_store.recipe_readiness(store, recipe) for recipe in SUPPORTED_RECIPES
         },
+        model_store.RETRIEVAL_STORE: {
+            pack.pack_id: model_store.pack_status(store, pack).status
+            for pack in model_store.RETRIEVAL_STORE_PACKS
+        },
         "claim": "Pack presence and hashes; no retrieval quality is implied by a READY pack.",
     }
 
 
 def _install(store: Path, recipe: str, *, network: bool, source: Path | None) -> dict[str, object]:
-    if recipe not in model_store.RECIPE_PACKS:
-        raise SystemExit(f"unsupported recipe: {recipe}; one of {', '.join(SUPPORTED_RECIPES)}")
+    if recipe not in model_store.INSTALLABLE:
+        raise SystemExit(
+            f"unsupported recipe: {recipe}; one of {', '.join(model_store.INSTALLABLE)}"
+        )
     if source is None and not network:
         raise SystemExit("--install needs --network (an admitted download) or --from <directory>")
     results = {}
-    encoder, reranker = model_store.RECIPE_PACKS[recipe]
+    encoder, reranker = model_store.INSTALLABLE[recipe]
     for pack in (encoder, reranker):
         if source is not None:
             # A pack directory as a workspace holds it: the encoder at the
@@ -207,12 +213,10 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
         results[pack.pack_id] = status.status
     if model_store.PACK_INSTALLED in results.values():
         model_store.remember_store(store)
-    return {
-        "store": str(store),
-        "recipe": recipe,
-        "packs": results,
-        **model_store.recipe_readiness(store, recipe),
-    }
+    readiness = (
+        model_store.recipe_readiness(store, recipe) if recipe in model_store.RECIPE_PACKS else {}
+    )
+    return {"store": str(store), "recipe": recipe, "packs": results, **readiness}
 
 
 def _bytes_printer(pack_id: str) -> model_store.Received:

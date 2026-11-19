@@ -14,7 +14,6 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import arrays, backup, create_data_root
@@ -51,12 +50,8 @@ def _admit(root, port, close=1.0, count=1500):
 
 
 def _sqlite_rows(path):
-    """All retained rows, including vector and FTS storage, read through SQLite."""
+    """All retained rows, including FTS storage, read through SQLite."""
     with closing(sqlite3.connect(path)) as con:
-        if path.name == "index.sqlite":
-            con.enable_load_extension(True)
-            sqlite_vec.load(con)
-            con.enable_load_extension(False)
         tables = con.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
         return {
             name: sorted(
@@ -114,20 +109,6 @@ def sample(tmp_path_factory):
             " 'OFFICIAL_ACCEPTANCE', 'SEC_PUBLIC_OFFICIAL_ACCESS', now(), false,"
             " 'document-admission')"
         ).complete()
-        with closing(sqlite3.connect(root / "machine/index.sqlite")) as index:
-            index.enable_load_extension(True)
-            sqlite_vec.load(index)
-            index.enable_load_extension(False)
-            index.execute(
-                "INSERT INTO passage VALUES (1, 'evidence', 'doc', 'document', 'chunk',"
-                " 'recipe', NULL, 'admitted passage', 1)"
-            )
-            index.execute("INSERT INTO passage_fts(rowid, text) VALUES (1, 'admitted passage')")
-            index.execute(
-                "INSERT INTO passage_vec VALUES (1, ?)",
-                (sqlite_vec.serialize_float32([0.25] * 384),),
-            )
-            index.commit()
         log.flush()
         (root / "staging/transport.json").write_bytes(b"unadmitted transport")
         first = backup.backup_data_root(root, repository)
@@ -158,9 +139,7 @@ def sample(tmp_path_factory):
         generation = backup.backup_data_root(root, repository)
         catalog = _catalog_rows(port)
         port.close()
-    expected = {
-        name: _sqlite_rows(root / "machine" / name) for name in ("log.sqlite", "index.sqlite")
-    }
+    expected = {name: _sqlite_rows(root / "machine" / name) for name in ("log.sqlite",)}
     return generation, repository, expected, catalog, first
 
 

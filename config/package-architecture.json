@@ -650,7 +650,8 @@
     "alphalattice.kernel.knowledge.runtime": "Shared verified-pack and numerical work handles are loaded only when the inference/retrieval owner needs them.",
     "alphalattice.kernel.live_evidence.online_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.oversight.chief_risk_officer.decision.book_evidence": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
-    "devtools.architecture.git_inputs": "Read exact Git identity only when historical test evidence is requested."
+    "devtools.architecture.git_inputs": "Read exact Git identity only when historical test evidence is requested.",
+    "alphalattice.kernel.data_layer.encoders": "Load the retrieval models only when a recall runs; dependencies: onnxruntime, tokenizers and the installed retrieval-store packs."
   },
   "private_import_fences": {
     "alphalattice.capabilities.portfolio_inputs.tradability.surface::<module>": {

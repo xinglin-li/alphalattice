@@ -65,6 +65,7 @@ from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
     read_experience_brief,
     read_experience_class,
+    recall_experience,
     record_experience,
 )
 from alphalattice.control.product_host.composition.feature_trials import (
@@ -1516,6 +1517,8 @@ class PortfolioResearchOperations:
             return read_experience_brief(request)
         if request.operation == "EXPERIENCE_CLASS":
             return read_experience_class(request)
+        if request.operation == "EXPERIENCE_RECALL":
+            return recall_experience(request)
         if request.operation == "EXPERIENCE_RECORD":
             return record_experience(request, caller)
         if request.operation == "RESEARCH_HISTORY":

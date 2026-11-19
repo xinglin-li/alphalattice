@@ -1,9 +1,9 @@
 """The data model's contract: kernel/data_layer/schema/contract.json against the DDL beside it.
 
-The registry declares, for every table in log.sql, catalog.sql and index.sql, its key and where
+The registry declares, for every table in log.sql and catalog.sql, its key and where
 each key part comes from, its one upward link, its home, each time column's clock, each status
 column's states and moves, and each version column's binding. This test reads the DDL through the
-engines that run it (SQLite for the log and the index, DuckDB for the catalog), finds every way the
+engines that run it (SQLite for the log, DuckDB for the catalog), finds every way the
 two disagree, and requires exactly the registry's known breaks: a new break fails by its rule, and
 a known break whose rule now holds fails until its handle is removed. The planted cases break each
 rule on purpose and name what the check then reports.
@@ -28,7 +28,7 @@ TEST_SCOPE = "whole-tree"
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "src" / "alphalattice" / "kernel" / "data_layer" / "schema"
-FILES = ("log", "catalog", "index")
+FILES = ("log", "catalog")
 HOMES = {"log", "definition", "projection", "body", "working", "cache", "index", "world", "derived",
          "results"}  # fmt: skip
 REBUILT = {"cache", "index", "derived"}  # a recomputed home may be keyed by a content address
@@ -65,11 +65,22 @@ def _statements(text: str) -> list[str]:
     return list(statements(text))
 
 
+def _kept(text: str) -> list[str]:
+    """The statements built without the virtual tables: a virtual table, and a statement that
+    configures one, is its entry alone."""
+    virtual = re.findall(r"^CREATE VIRTUAL TABLE (\w+)", text, re.M)
+    return [
+        s
+        for s in _statements(text)
+        if not s.lstrip().startswith("CREATE VIRTUAL")
+        and not any(re.search(rf"\b{name}\b", s) for name in virtual)
+    ]
+
+
 def _sqlite_tables(prefix: str, text: str) -> dict[str, dict[str, Any]]:
     """Each table as SQLite builds it; a virtual table is named and keyed by its entry alone."""
     with closing(sqlite3.connect(":memory:")) as con:
-        kept = [s for s in _statements(text) if not s.lstrip().startswith("CREATE VIRTUAL")]
-        con.executescript("\n".join(s + ";" for s in kept))
+        con.executescript("\n".join(s + ";" for s in _kept(text)))
         tables: dict[str, dict[str, Any]] = {
             f"{prefix}.{name}": {"virtual": True}
             for name in re.findall(r"^CREATE VIRTUAL TABLE (\w+)", text, re.M)
@@ -135,11 +146,10 @@ def _catalog_tables(text: str) -> dict[str, dict[str, Any]]:
 
 
 def ddl(texts: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """Every table of the three files, keyed `file.table`."""
+    """Every table of the two files, keyed `file.table`."""
     return {
         **_sqlite_tables("log", texts["log"]),
         **_catalog_tables(texts["catalog"]),
-        **_sqlite_tables("index", texts["index"]),
     }
 
 
@@ -303,9 +313,8 @@ def _run(
 @cache
 def _built(prefix: str) -> bytes:
     """The file's schema, built once from the tree, for running a trigger's clause."""
-    kept = [s for s in _statements(_texts()[prefix]) if not s.lstrip().startswith("CREATE VIRTUAL")]
     with closing(sqlite3.connect(":memory:")) as con:
-        con.executescript("\n".join(s + ";" for s in kept))
+        con.executescript("\n".join(s + ";" for s in _kept(_texts()[prefix])))
         return con.serialize()
 
 

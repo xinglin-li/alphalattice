@@ -501,6 +501,36 @@
       "description": "A review's note rendered into one experience body (blobs/, by its BLAKE3): version 1 makes the experience and points its layer at it, replacing the one before; a later version renders the same note anew. task_id names the task that made it."
     },
     {
+      "name": "knowledge.revision_published",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_source",
+      "required": ["source_id", "kind", "version_id", "version", "known_us", "body_digest", "membership_id", "document_id", "revision"],
+      "text": "required",
+      "durable": true,
+      "description": "A source version and its workspace membership. Text carries publication metadata and, for a reference only, its body; evidence and experience keep their authority's source id and body."
+    },
+    {
+      "name": "knowledge.source_retired",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_source",
+      "required": ["known_us"],
+      "text": "none",
+      "durable": true,
+      "description": "A source is no longer current from its authority's known time; its earlier versions remain readable."
+    },
+    {
+      "name": "knowledge.snapshot_published",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_snapshot",
+      "required": ["reference_id"],
+      "text": "required",
+      "durable": true,
+      "description": "An immutable workspace snapshot and its ordered source-version links, rebuilt from this event."
+    },
+    {
       "name": "decision.made",
       "work": false,
       "subject": "decision",

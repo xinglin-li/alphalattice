@@ -238,6 +238,18 @@ def _aftermath(root, log, artifacts):
     log.record("chain.checkpointed", attrs=mark)
 
 
+def _knowledge(log):
+    """A reference revision the retrieval store publishes, and the snapshot that freezes it."""
+    from alphalattice.kernel.data_layer.knowledge import KnowledgeStore, SourceOrigin
+
+    store, metadata = KnowledgeStore(log), {"document": {"document_id": "d1"}, "revision": 1}
+    origin = SourceOrigin("d1", "1", "reference", T0)
+    store.publish_revision(workspace_id="w1", metadata=metadata, content="A note.", origin=origin)
+    store.publish_snapshot(
+        workspace_id="w1", metadata={"snapshot_id": "s1", "revisions": [metadata]}
+    )
+
+
 def _task_control(log):
     """One Task as Task Control writes it: each event carries its sealed record as its text."""
     task, at = ("task", "k2"), "2026-11-14 00:00:01.000000"
@@ -314,6 +326,7 @@ def history(tmp_path_factory):
         artifacts = _research(log)
         _aftermath(root, log, artifacts)
         _task_control(log)
+        _knowledge(log)
     return root, artifacts
 
 

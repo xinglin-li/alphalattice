@@ -14,7 +14,7 @@ HEAD = {"seq": 7, "head": "blake3:" + "a" * 64, "chain_version": 1}
 FILE = {"path": "data/bar.parquet", "size": 4, "digest": "blake3:v1:" + blake3(b"PAR1").hexdigest()}
 MANIFEST = {
     "version": 2,
-    "databases": ["index.sqlite", "log.sqlite", "catalog.sqlite"],
+    "databases": ["log.sqlite", "catalog.sqlite"],
     "head": HEAD,
     "files": [FILE],
 }

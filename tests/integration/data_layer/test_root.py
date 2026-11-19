@@ -246,16 +246,20 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (120, {(1, 1)})
+    assert (len(rows), {row[3:5] for row in rows}) == (123, {(1, 1)})  # with the knowledge events
     assert "market" in named["world_table"]
     # A row the first log did not record names the count it came in at (first_seed_count), so a
     # history seeded before it replays without it: the rows naming none are the first log's 106.
     assert len(seed_rows(historical_count=0)) == 106, "a seed row added later names its first count"
-    # The eleven Alpha development rows came in at 119: a log of 118 replays without them, one of
-    # 119 with them.
-    assert [len(seed_rows(historical_count=n)) for n in (118, 119)] == [108, 119]
-    # The market row first appears in the next seed, at 120.
-    assert len(seed_rows(historical_count=120)) == 120
+    # The eleven Alpha development rows came in at 119, the market row at 120 and the three
+    # knowledge events at 123: a log replays each set from its count on, never before it.
+    assert [len(seed_rows(historical_count=n)) for n in (118, 119, 120, 122, 123)] == [
+        108,
+        119,
+        120,
+        120,
+        123,
+    ]
     assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
@@ -379,23 +383,6 @@ def _tables(path: Path) -> set[str]:
         con.close()
 
 
-@pytest.mark.proves("data_layer.vector_table_defers_without_extension_loading")
-def test_without_extension_loading_only_the_vector_table_is_deferred(tmp_path, monkeypatch):
-    """An interpreter that refuses extension loading still gets every other index table, and the
-    root names the vector table deferred rather than refusing."""
-    import sqlite_vec
-
-    def refuse(connection):
-        raise sqlite3.OperationalError("not authorized")
-
-    monkeypatch.setattr(sqlite_vec, "load", refuse)
-    made = create_data_root(tmp_path)
-    tables = _tables(tmp_path / "machine" / "index.sqlite")
-    assert "machine/index.sqlite" in made.created and "passage_vec" not in tables
-    assert {"passage", "index_meta"} <= tables
-    assert made.deferred[-1] == "index: vector table deferred (extension loading unavailable)"
-
-
 def _files(root: Path) -> dict[str, str]:
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -438,13 +425,19 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")
-    made += ("machine/log.sqlite", "machine/index.sqlite")
+    made += ("machine/log.sqlite",)
     assert (first.created, second.created, _files(tmp_path)) == (made, (), files)
-    assert second.deferred == ()
-    assert _tables(tmp_path / "machine" / "index.sqlite") >= {
-        "passage",
-        "passage_vec",
-        "index_meta",
+    assert _tables(tmp_path / "machine" / "log.sqlite") >= {
+        "knowledge_source",
+        "knowledge_source_version",
+        "knowledge_workspace_source",
+        "knowledge_recipe",
+        "knowledge_model",
+        "knowledge_chunk",
+        "knowledge_embedding",
+        "knowledge_embedding_batch",
+        "knowledge_snapshot",
+        "knowledge_snapshot_revision",
     }
     old = reading_session(tmp_path)  # a catalog an earlier schema made: an old column name
     with closing(old):
@@ -457,7 +450,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with pytest.raises(DataError, match=r"world.superseded differ") as moved:
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
-    for foreign_version in (8, 11, 12, 13, SCHEMA_VERSION + 1):
+    for foreign_version in (8, 11, 12, 13, 14, SCHEMA_VERSION + 1):
         con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
         con.execute(f"PRAGMA user_version = {foreign_version}")
         con.close()
