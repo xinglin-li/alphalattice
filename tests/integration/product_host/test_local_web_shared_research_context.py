@@ -41,7 +41,7 @@ from alphalattice.control.product_host.storage.plan_previews import (
 )
 from alphalattice.interface.local_application.cli import main
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
-from tests.researcher_methodology_surface.session_workspace import copy_workspace
+from tests.researcher_methodology_surface.session_workspace import copy_workspace, on_seed_machine
 
 
 class _Clock:
@@ -75,19 +75,20 @@ def clock() -> _Clock:
 
 
 @pytest.fixture(scope="module")
-def host(research_root: tuple[Path, str, str], clock: _Clock):  # type: ignore[no-untyped-def]
+def host(research_root: tuple[Path, str, str], clock: _Clock, input_seed: Path):  # type: ignore[no-untyped-def]
     root, _input_id, _binding = research_root
-    session = LocalPortfolioWebSession(
-        workspace=root,
-        workspace_manifest=read_research_workspace_manifest(root),
-        resolver=_Resolver(_resolved()),
-        clock=clock,
-    )
-    session.start()
-    try:
-        yield session
-    finally:
-        session.stop()
+    with on_seed_machine(input_seed):
+        session = LocalPortfolioWebSession(
+            workspace=root,
+            workspace_manifest=read_research_workspace_manifest(root),
+            resolver=_Resolver(_resolved()),
+            clock=clock,
+        )
+        session.start()
+        try:
+            yield session
+        finally:
+            session.stop()
 
 
 def _cli(host: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:

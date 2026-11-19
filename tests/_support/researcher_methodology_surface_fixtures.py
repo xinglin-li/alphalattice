@@ -216,7 +216,14 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return session_workspace(tmp_path_factory, "factor_input", build)[0]
 
 
-SEEDS = ("sampled_alpha_seed", "alpha_seed", "factor_seed", "input_seed")  # most derived first
+SEEDS = (  # most derived first
+    "risk_seed",
+    "completed_alpha_seed",
+    "sampled_alpha_seed",
+    "alpha_seed",
+    "factor_seed",
+    "input_seed",
+)
 
 
 @pytest.fixture(autouse=True)

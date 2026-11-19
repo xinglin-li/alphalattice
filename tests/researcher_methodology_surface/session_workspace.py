@@ -413,6 +413,21 @@ def restore_seed(source: Path) -> None:
         restore_data_root(Path(source).parent / record["machine"], Path(os.environ[DATA_ROOT_ENV]))
 
 
+@contextmanager
+def on_seed_machine(source: Path) -> Iterator[Path]:
+    """A fresh root restored from the machine `source` was built on, held for a Host that
+    outlives one test (a module's): the per-test restore comes after a module's Host opens."""
+    assert environment.DATA_ROOT is not None
+    machine = environment.DATA_ROOT / f"module-{uuid.uuid4().hex[:12]}"
+    try:
+        with own_root(machine):
+            restore_seed(source)
+            yield machine
+    finally:
+        retire_children()
+        shutil.rmtree(machine, ignore_errors=True)
+
+
 def copy_workspace(
     source: Path, target: Path, *, link_parquet: bool = False, link_data: bool | None = None
 ) -> Path:

@@ -212,9 +212,9 @@ def default_qualification_policy_hash(
 ) -> str:
     """Stable identity of a current-universe history-quality policy, the original's by default.
     The Factor floor is research scale, not a quality rule, so it is no part of this identity."""
-    rules = asdict(standard)
-    rules.pop("minimum_factor_listings")
-    return _canonical_hash(rules)
+    return _canonical_hash(
+        {name: rule for name, rule in asdict(standard).items() if name != "minimum_factor_listings"}
+    )
 
 
 def qualification_obligation(kind: str, identity: str) -> str:

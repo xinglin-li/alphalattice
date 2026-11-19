@@ -63,6 +63,18 @@ PERSON_RESOLVERS = (  # module, resolver, the variable naming its root, whether 
 )
 
 
+@contextmanager
+def owning(*roots: Path) -> Iterator[None]:
+    """Admit roots a test helper is handed by path, a golden's and its copy's served roots, while
+    it works on them; never a default the run did not name."""
+    OWNED_ROOTS.extend(roots)
+    try:
+        yield
+    finally:
+        for root in roots:
+            OWNED_ROOTS.remove(root)
+
+
 def _owned(path: Path, roots: list[Path]) -> bool:
     """Whether ``path``'s resolved target lies in a root: a link under a root that leads out of
     it is outside."""
@@ -307,11 +319,12 @@ def with_its_tasks(workspace: Path) -> Path:
     return workspace
 
 
-def with_its_outcomes(copy: Path, source: Path) -> Path:
+def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
-    carried into the copy's own served root: the catalog of the root a workspace was served on
-    holds their bodies, not the workspace, so a copy served on a fresh root lacks them and its
-    first start plans an upgrade."""
+    carried into `root`, the copy's own served root unless named: the catalog of the root a
+    workspace was served on holds their bodies, not the workspace, so a copy served on a fresh
+    root lacks them and its first start plans an upgrade. A test that serves the copy in its own
+    process names the root it serves it on; no ambient root is ever written."""
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
     )
@@ -325,13 +338,25 @@ def with_its_outcomes(copy: Path, source: Path) -> Path:
     )
     if not held:
         return copy
-    with history.own_root(source):
-        bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
-    with history.own_root(served_root(copy)):
-        history.open_history(str(named_workspace_id(copy)), copy.name, copy.resolve())
-        for digest, table in bodies:
-            history.write_execution_outcome(digest, table)
+    target = served_root(copy) if root is None else root
+    with owning(source, target):
+        with history.own_root(source):
+            bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
+        with history.own_root(target):
+            history.open_history(str(named_workspace_id(copy)), copy.name, copy.resolve())
+            for digest, table in bodies:
+                history.write_execution_outcome(digest, table)
     return copy
+
+
+def served_here(copy: Path) -> Path:
+    """`copy`, a golden's copy a Host in this process is about to serve, its execution outcomes
+    carried from the copy's own served root to this process's data root, the root that Host
+    opens. Called where the Host is composed, before it opens: there the root is known to serve
+    the copy, which the shared copy path cannot know."""
+    from alphalattice.kernel.data_layer import history
+
+    return with_its_outcomes(copy, served_root(copy), history.data_root())
 
 
 def upgraded(workspace: Path) -> Path:

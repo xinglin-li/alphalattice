@@ -38,6 +38,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
@@ -65,6 +66,7 @@ from tests.researcher_methodology_surface.real_workspace import (
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
     keep_seed_links,
+    restore_seed,
     session_workspace,
 )
 from tests.workspace_task_runner.task_control_support import task_log
@@ -91,6 +93,7 @@ def completed_alpha_seed(alpha_seed, tmp_path_factory):
     """Readback, handoff and Feature trials need this model as input, not another fit."""
 
     def build(root: Path) -> dict:
+        restore_seed(alpha_seed[0])  # the outcome bodies its copy names live in that machine
         copy_workspace(alpha_seed[0], root)
         case = (root, *alpha_seed[1:])
         with _session(root) as live:
@@ -1547,6 +1550,9 @@ def _stop_alpha(root: Path, tmp_path: Path, request: dict, boundary: str, rule: 
     marker = tmp_path / "boundary.json"
     payload = tmp_path / "request.json"
     payload.write_text(json.dumps(request), encoding="utf-8")
+    # The child is the root's one Host while it runs: this process lets go of the root it
+    # holds (a seed test's history), and its next session takes it back.
+    history.close_history()
     with spawn.InteractiveSession(timeout=240, stop_scope="tree") as session:
         process = session.start(
             [
@@ -2387,6 +2393,9 @@ with LocalPortfolioWebSession(workspace=root,
     assert run['task_id'], run
     threading.Event().wait()
 """
+    # The child is the root's one Host while it runs: this process lets go of the root it
+    # holds (a seed test's history), and its next session takes it back.
+    history.close_history()
     with spawn.InteractiveSession(timeout=180, stop_scope="tree") as session:
         process = session.start(
             [sys.executable, "-c", script, str(inputs), str(marker)],
@@ -2655,7 +2664,13 @@ def test_cli_and_web_compile_the_same_bound_document(inputs: Path, tmp_path: Pat
 def test_small_input_reports_the_production_requirement_before_any_task(
     real_risk_workspace,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The source's development standard sets a floor of ten, which its ten resolved listings
+    # meet; the production requirement is the shipped standard's, so it judges the source.
+    import alphalattice.control.product_host.research_authoring.factor_inputs as factor_inputs
+
+    monkeypatch.setattr(factor_inputs, "factor_scale_policies", lambda *_args: {})
     publish_research_workspace_manifest(tmp_path, _manifest("small-factor"))
     outcome, _ref = publish_causal_outcomes(
         real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
@@ -2672,7 +2687,7 @@ def test_small_input_reports_the_production_requirement_before_any_task(
             payload={"experiment_yaml": controls["yaml"]},
         )
         assert result["status"] == "REFUSED"
-        assert "insufficient_listing_support" in result["failure_code"]
+        assert result["failure_code"] == "research_experiment.insufficient_listing_support:10<100"
         assert session.session.task_control_registry.tasks() == ()
 
 
@@ -3446,6 +3461,7 @@ def risk_seed(completed_alpha_seed, tmp_path_factory):
 
     def build(root: Path) -> dict:
         alpha_case = completed_alpha_seed
+        restore_seed(alpha_case[0])
         copy_workspace(alpha_case[0], root)
         with _session(root) as live:
             parent_id = next(
