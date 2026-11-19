@@ -85,7 +85,6 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
 )
 from alphalattice.foundation.market_data_ops.sources.universe import (
-    ORIGINAL_RESEARCH_WHITELIST_STANDARD,
     CandidateMembershipEvidence,
     CurrentUniverseBootstrap,
     CurrentUniverseCandidate,
@@ -112,7 +111,7 @@ from devtools.architecture.structural import (
     kept_facts,
 )
 from devtools.evaluation.golden_workspaces import remove_tree
-from tests._support import development_universe
+from tests._support import development_universe, sufficient_universe
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "config" / "market-profiles" / "us-current-index-research.yaml"
@@ -133,10 +132,11 @@ def history_start(standard: ResearchWhitelistStandard) -> date:
 
 
 HISTORY_START = history_start(development_universe.STANDARD)
-FACTOR_SCALE = ORIGINAL_RESEARCH_WHITELIST_STANDARD
-"""The walk a Factor or Alpha study needs: its walk-forward policy's 756 training, three 252-session
-folds and a 252-session holdout (factor_research.programs.walk_forward), about seven years, under
-the ten-year standard. A scale the product's policy names, so its tests are large, nightly only."""
+FACTOR_SCALE = sufficient_universe.STANDARD
+"""The walk a Factor or Alpha study needs: seven calendar years of Factor observations (756
+training, three 252-session folds, a 252-session holdout) after the catalog's 252-session lookback,
+so eight years of history; at seven the walk cannot fill its folds. The sufficient set's standard,
+never the full ten years; its tests are large, nightly only."""
 OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)
 
 # Two sectors of five, which is the smallest shape that satisfies the
@@ -146,6 +146,11 @@ DEVELOPMENT_SYMBOLS = tuple(item.symbol for item in development_universe.LISTING
 """The development universe's listings (testing.md, the optimal development data set): passed as
 `symbols`, the build serves that universe's provider, source and two-year calendar instead of the
 seeded walk, and the golden key, which binds `symbols`, keeps its workspace apart."""
+SUFFICIENT_SYMBOLS = sufficient_universe.SYMBOLS
+SUFFICIENT_SCALE = sufficient_universe.STANDARD
+"""The sufficient test data set (testing.md): passed as `symbols` with `standard=SUFFICIENT_SCALE`,
+the build serves its 108 listings over eight years; a test whose requirement is a product floor
+runs here instead of on FACTOR_SCALE's ten years."""
 
 
 @cache
@@ -1462,6 +1467,9 @@ def _build_workspace(
     if tuple(symbols) == DEVELOPMENT_SYMBOLS:
         provider = development_universe.development_provider()
         load = development_universe.source_loader
+    elif tuple(symbols) == SUFFICIENT_SYMBOLS:
+        provider = sufficient_universe.sufficient_provider()
+        load = sufficient_universe.source_loader
     else:
         schedule = materialize_calendar_schedule(
             ("XNAS",), start=history_start(standard), end=AS_OF, as_of_timestamp=OBSERVED_AT
@@ -1633,6 +1641,8 @@ __all__ = [
     "HISTORY_START",
     "MARKET_PROFILE_ID",
     "OBSERVED_AT",
+    "SUFFICIENT_SCALE",
+    "SUFFICIENT_SYMBOLS",
     "SYMBOLS",
     "GoldenWorkspaceError",
     "RealRiskWorkspace",

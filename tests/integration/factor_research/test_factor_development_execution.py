@@ -75,12 +75,11 @@ from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
 from tests.researcher_methodology_surface.factor_evidence_support import (
-    DEVELOPMENT_EVIDENCE_POLICY,
-    DEVELOPMENT_REDUNDANCY_POLICY,
     factor_development_checkpoint,
     factor_document,
 )
 from tests.researcher_methodology_surface.real_workspace import (
+    FACTOR_SCALE,
     MARKET_PROFILE_ID,
     RealRiskWorkspace,
     publish_causal_outcomes,
@@ -139,9 +138,9 @@ def _workflow(
         workspace=workspace.workspace,
         workspace_root=root,
         document=document,
-        factor_evidence_policy=DEVELOPMENT_EVIDENCE_POLICY,
-        factor_redundancy_policy=DEVELOPMENT_REDUNDANCY_POLICY,
-    )
+    )  # no stated policy: the Host applies the set's standard, its 100-listing Factor floor
+    (factor,) = (each for each in executors if hasattr(each, "minimum_required_listings"))
+    assert factor.minimum_required_listings == FACTOR_SCALE.minimum_factor_listings == 100
     workflow = build_research_program_workflow(
         workspace=workspace.workspace,
         workspace_root=root,

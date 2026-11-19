@@ -113,13 +113,10 @@ from tests.researcher_methodology_surface.external_factor_method import (
     external_kernel_registry,
     external_specification_catalog,
 )
-from tests.researcher_methodology_surface.factor_evidence_support import (
-    DEVELOPMENT_EVIDENCE_POLICY,
-    DEVELOPMENT_REDUNDANCY_POLICY,
-)
 from tests.researcher_methodology_surface.real_workspace import (
     FACTOR_SCALE,
     MARKET_PROFILE_ID,
+    SUFFICIENT_SYMBOLS,
     RealRiskWorkspace,
     publish_causal_outcomes,
 )
@@ -172,11 +169,9 @@ def _compose(workspace: RealRiskWorkspace, root: Path, document: dict[str, Any])
         document=document,
         feature_catalog=workspace.feature_catalog,
         feature_kernels=workspace.feature_kernels,
-        # Cross-section scale, not science: ten listings cannot meet the
-        # production redundancy floor of a hundred common listings.
-        factor_evidence_policy=DEVELOPMENT_EVIDENCE_POLICY,
-        factor_redundancy_policy=DEVELOPMENT_REDUNDANCY_POLICY,
-    )
+    )  # no stated policy: the Host applies the set's standard, its 100-listing Factor floor
+    (factor,) = (each for each in executors if hasattr(each, "minimum_required_listings"))
+    assert factor.minimum_required_listings == FACTOR_SCALE.minimum_factor_listings == 100
     return build_research_program_workflow(
         workspace=workspace.workspace,
         workspace_root=root,
@@ -212,7 +207,8 @@ def external_outcomes(
     tmp_path_factory: pytest.TempPathFactory, outcome_catalog_root: Path
 ) -> RealRiskWorkspace:
     """The external workspace with the causal outcomes a Factor program reads, published once.
-    Its walk is FACTOR_SCALE's: the program runs the walk-forward policy, which needs it.
+    Its walk is the sufficient set's at FACTOR_SCALE: the program runs the walk-forward policy,
+    which needs it.
 
     Every test that runs a Factor program here names this rather than counting on another
     test to have published them first: a scheduler that starts the longest work first
@@ -220,7 +216,10 @@ def external_outcomes(
     """
 
     external_factor_workspace = build_external_factor_workspace(
-        tmp_path_factory.mktemp("external-factor-scale"), fresh=False, standard=FACTOR_SCALE
+        tmp_path_factory.mktemp("external-factor-scale"),
+        fresh=False,
+        symbols=SUFFICIENT_SYMBOLS,
+        standard=FACTOR_SCALE,
     )
     publish_causal_outcomes(external_factor_workspace, at=_PUBLISHED_AT)
     return external_factor_workspace

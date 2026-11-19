@@ -42,6 +42,7 @@ from tests.researcher_methodology_surface.factor_web_support import (
 )
 from tests.researcher_methodology_surface.real_workspace import (
     FACTOR_SCALE,
+    SUFFICIENT_SYMBOLS,
     RealRiskWorkspace,
     build_real_risk_workspace,
     publish_causal_outcomes,
@@ -169,7 +170,7 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
     def build(root: Path) -> dict:
         real_risk_workspace = build_real_risk_workspace(
             tmp_path_factory.mktemp("factor-input-source"),
-            symbols=tuple(f"F{i:03d}" for i in range(120)),
+            symbols=SUFFICIENT_SYMBOLS,
             standard=FACTOR_SCALE,
         )
         # The Portfolio artifact is deliberately not consumed by this Factor-only

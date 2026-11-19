@@ -30,6 +30,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     CurrentUniverseBootstrap,
     CurrentUniverseCandidate,
     CurrentUniverseCandidateManifest,
+    ResearchWhitelistStandard,
     candidate_manifest_document,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
@@ -123,9 +124,15 @@ RENAMED = "DVW"
 SECTOR_CHANGE = ("DVF", "Healthcare")
 
 
-def calendar_sessions(start: date | None = None, end: date = THROUGH) -> tuple[date, ...]:
+def calendar_sessions(
+    start: date | None = None,
+    end: date = THROUGH,
+    *,
+    standard: ResearchWhitelistStandard | None = None,
+) -> tuple[date, ...]:
     """The common US sessions from the standard's floor before `AS_OF` through `end`."""
-    first = start or AS_OF.replace(year=AS_OF.year - STANDARD.minimum_history_calendar_years)
+    years = (standard or STANDARD).minimum_history_calendar_years
+    first = start or AS_OF.replace(year=AS_OF.year - years)
     schedule = materialize_calendar_schedule(
         ("XNYS",),
         start=first,
@@ -135,6 +142,12 @@ def calendar_sessions(start: date | None = None, end: date = THROUGH) -> tuple[d
     return tuple(row["session_date"] for row in schedule.to_pylist())
 
 
+def _floor(standard: ResearchWhitelistStandard) -> dict[str, object]:
+    """The floors a candidate set names, from `standard`, where the running product reads them."""
+    fields = CurrentUniverseCandidateManifest.__dataclass_fields__
+    return {k: getattr(standard, k) for k in _SCALE if k in fields}
+
+
 _FLOOR = {
     k: v for k, v in _SCALE.items() if k in CurrentUniverseCandidateManifest.__dataclass_fields__
 }
@@ -142,14 +155,19 @@ _FLOOR = {
 that (0.2.7) keeps the original field set; its floor comes from the QA control that builds it."""
 
 
-def bootstrap(observed_at: datetime = OBSERVED_AT) -> CurrentUniverseBootstrap:
+def bootstrap(
+    observed_at: datetime = OBSERVED_AT,
+    *,
+    listings: Sequence[Listing] = LISTINGS,
+    standard: ResearchWhitelistStandard | None = None,
+) -> CurrentUniverseBootstrap:
     """The candidate set the universe source answers at `observed_at`, under the two-year standard.
 
     From `CHANGED_AT` the delisting has left, DVA is listed as DVW, and DVC is an SP500 member
     only, so its venue is XNYS."""
     later = observed_at >= CHANGED_AT
     candidates = []
-    for item in LISTINGS:
+    for item in listings:
         if later and "delisting" in item.cases:
             continue
         symbol = RENAMED if later and "ticker-change" in item.cases else item.symbol
@@ -169,7 +187,7 @@ def bootstrap(observed_at: datetime = OBSERVED_AT) -> CurrentUniverseBootstrap:
         sources=(),
         candidates=tuple(sorted(candidates, key=lambda item: item.symbol)),
         content_hash="",
-        **_FLOOR,
+        **(_FLOOR if standard is None else _floor(standard)),
     )
     document = candidate_manifest_document(provisional)
     document.pop("content_hash")
@@ -178,7 +196,7 @@ def bootstrap(observed_at: datetime = OBSERVED_AT) -> CurrentUniverseBootstrap:
         source_manifest=replace(
             provisional, content_hash=hashlib.sha256(sealed.encode()).hexdigest()
         ),
-        standard=STANDARD,
+        standard=standard or STANDARD,
     )
 
 
@@ -217,21 +235,23 @@ class DevelopmentProvider:
         moved: Sequence[str] = (),
         moved_sessions: int = 1,
         sessions: Sequence[date],
+        listings: Sequence[Listing] = LISTINGS,
+        row_cap: int = ROW_CAP,
     ) -> None:
         self.clock = clock
         self.moved = tuple(moved)
         self.moved_at = {len(sessions) // 2 + 5 * n for n in range(moved_sessions)}
         self.sessions = tuple(sessions)
-        self.by_symbol = {item.provider_symbol or item.symbol: item for item in LISTINGS}
+        self.by_symbol = {item.provider_symbol or item.symbol: item for item in listings}
         self.by_symbol[RENAMED] = self.by_symbol["DVA"]
         self.calls: list[tuple[str, str, date, date]] = []
         self.unavailable = False
         self.unavailable_code = "data.fixture_unavailable"
         self._bars = {REFERENCE: self._walk(REFERENCE, Listing(REFERENCE, "SP500", "Reference"))}
-        for item in LISTINGS:
+        for item in listings:
             self._bars[item.symbol] = self._walk(item.symbol, item)
-        if (served := sum(len(bars) for bars in self._bars.values())) > ROW_CAP:
-            raise ValueError(f"development_universe.row_cap: {served} bars > {ROW_CAP}")
+        if (served := sum(len(bars) for bars in self._bars.values())) > row_cap:
+            raise ValueError(f"development_universe.row_cap: {served} bars > {row_cap}")
 
     @staticmethod
     def _seed(symbol: str) -> int:
