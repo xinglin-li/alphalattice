@@ -108,6 +108,31 @@ def _owned_only(
     return owned
 
 
+def require_named_roots(entry: str) -> None:
+    """Refuse, by name, a test helper run where no root of its own is named.
+
+    A test process names each Host root at its start; a plain python run of a builder or a
+    proof names none, and each resolver's default is the person's own folder, which the run
+    would then open and write. Called first by every helper a script can run, before any root
+    is resolved, so the person's folders are never read.
+
+    Raises:
+        RuntimeError: `tests.person_root_unnamed`, naming the entry and each variable unset.
+    """
+    unset = [
+        variable
+        for _module, _resolver, variable, _home in PERSON_RESOLVERS
+        if not os.environ.get(variable, "").strip()
+    ]
+    if unset:
+        raise RuntimeError(
+            f"tests.person_root_unnamed: {entry} would open the person's own root, because "
+            f"{', '.join(unset)} {'is' if len(unset) == 1 else 'are'} unset; name a root of "
+            "this run's own for each "
+            "(wk.core.workshop_roots(run) gives all three), or run it under pytest"
+        )
+
+
 def guard_person_roots() -> None:
     """Wrap each loaded Host root resolver so a test that reaches a default outside this run's
     roots fails by name; called before each test, so a resolver imported since is wrapped too,

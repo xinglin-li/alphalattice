@@ -39,6 +39,13 @@ STORES = {  # an inherited store, the test host's kit; admitted only when they a
     "store-another-kit": (Path("shared-kits", "model-store"), Path("kit"), False),
 }
 
+ENTRIES = {  # a helper a plain script can run, and whether its run names roots of its own
+    "builder-unnamed": ("build_real_risk_workspace", False),
+    "builder-named": ("build_real_risk_workspace", True),
+    "warm-unnamed": ("warm_real_risk_golden", False),
+    "warm-named": ("warm_real_risk_golden", True),
+}
+
 
 def _hooks(body):
     """Run a test body between conftest's setup and teardown wrappers; the teardown's failure."""
@@ -65,12 +72,35 @@ def _hooks(body):
 
 
 @pytest.mark.proves("testing.a_test_leaking_its_interpreter_or_a_person_root_fails_by_name")
-@pytest.mark.parametrize("case", [*LEAKS, *ROOTS, *STORES], ids=str)
+@pytest.mark.parametrize("case", [*LEAKS, *ROOTS, *STORES, *ENTRIES], ids=str)
 def test_a_test_that_leaks_its_interpreter_or_reaches_a_person_root_fails_by_name(
     case, tmp_path, monkeypatch
 ):
     """A leaking body fails at its own teardown, by name, with the state put back; a resolver's
-    default outside the run's roots fails before it reads, its resolved result after."""
+    default outside the run's roots fails before it reads, its resolved result after; a helper a
+    script can run refuses, by name, before anything, unless roots of its own are named."""
+    if case in ENTRIES:
+        from tests.researcher_methodology_surface import real_workspace
+
+        entry, named = ENTRIES[case]
+        for _module, _resolver, variable, _home in environment.PERSON_RESOLVERS:
+            if named:
+                monkeypatch.setenv(variable, str(tmp_path / variable))
+            else:
+                monkeypatch.delenv(variable, raising=False)
+
+        def reached() -> None:  # the helper's first work after its roots are judged
+            raise LookupError("reached its work")
+
+        monkeypatch.setattr(real_workspace.FeatureCatalog, "load", reached)
+        expected = (
+            (LookupError, "^reached its work$")
+            if named
+            else (RuntimeError, rf"^tests\.person_root_unnamed: {entry} would open ")
+        )
+        with pytest.raises(expected[0], match=expected[1]):
+            getattr(real_workspace, entry)(**({"root": tmp_path} if "build" in entry else {}))
+        return
     if case in LEAKS:
         leak, named = LEAKS[case]
         before = isolation.interpreter_state()

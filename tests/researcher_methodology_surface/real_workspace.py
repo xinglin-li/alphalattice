@@ -499,6 +499,9 @@ def build_real_risk_workspace(
     maintenance and publication path once per gate.
     """
 
+    from tests.pytest_environment import require_named_roots
+
+    require_named_roots("build_real_risk_workspace")
     installed_catalog = feature_catalog if feature_catalog is not None else FeatureCatalog.load()
     installed_kernels = (
         feature_kernels if feature_kernels is not None else default_extension_kernel_registry()
@@ -613,6 +616,9 @@ def warm_real_risk_golden(
     A build opens this process's history at the session's data root (a Host holds its root until
     it closes); the warm closes the root it opened, so a test that opens its own root after
     collection is not refused (`data_layer.root_held`): a cold golden runs as a warm one."""
+    from tests.pytest_environment import require_named_roots
+
+    require_named_roots("warm_real_risk_golden")
     symbols = SYMBOLS if symbols is None else symbols
     variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
     if external:  # the outside method's variant, when a collected test asks for its workspace
