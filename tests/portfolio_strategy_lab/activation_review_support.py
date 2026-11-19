@@ -687,21 +687,26 @@ def activation_review_host(
         from alphalattice.control.product_host.composition.research_workspace import (
             manifest_fields_hash,
         )
+        from alphalattice.kernel.data_layer import history
 
-        with WorkspaceApplicationSession.acquire(root) as application_session:
-            application = PortfolioResearchApplication(
-                workspace_id=manifest.workspace_id,
-                workspace=root,
-                manifest_binding=lambda: manifest_fields_hash(manifest, PLAN_FIELDS),
-                session=application_session,
-                resolver=resolver,
-                clock=lambda: _NOW,
-            )
-            planned = application.plan(spec)
-            completed = application.run(spec=spec, planned=planned)
-            task_id = completed.pipeline_manifest.task_id
-            result = completed.result
-            report = application.ledger.load_report(result.report_hash)
+        history.open_history(manifest.workspace_id, "portfolio", root)
+        try:
+            with WorkspaceApplicationSession.acquire(root) as application_session:
+                application = PortfolioResearchApplication(
+                    workspace_id=manifest.workspace_id,
+                    workspace=root,
+                    manifest_binding=lambda: manifest_fields_hash(manifest, PLAN_FIELDS),
+                    session=application_session,
+                    resolver=resolver,
+                    clock=lambda: _NOW,
+                )
+                planned = application.plan(spec)
+                completed = application.run(spec=spec, planned=planned)
+                task_id = completed.pipeline_manifest.task_id
+                result = completed.result
+                report = application.ledger.load_report(result.report_hash)
+        finally:
+            history.release_history()
         result_hash = result.result_hash
         review_authority = (
             None if review_authority_for_report is None else review_authority_for_report(report)

@@ -1,5 +1,16 @@
 {
 "entries": {
+"data_layer.benchmark_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The catalog body or profile differs from the sealed Portfolio result; retain the old artifact and repair the admission."},
+"data_layer.benchmark_missing": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The sealed Portfolio result has no present catalog body; run the verified upgrade or select the legacy reader."},
+"portfolio_application.execution_series_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated series does not match its sealed ledger; restore the complete result before reading."},
+"portfolio_application.report_holdings_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated holdings do not match their sealed report; restore the complete result before reading."},
+"portfolio_application.result_identity_reused": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The retained result descriptor differs under the same sealed identity; preserve both and reconcile them."},
+"portfolio_application.results_store_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the legacy Portfolio reader."},
+"portfolio_application.upgrade_identity_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The verified upgrade mapping changed; restore its original mapping before resuming."},
+"portfolio_application.upgrade_path_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "A Portfolio artifact lies outside its backed-up workspace; repair its path before resuming."},
+"portfolio_benchmark.catalog_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark's named series have different dates or are incomplete; restore the complete result."},
+"portfolio_benchmark.store_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the legacy Portfolio reader."},
+"portfolio_benchmark.upgrade_path_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark path lies outside its backed-up workspace; repair the path before resuming."},
 "spawn.encoding_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Use UTF-8 for a text child."},
 "spawn.initial_thread_unavailable": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The suspended child could not be admitted and resumed; inspect process access and retry."},
 "spawn.session_input_closed": {"owner": "alphalattice.kernel.shared_kernel", "category": "FAILED_PRECONDITION", "classification_note": "The child input is closed; start a new owned session."},

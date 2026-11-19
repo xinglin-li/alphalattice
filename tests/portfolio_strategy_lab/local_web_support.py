@@ -169,6 +169,7 @@ def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
     )
     assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
@@ -637,19 +638,25 @@ def _harness(tmp_path: Path) -> Iterator[_Harness]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
     resolver = _Resolver(_resolved())
-    with WorkspaceApplicationSession.acquire(workspace) as session:
-        yield _Harness(
-            workspace=workspace,
-            session=session,
-            application=PortfolioResearchApplication(
-                workspace_id="synthetic",
+    from alphalattice.kernel.data_layer import history
+
+    history.open_history("synthetic", "portfolio", workspace)
+    try:
+        with WorkspaceApplicationSession.acquire(workspace) as session:
+            yield _Harness(
                 workspace=workspace,
-                manifest_binding=lambda: _HASH,
                 session=session,
+                application=PortfolioResearchApplication(
+                    workspace_id="synthetic",
+                    workspace=workspace,
+                    manifest_binding=lambda: _HASH,
+                    session=session,
+                    resolver=resolver,
+                ),
                 resolver=resolver,
-            ),
-            resolver=resolver,
-        )
+            )
+    finally:
+        history.release_history()
 
 
 def _run(harness: _Harness, spec: PortfolioResearchSpec) -> PortfolioResearchResult:

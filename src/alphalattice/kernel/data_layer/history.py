@@ -33,6 +33,7 @@ import secrets
 import sqlite3
 import threading
 import time
+import uuid
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime, timedelta
@@ -489,6 +490,9 @@ def close_history() -> None:
         outcome_reading = _open.pop("outcome_reading", None)
         if outcome_reading is not None:
             outcome_reading.close()
+        benchmark_reading = _open.pop("benchmark_reading", None)
+        if benchmark_reading is not None:
+            benchmark_reading.close()
         attached = _attached.pop("log", None)
         if attached is not None:
             attached[1].close()
@@ -619,16 +623,21 @@ def write_execution_outcome(
                     "the outcome identity is already bound to different values",
                     code="data_layer.outcome_incomplete",
                 )
-        if not log.read("SELECT 1 FROM measure WHERE artifact_id = ?", (artifact,)):
-            log.record(
-                "result.recorded",
-                ("artifact", artifact),
-                {"measures": [["n_obs", 1, {}, table.num_rows]]},
-                workspace=_open["workspace"],
-                node="host",
-            )
-            log.flush()
+        _record_result_count(log, artifact, table.num_rows)
         return artifact
+
+
+def _record_result_count(log: HostLog, artifact: str, count: int) -> None:
+    """Record the count once after the artifact's body is committed."""
+    if not log.read("SELECT 1 FROM measure WHERE artifact_id = ?", (artifact,)):
+        log.record(
+            "result.recorded",
+            ("artifact", artifact),
+            {"measures": [["n_obs", 1, {}, count]]},
+            workspace=_open["workspace"],
+            node="host",
+        )
+        log.flush()
 
 
 def _execution_outcome_profile(read: Callable[..., Any], content_hash: str) -> Any:
@@ -770,6 +779,232 @@ def read_execution_outcome(content_hash: str, columns: list[str] | None = None) 
     if table.num_rows == 0:
         raise DataError("the outcome body is not in the catalog", code="data_layer.outcome_missing")
     return table if columns is None else table.select(columns)
+
+
+def _portfolio_result_profile(read: Callable[..., Any], kind: str, digest: str) -> Any:
+    rows = read(
+        "SELECT a.artifact_id, a.body_state, a.shape FROM artifact a JOIN definition d"
+        " ON d.definition_id = a.type_id AND d.version = a.type_version"
+        " WHERE d.family = 'artifact_type' AND d.name = ?"
+        " AND a.content_digest = ?",
+        (kind, digest),
+    )
+    if len(rows) > 1:
+        raise DataError("duplicate benchmark profile", code="data_layer.benchmark_invalid")
+    return rows[0] if rows else None
+
+
+def require_portfolio_result_store() -> None:
+    """Refuse Portfolio publication before any artifact when the Host has no results writer."""
+    if holding() is None or store() is None:
+        raise DataError("Host data root is unavailable", code="data_layer.history_unavailable")
+
+
+def write_portfolio_result(
+    kind: str,
+    digest: str,
+    metadata: Mapping[str, Any],
+    table: Any,
+    *,
+    result_table: str,
+    upgrade_owner: tuple[Any, Path] | None = None,
+) -> str:
+    """Admit one Portfolio artifact's rows and retain its lineage in its profile."""
+    import pyarrow as pa  # lazy: only catalog result admission needs the data extra
+
+    from alphalattice.kernel.data_layer.store import stage  # lazy: the data extra is optional
+
+    if result_table not in {"series", "holding"}:
+        raise ValueError("portfolio result table is invalid")
+    selected, order = (
+        ("name, session_date, value", "name, session_date")
+        if result_table == "series"
+        else ("as_of, listing_id, weight, shares", "as_of, listing_id")
+    )
+
+    with _once:
+        port = store()  # opening the log precedes the history lock
+        with _lock:
+            log, root = _open.get("log"), _open.get("root")
+            if log is None or root is None or port is None:
+                raise DataError(
+                    "Host data root is unavailable", code="data_layer.history_unavailable"
+                )
+            if upgrade_owner is not None and (
+                log is not upgrade_owner[0] or root.resolve() != upgrade_owner[1].resolve()
+            ):
+                raise DataError("upgrade owns a different data root", code="upgrade.refused")
+        if not log.read(
+            "SELECT 1 FROM definition WHERE family = 'artifact_type' AND name = ?",
+            (kind,),
+        ):
+            key = {"family": "artifact_type", "name": kind, "version": 1}
+            body = key | {
+                "spec": {
+                    "storage": "table",
+                    "table": "results." + result_table,
+                    "measures": ["n_obs"],
+                    "keep": "while_active",
+                },
+                "status": "standard",
+                "owner": "host",
+                "text": "A sealed Portfolio series artifact.",
+            }
+            log.record(
+                "definition.registered",
+                ("definition", "artifact_type/" + kind),
+                key,
+                text=json.dumps(body, sort_keys=True),
+                node="host",
+            )
+        profile = _portfolio_result_profile(log.read, kind, digest)
+        artifact = profile[0] if profile else uuid7()
+        if profile and (profile[1] != "present" or json.loads(profile[2]) != dict(metadata)):
+            raise DataError("benchmark profile differs", code="data_layer.benchmark_invalid")
+        if not profile:
+            current = log.read(
+                "SELECT max(version) FROM definition WHERE family = 'artifact_type' AND name = ?",
+                (kind,),
+            )
+            log.record(
+                "artifact.produced",
+                ("artifact", artifact),
+                {
+                    "type": kind,
+                    "type_version": int(current[0][0]),
+                    "identity_kind": "content",
+                    "storage": "table",
+                    "meaning": "The sealed series of a Portfolio artifact.",
+                    "content_digest": digest,
+                    "shape": dict(metadata),
+                    "row_count": table.num_rows,
+                },
+                workspace=_open["workspace"],
+                node="host",
+            )
+            log.flush()
+        count = port.lake.execute(
+            f"SELECT count(*) FROM lake.results.{result_table} WHERE artifact_id = ?", (artifact,)
+        ).fetchone()[0]
+        if count == 0:
+            with stage(
+                root,
+                result_table,
+                None,
+                table.append_column("artifact_id", pa.repeat(pa.scalar(artifact), table.num_rows)),
+            ) as staged:
+                port.commit(staged)
+        elif count != table.num_rows:
+            raise DataError("benchmark body is incomplete", code="data_layer.benchmark_invalid")
+        else:
+            held = (
+                port.lake.execute(
+                    f"SELECT {selected} FROM lake.results.{result_table}"
+                    f" WHERE artifact_id = ? ORDER BY {order}",
+                    (artifact,),
+                )
+                .to_arrow_table()
+                .cast(table.schema)
+            )
+            if not held.equals(table):
+                raise DataError(
+                    "benchmark identity has different values", code="data_layer.benchmark_invalid"
+                )
+        _record_result_count(log, artifact, table.num_rows)
+        return str(artifact)
+
+
+def read_portfolio_result(
+    kind: str, digest: str, *, result_table: str
+) -> tuple[dict[str, Any], Any]:
+    """Read a registered Portfolio profile and its catalog rows."""
+    if result_table not in {"series", "holding"}:
+        raise ValueError("portfolio result table is invalid")
+    with _read_lock:
+        profile = _portfolio_read_profile(kind, digest)
+        connection, owned = _portfolio_reader()
+        try:
+            artifact = str(uuid.UUID(str(profile[0])))
+            table = connection.sql(
+                f"EXECUTE portfolio_{result_table}('{artifact}')"
+            ).to_arrow_table()
+        finally:
+            if owned:
+                connection.close()
+    return json.loads(profile[2]), table
+
+
+def _portfolio_read_profile(kind: str, digest: str) -> Any:
+    log = _open.get("log")
+    if log is not None:
+        profile = _portfolio_result_profile(log.read, kind, digest)
+    else:
+        with closing(attach(_open.get("root") or data_root())) as reader:
+            profile = _portfolio_result_profile(
+                lambda sql, args: reader.execute(sql, args).fetchall(), kind, digest
+            )
+    if profile is None or profile[1] != "present":
+        raise DataError(
+            f"portfolio result {digest} is not in the catalog", code="data_layer.benchmark_missing"
+        )
+    return profile
+
+
+def _portfolio_reader() -> tuple[Any, bool]:
+    """Prepare point reads once per held connection; its owner closes it."""
+    owned = not recording()
+    connection = _open.get("benchmark_reading")
+    if connection is None:
+        connection = reading_session(_open.get("root") or data_root(), log=False)
+        if connection is None:
+            raise DataError("portfolio catalog unavailable", code="data_layer.history_unavailable")
+        for statement in (
+            "PREPARE portfolio_series AS SELECT name, session_date, value FROM lake.results.series"
+            " WHERE artifact_id = ? ORDER BY name, session_date",
+            "PREPARE portfolio_holding AS SELECT as_of, listing_id, weight, shares"
+            " FROM lake.results.holding WHERE artifact_id = ? ORDER BY as_of, listing_id",
+            "PREPARE portfolio_pair AS SELECT 'series' AS kind, name, session_date, value,"
+            " NULL::DATE AS as_of, NULL::VARCHAR AS listing_id, NULL::DOUBLE AS weight,"
+            " NULL::DOUBLE AS shares FROM lake.results.series WHERE artifact_id = ? UNION ALL"
+            " SELECT 'holding', NULL, NULL, NULL, as_of,"
+            " CAST(listing_id AS VARCHAR), weight, shares"
+            " FROM lake.results.holding WHERE artifact_id = ?",
+        ):
+            connection.execute(statement)
+        if not owned:
+            _open["benchmark_reading"] = connection
+    return connection, owned
+
+
+def read_portfolio_pair(series_digest: str, holding_digest: str) -> tuple[Any, Any]:
+    """Read a ledger's series and its report's holdings in one catalog query."""
+    import pyarrow.compute as pc  # lazy: only catalog result reads need the data extra
+
+    with _read_lock:
+        series = _portfolio_read_profile("portfolio_execution_series", series_digest)
+        holding = _portfolio_read_profile("portfolio_report_holding", holding_digest)
+        connection, owned = _portfolio_reader()
+        try:
+            series_id, holding_id = str(uuid.UUID(str(series[0]))), str(uuid.UUID(str(holding[0])))
+            table = connection.sql(
+                f"EXECUTE portfolio_pair('{series_id}', '{holding_id}')"
+            ).to_arrow_table()
+        finally:
+            if owned:
+                connection.close()
+    first = table.filter(pc.equal(table["kind"], "series")).select(
+        ["name", "session_date", "value"]
+    )
+    second = table.filter(pc.equal(table["kind"], "holding")).select(
+        ["as_of", "listing_id", "weight", "shares"]
+    )
+    return (
+        json.loads(series[2]),
+        first.sort_by([("name", "ascending"), ("session_date", "ascending")]),
+    ), (
+        json.loads(holding[2]),
+        second.sort_by([("as_of", "ascending"), ("listing_id", "ascending")]),
+    )
 
 
 def keep_array(

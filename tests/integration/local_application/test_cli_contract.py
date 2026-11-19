@@ -456,6 +456,7 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
             [sys.executable, str(SCRIPT), "--workspace", str(empty), *arguments],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=120,
             env=env,
         )
@@ -586,6 +587,7 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
         [sys.executable, str(SCRIPT), "feature", "--help"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=120,
         env={**os.environ, "COLUMNS": "240"},
     )
@@ -611,7 +613,11 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
     assert "--from (a saved answer)" in text
 
     shown = spawn.run(
-        [sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, timeout=60
+        [sys.executable, str(SCRIPT), "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
     )
     words = " ".join(shown.stdout.split())
     positions = [words.index(command) for command in table["common_path"]]

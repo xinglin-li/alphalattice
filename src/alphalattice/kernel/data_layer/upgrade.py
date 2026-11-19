@@ -9,7 +9,7 @@ its old reader first. Nothing serves until every registered family is done. Old 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -31,6 +31,22 @@ PROGRESS_SPEC: Final = {
     "durable": True,
 }
 """Durable facts, registered through the existing definition writer before the first move."""
+
+
+def workspace_files(workspace: Path) -> Iterator[Path]:
+    """Enumerate a workspace without suppressing unreadable directories or following aliases."""
+
+    def unreadable(error: OSError) -> None:
+        raise error
+
+    for parent, directories, files in workspace.walk(on_error=unreadable):
+        directories.sort()
+        for name in directories:
+            path = parent / name
+            if path.is_symlink():
+                raise ValueError(f"workspace directory is an alias: {path}")
+        for name in sorted(files):
+            yield parent / name
 
 
 @dataclass(frozen=True)

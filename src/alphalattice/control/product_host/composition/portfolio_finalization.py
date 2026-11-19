@@ -749,9 +749,10 @@ class HostValidatedPortfolioHandoffReader:
 
         result = ledger.load_result(release.released_result_hash)
         program = ledger.load_program(result.program_hash)
-        execution = ledger.load_execution(result.execution_ledger_hash)
+        execution, report = ledger.load_execution_and_report(
+            result.execution_ledger_hash, result.report_hash
+        )
         economics = ledger.load_economics(result.economic_ledger_hash)
-        report = ledger.load_report(result.report_hash)
         comparison = ledger.load_comparison(report.benchmark_comparison_hash)
         return ValidatedPortfolioAuthorityView(
             handoff=handoff,

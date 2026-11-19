@@ -101,6 +101,8 @@ LINEAGES: Final = {
 """The world columns that name a lineage, with its family: a row names a registered one."""
 RESULTS_KEYS: Final = {
     "execution_outcome": ("artifact_id", "listing_id", "formation_session"),
+    "holding": ("artifact_id", "as_of", "listing_id"),
+    "series": ("artifact_id", "name", "session_date"),
     "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
 }
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from datetime import date
 from math import log
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -22,9 +23,14 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
     action_set_hash as actions_hash,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+if TYPE_CHECKING:
+    from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
+
 _HASH = r"^[0-9a-f]{64}$"
+_BENCHMARK_SERIES = ("log_returns", "simple_returns")
 
 
 class PortfolioBenchmarkSourceAuthority(BaseModel):  # type: ignore[misc]
@@ -338,7 +344,7 @@ class PortfolioBenchmarkStore:
     """Content-addressed storage for Portfolio benchmark input surfaces."""
 
     def __init__(self, artifact_root: Path) -> None:
-        """Choose the content-addressed benchmark store below a workspace artifact root.
+        """Choose the retained benchmark artifact root for rollback and upgrade.
 
         Args:
             artifact_root: Workspace artifact directory resolved before choosing the benchmark
@@ -347,28 +353,32 @@ class PortfolioBenchmarkStore:
         self.root = artifact_root.resolve() / "portfolio-benchmark"
 
     def publish(self, surface: PortfolioBenchmarkSurface) -> None:
-        """Publish canonical surface JSON atomically or reuse its identical existing bytes.
+        """Admit the sealed benchmark's dated series through the Host's catalog.
 
         Args:
             surface: Validated benchmark surface whose identity names its artifact.
 
         Raises:
-            PortfolioBenchmarkBoundaryError: The same surface identity already names different
-                stored bytes.
+            DataError: The Host cannot admit the series or its stored values differ.
         """
+        history.require_portfolio_result_store()
+        # Keep the existing artifact readable until the row U rollback retires it.
         content = json.dumps(
             surface.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
         ).encode()
         target = self.root / "surfaces" / f"{surface.surface_hash}.json"
         if target.is_file() and target.read_bytes() != content:
             raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.identity_reused")
-        if target.is_file():
-            return
-        target.parent.mkdir(parents=True, exist_ok=True)
-        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-        staged.write_bytes(content)
-        os.replace(staged, target)
-        staged.unlink(missing_ok=True)
+        if not target.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+            staged.write_bytes(content)
+            os.replace(staged, target)
+            staged.unlink(missing_ok=True)
+        metadata, table = _benchmark_body(surface)
+        history.write_portfolio_result(
+            "portfolio_benchmark", surface.surface_hash, metadata, table, result_table="series"
+        )
 
     def load(self, surface_hash: str) -> PortfolioBenchmarkSurface:
         """Reopen and validate the benchmark surface named by an exact identity.
@@ -384,6 +394,13 @@ class PortfolioBenchmarkStore:
                 different lineage.
         """
         try:
+            # contract: row U retires the legacy Portfolio artifact readers.
+            # First-start upgrade switches to the catalog after migration verifies.
+            mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+            if mode == "catalog":
+                return _catalog_benchmark(surface_hash)
+            if mode != "legacy":
+                raise ValueError("portfolio_benchmark.store_invalid")
             surface = cast(
                 PortfolioBenchmarkSurface,
                 PortfolioBenchmarkSurface.model_validate_json(
@@ -395,6 +412,102 @@ class PortfolioBenchmarkStore:
             return surface
         except Exception as error:
             raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.readback_failed") from error
+
+
+def _benchmark_body(surface: PortfolioBenchmarkSurface) -> tuple[dict[str, Any], Any]:
+    import pyarrow as pa  # lazy: only catalog result admission needs the data extra
+
+    metadata = surface.model_dump(
+        mode="json", exclude={"formation_sessions", "simple_returns", "log_returns"}
+    )
+    dates = surface.formation_sessions
+    table = pa.table(
+        {
+            "name": ["log_returns"] * len(dates) + ["simple_returns"] * len(dates),
+            "session_date": list(dates) * len(_BENCHMARK_SERIES),
+            "value": list(surface.log_returns) + list(surface.simple_returns),
+        }
+    )
+    return metadata, table
+
+
+def _catalog_benchmark(digest: str) -> PortfolioBenchmarkSurface:
+    import pyarrow.compute as pc  # lazy: only catalog result reads need the data extra
+
+    metadata, table = history.read_portfolio_result(
+        "portfolio_benchmark", digest, result_table="series"
+    )
+    simple = table.filter(pc.equal(table["name"], "simple_returns"))
+    logarithmic = table.filter(pc.equal(table["name"], "log_returns"))
+    if (
+        not simple.num_rows
+        or not simple["session_date"].equals(logarithmic["session_date"])
+        or table.num_rows != simple.num_rows * len(_BENCHMARK_SERIES)
+    ):
+        raise ValueError("portfolio_benchmark.catalog_invalid")
+    surface = cast(
+        PortfolioBenchmarkSurface,
+        PortfolioBenchmarkSurface.model_validate(
+            metadata
+            | {
+                "formation_sessions": tuple(simple["session_date"].to_pylist()),
+                "simple_returns": tuple(simple["value"].to_pylist()),
+                "log_returns": tuple(logarithmic["value"].to_pylist()),
+            }
+        ),
+    )
+    if surface.surface_hash != digest:
+        raise ValueError("portfolio_benchmark.lineage_invalid")
+    return surface
+
+
+def portfolio_benchmark_upgrade_family() -> Family:
+    """Move retained benchmark surfaces after the runner verifies its workspace backups."""
+    from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
+        Family,
+        workspace_files,
+    )
+
+    def legacy(runner: UpgradeRunner) -> Iterator[PortfolioBenchmarkSurface]:
+        for workspace in runner.workspaces:
+            workspace = workspace.resolve()
+            for path in workspace_files(workspace):
+                if (
+                    path.suffix != ".json"
+                    or path.parent.name != "surfaces"
+                    or path.parent.parent.name != "portfolio-benchmark"
+                ):
+                    continue
+                if not path.resolve().is_relative_to(workspace):
+                    raise ValueError("portfolio_benchmark.upgrade_path_invalid")
+                surface = PortfolioBenchmarkSurface.model_validate_json(path.read_bytes())
+                if surface.surface_hash != path.stem:
+                    raise ValueError("portfolio_benchmark.lineage_invalid")
+                yield surface
+
+    def step(runner: UpgradeRunner) -> None:
+        for surface in legacy(runner):
+            metadata, table = _benchmark_body(surface)
+            artifact = history.write_portfolio_result(
+                "portfolio_benchmark",
+                surface.surface_hash,
+                metadata,
+                table,
+                result_table="series",
+                upgrade_owner=(runner.log, runner.root),
+            )
+            if runner.map_id("portfolio-benchmark", surface.surface_hash, artifact) != artifact:
+                raise ValueError("portfolio_benchmark.lineage_invalid")
+
+    def verify(runner: UpgradeRunner) -> bool:
+        return all(_catalog_benchmark(old.surface_hash) == old for old in legacy(runner))
+
+    def switch(mode: Literal["old", "new"]) -> None:
+        os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (
+            "legacy" if mode == "old" else "catalog"
+        )
+
+    return Family("portfolio-benchmark", step, verify, switch)
 
 
 __all__ = [

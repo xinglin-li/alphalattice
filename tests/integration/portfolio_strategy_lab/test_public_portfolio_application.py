@@ -92,6 +92,7 @@ product could never compile.
 """
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_default_path_runs_under_task_control_and_reuses_exact_result(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -122,6 +123,7 @@ def test_default_path_runs_under_task_control_and_reuses_exact_result(tmp_path: 
         )
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_a_results_identity_binds_its_request_never_a_commands_words(tmp_path: Path) -> None:
     """A result's identity binds its request independently of the command's wording."""
 
@@ -167,6 +169,7 @@ def test_only_one_application_session_can_own_a_workspace(tmp_path: Path) -> Non
             WorkspaceApplicationSession.acquire(workspace)
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_interrupted_verification_recovers_the_exact_published_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1182,6 +1185,7 @@ def test_recovery_refuses_a_task_admitted_under_different_authorities(
             harness.application.recover(task_id=task.task_id)
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_numerical_resolution_must_match_the_admitted_authorities(tmp_path: Path) -> None:
     """Two reads are not permission to publish two different authorities."""
 
@@ -1252,6 +1256,7 @@ def test_task_contract_refuses_a_program_from_different_authorities(tmp_path: Pa
             )
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_admitted_common_watermark_cannot_be_rewritten_to_a_shorter_ledger(
     tmp_path: Path,
 ) -> None:

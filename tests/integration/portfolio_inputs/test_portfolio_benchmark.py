@@ -54,3 +54,174 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
             formation_sessions=sessions,
             expected_source_authority=expected,
         )
+
+    # The upgrade replays the same reads before, after and with rollback selected.
+    import json
+
+    import numpy as np
+
+    from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
+    from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
+        LEDGER_LEGACY_OPTIONAL_FIELDS,
+        PortfolioExecutionLedger,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+        PortfolioLedgerStore,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.reporting.risk import (
+        PortfolioRiskAttributionFacts,
+    )
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+    fields = {
+        "formation_sessions": (*sessions, date(2024, 1, 3)),
+        "simple_returns": (0.1, -0.0),
+        "log_returns": (float(np.log1p(0.1)), -0.0),
+        "universe_manifest_revision": "1" * 64,
+        "raw_input_hash": "2" * 64,
+        "action_set_hash": "3" * 64,
+    }
+    cls = benchmark_owner.PortfolioBenchmarkSurface
+    draft = cls.model_construct(**fields, surface_hash="")
+    surface = cls(
+        **fields,
+        surface_hash=canonical_hash(draft.model_dump(mode="json", exclude={"surface_hash"})),
+    )
+    from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+        portfolio_results_upgrade_family,
+    )
+
+    workspace, root = tmp_path / "workspace", tmp_path / "machine-root"
+    artifacts = workspace / "artifacts"
+    old = artifacts / "portfolio-benchmark" / "surfaces" / f"{surface.surface_hash}.json"
+    old.parent.mkdir(parents=True)
+    old.write_text(
+        json.dumps(surface.model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    risk_fields = {
+        "formation_session": sessions[0],
+        "surface_hash": "a" * 64,
+        "risk_projection_hash": "b" * 64,
+        "ordered_factor_ids": ("factor",),
+        "industry_exposure": (0.0,),
+        "factor_variance_contribution": (0.0,),
+        "systematic_variance": 0.0,
+        "idiosyncratic_variance": 0.0,
+        "total_predicted_volatility": 0.0,
+        "classification_authority": "fixture",
+    }
+    risk_draft = PortfolioRiskAttributionFacts.model_construct(**risk_fields, facts_hash="")
+    risk = PortfolioRiskAttributionFacts(
+        **risk_fields,
+        facts_hash=canonical_hash(risk_draft.model_dump(mode="json", exclude={"facts_hash"})),
+    )
+    ledger_fields = {
+        "program_hash": "c" * 64,
+        "formation_sessions": sessions,
+        "ordered_listing_ids": ("listing",),
+        "executed_weights_hash": "d" * 64,
+        "executed_weights_shape": (1, 1),
+        "pre_cap_weights_hash": "e" * 64,
+        "pre_cap_weights_shape": (1, 1),
+        "final_weights_hash": "f" * 64,
+        "gross_simple_returns": (-0.0,),
+        "one_way_turnovers": (0.0,),
+        "decision_modes": ("hold",),
+        "consumed_score_projection_hashes": (),
+        "consumed_risk_projection_hashes": (),
+        "aggregate_cap_binding_counts": (0,),
+        "missed_execution_count": 0,
+        "anchor_simple_returns": (0.1,),
+        "risk_facts": (risk,),
+        "median_holding_adv20_by_formation": (None,),
+    }
+    ledger_draft = PortfolioExecutionLedger.model_construct(**ledger_fields, ledger_hash="")
+    ledger_identity = ledger_draft.model_dump(mode="json", exclude={"ledger_hash"})
+    for field in LEDGER_LEGACY_OPTIONAL_FIELDS:
+        if getattr(ledger_draft, field) is None:
+            ledger_identity.pop(field)
+    ledger = PortfolioExecutionLedger(**ledger_fields, ledger_hash=canonical_hash(ledger_identity))
+    ledger_store = PortfolioLedgerStore(artifacts)
+    ledger_store.content.publish_model(
+        category="execution-ledgers", value=ledger, identity_field="ledger_hash"
+    )
+    monkeypatch.delenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", raising=False)
+    store = benchmark_owner.PortfolioBenchmarkStore(artifacts)
+    cases = [
+        ("benchmark surface", lambda: store.load(surface.surface_hash)),
+        ("execution ledger", lambda: ledger_store.load_execution(ledger.ledger_hash)),
+    ]
+    try:
+        before = [(name, read()) for name, read in cases]
+    except benchmark_owner.PortfolioBenchmarkBoundaryError:
+        before = []
+    assert before == [("benchmark surface", surface), ("execution ledger", ledger)]
+    probe_workspace = tmp_path / "catalog-publication"
+    probe_workspace.mkdir()
+    probe_root = tmp_path / "catalog-publication-root"
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(probe_root))
+    monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "catalog")
+    history.open_history("portfolio-publication", "portfolio", probe_workspace, probe_root)
+    try:
+        probe = benchmark_owner.PortfolioBenchmarkStore(probe_workspace / "artifacts")
+        probe.publish(surface)
+        assert probe.load(surface.surface_hash) == surface
+        monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        assert probe.load(surface.surface_hash) == surface
+    finally:
+        history.close_history()
+
+    from alphalattice.kernel.data.errors import DataError
+
+    unavailable = tmp_path / "unavailable-artifacts"
+    for publish in (
+        lambda: benchmark_owner.PortfolioBenchmarkStore(unavailable).publish(surface),
+        lambda: PortfolioLedgerStore(unavailable).publish_execution(ledger),
+    ):
+        with pytest.raises(DataError) as refusal:
+            publish()
+        assert refusal.value.failure.code == "data_layer.history_unavailable"
+    assert not list(unavailable.rglob("*.json"))
+
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
+    history.open_history("portfolio-benchmark-test", "portfolio", workspace, root)
+    try:
+        family = portfolio_results_upgrade_family()
+        benchmark_family = benchmark_owner.portfolio_benchmark_upgrade_family()
+        upgrade = UpgradeRunner(
+            root,
+            history.holding(),
+            (workspace,),
+            (benchmark_family, family),
+            lambda *_: {"fixture": "verified"},
+        )
+        assert upgrade.run() is True
+        assert [(name, read()) for name, read in cases] == before
+        assert store.load(surface.surface_hash).simple_returns[-1].hex() == (-0.0).hex()
+        assert store.load(surface.surface_hash).log_returns[-1].hex() == (-0.0).hex()
+        assert (
+            ledger_store.load_execution(ledger.ledger_hash).gross_simple_returns[0].hex()
+            == (-0.0).hex()
+        )
+        assert ledger_store.load_execution(
+            ledger.ledger_hash
+        ).median_holding_adv20_by_formation == (None,)
+        missing = "f" * 64
+        for read in (
+            lambda: ledger_store.load_execution(missing),
+            lambda: ledger_store.load_report(missing),
+            lambda: ledger_store.load_execution_and_report(ledger.ledger_hash, missing),
+        ):
+            with pytest.raises(
+                ContentAddressedStoreError, match=f"content_store.artifact_missing:{missing}"
+            ):
+                read()
+        store.publish(surface)
+        assert old.is_file()
+        family.switch("old")
+        assert [(name, read()) for name, read in cases] == before
+    finally:
+        history.close_history()

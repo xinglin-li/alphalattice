@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterator
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -27,6 +28,8 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioExecutionProgram,
     PortfolioResearchResult,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
     from alphalattice.investment.portfolio_strategy_lab.publication.rolling_history import (
         RollingReportHead,
     )
+    from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 
 
 class PortfolioLedgerStoreError(ValueError):
@@ -79,6 +83,12 @@ that forgot would be the one that leaked a protected report.
 
 # The dtype a lane category is packed in; every other lane is little-endian float64.
 _LANE_DTYPES: dict[str, str] = {"execution-available": "u1"}
+_EXECUTION_SERIES = (
+    "gross_simple_returns",
+    "one_way_turnovers",
+    "anchor_simple_returns",
+    "median_holding_adv20_by_formation",
+)
 
 
 def _require_reusable(program: PortfolioExecutionProgram) -> PortfolioExecutionProgram:
@@ -521,6 +531,30 @@ class PortfolioLedgerStore(ObservationStore):
         if not path.is_file():
             self.content.atomic_write(path, payload)
 
+    def _write_result_descriptor(
+        self, category: str, digest: str, descriptor: dict[str, Any]
+    ) -> None:
+        """Keep non-result fields under their existing sealed artifact identity."""
+        self.content.require_hash(digest)
+        path = self.root / category / f"{digest}.json"
+        payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode()
+        if path.is_file() and path.read_bytes() != payload:
+            raise PortfolioLedgerStoreError("portfolio_application.result_identity_reused")
+        if not path.is_file():
+            self.content.atomic_write(path, payload)
+
+    def _read_result_descriptor(self, category: str, digest: str) -> dict[str, Any]:
+        """The reconstructed model's original identity proves this descriptor and its rows."""
+        self.content.require_hash(digest)
+        try:
+            return cast(
+                dict[str, Any], json.loads((self.root / category / f"{digest}.json").read_bytes())
+            )
+        except FileNotFoundError as error:
+            raise ContentAddressedStoreError(f"content_store.artifact_missing:{digest}") from error
+        except (OSError, ValueError) as error:
+            raise ContentAddressedStoreError("content_store.artifact_tampered") from error
+
     def _read_index_entry(
         self, path: Path, *, declared: dict[str, str], tampered: str
     ) -> dict[str, str] | None:
@@ -685,9 +719,12 @@ class PortfolioLedgerStore(ObservationStore):
             Content-addressed evidence URI. A program-to-execution index refuses contradictory
             materialized paths.
         """
+        history.require_portfolio_result_store()
+        # The retained artifact supports rollback until its reader retires in row U.
         uri = self.content.publish_model(
             category="execution-ledgers", value=value, identity_field="ledger_hash"
         )
+        self._publish_execution_body(value)
         # One program, one materialized path. Two different ledgers under one
         # program would mean the program did not determine the fills.
         self._write_index_entry(
@@ -696,6 +733,39 @@ class PortfolioLedgerStore(ObservationStore):
             conflict="portfolio_application.execution_identity_reused",
         )
         return uri
+
+    def _publish_execution_body(
+        self, value: PortfolioExecutionLedger, *, upgrade_owner: tuple[Any, Path] | None = None
+    ) -> str:
+        """Keep non-series ledger evidence in its owner and admit its dated values once."""
+        import pyarrow as pa  # lazy: only catalog result admission needs the data extra
+        import pyarrow.compute as pc  # lazy: only catalog result admission needs the data extra
+
+        descriptor = value.model_dump(mode="json", exclude=set(_EXECUTION_SERIES))
+        self._write_result_descriptor("execution-series-descriptors", value.ledger_hash, descriptor)
+        dates = pa.array(value.formation_sessions, type=pa.date32())
+        ordinal = pc.cast(pa.array(range(len(dates))), pa.string())
+        parts = []
+        for field in _EXECUTION_SERIES:
+            numbers = pa.array(getattr(value, field), type=pa.float64())
+            names = pc.binary_join_element_wise(pa.scalar(field), ordinal, pa.scalar(":"))
+            parts.append(
+                pa.table({"name": names, "session_date": dates, "value": numbers}).filter(
+                    pc.is_valid(numbers)
+                )
+            )
+        table = pa.concat_tables(parts).sort_by(
+            [("name", "ascending"), ("session_date", "ascending")]
+        )
+        artifact = history.write_portfolio_result(
+            "portfolio_execution_series",
+            value.ledger_hash,
+            {"descriptor": value.ledger_hash},
+            table,
+            result_table="series",
+            upgrade_owner=upgrade_owner,
+        )
+        return cast(str, artifact)
 
     def publish_economics(self, value: PortfolioEconomicLedger) -> str:
         """Publish exact sealed economics evidence.
@@ -750,8 +820,57 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Content-addressed evidence URI.
         """
-        return self.content.publish_model(
+        history.require_portfolio_result_store()
+        uri = self.content.publish_model(
             category="reports", value=value, identity_field="report_hash"
+        )
+        self._publish_report_body(value)
+        return uri
+
+    def _publish_report_body(
+        self, value: PortfolioDeclaredPathReport, *, upgrade_owner: tuple[Any, Path] | None = None
+    ) -> str:
+        """Admit the report's dated holdings and retain its other evidence as a descriptor."""
+        import pyarrow as pa  # lazy: only catalog result admission needs the data extra
+
+        from alphalattice.foundation.market_data_ops.storage.world import (  # lazy: holdings
+            world_listing,
+        )
+
+        descriptor = value.model_dump(mode="json")
+        for position in descriptor["window_end_book"]["positions"]:
+            del position["weight"]
+        self._write_result_descriptor("report-holdings-descriptors", value.report_hash, descriptor)
+        schema = pa.schema(
+            [
+                ("as_of", pa.date32()),
+                ("listing_id", pa.string()),
+                ("weight", pa.float64()),
+                ("shares", pa.float64()),
+            ]
+        )
+        rows = [
+            {
+                "as_of": value.window_end_book.formation_session,
+                "listing_id": world_listing(position.listing_id),
+                "weight": position.weight,
+                "shares": None,
+            }
+            for position in value.window_end_book.positions
+        ]
+        table = pa.Table.from_pylist(rows, schema=schema).sort_by(
+            [("as_of", "ascending"), ("listing_id", "ascending")]
+        )
+        return cast(
+            str,
+            history.write_portfolio_result(
+                "portfolio_report_holding",
+                value.report_hash,
+                {"descriptor": value.report_hash},
+                table,
+                result_table="holding",
+                upgrade_owner=upgrade_owner,
+            ),
         )
 
     def publish_result(self, value: PortfolioResearchResult) -> str:
@@ -973,12 +1092,67 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Validated concrete artifact reopened through content-addressed storage.
         """
+        # contract: row U retires the legacy Portfolio artifact readers.
+        # First-start upgrade switches to the catalog after migration verifies.
+        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        if mode == "catalog":
+            return self._load_execution_catalog(ledger_hash)
+        if mode != "legacy":
+            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
         return self.content.load_model(
             category="execution-ledgers",
             content_hash=ledger_hash,
             model=PortfolioExecutionLedger,
             identity_field="ledger_hash",
         )
+
+    def _load_execution_catalog(
+        self, ledger_hash: str, data: tuple[dict[str, Any], Any] | None = None
+    ) -> PortfolioExecutionLedger:
+        import pyarrow as pa  # lazy: only catalog result reads need the data extra
+        import pyarrow.compute as pc  # lazy: only catalog result reads need the data extra
+
+        try:
+            profile, rows = data or history.read_portfolio_result(
+                "portfolio_execution_series", ledger_hash, result_table="series"
+            )
+        except DataError as error:
+            if error.failure.code == "data_layer.benchmark_missing":
+                raise ContentAddressedStoreError(
+                    f"content_store.artifact_missing:{ledger_hash}"
+                ) from error
+            raise
+        if profile["descriptor"] != ledger_hash:
+            raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+        descriptor = self._read_result_descriptor("execution-series-descriptors", ledger_hash)
+        sessions = descriptor["formation_sessions"]
+        names = pc.split_pattern(rows["name"], ":")
+        fields, ordinals = pc.list_element(names, 0), pc.cast(pc.list_element(names, 1), pa.int64())
+        dates = pc.cast(pa.array(sessions), pa.date32())
+        if rows.num_rows and (
+            not pc.all(pc.is_in(fields, value_set=pa.array(_EXECUTION_SERIES))).as_py()
+            or not pc.take(dates, ordinals)
+            .combine_chunks()
+            .equals(rows["session_date"].combine_chunks())
+        ):
+            raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+        series: dict[str, list[float | None]] = {}
+        for field in _EXECUTION_SERIES:
+            mask = pc.equal(fields, field)
+            indexes = pc.filter(ordinals, mask)
+            if pc.count_distinct(indexes).as_py() != len(indexes):
+                raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+            mapping = pc.index_in(pa.array(range(len(sessions))), value_set=indexes)
+            values = pc.take(pc.filter(rows["value"], mask), mapping)
+            if field in _EXECUTION_SERIES[:3] and values.null_count:
+                raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+            series[field] = values.to_pylist()
+        result = cast(
+            PortfolioExecutionLedger, PortfolioExecutionLedger.model_validate(descriptor | series)
+        )
+        if result.ledger_hash != ledger_hash:
+            raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+        return result
 
     def load_program(self, program_hash: str) -> PortfolioExecutionProgram:
         """Reopen exact sealed program evidence.
@@ -1021,11 +1195,79 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Validated concrete artifact reopened through content-addressed storage.
         """
+        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        if mode == "catalog":
+            return self._load_report_catalog(report_hash)
+        if mode != "legacy":
+            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
         return self.content.load_model(
             category="reports",
             content_hash=report_hash,
             model=PortfolioDeclaredPathReport,
             identity_field="report_hash",
+        )
+
+    def _load_report_catalog(
+        self, report_hash: str, data: tuple[dict[str, Any], Any] | None = None
+    ) -> PortfolioDeclaredPathReport:
+        from alphalattice.foundation.market_data_ops.storage.world import (  # lazy: holdings
+            world_listing,
+        )
+
+        try:
+            profile, table = data or history.read_portfolio_result(
+                "portfolio_report_holding", report_hash, result_table="holding"
+            )
+        except DataError as error:
+            if error.failure.code == "data_layer.benchmark_missing":
+                raise ContentAddressedStoreError(
+                    f"content_store.artifact_missing:{report_hash}"
+                ) from error
+            raise
+        if profile["descriptor"] != report_hash:
+            raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
+        descriptor = self._read_result_descriptor("report-holdings-descriptors", report_hash)
+        book = descriptor["window_end_book"]
+        rows = table.to_pylist()
+        weights = {str(row["listing_id"]): row for row in rows}
+        if len(weights) != len(rows) or len(rows) != len(book["positions"]):
+            raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
+        for position in book["positions"]:
+            row = weights.pop(world_listing(position["listing_id"]), None)
+            if (
+                row is None
+                or str(row["as_of"]) != book["formation_session"]
+                or row["shares"] is not None
+            ):
+                raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
+            position["weight"] = row["weight"]
+        result = cast(
+            PortfolioDeclaredPathReport, PortfolioDeclaredPathReport.model_validate(descriptor)
+        )
+        if result.report_hash != report_hash:
+            raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
+        return result
+
+    def load_execution_and_report(
+        self, ledger_hash: str, report_hash: str
+    ) -> tuple[PortfolioExecutionLedger, PortfolioDeclaredPathReport]:
+        """Reopen the two related catalog bodies in one query for a reader needing both."""
+        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        if mode == "legacy":
+            return self.load_execution(ledger_hash), self.load_report(report_hash)
+        if mode != "catalog":
+            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
+        try:
+            ledger, report = history.read_portfolio_pair(ledger_hash, report_hash)
+        except DataError as error:
+            if error.failure.code == "data_layer.benchmark_missing":
+                digest = ledger_hash if ledger_hash in str(error) else report_hash
+                raise ContentAddressedStoreError(
+                    f"content_store.artifact_missing:{digest}"
+                ) from error
+            raise
+        return self._load_execution_catalog(ledger_hash, ledger), self._load_report_catalog(
+            report_hash, report
         )
 
     def load_result(self, result_hash: str) -> PortfolioResearchResult:
@@ -1091,9 +1333,10 @@ class PortfolioLedgerStore(ObservationStore):
             raise PortfolioLedgerStoreError("portfolio_application.adoption_source_not_pending")
         result = source.load_result(result_hash)
         program = source.load_program(result.program_hash)
-        ledger = source.load_execution(result.execution_ledger_hash)
+        ledger, report = source.load_execution_and_report(
+            result.execution_ledger_hash, result.report_hash
+        )
         economics = source.load_economics(result.economic_ledger_hash)
-        report = source.load_report(result.report_hash)
         comparison = source.load_comparison(report.benchmark_comparison_hash)
         lanes: list[tuple[str, str | None]] = [
             ("executed-weights", ledger.executed_weights_hash),
@@ -1124,6 +1367,8 @@ class PortfolioLedgerStore(ObservationStore):
         # where a released reader will need them, and releases nothing. What
         # makes them observable is the release marker, committed afterwards, and
         # a crash anywhere in here leaves a public store that discovers nothing.
+        self._publish_execution_body(ledger)
+        self._publish_report_body(report)
         for category, value, identity_field in (
             ("programs", program, "program_hash"),
             ("execution-ledgers", ledger, "ledger_hash"),
@@ -1138,6 +1383,79 @@ class PortfolioLedgerStore(ObservationStore):
         return result.result_hash
 
 
+def portfolio_results_upgrade_family() -> Family:
+    """Migrate dated Portfolio ledger series and report holdings under one switch."""
+    from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
+        Family,
+        workspace_files,
+    )
+
+    def legacy(
+        runner: UpgradeRunner,
+    ) -> Iterator[
+        tuple[str, PortfolioLedgerStore, PortfolioExecutionLedger | PortfolioDeclaredPathReport]
+    ]:
+        for workspace in runner.workspaces:
+            workspace = workspace.resolve()
+            for category, model, identity in (
+                ("execution-ledgers", PortfolioExecutionLedger, "ledger_hash"),
+                ("reports", PortfolioDeclaredPathReport, "report_hash"),
+            ):
+                for path in workspace_files(workspace):
+                    if (
+                        path.suffix != ".json"
+                        or path.parent.name != category
+                        or path.parents[2].name != "portfolio-strategy-lab"
+                    ):
+                        continue
+                    if not path.resolve().is_relative_to(workspace):
+                        raise ValueError("portfolio_application.upgrade_path_invalid")
+                    namespace = path.parent.parent.name
+                    if namespace not in {PUBLIC_NAMESPACE, PENDING_FINALIZATION_NAMESPACE}:
+                        continue
+                    store = PortfolioLedgerStore(path.parents[3], namespace=namespace)
+                    value = store.content.load_model(
+                        category=category,
+                        content_hash=path.stem,
+                        model=model,
+                        identity_field=identity,
+                    )
+                    yield category, store, value
+
+    def step(runner: UpgradeRunner) -> None:
+        for category, store, value in legacy(runner):
+            if isinstance(value, PortfolioExecutionLedger):
+                artifact = store._publish_execution_body(
+                    value, upgrade_owner=(runner.log, runner.root)
+                )
+                old_id = value.ledger_hash
+            else:
+                artifact = store._publish_report_body(
+                    value, upgrade_owner=(runner.log, runner.root)
+                )
+                old_id = value.report_hash
+            if runner.map_id("portfolio-" + category, old_id, artifact) != artifact:
+                raise ValueError("portfolio_application.upgrade_identity_invalid")
+
+    def verify(runner: UpgradeRunner) -> bool:
+        return all(
+            (
+                store._load_execution_catalog(value.ledger_hash)
+                if isinstance(value, PortfolioExecutionLedger)
+                else store._load_report_catalog(value.report_hash)
+            )
+            == value
+            for category, store, value in legacy(runner)
+        )
+
+    def switch(mode: Literal["old", "new"]) -> None:
+        os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (
+            "legacy" if mode == "old" else "catalog"
+        )
+
+    return Family("portfolio-results", step, verify, switch)
+
+
 __all__ = [
     "PENDING_FINALIZATION_NAMESPACE",
     "PUBLIC_NAMESPACE",
@@ -1145,4 +1463,5 @@ __all__ = [
     "ObservationStore",
     "PortfolioLedgerStore",
     "PortfolioLedgerStoreError",
+    "portfolio_results_upgrade_family",
 ]

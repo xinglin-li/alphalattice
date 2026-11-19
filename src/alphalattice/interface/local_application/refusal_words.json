@@ -6,6 +6,7 @@
  "upgrade.backup_space": {"detail": "Writing this upgrade's backups would leave less free space than the floor, so nothing was written. Free space where the plan names, then start the Host again.", "next_action": "FREE_SPACE_AND_START_AGAIN"},
  "workspace_database.runtime_extension_refused": {"detail": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
  "data_layer.extension_unavailable": {"detail": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
+ "data_layer.history_unavailable": {"detail": "The Host's history is unavailable, so this Portfolio result cannot be published. Restore the Host history and try again.", "next_action": "RESTORE_THE_HOST_HISTORY"},
  "experience.trial_unknown": {"detail": "That trial is not in the Host's history.", "next_action": "NAME_A_TRIAL_FROM_AN_EXPERIENCE_READ"},
  "experience.class_width_unknown": {"detail": "A class's width is recipe, method_version or method.", "next_action": "NAME_THE_CLASS_WIDTH"},
  "experience.goal_unknown": {"detail": "That goal is not in the Host's history as known then.", "next_action": "NAME_A_GOAL_THE_HISTORY_HELD"},

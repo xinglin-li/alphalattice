@@ -2893,6 +2893,28 @@
   ],
   "quarantine": [
     {
+      "node": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[True-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "A parallel test worker can retain a task requiring recovery, which makes the unrelated binding test fail at teardown.",
+      "until": "2026-11-20",
+      "class": "unstable",
+      "since": "2026-11-18",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "A parallel test worker can retain a task requiring recovery, which makes the unrelated binding test fail at teardown.",
+      "until": "2026-11-20",
+      "class": "unstable",
+      "since": "2026-11-18",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "In an observed Windows environment, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",

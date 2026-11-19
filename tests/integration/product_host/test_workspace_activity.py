@@ -1478,10 +1478,13 @@ def test_task_and_activity_lists_name_an_unreadable_queue_dependency_without_bla
             )
 
 
+@pytest.mark.parametrize(
+    "history_available", [True, False], ids=["observation-only", "history-unavailable"]
+)
 def test_unopenable_activity_store_degrades_observation_not_the_product(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, history_available: bool
 ) -> None:
-    from alphalattice.control.product_host.composition import local_web_session
+    from alphalattice.control.product_host.composition import local_web_session, workspace_activity
     from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 
     workspace = tmp_path / "workspace"
@@ -1489,13 +1492,23 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(
     runtime.mkdir(parents=True)
     for name in ("observations.sqlite", "observations.sqlite-wal"):  # a 0.2.7 ledger, retired
         (runtime / name).write_bytes(b"0.2.7")
-    # A Host whose history stops recording while it serves: its activity keeps nothing.
-    monkeypatch.setattr(
-        local_web_session.WorkspaceApplicationSession, "open_history", lambda *_: None
-    )
-    monkeypatch.setattr(local_web_session, "release_history", lambda: None)
-    monkeypatch.setattr(history, "recording", lambda: False)
-    monkeypatch.setattr(history, "opened_log", lambda: None)
+    if history_available:
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        from alphalattice.kernel.data_layer.spans import LogSpanExporter
+
+        def no_observation(*_args: object, **_kwargs: object) -> None:
+            raise ObservationStorageError("observation.storage_busy", "fixture: observer stopped")
+
+        monkeypatch.setattr(workspace_activity, "trace_record", no_observation)
+        monkeypatch.setattr(LogSpanExporter, "export", lambda *_: SpanExportResult.FAILURE)
+    else:
+        monkeypatch.setattr(
+            local_web_session.WorkspaceApplicationSession, "open_history", lambda *_: None
+        )
+        monkeypatch.setattr(local_web_session, "release_history", lambda: None)
+        monkeypatch.setattr(history, "recording", lambda: False)
+        monkeypatch.setattr(history, "opened_log", lambda: None)
     session = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=_manifest("qa-degraded"),
@@ -1503,14 +1516,26 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(
     )
     session.start()
     try:
-        assert session.activity is not None and not session.activity.available
+        assert session.activity is not None and session.activity.available is history_available
         assert not list(runtime.glob("observations.sqlite*"))  # set aside, never imported
         kept = sorted(path.name for path in (runtime / "retired-0.2.7").iterdir())
         assert kept == ["observations.sqlite", "observations.sqlite-wal"]
-        assert session.activity.store_failure == "activity.storage_unavailable"
+        assert session.activity.store_failure == (
+            None if history_available else "activity.storage_unavailable"
+        )
         spec = tmp_path / "spec.yaml"
         spec.write_text("{}", encoding="utf-8")
+        before = len(session.session.task_control_registry.tasks())
         code, sent = _cli(session, "strategy-book", "run", "--file", str(spec))
+        if not history_available:
+            assert (
+                code != 0 and sent["data"].get("failure_code") == "data_layer.history_unavailable"
+            )
+            assert len(session.session.task_control_registry.tasks()) == before
+            assert not list(
+                (workspace / "runtime" / "artifacts" / "portfolio-strategy-lab").rglob("*.json")
+            )
+            return
         assert code == 3 and sent["data"]["disposition"] == "ADMITTED"
         session.dispatcher.drain_for_tests()  # type: ignore[union-attr]
         task_id = sent["data"]["task_id"]
@@ -1520,21 +1545,9 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(
             _json(session, f"/api/report?result_hash={result_hash}")["result_hash"] == result_hash
         )
         page = _json(session, f"/api/activity?watch={task_id}")
-        assert page["disposition"] == "UNAVAILABLE" and page["items"] == []
-        assert page["cursor"] is None and page["epoch"] is None
-        assert page["observer"]["status"] == "UNAVAILABLE"
-        assert page["observer"]["store_failure"] == "activity.storage_unavailable"
+        assert page["observer"]["status"] == "DEGRADED"
         assert page["tasks"][task_id]["lifecycle"] == "SUCCEEDED"  # Task truth is still served
-        event = LocalResearchClient(session.workspace).publish_event(_event(0))
-        assert (
-            event["status"] == "REFUSED" and event["failure_code"] == "activity.storage_unavailable"
-        )
-        assert event["detail"] and event["next_action"]
-        assert event["next_requests"] == {
-            "workspace": {"operation": "WORKSPACE_SHOW"},
-            "backups": {"operation": "WORKSPACE_BACKUPS"},
-        }
         code, cli_page = _cli(session, "activity", "list")
-        assert code == 0 and cli_page["data"]["disposition"] == "UNAVAILABLE"
+        assert code == 0 and cli_page["data"]["observer"]["status"] == "DEGRADED"
     finally:
         session.stop()

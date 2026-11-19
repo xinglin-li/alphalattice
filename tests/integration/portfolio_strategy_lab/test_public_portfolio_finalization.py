@@ -154,6 +154,8 @@ resolver: a report rebuilt from a stored ledger still has to say which strategy
 produced it, and a protected release rebuilds exactly that way.
 """
 
+pytestmark = pytest.mark.usefixtures("portfolio_result_history")
+
 DEVELOPMENT_SESSIONS = (date(2024, 1, 2), date(2024, 1, 3), date(2024, 2, 1))
 # Strictly after the development boundary, and deliberately a different length:
 # a fixture that matched the development axis would let a shape assumption hide.
@@ -698,15 +700,49 @@ def test_the_pending_package_is_not_visible_as_a_normal_result(tmp_path: Path) -
 
 def test_the_default_declared_path_produces_its_own_report_with_no_winner(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Row 9: one admitted product choice, no comparator, no selection receipt."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    with WorkspaceApplicationSession.acquire(workspace) as session:
-        wired = _wire(session)
-        report = wired.development.report(wired.result_hash)
-        payload = report.model_dump(mode="json")
+    from alphalattice.kernel.data_layer import history
+
+    root = history.data_root()
+    monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "catalog")
+    history.open_history("portfolio-test", "portfolio", workspace, root)
+    try:
+        with WorkspaceApplicationSession.acquire(workspace) as session:
+            wired = _wire(session)
+            report = wired.development.report(wired.result_hash)
+            payload = report.model_dump(mode="json")
+            saved = wired.ledger.load_result(wired.result_hash)
+            execution, together = wired.ledger.load_execution_and_report(
+                saved.execution_ledger_hash, saved.report_hash
+            )
+            assert execution == wired.ledger.load_execution(saved.execution_ledger_hash)
+            assert together == report
+            monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+            assert (
+                wired.ledger.root / "execution-ledgers" / f"{saved.execution_ledger_hash}.json"
+            ).is_file()
+            assert (wired.ledger.root / "reports" / f"{saved.report_hash}.json").is_file()
+            assert wired.ledger.load_execution(saved.execution_ledger_hash) == execution
+            assert wired.ledger.load_report(saved.report_hash) == report
+    finally:
+        history.close_history()
+
+    from alphalattice.kernel.data.errors import DataError
+
+    unavailable = PortfolioLedgerStore(tmp_path / "unavailable-artifacts")
+    for publish in (
+        lambda: unavailable.publish_execution(execution),
+        lambda: unavailable.publish_report(report),
+    ):
+        with pytest.raises(DataError) as refusal:
+            publish()
+        assert refusal.value.failure.code == "data_layer.history_unavailable"
+    assert not list(unavailable.root.rglob("*.json"))
 
     assert report.window_guard.disposition == "DESCRIPTIVE_SUBWINDOW"
     assert not report.window_guard.may_select_or_promote
@@ -3985,6 +4021,11 @@ def test_the_application_read_back_seam_needs_no_prerequisite(tmp_path: Path) ->
         )
         candidate = _candidate(wired)
         finalized = wired.application.finalize(candidate=candidate, fixture=_fixture())
+        released = wired.ledger.load_result(finalized.package.protected_result_hash)
+        assert (
+            wired.ledger.root / "execution-ledgers" / f"{released.execution_ledger_hash}.json"
+        ).is_file()
+        assert (wired.ledger.root / "reports" / f"{released.report_hash}.json").is_file()
         receipt = wired.application.read_back(
             finalized.package.protected_result_hash, package=finalized.package
         )

@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "a29c9cf4de8ec5413e459203f7d1739178423a8939bb0863f031a2d603746b15",
+   "successor": "e2ea9e3001b1b89a47cc7795087d1bb56cd2c4d28afed8a142199d49bd0da818",
+   "change": "Store dated Portfolio results in the shared catalog",
+   "reason": "re-signed at the merge's composition: the same three Portfolio read-path roles, reads through the results catalog with the moved families ALL EQUAL old against catalog against rollback; predecessors moved because cards landed first"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "37abf5b503ad030545c1c68b3b7040b8f31f2ea4e3e4da653f3c77d9efad6dce",
+   "successor": "53e817f4d57acb1ffb3a1ec5df057e5005a08d7247fabda6a6ba62f17633d11b",
+   "change": "Store dated Portfolio results in the shared catalog",
+   "reason": "re-signed at the merge's composition: the same three Portfolio read-path roles, reads through the results catalog with the moved families ALL EQUAL old against catalog against rollback; predecessors moved because cards landed first"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "65797ee9ace44c1808f919dfc8a4742f19250733c04edd93fab1590b1f653b77",
+   "successor": "2912434477b60a600c054dd45f4825b4eb58e9ac4b344a05ce3550177fe818b9",
+   "change": "Store dated Portfolio results in the shared catalog",
+   "reason": "re-signed at the merge's composition: the same three Portfolio read-path roles, reads through the results catalog with the moved families ALL EQUAL old against catalog against rollback; predecessors moved because cards landed first"
+  }
+ ]
+}

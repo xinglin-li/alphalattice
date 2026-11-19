@@ -546,6 +546,8 @@
     }
   ],
   "deferred_imports": {
+    "alphalattice.kernel.data_layer.upgrade": "Load migration composition only when a verified first-start family is requested; ordinary Portfolio reads do not run an upgrade.",
+    "alphalattice.foundation.market_data_ops.storage.world": "Resolve legacy listing identities only for catalog holdings; ordinary Portfolio ledger reads do not open market storage.",
     "alphalattice.foundation.market_data_ops.storage.duckdb": "The world admission reads the existing workspace repository after module initialization; that repository imports world, so loading it eagerly would form a cycle.",
     "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.capabilities.alpha_modeling.adapters.huber": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",

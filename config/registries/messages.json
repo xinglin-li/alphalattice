@@ -15,6 +15,7 @@
     "experience.label.brief": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Experience brief", "zh-CN": "经验简报"}},
     "experience.label.review": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Review note", "zh-CN": "复盘笔记"}},
     "experience.label.hypothesis": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Hypothesis", "zh-CN": "假设"}},
+    "data_layer.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's history is unavailable, so this Portfolio result cannot be published. Restore the Host history and try again.", "zh-CN": "Host 的历史记录不可用，因此无法发布此 Portfolio 结果。请恢复 Host 的历史记录后重试。"}},
     "experience.trial_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That trial is not in the Host's history.", "zh-CN": "Host 的历史中没有该试验。"}},
     "experience.class_width_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A class's width is recipe, method_version or method.", "zh-CN": "类别的宽度只能是 recipe、method_version 或 method。"}},
     "experience.known_at_invalid": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A known time is an ISO-8601 time with its offset.", "zh-CN": "已知时间是带时区偏移的 ISO-8601 时间。"}},

@@ -1714,6 +1714,7 @@ def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
     )
     return result.returncode, json.loads(result.stdout)
