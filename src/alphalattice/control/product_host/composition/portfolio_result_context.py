@@ -102,6 +102,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     position_row_groups,
 )
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
+from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -1003,7 +1004,8 @@ def _date_risk(
             classification,
             source,
             sector_history_as_of(closure, classification.sector_revision).subset(listings),
-        )
+        ),
+        store=catalog_factor_surfaces(),
     ).surface
     w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
     variance, shares = float(model.book_variance(w)), model.variance_shares(w)

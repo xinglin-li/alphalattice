@@ -18,6 +18,7 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import replay
 from alphalattice.kernel.data_layer.project import differences
@@ -97,6 +98,7 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
 
     monkeypatch.setattr(trial_history, "started", native_observation)
     try:
+        world.admit_universe(real_risk_workspace.workspace / "market-data.duckdb", "w-risk")
         registry = DuckDbTaskControlRegistry(
             resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
         )
@@ -165,10 +167,12 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
             "SELECT l.name, a.storage, a.trial_id IS NOT NULL FROM artifact a"
             " JOIN definition_lineage l ON l.definition_id = a.type_id ORDER BY a.artifact_id"
         )
-        # The one selection's market condition, then each trial's evidence.
-        assert (
-            artifact.fetchall()
-            == [("market_condition", "none", 0)] + [("research_evidence", "none", 1)] * 2
+        # Risk stores one covariance artifact per formation. The two computed trials
+        # still each own their evidence, and the reuse trial owns none.
+        assert artifact.fetchall() == (
+            [("market_condition", "none", 0)]
+            + [("risk_covariance_formation", "table", 0)] * len(first.formation_sessions)
+            + [("research_evidence", "none", 1)] * 2
         )
         with closing(replay(con, tmp_path / "replayed.sqlite")) as target:
             assert differences(con, target) == []

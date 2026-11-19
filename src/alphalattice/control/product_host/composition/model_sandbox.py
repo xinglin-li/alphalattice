@@ -31,6 +31,9 @@ import psutil
 import yaml  # type: ignore[import-untyped]
 
 from alphalattice.control.task_control.upgrade import carry_tasks
+from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    carry_risk_covariance,
+)
 from alphalattice.kernel.data_layer.history import carry_arrays, own_root
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
@@ -284,6 +287,8 @@ def run_sandbox(
         _copy(workspace, copy)
         carry_tasks(workspace, copy)  # the copy opens with the workspace's Tasks
         carry_arrays(workspace, copy)  # and its lanes
+        for _ in carry_risk_covariance(workspace, copy):
+            pass
         with own_root(folder / "data-root"):  # the copy's Tasks stay out of the machine's log
             before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
             registry = ModelExtensionRegistry.read(copy)

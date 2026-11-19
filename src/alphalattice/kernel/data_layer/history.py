@@ -243,14 +243,16 @@ def store() -> StorePort | None:
 
 
 @contextmanager
-def catalog_session() -> Iterator[Any | None]:
-    """A cursor on this process's attached catalog, without attaching its SQLite log."""
-    port = store()
+def catalog_session(root: Path | None = None) -> Iterator[Any | None]:
+    """A cursor on the Host catalog or another root's read-only catalog."""
+    active = (_open.get("root") or data_root()).resolve()
+    where = active if root is None else root.resolve()
+    port = store() if where == active else None
     if port is not None:
         cursor = port.lake.cursor()
     else:
         with _catalog_lock:
-            surface = _catalog_surface(data_root().resolve())
+            surface = _catalog_surface(where)
             cursor = None if surface is None else surface.cursor()
     try:
         yield cursor

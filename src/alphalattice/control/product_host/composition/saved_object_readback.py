@@ -18,6 +18,9 @@ from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
+from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    carry_risk_covariance,
+)
 from alphalattice.kernel.data_layer.history import carry_arrays, data_root, own_root
 
 
@@ -202,6 +205,8 @@ def _read_saved(
         _copy(root, copy)
         carry_tasks(root, copy, root=source)
         carry_arrays(root, copy, root=source)
+        for _ in carry_risk_covariance(root, copy, source_root=source):
+            pass
         opened = _open_copy(copy, name, rows, fallback, opener)
         if opened is None:
             continue

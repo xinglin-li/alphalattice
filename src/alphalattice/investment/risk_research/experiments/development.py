@@ -49,6 +49,7 @@ from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    DEVELOPMENT_CHECKPOINT_CATEGORY,
     DEVELOPMENT_DIAGNOSTICS_CATEGORY,
     DEVELOPMENT_SURFACE_CATEGORY,
     RiskDevelopmentCheckpoint,
@@ -226,7 +227,7 @@ def build_development_covariance_surface(
         )
     )
     checkpoint_path = (
-        artifact_store.root / "development/build-checkpoints" / f"{execution_key}.json"
+        artifact_store.root / DEVELOPMENT_CHECKPOINT_CATEGORY / f"{execution_key}.json"
     )
     if checkpoint_path.exists():
         checkpoint = RiskDevelopmentCheckpoint.model_validate_json(checkpoint_path.read_bytes())
@@ -238,10 +239,14 @@ def build_development_covariance_surface(
         ):
             raise AuthoringError("risk_research.development_checkpoint_scope_mismatch")
         reader = HistoricalCovarianceReader(artifact_store.root.parent)
-        if sparse != (checkpoint.formation_axes is not None):
+        if sparse != (checkpoint.formation_axes is not None) or (
+            checkpoint.ordered_listing_ids is not None
+            and checkpoint.ordered_listing_ids != ordered_listing_ids
+        ):
             raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
         position = 0
         for chunk in checkpoint.chunks:
+            chunk_listings = ordered_listing_ids
             if not sparse and chunk.asset_count != len(ordered_listing_ids):
                 raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
             if sparse:
@@ -259,8 +264,9 @@ def build_development_covariance_surface(
                         or len(item.ordered_listing_ids) != chunk.asset_count
                     ):
                         raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
+                chunk_listings = axes[0].ordered_listing_ids
                 position += chunk.matrix_count
-            with reader.lease(chunk) as lease:
+            with reader.lease(chunk, ordered_listing_ids=chunk_listings, resume=True) as lease:
                 for formation, expected_hash in zip(
                     chunk.formation_sessions, chunk.matrix_hashes, strict=True
                 ):
@@ -268,6 +274,7 @@ def build_development_covariance_surface(
                     if matrix_content_hash(matrix) != expected_hash:
                         raise AuthoringError("risk_research.development_checkpoint_matrix_mismatch")
                     previous_matrix = matrix
+                artifact_store.continue_covariance(lease, chunk_listings)
         chunks.extend(checkpoint.chunks)
         evaluations.extend(checkpoint.evaluations)
         formation_axes.extend(checkpoint.formation_axes or ())
@@ -291,6 +298,9 @@ def build_development_covariance_surface(
                     formation_sessions=tuple(chunk_sessions),
                     matrices=tuple(chunk_matrices),
                     matrix_hashes=tuple(chunk_hashes),
+                    ordered_listing_ids=(
+                        formation_axes[-1].ordered_listing_ids if sparse else ordered_listing_ids
+                    ),
                 )
             )
         chunk_sessions.clear()
@@ -302,7 +312,11 @@ def build_development_covariance_surface(
             chunks=tuple(chunks),
             evaluations=tuple(evaluations),
             component_shrinkages=tuple((k, tuple(v)) for k, v in component_series.items()),
-            **({"formation_axes": tuple(formation_axes)} if sparse else {}),
+            **(
+                {"formation_axes": tuple(formation_axes)}
+                if sparse
+                else {"ordered_listing_ids": ordered_listing_ids}
+            ),
         )
         with span("write", "risk_checkpoint"):
             artifact_store._atomic_write(

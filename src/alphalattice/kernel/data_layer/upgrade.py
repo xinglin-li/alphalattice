@@ -65,6 +65,8 @@ class Family:
     holds: Callable[[Path], bool] = lambda _workspace: False
     """Whether a workspace holds old data this family's new store lacks: only such a workspace is
     upgraded, so a copy of an upgraded one is not."""
+    deferred: Callable[[Path], bool] | None = None
+    """Whether this family's old data must stay readable while its admission authority is absent."""
 
 
 class UpgradeRunner:

@@ -91,6 +91,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_retur
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
 )
+from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -1034,6 +1035,7 @@ class SharedPortfolioInputResolver:
             [listing_positions[value] for value in listings], dtype=np.int64
         )
         producer = RiskSurfaceProducer()
+        factor_store = catalog_factor_surfaces()
         allocations = {}
         attributions = {}
         required = (
@@ -1057,7 +1059,8 @@ class SharedPortfolioInputResolver:
                     classification,
                     risk_surface.surface_hash,
                     history,
-                )
+                ),
+                store=factor_store,
             )
             allocations[session] = produced.allocation
             attributions[session] = produced.attribution

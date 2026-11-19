@@ -52,6 +52,9 @@ from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    carry_risk_covariance,
+)
 from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
@@ -472,6 +475,14 @@ class WorkspaceBackups:
                     raise _Stopped
                 digest, size = read_file(path)
                 relative = (arrays.CARRIED / path.name).as_posix()
+                entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
+            for path in carry_risk_covariance(
+                self.workspace / "research-experiments", staging / "research-experiments"
+            ):
+                if stop():
+                    raise _Stopped
+                digest, size = read_file(path)
+                relative = path.relative_to(staging).as_posix()
                 entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
         for relative in COPIED:
             if stop():

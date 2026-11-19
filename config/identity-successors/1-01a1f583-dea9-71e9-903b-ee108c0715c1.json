@@ -1,0 +1,55 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d8f3b91de1cdcf863598ceae44f5ecccec7a228d8862f673d504494e6cc86f75",
+   "successor": "ddbdbeb2ef57fa2f999b5627e0f860ce4122892cc45619f00cdc86dcc75cb6be",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f834067d8353f398eaedde66db788d9fa7bb8bbf3c84ec134421ff80516c236f",
+   "successor": "47b5eb545f775ba3ddf32e320056b52096d090c1df214134875e13b4e78d243e",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "5041145122636d21c54de3fd19ab15bc348abe268ff09cdb81934cee9480ec7b",
+   "successor": "31636f5a5feaa4c2fe60a23d0338990f6f7e94cf7c08085aa9e2b165459f5c5a",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "78524e92c2e8b85bc04a406034aba0f4177747594de34e65d1b92fa241c85fb2",
+   "successor": "daef56aa4aefb08c736c6497d8e4c5c8c52687c844d7f195f57f456f27fcdc50",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "0f9cd3bb28b717561da63368fe924508d67343a2856ec4097bcf8909a45dd0ca",
+   "successor": "d265a1e112ecd85a3a53211b6dd1d490cecf53bc18becbb662f91c6f5dff9830",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "1930398f101898ad2341117ab347082404f30b714f028b3435f8557708f2c6f2",
+   "successor": "1026f757b4850ff33be978a8376de530fcf1108eb548b7a78251a9d455fab4da",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "eb436116908b14b08eb10ba6bc880a76f44c713e2a3071c28cf6bdb1d1622222",
+   "successor": "243fa8c6c0c38f444c3753686b6453d1d955b68d3626542db6fa3675c29e1aa2",
+   "change": "Keep Risk factor models and covariance history in the data-root catalog",
+   "reason": "lawful change: row 7 moves the Risk factor tables onto catalog arrays, so the covariance and portfolio policy implementations and the Host roles that compose them move; the same seven roles as the reviewed head, re-recorded on develop's installed values after the ejection merge; recovery replays read ALL EQUAL and the arrays and projections are unchanged"
+  }
+ ]
+}

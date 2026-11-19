@@ -49,6 +49,9 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     lane_upgrade_family,
 )
+from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    risk_covariance_upgrade_family,
+)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
@@ -94,12 +97,18 @@ def protected_validation() -> Family:
     return validation_upgrade_family(named_workspace_id)
 
 
+def risk_covariance() -> Family:
+    """Move Risk's sealed covariance history to the catalog under the workspace that owns it."""
+    return risk_covariance_upgrade_family(named_workspace_id)
+
+
 FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     partial(market_upgrade_family, named_workspace_id),
     execution_outcomes,
     strategy_lab_lanes,
     alpha_arrays,
     protected_validation,
+    risk_covariance,
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""
@@ -270,38 +279,68 @@ class FirstStart:
             self.state = "RUNNING"  # acknowledged when it started: it resumes as recorded
 
     def _runner(
-        self, subject: str, workspaces: tuple[Path, ...], check: Any = None
+        self,
+        subject: str,
+        workspaces: tuple[Path, ...],
+        check: Any = None,
+        *,
+        families: tuple[Family, ...] | None = None,
     ) -> UpgradeRunner:
         return UpgradeRunner(
             self.root,
             self.log,
             workspaces,
-            self.families,
+            self.families if families is None else families,
             check or (lambda *_: {}),
             subject=subject,
         )
 
+    def _new_plan(self, subject: str, workspaces: tuple[Path, ...]) -> Plan:
+        families = tuple(
+            family
+            for family in self.families
+            if family.deferred is None or not any(map(family.deferred, workspaces))
+        )
+        return plan(subject, workspaces, families, self.root)
+
+    def _deferred_plan(self, subject: str, earlier: dict[str, Any]) -> Plan | None:
+        """An omitted family remains eligible after the workspace's other migrations finish."""
+        for family in self.families:
+            if family.deferred is None or family.name in earlier["families"]:
+                continue
+            own = f"{subject}/{family.name}"
+            workspaces = (self.workspace,)
+            follow = self._runner(own, workspaces, families=(family,))
+            if follow.complete:
+                continue
+            if follow.started is not None:
+                return recorded(own, follow.started)
+            if family.holds(self.workspace):
+                return plan(own, workspaces, (family,), self.root)
+        return None
+
     def _due(self) -> Plan | None:
         machine = self._runner(TARGET, ())
+        started = machine.started
         if not machine.complete:
-            if machine.started is not None:
-                return recorded(TARGET, machine.started)
+            if started is not None:
+                return recorded(TARGET, started)
             found = discover(self.workspace, self.families)
-            return plan(TARGET, found, self.families, self.root) if found else None
-        covered = (
-            {Path(r["workspace"]) for r in machine.started["backups"]["workspaces"]}
-            if machine.started
-            else set()
-        )
-        if self.workspace in covered or not any(f.holds(self.workspace) for f in self.families):
-            return None
+            return self._new_plan(TARGET, found) if found else None
         subject = f"{TARGET}/{named_workspace_id(self.workspace)}"
+        if started is not None and any(
+            self.workspace == Path(row["workspace"]) for row in started["backups"]["workspaces"]
+        ):
+            return self._deferred_plan(subject, started)
         alone = self._runner(subject, (self.workspace,))
-        if alone.complete:
+        started = alone.started
+        if started is not None:
+            if alone.complete:
+                return self._deferred_plan(subject, started)
+            return recorded(subject, started)
+        if not any(f.holds(self.workspace) for f in self.families):
             return None
-        if alone.started is not None:
-            return recorded(subject, alone.started)
-        return plan(subject, (self.workspace,), self.families, self.root)
+        return self._new_plan(subject, (self.workspace,))
 
     def admit(self, plan_hash: object) -> None:
         """Take the acknowledgement of the plan shown; running it is the caller's next step."""
@@ -328,7 +367,12 @@ class FirstStart:
             with ExitStack() as leases:
                 for workspace in self.plan.workspaces:
                     leases.callback(WorkspaceWriterLease.acquire(workspace).close)
-                self._runner(self.plan.subject, self.plan.workspaces, self._backups()).run()
+                families = tuple(
+                    family for family in self.families if family.name in self.plan.families
+                )
+                self._runner(
+                    self.plan.subject, self.plan.workspaces, self._backups(), families=families
+                ).run()
         except Exception as error:
             self.state, self.failure = "FAILED", refusal_reason(error)
             raise

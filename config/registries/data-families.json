@@ -1689,7 +1689,7 @@
       "summary": "Risk covariance builds, chunks, diagnostics, surfaces and dossiers",
       "class": "derived",
       "tier": 4,
-      "home": "catalog derived.factor_cov, derived.factor_loading and derived.specific_risk",
+      "home": "catalog derived.factor_cov, derived.factor_loading and derived.specific_risk for native factors, and results.risk_covariance_cell and results.risk_covariance_order for sealed dense history",
       "location": "workspace-artifacts",
       "bytes": 2580996920,
       "covers": [

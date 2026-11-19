@@ -391,6 +391,22 @@ CREATE TABLE results.execution_outcome (
   row_hash VARCHAR NOT NULL
 );
 
+-- key: (artifact_id, listing_i, listing_j). The artifact is one sealed Risk formation.
+-- Lower-triangle cells carry the forecast's float64 values without factorizing them.
+CREATE TABLE results.risk_covariance_cell (
+  artifact_id VARCHAR NOT NULL,
+  listing_i UUID NOT NULL,
+  listing_j UUID NOT NULL,
+  value DOUBLE NOT NULL
+);
+
+-- key: (artifact_id, position). The same Risk formation's original listing order.
+CREATE TABLE results.risk_covariance_order (
+  artifact_id VARCHAR NOT NULL,
+  position INTEGER NOT NULL,
+  listing_id UUID NOT NULL
+);
+
 -- key: (artifact_id, metric_id, metric_version, dims). The fine breakdown behind a measure, such as IC by date and
 -- factor: too many values for a profile, so it is a body. The summary stays in the log's `measure`.
 CREATE TABLE results.breakdown (

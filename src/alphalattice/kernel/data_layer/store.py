@@ -107,6 +107,8 @@ RESULTS_KEYS: Final = {
     "series": ("artifact_id", "name", "session_date"),
     "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
     "validation_receipt": ("artifact_id",),
+    "risk_covariance_cell": ("artifact_id", "listing_i", "listing_j"),
+    "risk_covariance_order": ("artifact_id", "position"),
 }
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
