@@ -11,6 +11,11 @@
 -- table once, so DuckDB can filter the table before the anti-join. It is an ANTI JOIN, not a correlated NOT EXISTS: a reader's
 -- filter on the macro (a listing) then reaches the table scan, which skips the row groups it excludes.
 -- A decision at session t reads knowledge no later than the lesser of its selection's cutoff and t's decision time.
+CREATE MACRO market_asof(cutoff_us) AS TABLE
+SELECT r.* FROM lake.world.market r
+WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
+  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = world_table_id('market') AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+
 CREATE MACRO sector_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.sector r
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted

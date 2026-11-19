@@ -29,6 +29,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _json,
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
@@ -65,6 +66,7 @@ def current_member_seed(qualified_seed, tmp_path_factory):
     def build(root):
         copy_workspace(qualified_seed, root)
         binding = bind_existing_data_workspace(root)
+        admit_market_fixture(root, binding.workspace_id)
 
         def unavailable_source(**_):
             raise RuntimeError("fixture candidate source unavailable")
@@ -180,6 +182,7 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = _provider()
     bootstrap = _bootstrap((*SYMBOLS[1:], "NEW"))
     change_time = NOW + timedelta(days=7)
@@ -257,6 +260,7 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
     workspace = tmp_path / "partial-membership"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     prior = market.load_universe_manifest(
         market.readiness.load("us-current-index-research").active_manifest_id
@@ -648,6 +652,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
     workspace = tmp_path / "entrant-stale-member"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEW")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -874,6 +879,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     workspace = tmp_path / "two-rechecks"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEWH", "NEWS")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -1036,6 +1042,7 @@ def test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once(
     workspace = tmp_path / "sectorless-recheck"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEWS")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -1151,6 +1158,7 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
 
     workspace = copy_workspace(current_member_seed, tmp_path / "excluded-candidate")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     previous = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1269,6 +1277,7 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
 
     workspace = copy_workspace(qualified_seed, tmp_path / "owed-exit-tail")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     previous = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1450,6 +1459,7 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
 
     workspace = copy_workspace(qualified, tmp_path / "daily")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     provider = _provider()
 
     cache = workspace / "yfinance-cache"

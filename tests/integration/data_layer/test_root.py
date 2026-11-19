@@ -246,13 +246,16 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (119, {(1, 1)})
+    assert (len(rows), {row[3:5] for row in rows}) == (120, {(1, 1)})
+    assert "market" in named["world_table"]
     # A row the first log did not record names the count it came in at (first_seed_count), so a
     # history seeded before it replays without it: the rows naming none are the first log's 106.
     assert len(seed_rows(historical_count=0)) == 106, "a seed row added later names its first count"
     # The eleven Alpha development rows came in at 119: a log of 118 replays without them, one of
     # 119 with them.
     assert [len(seed_rows(historical_count=n)) for n in (118, 119)] == [108, 119]
+    # The market row first appears in the next seed, at 120.
+    assert len(seed_rows(historical_count=120)) == 120
     assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
@@ -454,13 +457,13 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with pytest.raises(DataError, match=r"world.superseded differ") as moved:
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
-    con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
-    other_version = SCHEMA_VERSION + 1
-    con.execute(f"PRAGMA user_version = {other_version}")
-    con.close()
-    with pytest.raises(DataError, match=f"schema version {other_version}") as refused:
-        create_data_root(tmp_path)
-    assert refused.value.failure.code == "data_layer.schema_mismatch"
+    for foreign_version in (8, 11, 12, 13, SCHEMA_VERSION + 1):
+        con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
+        con.execute(f"PRAGMA user_version = {foreign_version}")
+        con.close()
+        with pytest.raises(DataError, match=f"schema version {foreign_version}") as refused:
+            create_data_root(tmp_path)
+        assert refused.value.failure.code == "data_layer.schema_mismatch"
 
 
 @pytest.mark.proves("data_layer.a_lake_scan_holds_files_by_thread")

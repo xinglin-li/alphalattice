@@ -55,17 +55,34 @@ CALL lake.set_option('data_inlining_row_limit', 0, schema => 'derived');
 -- source time (listing, provider_symbol) keeps the newest admission's value.
 -- A legacy row of a key world already holds is a change observed at its admission: its known_asof is never before
 -- that admission, nor before the version it replaces.
+-- Rule-generated legacy sessions are reference data: calendar_origin and calendar_version retain their rule
+-- engine; their initial known_asof is -infinity and known_at is empty. A recorded source_observed_at wins over
+-- that reference origin. A later recorded correction is known from its source observation or admission time.
 -- A new source is a definition (family 'source') that names its table here; it brings these columns and no migration.
 -- A new world table (fundamentals, exchange rates) comes with its first source and the same five columns.
 -- A legacy interval row whose end is set (listing's last_session; valid_to below) is imported as two versions:
 -- the open one, known_asof from its start plus the lag, and the closing one, known_asof from its end plus the lag,
 -- so a cutoff between them sees the interval open and never its future end.
 
+-- key: (market_id, version_id). The Host mints the market's id once. MIC is its outside name,
+-- never its identity. Versions retain every name and its knowledge interval through superseded;
+-- valid_from records a source's MIC change date, null when that date was never recorded.
+CREATE TABLE world.market (
+  market_id UUID NOT NULL,
+  version_id UUID NOT NULL,
+  mic VARCHAR NOT NULL,
+  valid_from DATE,
+  known_at TIMESTAMPTZ,
+  known_asof TIMESTAMPTZ NOT NULL,
+  retracted BOOLEAN NOT NULL,
+  admission_id VARCHAR NOT NULL
+);
+
 -- key: (listing_id, version_id)
 CREATE TABLE world.listing (
   listing_id UUID NOT NULL,       -- our stable id; a symbol is an alias that changes
   version_id UUID NOT NULL,
-  market VARCHAR NOT NULL,       -- the ISO 10383 MIC of its market's calendar
+  market_id UUID NOT NULL,       -- world.market; a MIC change never changes this link
   universe_class VARCHAR,         -- the class 0.2.7 kept as the listing's mic, such as US_INDEX_CANDIDATE
   currency VARCHAR,
   issuer_name VARCHAR,
@@ -184,15 +201,17 @@ CREATE TABLE world.corporate_action (
   admission_id VARCHAR NOT NULL
 );
 
--- key: (market, session_date, version_id). Holidays, half days and time zones are versioned inputs. market is the
--- ISO 10383 MIC, a standard code designed as an identifier, so it stays a key.
+-- key: (market_id, session_date, version_id). Holidays, half days and time zones are versioned inputs.
 CREATE TABLE world.session (
-  market VARCHAR NOT NULL,
+  market_id UUID NOT NULL,
   session_date DATE NOT NULL,
   version_id UUID NOT NULL,
   open_utc TIMESTAMPTZ,
   close_utc TIMESTAMPTZ,
   half_day BOOLEAN NOT NULL,
+  calendar_origin VARCHAR,       -- the rule engine, when this is generated reference data
+  calendar_version VARCHAR,      -- that engine's pinned version, retained with this version
+  source_observed_at TIMESTAMPTZ, -- a recorded source clock takes precedence over reference origin
   known_at TIMESTAMPTZ,
   known_asof TIMESTAMPTZ NOT NULL,
   retracted BOOLEAN NOT NULL,

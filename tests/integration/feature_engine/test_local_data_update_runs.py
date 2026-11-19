@@ -46,6 +46,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _request,
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
@@ -284,6 +285,7 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     assert bind_existing_data_workspace(workspace) == manifest
     provider = recording_provider()
     market = MarketDataRepository(workspace)
@@ -474,6 +476,7 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     clock = [NOW]
 
     def boot() -> LocalPortfolioWebSession:
@@ -755,6 +758,7 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
     workspace = tmp_path / "review-workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     closes = provider._closes
 
@@ -1410,6 +1414,7 @@ def test_plan_and_binding_refusals_preserve_portfolio(qualified, tmp_path):
         bind_existing_data_workspace(missing)
     assert not missing.exists()
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     service = LocalPortfolioWebSession(
         workspace=workspace,
@@ -1616,6 +1621,7 @@ def test_transient_source_failure_resumes_captured_update(qualified, tmp_path):
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     provider.unavailable = True
     # An explicit recorded source-readiness signal, not a reclassification of
@@ -1680,6 +1686,7 @@ def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     wall = tmp_path / "wall"
     wall.write_text("a file, not a directory", encoding="utf-8")
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(wall / "store"))
@@ -1714,6 +1721,7 @@ def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     clock = [NOW]
     retry_at = NOW + timedelta(minutes=2)
     builds: list[str] = []
@@ -1780,6 +1788,7 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     failure = {
         "stage": "base_feature_materialization",
         "exception_type": "MemoryError",
@@ -1877,6 +1886,7 @@ def test_honoured_cancel_marks_the_cycle_and_a_new_plan_reuses_its_listing_progr
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     service = data_update_session(workspace, manifest, provider=provider)
     service.start()
@@ -1930,6 +1940,7 @@ def test_update_authority_and_missing_input_refuse_before_work(qualified, tmp_pa
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     service = LocalPortfolioWebSession(
         workspace=workspace,
@@ -2027,6 +2038,7 @@ def test_published_update_survives_process_death(qualified, tmp_path):
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     with forced_process(
         workspace,
         __name__,

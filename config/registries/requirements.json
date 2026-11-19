@@ -795,7 +795,7 @@
       "seconds": 15
     },
     "data_layer.legacy_rows_are_known_from_their_lag_rule": {
-      "description": "StorePort admits every catalog table; a legacy row's known_at is empty and its known_asof its lag rule's lag after its market's next session close; typed columns, 0.2.7's outcome types included, read back as admitted.",
+      "description": "StorePort preserves typed catalog rows, derives legacy knowledge from the market's next session close and lag rule, and keeps market and session identities through MIC changes.",
       "lower_layer": "The lag rule is read from a real log's definition and the session close from a real DuckLake catalog.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
@@ -983,7 +983,7 @@
       "seconds": 10
     },
     "data_layer.the_schema_meets_its_contract": {
-      "description": "If a schema change broke a declared data-model rule, such as a meaningless key, one upward link or a status's moves, the change would merge unseen until review or production.",
+      "description": "A schema change that breaks a declared identity, link or status rule is refused, including an outside identity code admitted without a cited guarantee that it never changes.",
       "lower_layer": "The DDL is read as SQLite and DuckDB build it, the engines the Host runs, so the contract judges the schema they enforce, not a parse of its text.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
@@ -1513,6 +1513,13 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "unit",
       "seconds": 1
+    },
+    "market_data_ops.market_upgrade_is_all_equal": {
+      "description": "An older workspace's market tables enter a new root through the acknowledged upgrade family and compare ALL EQUAL before world readers are selected.",
+      "lower_layer": "The Host log, backup authorities and DuckLake catalog must verify a real family's durable admission, reader switch and typed old/new value comparison.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 25
     },
     "market_data_ops.sector_provider_conformance": {
       "description": "Every current-sector provider names itself and the symbol asked, gives a stripped sector and a 64-hex payload hash, answers alike twice, and refuses an unknown symbol with a typed provider failure.",

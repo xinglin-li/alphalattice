@@ -8,6 +8,7 @@ import shutil
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -53,8 +54,9 @@ SAME = {  # each world read beside the 0.2.7 rows it must equal, by 0.2.7 listin
         " FROM old.corporate_action_current WHERE status = 'ACTIVE'",
     ),
     "listing": (
-        f"SELECT i.old, l.market, l.universe_class, d.symbol, a.symbol"
+        f"SELECT i.old, m.mic, l.universe_class, d.symbol, a.symbol"
         f" FROM {CURRENT.format('listing')} l"
+        f" JOIN {CURRENT.format('market')} m USING (market_id)"
         " JOIN ids i ON i.new = l.listing_id"
         f" JOIN {CURRENT.format('provider_symbol')} d ON d.listing_id = l.listing_id"
         " AND d.provider_id = '{display}'"
@@ -123,7 +125,18 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
 
 
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
-@pytest.mark.parametrize("focus", ("identity", "workspace", "lineage"))
+@pytest.mark.parametrize(
+    "focus",
+    (
+        pytest.param(
+            "identity",
+            id="identity",
+            marks=pytest.mark.proves("market_data_ops.market_upgrade_is_all_equal"),
+        ),
+        "workspace",
+        "lineage",
+    ),
+)
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -133,9 +146,75 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
     store, manifest, database = workspace
-    first = world.admit(database, "w1")
+    if focus == "identity":
+        from functools import partial
+
+        from alphalattice.control.product_host.composition import first_start
+        from alphalattice.control.product_host.composition.application_session import (
+            verify_upgrade_backups,
+        )
+        from alphalattice.control.product_host.storage.backup import WorkspaceBackups
+        from alphalattice.kernel.data_layer.backup import backup_data_root
+        from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+
+        assert "market-data" in [make().name for make in first_start.FAMILIES]
+        monkeypatch.setenv(world_reads.SETTING, "world")
+        family = world.market_upgrade_family(lambda _workspace: "w1")
+        assert family.holds(store.workspace)
+        (store.workspace / "research-workspace.json").write_text('{"workspace_id":"w1"}')
+        history.flush()
+        root = tmp_path / "data"
+        log = history.held(root)
+        generation = backup_data_root(root, tmp_path / "machine-backups")
+        backups = WorkspaceBackups(store.workspace, workspace_id="w1", root=tmp_path / "backups")
+        backups.create(reason="REQUEST")
+        runner = UpgradeRunner(
+            root,
+            log,
+            (store.workspace,),
+            (family,),
+            partial(
+                verify_upgrade_backups, machine_generation=generation, workspace_backups=(backups,)
+            ),
+        )
+        assert runner.run() is True
+        assert family.holds(store.workspace) is False
+        assert runner.run() is False
+        assert runner.id_map["market-data", "XNAS"] == str(
+            history.store()
+            .lake.execute(
+                "SELECT market_id FROM market_asof(?) WHERE mic = 'XNAS'", [world_reads.LATEST]
+            )
+            .fetchone()[0]
+        )
+        assert world_reads.chosen() == "world"
+        attrs = json.loads(
+            log.read(
+                "SELECT attrs FROM event WHERE type = 'admission' AND subject_id = 'w1'"
+                " AND json_extract(attrs, '$.dataset') = 'market' ORDER BY seq DESC LIMIT 1"
+            )[0][0]
+        )
+        first = {key: attrs[key] for key in ("rows", "dropped", "rewritten") if key in attrs}
+    else:
+        first = world.admit(database, "w1")
     again = world.admit(database, "w1")
     lake = history.store().lake
+    assert lake.execute(
+        "SELECT count(*) FROM lake.world.session WHERE known_asof <= make_timestamptz(0)"
+    ).fetchall() == [(first["rows"]["session"],)]
+    assert lake.execute(
+        "SELECT calendar_origin, calendar_version, count(*) FROM lake.world.session"
+        " WHERE known_at IS NULL AND source_observed_at IS NULL AND isinf(known_asof)"
+        " GROUP BY ALL"
+    ).fetchall() == [
+        ("exchange_calendars", version("exchange-calendars"), first["rows"]["session"])
+    ]
+    parts = history.store().log.read(
+        "SELECT parts FROM admission WHERE dataset = 'session' ORDER BY admission_seq DESC LIMIT 1"
+    )[0][0]
+    assert json.loads(parts) == [
+        {"part": "all", "min_known_asof_us": -(1 << 63), "max_known_asof_us": -(1 << 63)}
+    ]
     if focus == "lineage":
         # The same correction has the same original key in two workspaces, even when
         # each workspace observed it on a different day. Its log lineage must survive.
@@ -708,6 +787,93 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             )
             == manifest
         )
+    if focus == "workspace":
+        import pyarrow as pa
+
+        from alphalattice.kernel.data_layer.log import uuid7
+        from alphalattice.kernel.data_layer.store import stage
+
+        calendar = port.log.require_lineage("provider", world.CALENDARS)
+        market = lake.execute(
+            "SELECT market_id FROM lake.world.market WHERE mic = 'XNAS'"
+        ).fetchall()[0][0]
+        recorded = datetime(2026, 8, 30, 12, tzinfo=UTC)
+        batch = pa.table(
+            {
+                "market_id": [str(market)],
+                "session_date": [date(2026, 8, 31)],
+                "close_utc": [datetime(2026, 8, 31, 20, tzinfo=UTC)],
+                "half_day": [False],
+                "calendar_origin": ["exchange_calendars"],
+                "calendar_version": [version("exchange-calendars")],
+                "source_observed_at": [recorded],
+            }
+        )
+        with stage(port.root, "session", calendar, batch) as staged:
+            port.commit(staged)
+        assert lake.execute(
+            "SELECT known_at, known_asof FROM lake.world.session"
+            " WHERE market_id = ? AND session_date = ?",
+            [market, date(2026, 8, 31)],
+        ).fetchall() == [(recorded, recorded)]
+        for hour, expected in ((23, ()), (19, ("listing-aapl",))):
+            batch = lake.sql(
+                "SELECT market_id, session_date, open_utc, ?::TIMESTAMPTZ AS close_utc, half_day"
+                " FROM lake.world.session WHERE market_id = ? AND session_date = ?"
+                " ORDER BY known_asof DESC LIMIT 1",
+                params=[datetime(2026, 7, 29, hour, tzinfo=UTC), market, DAYS[2]],
+            ).to_arrow_table()
+            with stage(port.root, "session", calendar, batch) as staged:
+                port.commit(staged)
+            assert other_world.membership_schedule(
+                manifest.profile.market_profile_id, sessions=(DAYS[2],), fallback_listing_ids=()
+            ).members(DAYS[2]) == ("listing-aapl",)
+            current = MarketDataRepository(other_world.workspace, cutoff_us=port.log.clock())
+            assert (
+                current.membership_schedule(
+                    manifest.profile.market_profile_id, sessions=(DAYS[2],), fallback_listing_ids=()
+                ).members(DAYS[2])
+                == expected
+            )
+        future_market = uuid7()
+        for table, batch in (
+            ("market", pa.table({"market_id": [future_market], "mic": ["XNAS"]})),
+            (
+                "session",
+                pa.table(
+                    {
+                        "market_id": [future_market] * 3,
+                        "session_date": [DAYS[2], DAYS[3], NEW],
+                        "close_utc": [
+                            datetime.combine(day, datetime.min.time(), UTC).replace(hour=23)
+                            for day in (DAYS[2], DAYS[3], NEW)
+                        ],
+                        "half_day": [False] * 3,
+                    }
+                ),
+            ),
+            (
+                "listing",
+                lake.sql(
+                    "SELECT listing_id, ?::UUID AS market_id, universe_class, currency,"
+                    " issuer_name, first_session, last_session FROM lake.world.listing"
+                    " WHERE listing_id = ? ORDER BY known_asof DESC LIMIT 1",
+                    params=[future_market, world.world_listing("listing-aapl")],
+                ).to_arrow_table(),
+            ),
+        ):
+            with stage(port.root, table, calendar, batch) as staged:
+                port.commit(staged)
+        schedule = other_world.membership_schedule(
+            manifest.profile.market_profile_id,
+            sessions=(DAYS[2], DAYS[3], NEW),
+            fallback_listing_ids=(),
+        )
+        assert [schedule.members(day) for day in (DAYS[2], DAYS[3], NEW)] == [
+            ("listing-aapl",),
+            (),
+            ("listing-aapl",),
+        ]
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")

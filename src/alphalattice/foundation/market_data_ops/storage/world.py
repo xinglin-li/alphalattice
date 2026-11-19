@@ -5,7 +5,8 @@ closes and corporate actions in its market-data.duckdb. When the Host opens the 
 attaches that database read-only to the Host's catalog session and copies its rows into the world
 tables, in order:
 
-1. the sessions of each listing's market, from its market profile's exchange calendars, observed;
+1. the sessions of each listing's market, generated reference data from its profile's pinned
+   exchange calendar rules, retaining that origin and version and known before every cutoff;
 2. the listings, each named by the uuid5 of its 0.2.7 id, on the market its profile's calendar
    names (`market_of`), with 0.2.7's universe class (its `mic`) as data, and their provider
    symbols, each listing with two aliases: its 0.2.7 id (LISTING_ALIAS) and its display symbol
@@ -27,10 +28,11 @@ equal marks end it there.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
@@ -62,7 +64,9 @@ from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import lineage, require_lineage
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
+from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.kernel.quant.sector_history import SectorReclassification
+from alphalattice.kernel.shared_kernel.environment import package_versions
 
 DATASET: Final = "market"
 MARKET_CLOSE: Final = ("market-close", 1)
@@ -578,12 +582,24 @@ def membership_schedule(
     )
     if not profile:
         raise ValueError("universe manifest is not registered")
-    market = market_of(json.loads(profile[0][0])["profile"]["calendar_id"])
+    profile_market = market_of(json.loads(profile[0][0])["profile"]["calendar_id"])
+    roster = sorted(set(bootstrap.cohort_listing_ids) | set(reference.admitted_listing_ids))
     days = list(reference.sessions)
     rows = connection.execute(
         "WITH days AS (SELECT unnest(?::DATE[]) AS day),"
-        " clocks AS (SELECT session_date, max(close_utc) AS close_utc FROM lake.world.session"
-        " WHERE market = ? AND NOT retracted GROUP BY session_date),"
+        " clocks AS (SELECT s.session_date, max(s.close_utc) AS close_utc FROM lake.world.session s"
+        " JOIN (SELECT DISTINCT l.market_id FROM lake.world.listing l"
+        " JOIN provider_symbol_asof(?) p USING (listing_id)"
+        " JOIN lake.world.market m USING (market_id) WHERE p.provider_id = ?"
+        " AND p.symbol IN (SELECT unnest(?::VARCHAR[])) AND m.mic = ?"
+        " AND NOT l.retracted AND l.known_asof <= make_timestamptz(?) AND NOT EXISTS"
+        " (SELECT 1 FROM lake.world.superseded z WHERE z.table_id = ?"
+        " AND z.version_id = l.version_id AND z.superseded_asof <= make_timestamptz(?))) m"
+        " USING (market_id)"
+        " WHERE NOT s.retracted AND s.known_asof <= make_timestamptz(?) AND NOT EXISTS"
+        " (SELECT 1 FROM lake.world.superseded z WHERE z.table_id = ?"
+        " AND z.version_id = s.version_id AND z.superseded_asof <= make_timestamptz(?))"
+        " GROUP BY s.session_date),"
         " aliases AS (SELECT p.*, row_number() OVER (PARTITION BY p.listing_id"
         " ORDER BY p.valid_from DESC) AS n"
         " FROM lake.world.provider_symbol p WHERE p.provider_id = ? AND NOT p.retracted"
@@ -601,7 +617,16 @@ def membership_schedule(
         " GROUP BY days.day ORDER BY days.day",
         [
             days,
-            market,
+            cutoff_us,
+            _lineage("provider", LISTING_ALIAS),
+            roster,
+            profile_market,
+            cutoff_us,
+            _lineage("world_table", "listing"),
+            cutoff_us,
+            cutoff_us,
+            _lineage("world_table", "session"),
+            cutoff_us,
             _lineage("provider", LISTING_ALIAS),
             cutoff_us,
             _lineage("world_table", "provider_symbol"),
@@ -1099,6 +1124,84 @@ def _revisions(port: Any, workspace_id: str) -> None:
             )
 
 
+def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
+    """Admit older workspace tables through the shared, backed-up first-start protocol."""
+    from . import world_reads  # lazy: the reading surface imports this admission owner
+    from .duckdb import MarketDataRepository  # lazy: the repository imports this owner
+
+    wanted = os.environ.get(world_reads.SETTING)
+
+    def source(workspace: Path) -> tuple[MarketDataRepository, dict[str, list[int]]] | None:
+        repository = MarketDataRepository(workspace, universe_reader="workspace")
+        if not repository.path.is_file():
+            return None
+        marks = repository._market_marks()
+        if not marks:
+            raise DataError(
+                "Restore the older workspace's complete market tables before upgrading.",
+                code="upgrade.refused",
+            )
+        if not any(
+            marks[table][0]
+            for table in (
+                "raw_daily_bar_current",
+                "corporate_action_current",
+                "provider_symbol_mapping",
+            )
+        ):
+            return None
+        return repository, marks
+
+    def holds(workspace: Path) -> bool:
+        old = source(workspace)
+        return old is not None and not world_reads._admitted(
+            old[1], workspace_id=identify(workspace)
+        )
+
+    def step(runner: UpgradeRunner) -> None:
+        for workspace in runner.workspaces:
+            old = source(workspace)
+            if old is None:
+                continue
+            identity = identify(workspace)
+            if identity is None:
+                raise DataError(
+                    "Restore the market workspace's manifest identity.", code="upgrade.refused"
+                )
+            history.workspace_on_log(workspace, workspace.name, identity, root=runner.root)
+            admit(old[0].path, identity)
+            port = history.store()
+            if port is None:
+                raise DataError(
+                    "Open the Host's catalog before upgrading markets.", code="upgrade.refused"
+                )
+            for mic, market_id in port.lake.execute(
+                "SELECT mic, CAST(market_id AS VARCHAR) FROM market_asof(?)", [world_reads.LATEST]
+            ).fetchall():
+                runner.map_id("market-data", mic, market_id)
+
+    def verify(runner: UpgradeRunner) -> bool:
+        for workspace in runner.workspaces:
+            old = source(workspace)
+            if old is not None and not world_reads.holds(
+                old[0].path,
+                world_reads.LATEST,
+                listings=old[0]._listings("SELECT listing_id FROM listing", ()),
+            ):
+                return False
+        return True
+
+    def switch(mode: str) -> None:
+        if mode == "old":
+            os.environ[world_reads.SETTING] = "workspace"
+        elif wanted is None:
+            os.environ.pop(world_reads.SETTING, None)
+        else:
+            os.environ[world_reads.SETTING] = wanted
+
+    return Family("market-data", step, verify, switch, holds)
+
+
 def _register(run: Any) -> set[str]:
     """Register each provider the tables name, the aliases' and the calendar's, and the lag rule;
     returns the tables' providers."""
@@ -1163,14 +1266,21 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         if done.rewritten:
             rewritten[table] = rewritten.get(table, 0) + done.rewritten
 
-    for batch in _sessions(run, dated).values():
-        commit("session", CALENDARS, _arrow(batch), None)
+    sessions = _sessions(run, dated)
+    markets = {mic: port.market_id(mic, provider_ids[CALENDARS]) for mic in sessions}
+    arrow = import_module("pyarrow")  # lazy: the optional data extra, only for admission
+    for mic, batch in sessions.items():
+        table = _arrow(batch)
+        table = table.drop(["market"]).append_column(
+            "market_id", arrow.repeat(markets[mic], table.num_rows)
+        )
+        commit("session", CALENDARS, table, None)
     for provider, batch in _grouped(
         (
             row[4],
             {
                 "listing_id": ids[row[0]],
-                "market": market_of(row[3]),
+                "market_id": markets[market_of(row[3])],
                 "universe_class": row[1],
                 "currency": row[2],
                 "first_session": row[5],
@@ -1219,6 +1329,7 @@ def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str
         f" {w}.provider_symbol_mapping)"
     ).fetchone()
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: untyped calendars
+    calendar_version = dict(package_versions(("exchange-calendars",)))["exchange-calendars"]
 
     start, end = first, last + CALENDAR_REACH
     clocks: dict[str, dict[date, tuple[datetime, datetime]]] = {}
@@ -1246,6 +1357,8 @@ def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str
                 "open_utc": opened.isoformat(),
                 "close_utc": closed.isoformat(),
                 "half_day": closed - opened < FULL_DAY,
+                "calendar_origin": "exchange_calendars",
+                "calendar_version": calendar_version,
             }
             for day, (opened, closed) in sorted(clocks[market].items())
         ]

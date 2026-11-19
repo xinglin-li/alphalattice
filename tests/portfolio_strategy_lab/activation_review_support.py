@@ -103,7 +103,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.local_web_support import _json, admit_market_fixture
 
 PACKAGE = REBOUND_RETURN_BOOK_RECIPE.strategy_id
 _HASH = str(canonical_hash("activation review synthetic QA support"))
@@ -660,6 +660,7 @@ def activation_review_host(
         )
         publish_research_workspace_manifest(root, manifest)
         _bootstrap_market(root, listings=listings, symbols=symbols)
+        admit_market_fixture(root, manifest.workspace_id)
         resolver = _ActivationReviewResolver(
             workspace=root,
             authority=authority,

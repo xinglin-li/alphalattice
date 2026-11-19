@@ -32,7 +32,12 @@ from alphalattice.foundation.research_foundation.contracts import (
     ResearchFoundationBinding,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests.portfolio_strategy_lab.local_web_support import _json, _resolved, _Resolver
+from tests.portfolio_strategy_lab.local_web_support import (
+    _json,
+    _resolved,
+    _Resolver,
+    admit_market_fixture,
+)
 from tests.researcher_methodology_surface.real_workspace import AS_OF, OBSERVED_AT, SYMBOLS
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.local_data_provider import (
@@ -212,6 +217,7 @@ def _activate(workspace: Path, *specs) -> None:
 
 def _run_data_update(workspace: Path) -> None:
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     service = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=manifest,

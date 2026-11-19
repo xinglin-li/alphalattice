@@ -25,6 +25,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
@@ -739,6 +740,7 @@ def test_valuation_audit_permission_never_reenters_the_candidate_request(qualifi
         old, eligible_listing_ids=(removed.listing_id,)
     )
     market.bootstrap(active)
+    admit_market_fixture(workspace, manifest.workspace_id)
     binding = installed_data_update_binding()
     state = read_workspace_inputs(workspace, binding)
     before = WorkspaceInputStatus.seal(

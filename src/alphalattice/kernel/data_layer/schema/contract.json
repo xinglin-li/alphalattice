@@ -3,7 +3,7 @@
  "rules": {
   "coverage": "Every table in log.sql, catalog.sql and index.sql has one entry here, and every entry has its table.",
   "key": "An entry's key is its table's key: the DDL's primary key, or for the catalog, whose engine enforces none, its key comment, which every catalog table states.",
-  "id": "Each key part says where its value comes from: a Host-minted UUIDv7, the log's seq, another record's id, or an outside standard value with its reason; a recomputed home may be keyed by a content address. A digest, a caller's value or a packed string is a break.",
+  "id": "Each key part declares its source: Host-minted UUIDv7, log seq, another record's id, or an immutable scalar/fixed vocabulary/dated-alias fact (value, with its reason). An outside code identifying the thing it names is external and requires permanence[part] with a cited reference and its guarantee that the code never changes, retires or becomes reassigned; no such outside code is admitted today. A recomputed home may use a content address. A digest, caller's value or packed string is a break.",
   "up": "A record stores one upward link, and links no table its upward chain already reaches, except by an edge: a declared link, with its reason, to another record of that table.",
   "home": "Each fact has one home; a second copy is a view, never a table.",
   "time": "Each time column names its clock: integer microseconds UTC, a log seq, a UTC timestamp, a source's own clock or a market date. A time kept as text on its writer's clock is a break.",
@@ -23,9 +23,9 @@
    "id": {
     "recipe_key": "link",
     "input_digest": "content: a cached partition is valid for exactly the rows it read",
-    "as_of": "standard: the as-of date",
-    "factor_i": "standard: the first factor's name in its feature set",
-    "factor_j": "standard: the second factor's name in its feature set"
+    "as_of": "value: the as-of date",
+    "factor_i": "value: the first factor's name in its feature set",
+    "factor_j": "value: the second factor's name in its feature set"
    },
    "links": [
     "recipe_key"
@@ -46,9 +46,9 @@
    "id": {
     "recipe_key": "link",
     "input_digest": "content: a cached partition is valid for exactly the rows it read",
-    "as_of": "standard: the as-of date",
+    "as_of": "value: the as-of date",
     "listing_id": "link",
-    "factor": "standard: the factor's name in its feature set"
+    "factor": "value: the factor's name in its feature set"
    },
    "links": [
     "recipe_key"
@@ -68,7 +68,7 @@
    "id": {
     "recipe_key": "link",
     "input_digest": "content: a cached partition is valid for exactly the rows it read",
-    "as_of": "standard: the as-of date",
+    "as_of": "value: the as-of date",
     "listing_id": "link"
    },
    "links": [
@@ -88,7 +88,7 @@
    "id": {
     "recipe_key": "link",
     "input_digest": "content: a cached partition is valid for exactly the rows it read",
-    "row_no": "standard: the sample's row in its partition"
+    "row_no": "value: the sample's row in its partition"
    },
    "links": [
     "recipe_key"
@@ -106,7 +106,7 @@
    ],
    "id": {
     "artifact_id": "link",
-    "session_date": "standard: the scored session",
+    "session_date": "value: the scored session",
     "listing_id": "link"
    },
    "up": "artifact_id",
@@ -126,7 +126,7 @@
     "artifact_id": "link",
     "metric_id": "link",
     "metric_version": "link",
-    "dims": "standard: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
+    "dims": "value: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
    },
    "up": "artifact_id",
    "links": [
@@ -146,7 +146,7 @@
    "id": {
     "artifact_id": "link",
     "listing_id": "link",
-    "formation_session": "standard: the formation session"
+    "formation_session": "value: the formation session"
    },
    "up": "artifact_id",
    "times": {
@@ -174,7 +174,7 @@
    ],
    "id": {
     "artifact_id": "link",
-    "as_of": "standard: the as-of date",
+    "as_of": "value: the as-of date",
     "listing_id": "link"
    },
    "up": "artifact_id",
@@ -191,8 +191,8 @@
    ],
    "id": {
     "artifact_id": "link",
-    "name": "standard: the series' name within its study's artifact",
-    "session_date": "standard: the session"
+    "name": "value: the series' name within its study's artifact",
+    "session_date": "value: the session"
    },
    "up": "artifact_id",
    "times": {
@@ -212,9 +212,9 @@
    "id": {
     "provider_id": "link",
     "listing_id": "link",
-    "effective_date": "standard: the action's effective date",
-    "kind": "standard: the action's kind",
-    "action_id": "standard: the provider's own id for the action",
+    "effective_date": "value: the action's effective date",
+    "kind": "value: the action's kind",
+    "action_id": "external: the provider's own id for the action",
     "version_id": "uuid7"
    },
    "links": [
@@ -278,6 +278,25 @@
    },
    "versions": {
     "lag_rule_version": "definition"
+   },
+   "links": [
+    "market_id"
+   ]
+  },
+  "catalog.world.market": {
+   "home": "world",
+   "key": [
+    "market_id",
+    "version_id"
+   ],
+   "id": {
+    "market_id": "uuid7",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "valid_from": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
    }
   },
   "catalog.world.provider_symbol": {
@@ -290,8 +309,8 @@
    ],
    "id": {
     "provider_id": "link",
-    "symbol": "standard: the provider's own code for the listing",
-    "valid_from": "standard: the alias's first valid date",
+    "symbol": "value: the provider's own code for the listing",
+    "valid_from": "value: the alias's first valid date",
     "version_id": "uuid7"
    },
    "links": [
@@ -319,7 +338,7 @@
    "id": {
     "provider_id": "link",
     "listing_id": "link",
-    "session_date": "standard: the market session the bar is for",
+    "session_date": "value: the market session the bar is for",
     "version_id": "uuid7"
    },
    "links": [
@@ -347,7 +366,7 @@
    "id": {
     "table_id": "link",
     "version_id": "link",
-    "source_observed_at": "standard: each later source write of the version is its own row"
+    "source_observed_at": "value: each later source write of the version is its own row"
    },
    "links": [
     "table_id",
@@ -369,7 +388,7 @@
    "id": {
     "scheme_id": "link",
     "listing_id": "link",
-    "valid_from": "standard: the classification's first valid date",
+    "valid_from": "value: the classification's first valid date",
     "version_id": "uuid7"
    },
    "links": [
@@ -389,19 +408,26 @@
   "catalog.world.session": {
    "home": "world",
    "key": [
-    "market",
+    "market_id",
     "session_date",
     "version_id"
    ],
    "id": {
-    "market": "standard: the ISO 10383 MIC of the market's calendar",
-    "session_date": "standard: the session's date",
+    "market_id": "link",
+    "session_date": "value: the session's date",
     "version_id": "uuid7"
    },
    "times": {
     "session_date": "market_date",
     "known_at": "utc_timestamp",
-    "known_asof": "utc_timestamp"
+    "known_asof": "utc_timestamp",
+    "source_observed_at": "source_clock"
+   },
+   "links": [
+    "market_id"
+   ],
+   "versions": {
+    "calendar_version": "own: the pinned calendar_origin rule engine release that generated this session, recorded from its installed distribution"
    }
   },
   "catalog.world.superseded": {
@@ -434,7 +460,7 @@
    "id": {
     "universe_id": "link",
     "listing_id": "link",
-    "valid_from": "standard: the membership's first valid date",
+    "valid_from": "value: the membership's first valid date",
     "version_id": "uuid7"
    },
    "links": [
@@ -457,7 +483,7 @@
     "key"
    ],
    "id": {
-    "key": "standard: a fixed name of an index setting: embedding_model, dims or cursor_seq"
+    "key": "value: a fixed name of an index setting: embedding_model, dims or cursor_seq"
    }
   },
   "index.passage": {
@@ -582,8 +608,8 @@
    ],
    "id": {
     "recipe_key": "link",
-    "derived_table": "standard: its table in the catalog's derived schema",
-    "part": "standard: a year, a year and listing, or an as-of date",
+    "derived_table": "value: its table in the catalog's derived schema",
+    "part": "value: a year, a year and listing, or an as-of date",
     "input_digest": "content: a cached partition is valid for exactly the rows it read"
    },
    "links": [
@@ -604,9 +630,9 @@
     "workspace_id"
    ],
    "id": {
-    "derived_table": "standard: its table in the catalog's derived schema",
+    "derived_table": "value: its table in the catalog's derived schema",
     "recipe_key": "link",
-    "part": "standard: a year, a year and listing, or an as-of date",
+    "part": "value: a year, a year and listing, or an as-of date",
     "input_digest": "content: the cached partition the workspace's reads take",
     "workspace_id": "link"
    },
@@ -623,7 +649,7 @@
    ],
    "id": {
     "seq": "seq",
-    "kind": "standard: what the checkpoint was kept for: month, backup, export or redaction"
+    "kind": "value: what the checkpoint was kept for: month, backup, export or redaction"
    },
    "times": {
     "seq": "log_seq",
@@ -659,12 +685,12 @@
     "outcome"
    ],
    "id": {
-    "day": "standard: the UTC date the totals sum",
-    "actor_kind": "standard: person, agent, host or node",
-    "actor_id": "standard: the actor's own id",
+    "day": "value: the UTC date the totals sum",
+    "actor_kind": "value: person, agent, host or node",
+    "actor_id": "value: the actor's own id",
     "node_id": "link",
     "type_id": "link",
-    "outcome": "standard: the step's outcome"
+    "outcome": "value: the step's outcome"
    },
    "links": [
     "node_id",
@@ -694,8 +720,8 @@
     "name"
    ],
    "id": {
-    "family": "standard: a definition family, a fixed vocabulary",
-    "name": "standard: a held name: this table maps every name a lineage held to its id, and a name is never reused"
+    "family": "value: a definition family, a fixed vocabulary",
+    "name": "value: a held name: this table maps every name a lineage held to its id, and a name is never reused"
    },
    "up": "definition_id",
    "times": {
@@ -713,7 +739,7 @@
    "id": {
     "definition_id": "link",
     "version": "link",
-    "role": "standard: the spec field that names the other definition",
+    "role": "value: the spec field that names the other definition",
     "ref_id": "link"
    },
    "up": [
@@ -739,7 +765,7 @@
    ],
    "id": {
     "definition_id": "link",
-    "version": "standard: the lineage's own version number, counted from 1"
+    "version": "value: the lineage's own version number, counted from 1"
    },
    "up": "definition_id",
    "times": {
@@ -784,7 +810,7 @@
     "handle"
    ],
    "id": {
-    "handle": "standard: the file's own path, which another process holds open"
+    "handle": "value: the file's own path, which another process holds open"
    },
    "times": {
     "queued_us": "utc_us"
@@ -821,7 +847,7 @@
    ],
    "id": {
     "seq": "link",
-    "role": "standard: used or produced",
+    "role": "value: used or produced",
     "artifact_id": "link"
    },
    "up": "seq",
@@ -867,7 +893,7 @@
    ],
    "id": {
     "experience_id": "link",
-    "version": "standard: the experience's own rendering number, counted from 1"
+    "version": "value: the experience's own rendering number, counted from 1"
    },
    "up": "experience_id",
    "links": [
@@ -986,7 +1012,7 @@
    ],
    "id": {
     "seq": "link",
-    "line": "standard: the line's place in its posting event"
+    "line": "value: the line's place in its posting event"
    },
    "up": "book_id",
    "links": [
@@ -1005,7 +1031,7 @@
    ],
    "id": {
     "artifact_id": "link",
-    "root_kind": "standard: what holds the body: task, book, publication, trial, backup, workspace or pin",
+    "root_kind": "value: what holds the body: task, book, publication, trial, backup, workspace or pin",
     "root_id": "link"
    },
    "up": "artifact_id",
@@ -1028,7 +1054,7 @@
     "artifact_id": "link",
     "metric_id": "link",
     "metric_version": "link",
-    "dims": "standard: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
+    "dims": "value: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
    },
    "up": "artifact_id",
    "links": [
@@ -1095,7 +1121,7 @@
    ],
    "id": {
     "recipe_key": "link",
-    "position": "standard: the upstream's place in the order its recipe reads it"
+    "position": "value: the upstream's place in the order its recipe reads it"
    },
    "up": "recipe_key",
    "links": [
@@ -1131,8 +1157,8 @@
     "key"
    ],
    "id": {
-    "scope": "standard: 'machine' or the workspace the setting belongs to",
-    "key": "standard: the setting's name in the person's settings"
+    "scope": "value: 'machine' or the workspace the setting belongs to",
+    "key": "value: the setting's name in the person's settings"
    },
    "times": {
     "changed_seq": "log_seq"
@@ -1146,7 +1172,7 @@
    ],
    "id": {
     "seq": "link",
-    "name": "standard: the schema's qualified status field name"
+    "name": "value: the schema's qualified status field name"
    },
    "up": "seq",
    "times": {
@@ -1162,10 +1188,10 @@
     "value"
    ],
    "id": {
-    "subject_kind": "standard: the kind of thing tagged",
+    "subject_kind": "value: the kind of thing tagged",
     "subject_id": "link",
     "key_id": "link",
-    "value": "standard: the vocabulary's value"
+    "value": "value: the vocabulary's value"
    },
    "links": [
     "subject_id",
@@ -1326,7 +1352,7 @@
    ],
    "id": {
     "task_id": "link",
-    "step": "standard: the step's own name within its task: a recovery point"
+    "step": "value: the step's own name within its task: a recovery point"
    },
    "up": "task_id",
    "times": {
@@ -1396,7 +1422,7 @@
    "id": {
     "trial_id": "link",
     "experience_id": "link",
-    "role": "standard: read or reviewed"
+    "role": "value: read or reviewed"
    },
    "up": "trial_id",
    "links": [
@@ -1497,5 +1523,12 @@
    }
   }
  },
- "known": {}
+ "known": {
+  "provider-action-id-external": {
+   "says": "The provider's corporate-action identifier still keys its source fact without proof that the outside identifier never changes; this remains an unresolved identity break.",
+   "problems": [
+    "id: catalog.world.corporate_action.action_id: an outside code has no proof that it never changes"
+   ]
+  }
+ }
 }

@@ -178,7 +178,8 @@ def test_the_first_start_upgrades_every_old_workspace_on_one_plan(
         assert code == 0 and running["first_start"]["state"] == "RUNNING"
         assert not host.upgraded(timeout=600)
         stopped = _json(host, "/api/upgrade")["first_start"]
-        assert stopped["state"] == "FAILED" and stopped["family_failed"] == families[0]
+        stopped_family = "held" if corpus == "held" else "execution-outcomes"
+        assert stopped["state"] == "FAILED" and stopped["family_failed"] == stopped_family
         assert _request(host, "/api/tasks")[0] == 503
     finally:
         host.stop()

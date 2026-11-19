@@ -13,6 +13,8 @@ A rule decision holds for the same anomaly while the rule's fresh choice still a
 
 Maintenance follows exchange sessions and settlement policy; recent provider bars may still be provisional. A completed download alone does not publish a research input. New Sector observations apply from their effective sessions, preserving published values. Historical revisions retain audit evidence. A full-history audit uses the recorded rule approval, or the offered authorization when the rule cannot decide. Later temporal statements do not repair an earlier study's point-in-time limitations.
 
+An older workspace's sessions generated from the pinned calendar rules remain reference data for historical reads. Their rule origin and version are retained. Recorded source observations keep their own times, and later calendar corrections become visible from their later knowledge time.
+
 ## Backup and restore
 
 ```powershell
@@ -66,6 +68,14 @@ catalog to the new root. An unverifiable chain, missing file or existing destina
 refused by name; choose an intact generation and a fresh destination.
 
 ## Storage
+
+Markets have stable local identifiers. Their MICs are dated names, so changing a
+market code preserves the identities of its listings and sessions.
+
+An older workspace's market tables follow the first-start upgrade plan into a new
+data root: verified backups and an equality check precede the reader switch, and
+the workspace's tables are retained. Earlier development roots are refused with
+`data_layer.schema_mismatch`; they are never migrated in place.
 
 Tasks are written to the machine's log in the data root: `ALPHALATTICE_DATA_ROOT` when set, otherwise `%LOCALAPPDATA%/AlphaLattice` on Windows and `$XDG_DATA_HOME/alphalattice` elsewhere. One Host holds a data root at a time. A second Host on the same data root is refused with `data_layer.host_running`: close the other Host, or start this one with `ALPHALATTICE_DATA_ROOT` set to a folder of its own. A Host whose log does not open does not start (`data_layer.log_unavailable`); restore the data root from its last backup. A 0.2.7 workspace's Tasks move onto the log at its first open, and its old Task store and frozen requests are set aside under `runtime/retired-0.2.7/`, never deleted. A model sandbox and a saved-object readback open their copies on a data root of their own, so the copies' Tasks stay out of the machine's history.
 

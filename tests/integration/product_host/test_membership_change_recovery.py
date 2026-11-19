@@ -35,11 +35,13 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _json,
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import SYMBOLS
 from tests.researcher_methodology_surface.session_workspace import (
     LINKED_SEEDS,
     copy_workspace,
+    restore_seed,
     session_workspace,
 )
 from tests.workspace_maintenance.data_update_support import one_sector_seed
@@ -134,6 +136,7 @@ def _stop_change(tmp_path_factory, workspace: Path) -> dict[str, object]:  # typ
         provider=provider,
         source_loader=source,
     ).refresh_sources_if_due(observed_at=CHANGED_AT)
+    admit_market_fixture(workspace, binding.workspace_id)
     seen: dict[str, object] = {}
     with _host(workspace, binding, provider, source) as live:
         plan = _json(live, "/api/data-update/plan", method="POST", payload={})
@@ -166,7 +169,7 @@ def _stop_change(tmp_path_factory, workspace: Path) -> dict[str, object]:  # typ
 
 
 @pytest.fixture(scope="module")
-def stopped_change(tmp_path_factory, golden_cache) -> SimpleNamespace:  # type: ignore[no-untyped-def]
+def stopped_change_seed(tmp_path_factory, golden_cache) -> SimpleNamespace:  # type: ignore[no-untyped-def]
     """A stock-list change with two short-tailed leavers, a sectorless joiner and an owed audit,
     stopped on the Panel's coverage floor after its cycle made its own Sector-reduced membership
     active, with every step's answer kept. The Host run (about 40 s) happens once per session
@@ -223,6 +226,13 @@ def stopped_change(tmp_path_factory, golden_cache) -> SimpleNamespace:  # type: 
         active=built["active"],
         seen=built["seen"],
     )
+
+
+@pytest.fixture
+def stopped_change(stopped_change_seed: SimpleNamespace) -> SimpleNamespace:
+    """Restore the admitted market catalog to the test's private machine before reopening."""
+    restore_seed(stopped_change_seed.workspace)
+    return stopped_change_seed
 
 
 def test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_made(

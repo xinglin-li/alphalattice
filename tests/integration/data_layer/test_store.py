@@ -95,13 +95,19 @@ def seed(root: Path, log: HostLog, sessions: list[tuple[str, str, bool]]) -> Sto
     text = canonical(rule | {"spec": {"lag_seconds": 3600}}).decode()
     log.record("definition.registered", ("definition", "yf-close"), attrs, text=text)
     port = StorePort.open(root, log)
+    calendar = log.require_lineage("provider", "calendar")
+    market_id = port.market_id("XNYS", calendar)
     days = [
-        {"market": "XNYS", "session_date": day, "close_utc": f"{day} {close}+00", "half_day": half}
+        {
+            "market_id": market_id,
+            "session_date": day,
+            "close_utc": f"{day} {close}+00",
+            "half_day": half,
+        }
         for day, close, half in sessions
     ]
-    calendar = log.require_lineage("provider", "calendar")
     for table, rows in (
-        ("listing", [{"listing_id": LISTING, "market": "XNYS"}]),
+        ("listing", [{"listing_id": LISTING, "market_id": market_id}]),
         ("session", days),
     ):
         with stage(root, table, calendar, arrow(rows)) as staged:
@@ -831,6 +837,7 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
     """Every catalog table is admitted; a legacy row is known its rule's lag after its market's
     first close on or after its valid date; a batch moving a listing's market or naming an
     unregistered scheme is refused; typed columns read back whole."""
+    assert WORLD_KEYS["session"] == ("market_id", "session_date")
     bar = {"listing_id": LISTING, "session_date": "2024-01-05", "adjusted_close": 0.5}
     bar |= WRITTEN
     action = {"listing_id": LISTING, "effective_date": "2024-01-06", "kind": "split"}
@@ -857,11 +864,21 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
         port = seed(
             root, log, [("2024-01-05", "21:00:00", False), ("2024-01-08", "18:00:00", True)]
         )
+        calendar = log.require_lineage("provider", "calendar")
+        yf = log.require_lineage("provider", "yf")
         for table, rows, lag in batches:
+            if table == "listing":
+                rows = [
+                    {
+                        "listing_id": row["listing_id"],
+                        "market_id": port.market_id(row["market"], yf),
+                    }
+                    for row in rows
+                ]
             with stage(
                 root,
                 table,
-                None if table in RESULTS_KEYS else log.require_lineage("provider", "yf"),
+                None if table in RESULTS_KEYS else yf,
                 arrow(rows),
                 lag=lag,
             ) as staged:
@@ -908,6 +925,73 @@ def test_a_legacy_batch_is_known_from_its_lag_rule_and_the_new_columns_round_tri
             "SELECT provider_id, json_extract(e.attrs, '$.artifact_ids') FROM admission a"
             " JOIN event e ON e.seq = a.admission_seq WHERE dataset = 'execution_outcome'"
         )
+        market_id = read("SELECT market_id FROM lake.world.market WHERE mic = 'XNYS'").fetchone()[0]
+        assert uuid.UUID(str(market_id)).version == 7
+        sessions = read(
+            "SELECT market_id, session_date, version_id, close_utc FROM lake.world.session"
+            " ORDER BY session_date"
+        ).fetchall()
+        for label, mic, changed in (("same-code", "XNYS", False), ("new-code", "XNEW", True)):
+            renamed = {"market_id": str(market_id), "mic": mic}
+            if changed:
+                renamed["valid_from"] = "2024-02-01"
+            with stage(root, "market", calendar, arrow([renamed])) as staged:
+                assert port.commit(staged).rows == int(changed), label
+            assert (
+                read(
+                    "SELECT market_id, session_date, version_id, close_utc FROM lake.world.session"
+                    " ORDER BY session_date"
+                ).fetchall()
+                == sessions
+            ), label
+        renamed_at = read(
+            "SELECT epoch_us(known_asof) FROM lake.world.market WHERE mic = 'XNEW'"
+        ).fetchone()[0]
+        assert [
+            read("SELECT mic FROM market_asof(?) WHERE market_id = ?", [at, market_id]).fetchone()[
+                0
+            ]
+            for at in (renamed_at - 1, renamed_at)
+        ] == ["XNYS", "XNEW"]
+        with pytest.raises(DataError, match="no current binding") as retired:
+            port.market_id("XNYS", calendar)
+        assert retired.value.failure.code == "data_layer.market_mic_ambiguous"
+        with stage(
+            root, "raw_bar", yf, arrow([bar | {"session_date": "2024-01-06"}]), lag=rule
+        ) as staged:
+            assert port.commit(staged).rows == 1
+        assert read(
+            "SELECT strftime(known_asof, '%d %H') FROM lake.world.raw_bar"
+            " WHERE session_date = DATE '2024-01-06'"
+        ).fetchone() == ("08 19",)
+        orphan = {
+            "market_id": str(uuid.UUID(int=99)),
+            "session_date": "2024-01-05",
+            "half_day": False,
+        }
+        with (
+            stage(root, "session", calendar, arrow([orphan])) as staged,
+            pytest.raises(DataError, match="is not registered"),
+        ):
+            port.commit(staged)
+        reassigned = host.uuid7()
+        with stage(
+            root,
+            "market",
+            calendar,
+            arrow([{"market_id": reassigned, "mic": "XNYS", "valid_from": "2024-03-01"}]),
+        ) as staged:
+            port.commit(staged)
+        assert port.market_id("XNYS", calendar) == reassigned
+        with stage(
+            root,
+            "market",
+            calendar,
+            arrow([{"market_id": host.uuid7(), "mic": "XNYS", "valid_from": "2024-03-01"}]),
+        ) as staged:
+            port.commit(staged)
+        with pytest.raises(DataError, match="names several recorded markets"):
+            port.market_id("XNYS", calendar)
         port.close()
     schemas = dict(tables)
     kept = ("superseded", "rewritten")  # the versions' own records, keyed by no fact

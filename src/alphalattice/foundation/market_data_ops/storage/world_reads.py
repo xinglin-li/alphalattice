@@ -255,12 +255,13 @@ COMPARED: Final = {
 """Each relation a value read names, with the workspace table, rows and columns it answers for."""
 
 
-def holds(database: Path, cutoff_us: int) -> bool:
+def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = None) -> bool:
     """Whether world, as it held the market tables at `cutoff_us`, answers each value read
     exactly as the workspace database `database` does: every relation's rows equal, both ways.
     A copy is bound to world only then; marks alone show a past admission, and world may hold
-    another workspace's later value of a key since."""
-    named = relations(cutoff_us, cutoff_us, workspace_id=workspace_id(database))
+    another workspace's later value of a key since. A family upgrade names its source listing
+    scope; without one, every held listing is compared as for a whole research-input copy."""
+    named = relations(cutoff_us, cutoff_us, listings, workspace_id=workspace_id(database))
     with session() as cursor:
         if cursor is None:
             return False

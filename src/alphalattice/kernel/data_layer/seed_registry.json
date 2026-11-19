@@ -1070,6 +1070,11 @@
   ],
   "world_tables": [
     {
+      "name": "market",
+      "first_seed_count": 120,
+      "description": "The catalog's world.market: a Host-minted market identity and its dated MIC names."
+    },
+    {
       "name": "listing",
       "description": "The catalog's world.listing."
     },

@@ -191,11 +191,18 @@ def _ids(name: str, table: dict[str, Any], entry: dict[str, Any]) -> Iterator[st
             yield f"id: {name}.{part}: a {head} id"
         elif head == "content" and entry.get("home") not in REBUILT:
             yield f"id: {name}.{part}: a content address keys a record that is not recomputed"
-        elif head not in OWN_ID | {"standard", "content"} or (
-            head in {"standard", "content"} and not reason
+        elif head not in OWN_ID | {"value", "external", "content"} or (
+            head in {"value", "external", "content"} and not reason
         ):
             yield f"id: {name}.{part}: '{kind}' is not a source with its reason"
-        elif head in {"uuid7", "seq", "standard"} and DIGEST_NAME.search(part):
+        elif head == "external":
+            proof = entry.get("permanence", {}).get(part)
+            if not isinstance(proof, dict) or any(
+                not isinstance(proof.get(field), str) or not proof[field].strip()
+                for field in ("reference", "guarantee")
+            ):
+                yield f"id: {name}.{part}: an outside code has no proof that it never changes"
+        elif head in {"uuid7", "seq", "value"} and DIGEST_NAME.search(part):
             yield f"id: {name}.{part}: a digest-named part declared as {head}"
 
 
@@ -415,6 +422,12 @@ def test_the_schema_meets_its_registry_with_only_its_known_breaks() -> None:
     a known break whose rule now holds is named, so its handle leaves with the change mending it."""
     tables, registry = map(json.loads, _real())
     found, expected = problems(tables, registry), known(registry)
+    action = registry["tables"]["catalog.world.corporate_action"]["id"]["action_id"]
+    assert action.partition(":")[0] == "external"
+    assert (
+        "id: catalog.world.corporate_action.action_id: an outside code has no proof"
+        " that it never changes"
+    ) in expected
     assert {name.split(".")[0] for name in tables} == set(FILES)
     assert sorted(found - expected) == [], "new breaks of the data model's rules"
     assert sorted(expected - found) == [], "known breaks that now hold: remove their handles"
@@ -511,8 +524,19 @@ PLANTED: dict[str, tuple[DdlPlant, list[RegistryPlant], str]] = {
         None, [_set(("tables", "log.recipe_upstream", "id", "recipe_key"), "uuid7")],
         "id: log.recipe_upstream.recipe_key: a digest-named part declared as uuid7"),
     "id without its reason": (
-        None, [_set(("tables", "log.task_step", "id", "step"), "standard")],
-        "id: log.task_step.step: 'standard' is not a source with its reason"),
+        None, [_set(("tables", "log.task_step", "id", "step"), "value")],
+        "id: log.task_step.step: 'value' is not a source with its reason"),
+    "standard reason is not permanence proof": (
+        None, [_set((*BOOK, "id", "book_id"), "standard: an ISO 10383 outside code")],
+        "id: log.book.book_id: 'standard: an ISO 10383 outside code'"
+        " is not a source with its reason"),
+    "outside code without proof": (
+        None, [_set((*BOOK, "id", "book_id"), "external: an outside standard's code")],
+        "id: log.book.book_id: an outside code has no proof that it never changes"),
+    "outside code with a reason only": (
+        None, [_set((*BOOK, "id", "book_id"), "external: an outside standard's code"),
+               _set((*BOOK, "permanence"), {"book_id": "a standard was chosen"})],
+        "id: log.book.book_id: an outside code has no proof that it never changes"),
     "undeclared link": (
         None, [_set((*BOOK, "up"), None)],
         "up: log.book.workspace_id: a link the registry does not declare"),
@@ -605,3 +629,11 @@ def test_each_rule_broken_on_purpose_is_named(case: str) -> None:
         in_ddl(texts)
         tables = ddl(texts)
     assert problems(tables, registry) - before == {expected}
+    if case.startswith("outside code "):
+        registry["tables"]["log.book"]["permanence"] = {
+            "book_id": {
+                "reference": "fixture://permanent-code/v1#identity",
+                "guarantee": "Codes never change, retire or become reassigned.",
+            }
+        }
+        assert problems(tables, registry) - before == set()

@@ -682,6 +682,25 @@ class _ReadRedirects(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_ReadRedirects)
 
 
+def admit_market_fixture(workspace: Path, workspace_id: str) -> None:
+    """Give a freshly seeded workspace its market admission before testing the ordinary Host."""
+    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.foundation.market_data_ops.storage import world
+    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+    from alphalattice.kernel.data_layer import history
+
+    lease = WorkspaceWriterLease.acquire(workspace)
+    try:
+        history.open_history(workspace_id, workspace.name, workspace)
+        try:
+            repository = MarketDataRepository(workspace, universe_reader="workspace")
+            world.admit(repository.path, workspace_id)
+        finally:
+            history.close_history()
+    finally:
+        lease.close()
+
+
 def _request(
     session: LocalPortfolioWebSession,
     path: str,
