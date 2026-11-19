@@ -1083,6 +1083,9 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     )
     assert outcome.status is FeatureBuildStatus.COMPLETED
     assert partial["safe_summary"]["membership"]["as_of_member_count"] == 60
+    # A bar missing at the end of a listing's span is not a gap inside it: the Panel records no
+    # market observation, and its identity is what it was before the record existed.
+    assert "market_observation" not in partial["safe_summary"]
     table = pq.read_table(
         workspace.resolver.resolve_feature_panel_chunk_ref(
             uri=partial["chunks"][-1]["uri"],

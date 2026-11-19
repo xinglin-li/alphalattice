@@ -99,13 +99,11 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
         actions_by_listing=lambda ids: dict.fromkeys(ids, ()),
     )
     resolver = ArtifactResolver(tmp_path / "artifacts")
+    summary: dict[str, object] = {"lineage": {"manifest_revision": digest}}
     monkeypatch.setattr(
         resolver,
         "load_feature_panel_manifest",
-        lambda _: {
-            "snapshot_hash": digest,
-            "safe_summary": {"lineage": {"manifest_revision": digest}},
-        },
+        lambda _: {"snapshot_hash": digest, "safe_summary": summary},
     )
     monkeypatch.setattr(FeaturePanelReader, "listing_ids", lambda *a: ("A",))
     publisher = CausalRiskReturnSurfacePublisher(
@@ -170,6 +168,49 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
         raising=False,
     )
     # A missing base-feature row is not proof that the listing did not trade.
+    with pytest.raises(RiskReturnSurfaceError, match="return_source_session_missing"):
+        publisher.publish(
+            panel_manifest_ref="fixture",
+            market_profile_id="fixture",
+            required_sessions=scope,
+            required_listing_ids=("A",),
+        )
+
+    def recorded(sessions, watermark=digest, version="panel-market-observation/v1"):
+        summary["market_observation"] = {
+            "version": version,
+            "through": axis[-1].isoformat(),
+            "source_watermark_hash": watermark,
+            "absent_sessions": {"A": [day.isoformat() for day in sessions]},
+        }
+
+    # The Panel's record of the session without a bar, while the source holds
+    # what the Panel read, omits the two pairs across it and names them.
+    recorded((scope[10],))
+    halted, _ = publisher.publish(
+        panel_manifest_ref="fixture",
+        market_profile_id="fixture",
+        required_sessions=scope,
+        required_listing_ids=("A",),
+    )
+    assert halted.formation_count == 316
+    assert halted.omissions is not None and [
+        (item.listing_id, item.count, item.pairs) for item in halted.omissions
+    ] == [("A", 2, ((scope[9], scope[10]), (scope[10], scope[11])))]
+    for unverified in (
+        {"watermark": "2" * 64},  # the source moved since the Panel read it
+        {"version": "panel-market-observation/v0"},
+    ):
+        recorded((scope[10],), **unverified)
+        with pytest.raises(RiskReturnSurfaceError, match="return_market_observation_unverified"):
+            publisher.publish(
+                panel_manifest_ref="fixture",
+                market_profile_id="fixture",
+                required_sessions=scope,
+                required_listing_ids=("A",),
+            )
+    # A bar the record does not name as absent stays refused.
+    recorded((scope[11],))
     with pytest.raises(RiskReturnSurfaceError, match="return_source_session_missing"):
         publisher.publish(
             panel_manifest_ref="fixture",

@@ -1,0 +1,62 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "c4efe756f503c10289d664e163a50be1a2b43616be5a27367c132339b51688ef",
+   "successor": "a29c9cf4de8ec5413e459203f7d1739178423a8939bb0863f031a2d603746b15",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "66d0b0b09f9fad33a94b961c9d999840294e7023360ad3dd02a74a4247c939d5",
+   "successor": "37abf5b503ad030545c1c68b3b7040b8f31f2ea4e3e4da653f3c77d9efad6dce",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ab4d41a48dc2db6e22da66d42c9ec38218a4423f3d9c413d8f26c1a79aeaa786",
+   "successor": "65797ee9ace44c1808f919dfc8a4742f19250733c04edd93fab1590b1f653b77",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "0e2bbb0fae439e098b7f1801ccac715944d7a51dfec155901521d34d6512b441",
+   "successor": "d0bf2fded2e70a44bd4f752427c9b9bcd8f6f19cb43c1b7be1d8e982b7bf9056",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b5ba9a4bdb615069935d0e679c8868a7e53aa0461353052447cb30fda204aa23",
+   "successor": "212120792640d4661c47f32f28c9eed3102541db11d0096bbd8c771892888cf1",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "386df15a72d7f476e4938fc73ffb26993df005f8fa081354b9c3420fdc1792cc",
+   "successor": "82094e7e82b418acdb98ed6b88ab55e9a6a321f698bd89a22aaa6ead6e05c84b",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "05e91d5c5b40a6c92ce1c1d5a4a85c1d3aac8ab0950c8149edb88499885af65c",
+   "successor": "231177e890b90dd828bd95183b580ada0ed6d0a3043b7da73ffb0e7a89ffccc8",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "7348158c30af6a6b605c89c20d4391915edc41dd38016c5b193831426bf29c87",
+   "successor": "0d625280981a1a23a69ea661ca044c93b6d619b736ceae63ad5edaf0faf64026",
+   "change": "Risk research continues across a listing's trading halts",
+   "reason": "re-signed at the merge's composition: the same change, a Panel with no session gap writes no observation record and keeps its identity, a Risk surface with no gap byte-identical; the roles' predecessors moved because cards landed first on develop"
+  }
+ ]
+}

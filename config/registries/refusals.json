@@ -8364,6 +8364,10 @@
 "owner": "feature_panel",
 "category": "FAILED_PRECONDITION"
 },
+"feature_panel.market_observation_invalid": {
+"owner": "feature_panel",
+"category": "FAILED_PRECONDITION"
+},
 "feature_panel.source_exclusion_outside_axis": {
 "owner": "feature_panel",
 "category": "FAILED_PRECONDITION"
@@ -16788,6 +16792,10 @@
 "category": "FAILED_PRECONDITION"
 },
 "risk_research.return_session_axis_invalid": {
+"owner": "risk_research",
+"category": "FAILED_PRECONDITION"
+},
+"risk_research.return_market_observation_unverified": {
 "owner": "risk_research",
 "category": "FAILED_PRECONDITION"
 },

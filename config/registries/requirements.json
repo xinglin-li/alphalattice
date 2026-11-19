@@ -1263,6 +1263,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.panel_records_sessions_without_a_bar": {
+      "description": "A Panel records each listing's sessions without a bar inside its own span, reads its record back only as written, and records nothing when every span is complete.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.sector_map_entries_take_world_names_or_are_refused": {
       "description": "A sector map's entries take world's Sector names with their provenance kept, and a listing world does not classify is refused by name.",
       "owner": "alphalattice.foundation.feature_engine",

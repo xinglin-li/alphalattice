@@ -30,6 +30,9 @@ from alphalattice.foundation.feature_engine.panels.artifacts import (
 from alphalattice.foundation.feature_engine.panels.history import (
     derive_feature_panel_history_eligibility,
 )
+from alphalattice.foundation.feature_engine.panels.market_observation import (
+    read_market_observation,
+)
 from alphalattice.foundation.feature_engine.panels.recovery_binding import (
     PanelRecoveryBindingPublisher,
 )
@@ -53,6 +56,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     PanelStateRepository,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.quant.sector_history import SectorReclassification
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
 from alphalattice.kernel.shared_kernel.spans import span
@@ -507,6 +511,18 @@ class FeaturePanelSnapshotPublisher:
                     1 for item in chunks if item.origin_binding_hash in {None, own_binding}
                 ),
             }
+        # What the market held for the Panel's listings over its sessions: the
+        # evidence Risk needs to omit the pairs across a missing bar rather than
+        # refuse them. Absent when no listing misses a session of its span, so a
+        # Panel without a gap keeps its identity.
+        observation = read_market_observation(
+            MarketDataRepository(self.panel_state.database),
+            manifest_revision=str(active["manifest_revision"]),
+            listing_ids=listing_ids,
+            sessions=tuple(sorted({cast(date, row["session_date"]) for row in availability})),
+        )
+        if observation is not None:
+            safe_summary["market_observation"] = observation.to_payload()
         manifest_payload = {
             "kind": "FeaturePanelSnapshotManifest",
             "panel_binding_hash": str(active["panel_binding_hash"]),

@@ -21,6 +21,9 @@ from numpy.typing import NDArray
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
+from alphalattice.foundation.feature_engine.panels.market_observation import (
+    panel_market_observation,
+)
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.panels.semantic_index import (
     FeaturePanelSemanticIndexService,
@@ -560,6 +563,7 @@ class CausalRiskReturnSurfacePublisher:
         if manifest.profile.market_profile_id != market_profile_id:
             raise RiskReturnSurfaceError("risk_research.return_universe_unavailable")
         listing_ids = FeaturePanelReader(self.resolver).listing_ids(panel_manifest_ref)
+        absent_sessions = self._observed_absences(manifest, panel, listing_ids)
         if required_listing_ids is not None:
             requested_listings = set(required_listing_ids)
             if (
@@ -598,7 +602,14 @@ class CausalRiskReturnSurfacePublisher:
         sources = listing_sources(self.store, listings, sessions)
         omissions: list[RiskReturnOmissions] = []
         for index_value, listing in enumerate(listings, start=1):
-            listing_rows = listing_returns(manifest, listing, sessions, sources)
+            absent = set(absent_sessions.get(listing.listing_id, ()))
+            listing_rows = listing_returns(
+                manifest,
+                listing,
+                sessions,
+                sources,
+                tuple(day for day in sessions if day not in absent) if absent else None,
+            )
             absent_formations = {row["formation_session"] for row in listing_rows}
             pairs = tuple(
                 (start, end) for start, end in pairwise(sessions) if end not in absent_formations
@@ -647,6 +658,31 @@ class CausalRiskReturnSurfacePublisher:
         if self.artifacts.load_manifest(surface.surface_hash) != surface:
             raise RiskReturnSurfaceError("risk_research.return_surface_readback_failed")
         return surface, descriptor
+
+    def _observed_absences(
+        self, manifest: UniverseManifest, panel: Mapping[str, object], listing_ids: tuple[str, ...]
+    ) -> Mapping[str, tuple[date, ...]]:
+        """The sessions the Panel recorded its listings had no bar for, while the source holds them.
+
+        The record is the Panel's own, bound by its snapshot hash; it is evidence only while the
+        market source still holds what the Panel read, so its watermark is recomputed over the
+        Panel's whole listing axis through the recorded session. A Panel without a record has no
+        absence, and every missing bar stays refused.
+        """
+        try:
+            observation = panel_market_observation(panel)
+        except ValueError as error:
+            raise RiskReturnSurfaceError(
+                "risk_research.return_market_observation_unverified"
+            ) from error
+        if observation is None:
+            return {}
+        current = self.store.execution_source_watermark(
+            manifest, through=observation.through, listing_ids=listing_ids
+        )
+        if current["watermark_hash"] != observation.source_watermark_hash:
+            raise RiskReturnSurfaceError("risk_research.return_market_observation_unverified")
+        return observation.absent_sessions
 
 
 class CausalRiskReturnReader:
