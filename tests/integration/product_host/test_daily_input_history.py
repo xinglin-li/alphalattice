@@ -439,12 +439,14 @@ def _legacy(store, snapshot):
 def test_three_consecutive_days_write_only_their_last_frozen_block(
     daily_workspace, monkeypatch, upgraded
 ):
+    from alphalattice.kernel.data_layer import history
+
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
-    folder = store.root / "current/frozen-observation-arrays"
+    folder = history.data_root() / "blobs"
     days = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
     written = []
     for day in days:
-        before = set(folder.glob("*.bin")) if folder.exists() else set()
+        before = set(folder.iterdir()) if folder.exists() else set()
         source = build_workspace_score_inputs(
             daily_workspace,
             formation=day,
@@ -462,7 +464,7 @@ def test_three_consecutive_days_write_only_their_last_frozen_block(
             snapshot = _legacy(store, snapshot)
             assert snapshot.array_blocks is None and "array_blocks" not in snapshot.model_dump()
             store.verify_frozen_observations(snapshot.snapshot_hash)
-        written.append(set(folder.glob("*.bin")) - before)
+        written.append(set(folder.iterdir()) - before)
         loaded = store.load_frozen_observations(snapshot.snapshot_hash)
         for name in ("open", "close", "volume", "market_context_values", "sector_trend_values"):
             assert getattr(loaded, name).tobytes() == getattr(source, name).tobytes()
