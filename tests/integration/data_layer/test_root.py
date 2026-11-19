@@ -83,7 +83,10 @@ def log(tmp_path_factory):
     _event(con, "task", ("task", "t1"), phase="started", span=SPAN)
     _event(con, "task", ("task", "t1"), phase="completed", span=SPAN)
     note = _event(con, "lesson.recorded", ("goal", "g0"), text="Check the calendar first.")
-    con.execute("INSERT INTO workspace VALUES ('w1', 'main', NULL, 'active', 1, NULL)")
+    con.execute(
+        "INSERT INTO workspace (workspace_id, name, status, created_seq, status_seq)"
+        " VALUES ('w1', 'main', 'active', 1, 1)"
+    )
     made = _event(con, "selection.made", ("selection", "s1"), attrs={"cutoff_us": 1})
     selection = ("s1", "w1", T0, None, "2015-01-01", "2024-12-31", "{}", made)
     con.execute(f"INSERT INTO selection VALUES ({', '.join('?' * 8)})", selection)
@@ -93,7 +96,7 @@ def log(tmp_path_factory):
     registered = _event(con, "trial.registered", ("trial", "t1"))
     trial = {"trial_id": "t1", "selection_id": "s1", "recipe_key": "k1"}
     trial |= {"seeds": "[7]", "product_version": "0.2.8", "state": "registered"}
-    con.execute(*_insert("trial", **trial, registered_seq=registered))
+    con.execute(*_insert("trial", **trial, registered_seq=registered, state_seq=registered))
     produced = _event(con, "artifact.produced", ("artifact", "a1"), attrs={"type": "backtest"})
     artifact = {
         "artifact_id": "a1",
@@ -107,7 +110,11 @@ def log(tmp_path_factory):
     result = _event(con, "result.recorded", ("artifact", "a1"))
     con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '{}', 0.9, ?)", (metric, result))
     active = _event(con, "book.activated", ("book", "b1"))
-    con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
+    con.execute(
+        "INSERT INTO book (book_id, workspace_id, mode, state, activated_seq, state_seq)"
+        " VALUES ('b1', 'w1', 'paper', 'active', ?, ?)",
+        (active, active),
+    )
     fill = _event(con, "ledger.posted", ("book", "b1"))
     con.executemany(
         "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, 'listing', ?, ?)",
@@ -123,8 +130,8 @@ SHARPE |= {"spec": '{"unit": "ratio", "params": {"periods": 365}}', "text": "Ann
 SHARPE |= {"owner": "kernel", "registered_seq": 1, "status_seq": 1}
 LATE_TRIAL = (
     "INSERT INTO trial (trial_id, selection_id, recipe_key, product_version, state,"
-    " registered_seq, ended_seq) VALUES ('bad', 's1', 'k1', '0.2.8', 'completed',"
-    " :registered, :registered - 1)"
+    " registered_seq, state_seq, ended_seq) VALUES ('bad', 's1', 'k1', '0.2.8', 'completed',"
+    " :registered, :registered - 1, :registered - 1)"
 )
 REFUSALS = {
     "an event is never edited": ("UPDATE event SET attrs = '{}' WHERE seq = :first", "append-only"),
@@ -256,9 +263,16 @@ def settled(tmp_path_factory):
         " WHERE definition_id = ? AND version = 1",
         (metric,),
     )
-    con.execute("INSERT INTO workspace VALUES ('w1', 'main', NULL, 'active', 1, NULL)")
+    con.execute(
+        "INSERT INTO workspace (workspace_id, name, status, created_seq, status_seq)"
+        " VALUES ('w1', 'main', 'active', 1, 1)"
+    )
     active = _event(con, "book.activated", ("book", "b1"))
-    con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
+    con.execute(
+        "INSERT INTO book (book_id, workspace_id, mode, state, activated_seq, state_seq)"
+        " VALUES ('b1', 'w1', 'paper', 'active', ?, ?)",
+        (active, active),
+    )
     fill = _event(con, "ledger.posted", ("book", "b1"))
     legs = [("book", "listing", "AAPL", 10), ("market", "listing", "AAPL", -10)]
     legs += [("book", "cash", "USD", -1500), ("market", "cash", "USD", 1500)]

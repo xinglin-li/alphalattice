@@ -4,7 +4,8 @@ A projection reads the event's own fields, its attributes and, for a definition,
 clock, a file or another store. `log.replay` also supplies the retained IDs for historical
 registrations. `differences` names any projected table that
 does not. The meaning of each type is the 0.2.8 reference's (tools/records/2026-11/2026-11-14/
-schemas/project.py); a refusal here rolls the event back with everything else of its unit.
+schemas/project.py). An undeclared status move retains the event and records its refusal. Other
+projection refusals roll the event back with its unit.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ PROJECTED: Final = (
     "workspace",
     "goal",
     "task",
+    "status_refusal",
     "task_step",
     "wait",
     "recipe",
@@ -81,11 +83,10 @@ TASK_STATE: Final = {
     "QUEUED": "requested",
     "RUNNING": "running",
     "SUCCEEDED": "completed",
-    "BLOCKED": "failed",
     "CANCELLED": "cancelled",
 }
-"""A Task Control lifecycle's state in `task`; every other lifecycle waits (a review, a deferral,
-a cancel asked for, a recovery owed)."""
+"""A Task Control lifecycle's state in `task`. Review, deferral, requested cancellation, recovery,
+and a blocked task that an explicit recovery may reopen all wait."""
 REFS: Final = {
     "feature_set": (("method", "method", "method_version"),),
     "artifact_type": (("measures", "metric", None),),
@@ -128,7 +129,15 @@ def project(
                 _insert_lineage(con, family, name, legacy_identity(family, name), event["seq"])
     handler = HANDLERS.get(event["type"])
     if handler is not None:
-        handler(con, event, a, text)
+        try:
+            handler(con, event, a, text)
+        except sqlite3.IntegrityError as error:
+            prefix = "status move refused: "
+            if error.sqlite_errorcode != sqlite3.SQLITE_CONSTRAINT_TRIGGER or not str(
+                error
+            ).startswith(prefix):
+                raise
+            _status_refusal(con, event, str(error).removeprefix(prefix))
     for role in ("used", "produced"):  # any step names what it used and produced
         for artifact in a.get(role, ()):
             con.execute(
@@ -141,6 +150,10 @@ def project(
             _tag(con, event, named, value)
     if event["phase"] in ENDED:  # the day's totals, in the step's own transaction
         _daily(con, event, a)
+
+
+def _status_refusal(con: Con, e: Row, name: str) -> None:
+    con.execute("INSERT INTO status_refusal VALUES (?, ?)", (e["seq"], name))
 
 
 def recipe_key(method_id: str, version: int, params: Any, upstream: Iterable[str] = ()) -> str:
@@ -407,8 +420,8 @@ def _definition_status(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     found = _owned(con, e, a["family"], a["name"], a["version"])
     con.execute(
         "UPDATE definition_version SET status = ?, status_seq = ?, status_reason = ?"
-        " WHERE definition_id = ? AND version = ?",
-        (a["status"], e["seq"], a.get("reason"), found, a["version"]),
+        " WHERE definition_id = ? AND version = ? AND status <> ?",
+        (a["status"], e["seq"], a.get("reason"), found, a["version"], a["status"]),
     )
 
 
@@ -431,8 +444,10 @@ def _definition_renamed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 def _workspace(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     _folder_moves(con, e["subject_id"], a.get("folder"))
     con.execute(
-        "INSERT INTO workspace VALUES (?, ?, ?, 'active', ?, NULL)",
-        (e["subject_id"], a["name"], a.get("folder"), e["seq"]),
+        "INSERT INTO workspace"
+        " (workspace_id, name, folder, status, created_seq, status_seq)"
+        " VALUES (?, ?, ?, 'active', ?, ?)",
+        (e["subject_id"], a["name"], a.get("folder"), e["seq"], e["seq"]),
     )
 
 
@@ -458,10 +473,11 @@ def _folder_moves(con: Con, workspace: str, folder: str | None) -> None:
 def _workspace_status(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     """A deleted workspace holds nothing: its live references go, and what no other root holds is
     collected by the age rule (data_layer.governance)."""
-    con.execute(
-        "UPDATE workspace SET status = ? WHERE workspace_id = ?", (a["status"], e["subject_id"])
+    moved = con.execute(
+        "UPDATE workspace SET status = ?, status_seq = ? WHERE workspace_id = ? AND status <> ?",
+        (a["status"], e["seq"], e["subject_id"], a["status"]),
     )
-    if a["status"] == "deleted":
+    if moved.rowcount and a["status"] == "deleted":
         con.execute(
             "DELETE FROM live_ref WHERE root_kind = 'workspace' AND root_id = ?", (e["subject_id"],)
         )
@@ -486,8 +502,8 @@ def _goal(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("goal.closed")
 def _goal_closed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "UPDATE goal SET state = ?, closed_seq = ? WHERE goal_id = ?",
-        (a["state"], e["seq"], e["subject_id"]),
+        "UPDATE goal SET state = ?, closed_seq = ? WHERE goal_id = ? AND state <> ?",
+        (a["state"], e["seq"], e["subject_id"], a["state"]),
     )
 
 
@@ -506,8 +522,8 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(  # its record follows in the same unit (`task.saved`)
         "INSERT INTO task (task_id, parent_task_id, goal_id, workspace_id, type_id, state,"
         " trace_id, product_version, requested_seq, input_hash, plan_hash, lifecycle,"
-        " admitted_us, updated_us, admission_sequence, submitted_by_json)"
-        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " admitted_us, updated_us, admission_sequence, submitted_by_json, state_seq, lifecycle_seq)"
+        " VALUES (?, ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             task,
             *home,
@@ -522,6 +538,8 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             registry_us(a["admitted_at"]),
             a.get("admission_sequence"),
             _json(a.get("submitted_by")),
+            e["seq"],
+            e["seq"],
         ),
     )
 
@@ -551,20 +569,54 @@ def _goal_held(con: Con, goal: str, workspace: str) -> bool:
 @on("task.saved")
 def _task_saved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     _one(
-        con.execute(
-            "UPDATE task SET lifecycle = ?, record_json = ?, updated_us = ? WHERE task_id = ?",
-            (a["lifecycle"], text, registry_us(a["updated_at"]), e["subject_id"]),
+        _task_status(
+            con,
+            e["subject_id"],
+            e["seq"],
+            TASK_STATE.get(a["lifecycle"], "waiting"),
+            attempt=True,
+            lifecycle=a["lifecycle"],
+            record=text,
+            updated=registry_us(a["updated_at"]),
         ),
         "task_unknown",
         "a saved record names a Task the log was never asked for",
     )
-    state = TASK_STATE.get(a["lifecycle"], "waiting")
-    con.execute(  # a Task is attempted each time it enters running; it ends at a final state
-        "UPDATE task SET attempts = attempts + (? = 'running' AND state <> 'running'),"
-        " started_seq = CASE WHEN ? = 'running' THEN coalesce(started_seq, ?) ELSE started_seq END,"
-        " ended_seq = CASE WHEN ? IN ('completed', 'failed', 'cancelled') THEN ? END, state = ?"
-        " WHERE task_id = ?",
-        (state, state, e["seq"], state, e["seq"], state, e["subject_id"]),
+
+
+def _task_status(
+    con: Con,
+    task: str,
+    seq: int,
+    state: str,
+    *,
+    attempt: bool = False,
+    lifecycle: str | None = None,
+    record: str | None = None,
+    updated: int | None = None,
+) -> sqlite3.Cursor:
+    """Both status guards judge the one update before its attempt and saved record can move."""
+    return con.execute(
+        "UPDATE task SET state = :state,"
+        " state_seq = CASE WHEN state <> :state THEN :seq ELSE state_seq END,"
+        " attempts = attempts + (:attempt AND :state = 'running' AND state <> 'running'),"
+        " started_seq = CASE WHEN :state = 'running' THEN coalesce(started_seq, :seq)"
+        " ELSE started_seq END,"
+        " ended_seq = CASE WHEN state = :state THEN ended_seq"
+        " WHEN :state IN ('completed', 'failed', 'cancelled') THEN :seq END,"
+        " lifecycle = coalesce(:lifecycle, lifecycle),"
+        " lifecycle_seq = CASE WHEN lifecycle <> :lifecycle THEN :seq ELSE lifecycle_seq END,"
+        " record_json = CASE WHEN :lifecycle IS NULL THEN record_json ELSE :record END,"
+        " updated_us = coalesce(:updated, updated_us) WHERE task_id = :task",
+        {
+            "state": state,
+            "task": task,
+            "seq": seq,
+            "attempt": attempt,
+            "lifecycle": lifecycle,
+            "record": record,
+            "updated": updated,
+        },
     )
 
 
@@ -653,17 +705,9 @@ def registry_us(value: object) -> int:
 
 @on("task")
 def _task(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    if e["phase"] == "started":
-        con.execute(
-            "UPDATE task SET state = 'running', started_seq = ?, attempts = attempts + 1"
-            " WHERE task_id = ?",
-            (e["seq"], e["subject_id"]),
-        )
-    else:
-        con.execute(
-            "UPDATE task SET state = ?, ended_seq = ? WHERE task_id = ?",
-            (e["phase"], e["seq"], e["subject_id"]),
-        )
+    phase = e["phase"]
+    state = "running" if phase == "started" else phase
+    _task_status(con, e["subject_id"], e["seq"], state, attempt=phase == "started")
 
 
 @on("step.completed")
@@ -694,25 +738,34 @@ def _wait(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     # A watchdog's lease waits for its deadline, not the Task: its work is still running.
     if a["purpose"] != "task.heartbeat":
         con.execute(
-            "UPDATE task SET state = 'waiting' WHERE task_id = ? AND state = 'running'",
-            (a["task_id"],),
+            "UPDATE task SET state = 'waiting', state_seq = ?"
+            " WHERE task_id = ? AND state = 'running'",
+            (e["seq"], a["task_id"]),
         )
 
 
 @on("wait.resolved")
 def _wait_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
-        "UPDATE wait SET resolved_seq = ?, resolved_by_seq = ? WHERE wait_id = ?",
+    resolved = con.execute(
+        "UPDATE wait SET resolved_seq = ?, resolved_by_seq = ?"
+        " WHERE wait_id = ? AND resolved_seq IS NULL",
         (e["seq"], a.get("by_seq"), e["subject_id"]),
     )
-    con.execute(  # a task resumes only when its last wait resolves
-        "UPDATE task SET state = 'running' WHERE state = 'waiting' AND task_id ="
-        " (SELECT task_id FROM wait WHERE wait_id = ? AND purpose <> 'task.heartbeat')"
+    if not resolved.rowcount:
+        return
+    task = con.execute(  # a task resumes only when its last ordinary wait resolves
+        "SELECT task.task_id, task.lifecycle FROM task JOIN wait ON wait.task_id = task.task_id"
+        " WHERE task.state = 'waiting' AND wait.wait_id = ? AND wait.purpose <> 'task.heartbeat'"
         " AND NOT EXISTS (SELECT 1 FROM wait w"
         " WHERE w.task_id = task.task_id AND w.resolved_seq IS NULL"
         " AND w.purpose <> 'task.heartbeat')",
         (e["subject_id"],),
-    )
+    ).fetchone()
+    if task is not None:
+        if task[1] in {"REVIEW_PENDING", "BLOCKED", "CANCEL_REQUESTED", "RECOVERY_REQUIRED"}:
+            _status_refusal(con, e, "task.state")
+        else:
+            _task_status(con, task[0], e["seq"], "running")
 
 
 SAME_WINDOW: Final = (
@@ -807,8 +860,9 @@ def _hypothesis(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("hypothesis.standing_changed")
 def _hypothesis_standing(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "UPDATE hypothesis SET standing = ?, standing_seq = ? WHERE hypothesis_id = ?",
-        (a["standing"], e["seq"], e["subject_id"]),
+        "UPDATE hypothesis SET standing = ?, standing_seq = ?"
+        " WHERE hypothesis_id = ? AND standing <> ?",
+        (a["standing"], e["seq"], e["subject_id"], a["standing"]),
     )
     if a.get("trial_id"):  # the transition keeps the standing it produced
         _one(
@@ -973,8 +1027,8 @@ def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         raise _refuse("trial_goal_disagrees", "a trial works for its hypothesis's goal")
     con.execute(
         "INSERT INTO trial (trial_id, task_id, hypothesis_id, selection_id,"
-        " recipe_key, seeds, product_version, model, context, state, registered_seq)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?)",
+        " recipe_key, seeds, product_version, model, context, state, registered_seq, state_seq)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?, ?)",
         (
             e["subject_id"],
             task,
@@ -986,6 +1040,7 @@ def _trial_registered(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a.get("model"),
             _json(a.get("context", {})),
             e["seq"],
+            e["seq"],
         ),
     )
 
@@ -996,7 +1051,10 @@ def _trial(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     if e["phase"] == "started":
         _one(
             con.execute(
-                "UPDATE trial SET state = 'running' WHERE trial_id = ?", (e["subject_id"],)
+                "UPDATE trial SET state = 'running',"
+                " state_seq = CASE WHEN state <> 'running' THEN ? ELSE state_seq END"
+                " WHERE trial_id = ?",
+                (e["seq"], e["subject_id"]),
             ),
             "trial_unregistered",
             unregistered,
@@ -1013,9 +1071,18 @@ def _trial(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             )
     _one(
         con.execute(
-            "UPDATE trial SET state = ?, ended_seq = ?, result_artifact = coalesce(?,"
-            " result_artifact), candidates = coalesce(?, candidates) WHERE trial_id = ?",
-            (e["phase"], e["seq"], headline, a.get("candidates"), e["subject_id"]),
+            "UPDATE trial SET state = :state,"
+            " state_seq = CASE WHEN state <> :state THEN :seq ELSE state_seq END,"
+            " ended_seq = CASE WHEN state <> :state THEN :seq ELSE ended_seq END,"
+            " result_artifact = coalesce(:headline, result_artifact),"
+            " candidates = coalesce(:candidates, candidates) WHERE trial_id = :trial",
+            {
+                "state": e["phase"],
+                "seq": e["seq"],
+                "headline": headline,
+                "candidates": a.get("candidates"),
+                "trial": e["subject_id"],
+            },
         ),
         "trial_unregistered",
         unregistered,
@@ -1081,13 +1148,14 @@ def _result(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("artifact.collected")
 def _collected(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
+    moved = con.execute(
         "UPDATE artifact SET body_state = 'collected', collected_seq = ? WHERE artifact_id = ?"
-        " AND body_state = 'present'",
+        " AND body_state <> 'collected'",
         (e["seq"], e["subject_id"]),
     )
-    con.execute("DELETE FROM artifact_body WHERE artifact_id = ?", (e["subject_id"],))
-    con.execute("DELETE FROM live_ref WHERE artifact_id = ?", (e["subject_id"],))
+    if moved.rowcount:
+        con.execute("DELETE FROM artifact_body WHERE artifact_id = ?", (e["subject_id"],))
+        con.execute("DELETE FROM live_ref WHERE artifact_id = ?", (e["subject_id"],))
 
 
 @on("prediction.registered")
@@ -1154,8 +1222,16 @@ def _kept(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 @on("book.activated")
 def _book(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     con.execute(
-        "INSERT INTO book VALUES (?, ?, ?, 'active', ?, ?, NULL)",
-        (e["subject_id"], e["workspace_id"], a["mode"], a.get("holding_artifact"), e["seq"]),
+        "INSERT INTO book (book_id, workspace_id, mode, state, holding_artifact,"
+        " activated_seq, state_seq) VALUES (?, ?, ?, 'active', ?, ?, ?)",
+        (
+            e["subject_id"],
+            e["workspace_id"],
+            a["mode"],
+            a.get("holding_artifact"),
+            e["seq"],
+            e["seq"],
+        ),
     )
     if a.get("holding_artifact"):
         con.execute(
@@ -1183,11 +1259,15 @@ def _book_rebalanced(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("book.retired")
 def _book_retired(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    con.execute(
-        "UPDATE book SET state = 'retired', retired_seq = ? WHERE book_id = ?",
-        (e["seq"], e["subject_id"]),
+    moved = con.execute(
+        "UPDATE book SET state = 'retired', retired_seq = ?, state_seq = ?"
+        " WHERE book_id = ? AND state <> 'retired'",
+        (e["seq"], e["seq"], e["subject_id"]),
     )
-    con.execute("DELETE FROM live_ref WHERE root_kind = 'book' AND root_id = ?", (e["subject_id"],))
+    if moved.rowcount:
+        con.execute(
+            "DELETE FROM live_ref WHERE root_kind = 'book' AND root_id = ?", (e["subject_id"],)
+        )
 
 
 @on("artifact.held")

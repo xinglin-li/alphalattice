@@ -359,7 +359,11 @@ def test_the_reference_history_replays_all_equal(request, tmp_path, historical_s
             identity = lineage(source, family, first)
             assert identity is not None and lineage(source, family, current) == identity
             assert lineage(target, family, current) == identity
-        empty = [t for t in PROJECTED if not source.execute(f"SELECT 1 FROM {t}").fetchone()]
+        empty = [
+            t
+            for t in PROJECTED
+            if t != "status_refusal" and not source.execute(f"SELECT 1 FROM {t}").fetchone()
+        ]
     assert empty == []  # the history reaches every projected table
 
 
@@ -475,6 +479,137 @@ def test_a_rename_moves_no_recipe_measure_cache_or_partition_key(history):
         reading.close()
 
 
+def _terminal_goal_projection_refusal(tmp_path):
+    root = tmp_path / "data"
+    create_data_root(root)
+    goal = ("goal", "g1")
+    with HostLog.open(root, now_us=T0) as log:
+        log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
+        log.record("goal.set", goal, {"title": "Read a result"}, **PERSON)
+        closed = log.record("goal.closed", goal, {"state": "done"}, **PERSON)
+        refused = log.record("goal.closed", goal, {"state": "dropped"}, **PERSON)
+        state = "SELECT state, closed_seq FROM goal WHERE goal_id = 'g1'"
+        assert tuple(log.read(state)[0]) == ("done", closed)
+        repeated = log.record("goal.closed", goal, {"state": "done"}, **PERSON)
+        assert tuple(log.read(state)[0]) == ("done", closed)
+        assert log.read("SELECT seq FROM event WHERE seq = ?", (refused,))
+        counts = log.read("SELECT seq, name FROM status_refusal ORDER BY seq")
+        assert [tuple(row) for row in counts] == [(refused, "goal.state")]
+        assert log.read("SELECT seq FROM event WHERE seq = ?", (repeated,))
+
+
+def _task_projection_refusals(tmp_path):
+    root = tmp_path / "data"
+    create_data_root(root)
+    task = ("task", "k1")
+    now = "2026-11-14 00:00:01.000000"
+    with HostLog.open(root, now_us=T0) as log:
+        log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
+        attrs = {
+            "type": "evidence.prepare",
+            "product_version": "0.2.8",
+            "input_hash": "i",
+            "plan_hash": "p",
+            "workflow_definition_hash": "f",
+            "admitted_at": now,
+        }
+        log.record("task.requested", task, attrs, text="{}", **AGENT)
+
+        def save(lifecycle):
+            return log.record(
+                "task.saved",
+                task,
+                {"lifecycle": lifecycle, "updated_at": now},
+                text=json.dumps({"lifecycle": lifecycle}),
+                **AGENT,
+            )
+
+        def started():
+            return log.record("task", task, phase="started", span=uuid.uuid4().hex[:16], **AGENT)
+
+        state = (
+            "SELECT state, state_seq, lifecycle, lifecycle_seq, attempts, started_seq, ended_seq"
+            " FROM task WHERE task_id = ?"
+        )
+        first = save("RUNNING")
+        started()
+        started()
+        assert tuple(log.read(state, (task[1],))[0]) == (
+            "running",
+            first,
+            "RUNNING",
+            first,
+            1,
+            first,
+            None,
+        )
+        wait = {
+            "task_id": task[1],
+            "kind": "event",
+            "event_type": "decision.made",
+            "purpose": "review",
+        }
+        waiting = log.record("wait.started", ("wait", "q1"), wait, **AGENT)
+        review = save("REVIEW_PENDING")
+        refused = log.record("wait.resolved", ("wait", "q1"), {}, **AGENT)
+        assert tuple(log.read(state, (task[1],))[0]) == (
+            "waiting",
+            waiting,
+            "REVIEW_PENDING",
+            review,
+            1,
+            first,
+            None,
+        )
+        assert log.read("SELECT resolved_seq FROM wait WHERE wait_id = 'q1'")[0][0] == refused
+        completed = save("SUCCEEDED")
+        save("SUCCEEDED")
+        late_start = started()
+        late_save = save("RUNNING")
+        assert tuple(log.read(state, (task[1],))[0]) == (
+            "completed",
+            completed,
+            "SUCCEEDED",
+            completed,
+            1,
+            first,
+            completed,
+        )
+        counts = log.read("SELECT seq, name FROM status_refusal ORDER BY seq")
+        assert [tuple(row) for row in counts] == [
+            (refused, "task.state"),
+            (late_start, "task.state"),
+            (late_save, "task.lifecycle"),
+        ]
+        assert [
+            log.read("SELECT count(*) FROM event WHERE seq = ?", (seq,))[0][0]
+            for seq in (refused, late_start, late_save)
+        ] == [1, 1, 1]
+        task = ("task", "k2")
+        log.record("task.requested", task, attrs, text="{}", **AGENT)
+        blocked = save("BLOCKED")
+        recovered = save("RECOVERY_REQUIRED")
+        assert tuple(log.read(state, (task[1],))[0]) == (
+            "waiting",
+            blocked,
+            "RECOVERY_REQUIRED",
+            recovered,
+            0,
+            None,
+            None,
+        )
+        started_again = save("RUNNING")
+        assert tuple(log.read(state, (task[1],))[0]) == (
+            "running",
+            started_again,
+            "RUNNING",
+            started_again,
+            1,
+            started_again,
+            None,
+        )
+
+
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
 def test_a_projection_that_reads_the_clock_fails_replay_by_name(tmp_path, monkeypatch):
     """A handler that writes the wall clock rebuilds a different goal row, and replay says so."""
@@ -493,9 +628,8 @@ def test_a_projection_that_reads_the_clock_fails_replay_by_name(tmp_path, monkey
         assert differences(source, target) == ["goal"]
 
 
-@pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
-def test_a_projection_refusal_leaves_no_event(tmp_path):
-    """Each event the table's projections refuse by its code leaves no trace."""
+def _projection_refusals_roll_back(tmp_path):
+    """An ordinary projection refusal rolls back the event and its effects."""
     copy = tmp_path / "data"
     create_data_root(copy)
     with HostLog.open(copy, now_us=T0) as log:
@@ -619,6 +753,20 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
                 log.record(type_, subject, attrs, **who)
             assert refused.value.failure.code == f"data_layer.{code}"
         assert log.read("SELECT count(*) FROM event")[0][0] == before
+
+
+@pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(_projection_refusals_roll_back, id="ordinary-refusals"),
+        pytest.param(_terminal_goal_projection_refusal, id="terminal-goal"),
+        pytest.param(_task_projection_refusals, id="task-status"),
+    ],
+)
+def test_a_projection_refusal_follows_its_log_policy(tmp_path, scenario):
+    """The Host transaction rolls ordinary failures back and counts status refusals."""
+    scenario(tmp_path)
 
 
 # Each unit of research work stores one parent; its workspace and goal are derived up it.

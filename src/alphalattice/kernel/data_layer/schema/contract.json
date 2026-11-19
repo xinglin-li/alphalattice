@@ -515,7 +515,8 @@
       "present": [
        "collected"
       ]
-     }
+     },
+     "enforced_by": "trigger artifact_body_state_moves"
     }
    },
    "versions": {
@@ -543,7 +544,8 @@
    "up": "workspace_id",
    "times": {
     "activated_seq": "log_seq",
-    "retired_seq": "log_seq"
+    "retired_seq": "log_seq",
+    "state_seq": "log_seq"
    },
    "status": {
     "state": {
@@ -558,7 +560,8 @@
       "active": [
        "retired"
       ]
-     }
+     },
+     "enforced_by": "trigger book_state_moves"
     }
    }
   },
@@ -760,7 +763,8 @@
       "deprecated": [
        "superseded"
       ]
-     }
+     },
+     "enforced_by": "trigger definition_version_status_moves"
     }
    },
    "versions": {
@@ -901,7 +905,8 @@
        "done",
        "dropped"
       ]
-     }
+     },
+     "enforced_by": "trigger goal_state_moves"
     }
    }
   },
@@ -958,7 +963,8 @@
        "refuted",
        "dropped"
       ]
-     }
+     },
+     "enforced_by": "trigger hypothesis_standing_moves"
     }
    },
    "edges": {
@@ -1125,6 +1131,21 @@
     "changed_seq": "log_seq"
    }
   },
+  "log.status_refusal": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "name"
+   ],
+   "id": {
+    "seq": "link",
+    "name": "standard: the schema's qualified status field name"
+   },
+   "up": "seq",
+   "times": {
+    "seq": "log_seq"
+   }
+  },
   "log.tag": {
    "home": "projection",
    "key": [
@@ -1171,7 +1192,9 @@
     "ended_seq": "log_seq",
     "admitted_us": "utc_us",
     "updated_us": "utc_us",
-    "reviewed_seq": "log_seq"
+    "reviewed_seq": "log_seq",
+    "state_seq": "log_seq",
+    "lifecycle_seq": "log_seq"
    },
    "status": {
     "state": {
@@ -1192,7 +1215,9 @@
       "requested": [
        "running",
        "failed",
-       "cancelled"
+       "cancelled",
+       "waiting",
+       "completed"
       ],
       "running": [
        "waiting",
@@ -1203,9 +1228,11 @@
       "waiting": [
        "running",
        "failed",
-       "cancelled"
+       "cancelled",
+       "completed"
       ]
-     }
+     },
+     "enforced_by": "trigger task_state_moves"
     },
     "lifecycle": {
      "states": [
@@ -1316,7 +1343,8 @@
    "times": {
     "registered_seq": "log_seq",
     "ended_seq": "log_seq",
-    "reviewed_seq": "log_seq"
+    "reviewed_seq": "log_seq",
+    "state_seq": "log_seq"
    },
    "status": {
     "state": {
@@ -1343,7 +1371,8 @@
        "failed",
        "cancelled"
       ]
-     }
+     },
+     "enforced_by": "trigger trial_state_moves"
     }
    },
    "versions": {
@@ -1399,7 +1428,8 @@
    },
    "times": {
     "created_seq": "log_seq",
-    "opened_seq": "log_seq"
+    "opened_seq": "log_seq",
+    "status_seq": "log_seq"
    },
    "status": {
     "status": {
@@ -1428,7 +1458,8 @@
        "archived",
        "deleted"
       ]
-     }
+     },
+     "enforced_by": "trigger workspace_status_moves"
     }
    }
   },
@@ -1459,24 +1490,5 @@
    }
   }
  },
- "known": {
-  "status-moves-unenforced": {
-   "says": "The projected statuses of workspaces, goals, tasks, trials, definition versions and books follow no enforced move table.",
-   "problems": [
-    "status: log.book.state: its moves are declared, not enforced",
-    "status: log.definition_version.status: its moves are declared, not enforced",
-    "status: log.goal.state: its moves are declared, not enforced",
-    "status: log.task.state: its moves are declared, not enforced",
-    "status: log.trial.state: its moves are declared, not enforced",
-    "status: log.workspace.status: its moves are declared, not enforced"
-   ]
-  },
-  "research-status-moves-unenforced": {
-   "says": "A hypothesis's standing and an artifact's body state follow no enforced move table.",
-   "problems": [
-    "status: log.artifact.body_state: its moves are declared, not enforced",
-    "status: log.hypothesis.standing: its moves are declared, not enforced"
-   ]
-  }
- }
+ "known": {}
 }

@@ -143,6 +143,11 @@ CREATE TABLE definition_version (
   CHECK ((version = 1) = (relation IS NULL)),
   CHECK ((relation IS 'convertible') = (conversion IS NOT NULL))
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER definition_version_status_moves BEFORE UPDATE OF status ON definition_version
+WHEN NEW.status <> OLD.status AND (OLD.status, NEW.status) NOT IN (VALUES
+  ('experimental', 'standard'), ('experimental', 'deprecated'), ('experimental', 'superseded'),
+  ('standard', 'deprecated'), ('standard', 'superseded'), ('deprecated', 'superseded'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: definition_version.status'); END;
 CREATE TRIGGER definition_frozen BEFORE UPDATE OF definition_id, version, relation, conversion, spec, text, code_ref, golden, owner, registered_seq ON definition_version
 BEGIN SELECT RAISE(ABORT, 'a definition version is never edited'); END;
 CREATE TRIGGER definition_no_delete BEFORE DELETE ON definition_version BEGIN SELECT RAISE(ABORT, 'a definition is deprecated, never deleted'); END;
@@ -198,9 +203,17 @@ SELECT definition_id AS method_id, name AS method, version, status, relation, js
        json_extract(spec, '$.threshold_ms') AS threshold_ms, json_extract(spec, '$.output') AS output, text AS description, code_ref
 FROM definition WHERE family = 'method' AND name = current_name;
 
+-- Each status move the projector refused stays attributable to its immutable event.
+CREATE TABLE status_refusal (
+  seq INTEGER NOT NULL REFERENCES event(seq),
+  name TEXT NOT NULL,
+  PRIMARY KEY (seq, name)
+) STRICT, WITHOUT ROWID;
+
 -- ===== [1] Work =====
 -- A workspace is a tag; its folder holds only workspace.json.
 CREATE TABLE workspace (
+  status_seq INTEGER NOT NULL,
   workspace_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   folder TEXT,                 -- the last folder seen; the Host's alone, never shown to an agent
@@ -208,6 +221,12 @@ CREATE TABLE workspace (
   created_seq INTEGER NOT NULL,
   opened_seq INTEGER
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER workspace_status_moves BEFORE UPDATE OF status ON workspace
+WHEN NEW.status <> OLD.status AND (OLD.status, NEW.status) NOT IN (VALUES
+  ('active', 'archived'), ('active', 'missing'), ('active', 'deleted'),
+  ('archived', 'active'), ('archived', 'missing'), ('archived', 'deleted'),
+  ('missing', 'active'), ('missing', 'archived'), ('missing', 'deleted'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: workspace.status'); END;
 
 CREATE TABLE goal (
   goal_id TEXT PRIMARY KEY,
@@ -220,12 +239,18 @@ CREATE TABLE goal (
   experience_id TEXT,  -- the experience its review wrote; NULL until one is
   CHECK ((state = 'open') = (closed_seq IS NULL))
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER goal_state_moves BEFORE UPDATE OF state ON goal
+WHEN NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN (VALUES
+  ('open', 'done'), ('open', 'dropped'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: goal.state'); END;
 
 -- One execution of a task is one trace. A task stores one parent, the nearest: its parent task, else its goal, else
 -- (a task under neither) its workspace. Each lies in the task's workspace, which task_workspace reads. Task Control's
 -- record of it (input_hash to submitted_by_json) is kept on the same row, in the registry's own model and clock (UTC
 -- ISO text); its kind is type_id's lineage, never a name; workspace_task reads it with its workspace and kind's name.
 CREATE TABLE task (
+  state_seq INTEGER NOT NULL,
+  lifecycle_seq INTEGER NOT NULL,
   task_id TEXT PRIMARY KEY,
   parent_task_id TEXT REFERENCES task(task_id),
   goal_id TEXT REFERENCES goal(goal_id),
@@ -255,6 +280,14 @@ CREATE TABLE task (
   CHECK ((state IN ('completed', 'failed', 'cancelled')) = (ended_seq IS NOT NULL)),
   CHECK (reviewed_seq IS NULL OR reviewed_seq > ended_seq)
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER task_state_moves BEFORE UPDATE OF state ON task
+WHEN NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN (VALUES
+  ('requested', 'running'), ('requested', 'failed'), ('requested', 'cancelled'),
+  ('requested', 'waiting'), ('requested', 'completed'), ('running', 'waiting'),
+  ('running', 'completed'), ('running', 'failed'), ('running', 'cancelled'),
+  ('waiting', 'running'), ('waiting', 'failed'), ('waiting', 'cancelled'),
+  ('waiting', 'completed'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: task.state'); END;
 CREATE INDEX task_open ON task(state) WHERE state IN ('requested', 'running', 'waiting');
 CREATE INDEX task_parent ON task(parent_task_id) WHERE parent_task_id IS NOT NULL;
 CREATE INDEX task_goal ON task(goal_id) WHERE goal_id IS NOT NULL;
@@ -292,7 +325,7 @@ WHEN NEW.lifecycle <> OLD.lifecycle AND (OLD.lifecycle, NEW.lifecycle) NOT IN (V
   ('RECOVERY_REQUIRED', 'RUNNING'), ('RECOVERY_REQUIRED', 'SUCCEEDED'), ('RECOVERY_REQUIRED', 'DEFERRED'),
   ('RECOVERY_REQUIRED', 'BLOCKED'), ('RECOVERY_REQUIRED', 'CANCEL_REQUESTED'), ('RECOVERY_REQUIRED', 'CANCELLED'),
   ('BLOCKED', 'CANCELLED'), ('BLOCKED', 'RECOVERY_REQUIRED'))
-BEGIN SELECT RAISE(ABORT, 'a task lifecycle moves only as Task Control declares'); END;
+BEGIN SELECT RAISE(ABORT, 'status move refused: task.lifecycle'); END;
 
 -- An admission's place is unique in its workspace.
 CREATE TRIGGER task_admission_order BEFORE INSERT ON task WHEN NEW.admission_sequence IS NOT NULL
@@ -444,6 +477,15 @@ CREATE TABLE hypothesis (  -- one parent: its goal, else (a goal the log holds i
   standing_seq INTEGER NOT NULL,
   CHECK ((goal_id IS NOT NULL) + (workspace_id IS NOT NULL) = 1)
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER hypothesis_standing_moves BEFORE UPDATE OF standing ON hypothesis
+WHEN NEW.standing <> OLD.standing AND (OLD.standing, NEW.standing) NOT IN (VALUES
+  ('open', 'supported'), ('open', 'refuted'), ('open', 'inconclusive'),
+  ('open', 'dropped'), ('supported', 'open'), ('supported', 'refuted'),
+  ('supported', 'inconclusive'), ('supported', 'dropped'), ('refuted', 'open'),
+  ('refuted', 'supported'), ('refuted', 'inconclusive'), ('refuted', 'dropped'),
+  ('inconclusive', 'open'), ('inconclusive', 'supported'), ('inconclusive', 'refuted'),
+  ('inconclusive', 'dropped'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: hypothesis.standing'); END;
 CREATE VIEW hypothesis_scope AS  -- its workspace: the one it was stated in, its goal's
 SELECT h.hypothesis_id, e.workspace_id, h.goal_id FROM hypothesis h JOIN event e ON e.seq = h.stated_seq;
 
@@ -453,6 +495,7 @@ SELECT h.hypothesis_id, e.workspace_id, h.goal_id FROM hypothesis h JOIN event e
 -- goal: its selection holds its workspace, and its task and hypothesis, refused unless they lie in that workspace,
 -- reach its goal. trial_scope joins them.
 CREATE TABLE trial (
+  state_seq INTEGER NOT NULL,
   trial_id TEXT PRIMARY KEY,
   task_id TEXT REFERENCES task(task_id),
   experience_id TEXT,           -- the experience its review wrote; NULL until one is
@@ -476,6 +519,11 @@ CREATE TABLE trial (
   CHECK (ended_seq IS NULL OR ended_seq > registered_seq),
   CHECK (reviewed_seq IS NULL OR reviewed_seq > ended_seq)
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER trial_state_moves BEFORE UPDATE OF state ON trial
+WHEN NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN (VALUES
+  ('registered', 'running'), ('registered', 'failed'), ('registered', 'cancelled'),
+  ('running', 'completed'), ('running', 'failed'), ('running', 'cancelled'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: trial.state'); END;
 CREATE INDEX trial_recipe ON trial(recipe_key);
 CREATE INDEX trial_task ON trial(task_id) WHERE task_id IS NOT NULL;
 CREATE INDEX trial_hypothesis ON trial(hypothesis_id);
@@ -597,6 +645,10 @@ CREATE TABLE artifact (
   CHECK ((body_state = 'collected') = (collected_seq IS NOT NULL)),
   FOREIGN KEY (type_id, type_version) REFERENCES definition_version(definition_id, version)
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER artifact_body_state_moves BEFORE UPDATE OF body_state ON artifact
+WHEN NEW.body_state <> OLD.body_state AND (OLD.body_state, NEW.body_state) NOT IN (VALUES
+  ('present', 'collected'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: artifact.body_state'); END;
 CREATE INDEX artifact_recipe ON artifact(recipe_key);
 CREATE INDEX artifact_trial ON artifact(trial_id);
 CREATE INDEX artifact_content ON artifact(content_digest);  -- an array's profile by the digest a document cites (arrays.py)
@@ -683,6 +735,7 @@ CREATE TABLE daily_span (
 
 -- ===== [1] Deployed strategies: an exact ledger =====
 CREATE TABLE book (
+  state_seq INTEGER NOT NULL,
   book_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspace(workspace_id),
   mode TEXT NOT NULL CHECK (mode IN ('paper', 'live')),
@@ -691,6 +744,10 @@ CREATE TABLE book (
   activated_seq INTEGER NOT NULL,
   retired_seq INTEGER
 ) STRICT, WITHOUT ROWID;
+CREATE TRIGGER book_state_moves BEFORE UPDATE OF state ON book
+WHEN NEW.state <> OLD.state AND (OLD.state, NEW.state) NOT IN (VALUES
+  ('active', 'retired'))
+BEGIN SELECT RAISE(ABORT, 'status move refused: book.state'); END;
 
 -- Double entry: the lines of one event sum to zero for each asset. Quantities are integers in nano-units (1e-9 of a
 -- share or a currency unit), so sums are exact. A fill moves the asset from `market` to `book` and cash the other way.

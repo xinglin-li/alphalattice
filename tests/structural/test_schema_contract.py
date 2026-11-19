@@ -491,12 +491,7 @@ def _set(path: tuple[str, ...], value: Any) -> Callable[[dict[str, Any]], None]:
 
 BOOK = ("tables", "log.book")
 NEW_TABLE = "\nCREATE TABLE planted (planted_id TEXT PRIMARY KEY) STRICT, WITHOUT ROWID;\n"
-# The plants' book.state is guarded by a real trigger, so a status plant breaks one thing.
-GUARD = """
-CREATE TRIGGER book_state_moves BEFORE UPDATE OF state ON book
-WHEN OLD.state = 'retired' AND NEW.state <> OLD.state
-BEGIN SELECT RAISE(ABORT, 'a retired book never moves'); END;
-"""
+BOOK_MOVES = "(OLD.state, NEW.state) NOT IN (VALUES\n  ('active', 'retired'))"
 # case: (DDL plant, registry plants, the one problem it adds)
 DdlPlant = Callable[[dict[str, str]], None] | None
 RegistryPlant = Callable[[dict[str, Any]], None]
@@ -552,8 +547,7 @@ PLANTED: dict[str, tuple[DdlPlant, list[RegistryPlant], str]] = {
         "status: log.book.state: the DDL allows ['active', 'paused', 'retired'], the registry"
         " ['active', 'retired']"),
     "terminal state moves": (  # its guard refuses nothing, as its declared moves now allow
-        _replace("WHEN OLD.state = 'retired' AND NEW.state <> OLD.state",
-                 "WHEN OLD.state <> OLD.state AND NEW.state <> NEW.state"),
+        _replace(BOOK_MOVES, "0"),
         [_set((*BOOK, "status", "state", "moves", "retired"), ["active"])],
         "status: log.book.state: a terminal state moves"),
     "unenforced status": (
@@ -564,7 +558,7 @@ PLANTED: dict[str, tuple[DdlPlant, list[RegistryPlant], str]] = {
         "status: log.book.state: enforced by 'the plants' own enforcement', which refuses other"
         " moves"),
     "status guard inverted": (
-        _replace("WHEN OLD.state = 'retired'", "WHEN OLD.state != 'retired'"), [],
+        _replace(BOOK_MOVES, BOOK_MOVES.replace("NOT IN", "IN")), [],
         "status: log.book.state: enforced by 'trigger book_state_moves', which refuses other"
         " moves"),
     "status guard on another table": (
@@ -597,26 +591,17 @@ PLANTED: dict[str, tuple[DdlPlant, list[RegistryPlant], str]] = {
 }  # fmt: skip
 
 
-@cache
-def _guarded() -> str:
-    texts = _texts()
-    texts["log"] += GUARD
-    return json.dumps(ddl(texts))
-
-
 @pytest.mark.proves("data_layer.the_schema_meets_its_contract")
 @pytest.mark.parametrize("case", list(PLANTED), ids=lambda case: case.replace(" ", "-"))
 def test_each_rule_broken_on_purpose_is_named(case: str) -> None:
     """A planted break of one rule is reported by that rule, naming its table and column."""
-    tables, registry = json.loads(_guarded()), json.loads(_real()[1])
-    registry["tables"]["log.book"]["status"]["state"]["enforced_by"] = "trigger book_state_moves"
+    tables, registry = map(json.loads, _real())
     before = problems(tables, registry)
     in_ddl, in_registry, expected = PLANTED[case]
     for plant in in_registry:
         plant(registry)
     if in_ddl is not None:
         texts = _texts()
-        texts["log"] += GUARD
         in_ddl(texts)
         tables = ddl(texts)
     assert problems(tables, registry) - before == {expected}
