@@ -39,7 +39,6 @@ from alphalattice.control.workspace_runtime.database import (
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.history import catalog_session as session
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import sql_path
 
 from . import world
@@ -51,8 +50,6 @@ CHOICES: Final = ("world", "workspace")
 LATEST: Final = 253_402_300_799_999_999
 """A read's own moment as a cutoff, the end of year 9999: all that is known when it runs, since
 no knowledge time is later than the read."""
-_ALIAS: Final = definition_id("provider", LISTING_ALIAS)
-_ALIASES: Final = f"('{_ALIAS}', '{definition_id('provider', DISPLAY_ALIAS)}')"
 WORKSPACE: Final = {
     "bars": "raw_daily_bar_current",
     "adjusted": "provider_adjusted_close_current",
@@ -337,6 +334,12 @@ def workspace_id(database: Path) -> str | None:
 
 _LOG_TABLES: Final = (
     (
+        "market_aliases",
+        f"SELECT name, definition_id FROM definition_name WHERE family = 'provider'"
+        f" AND name IN ('{LISTING_ALIAS}', '{DISPLAY_ALIAS}')",
+        pa.schema([("name", pa.string()), ("definition_id", pa.string())]),
+    ),
+    (
         "definition_lineage",
         "SELECT definition_id, name FROM definition_lineage",
         pa.schema([("definition_id", pa.string()), ("name", pa.string())]),
@@ -441,7 +444,8 @@ def _named(row: str, cutoff_us: int, held_us: int | None, named: tuple[str, str]
     if named is None:
         return (
             f" JOIN (SELECT listing_id AS world, symbol AS listing_id FROM"
-            f" provider_symbol_asof({cutoff_us}) WHERE provider_id = '{_ALIAS}') alias"
+            f" provider_symbol_asof({cutoff_us}) WHERE provider_id = "
+            f"(SELECT definition_id FROM market_aliases WHERE name = '{LISTING_ALIAS}')) alias"
             f" ON alias.world = {row}.listing_id{provider}{where}"
         )
     ids, within = named
@@ -566,5 +570,5 @@ def mappings(
         "(SELECT alias.listing_id, named.name AS provider, m.symbol AS provider_symbol,"
         " m.valid_from AS effective_from, m.valid_to AS effective_to, m.lifecycle_state"
         f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us, held_us, named)}"
-        f" AND m.provider_id NOT IN {_ALIASES})"
+        " AND m.provider_id NOT IN (SELECT definition_id FROM market_aliases))"
     )

@@ -21,7 +21,6 @@ from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 
 from ..sources.contracts import (
@@ -80,7 +79,7 @@ def body(port: Any, reference: AcquiredEvidenceDocumentReference, as_of: datetim
             " ORDER BY known DESC, known_asof DESC",
             [
                 as_of,
-                definition_id("provider", reference.source_name),
+                port.log.lineage("provider", reference.source_name),
                 reference.content_bytes,
                 source_ref(reference),
                 reference.revision,  # admitted from a reference without its document's name

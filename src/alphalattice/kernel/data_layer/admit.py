@@ -48,9 +48,9 @@ def admit(
     *,
     live: bool = True,
     body: bytes | None = None,
-) -> None:
-    """Refuse `row` by name unless its attributes, text, numbers and body may be kept forever."""
-    attrs = json.loads(row["attrs"])
+) -> dict[str, Any]:
+    """Admit one event and return its parsed attributes."""
+    attrs: dict[str, Any] = json.loads(row["attrs"])
     missing = [name for name in spec.get("required", ()) if name not in attrs]
     if missing:
         raise _refuse("event_attrs_missing", f"{row['type']} needs {', '.join(missing)}")
@@ -71,6 +71,8 @@ def admit(
                 "definition_superseded",
                 f"{family} {name} v{version} is defective; write under its successor",
             )
+
+    return attrs
 
 
 def _number(value: Any) -> bool:

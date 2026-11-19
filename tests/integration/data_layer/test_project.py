@@ -16,14 +16,15 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, experiences
 from alphalattice.kernel.data_layer import project as projections
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION
-from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7, verify_whole
+from alphalattice.kernel.data_layer.log import HostLog, envelope, replay, uuid7, verify_whole
 from alphalattice.kernel.data_layer.project import (
     PROJECTED,
-    definition_id,
     differences,
+    lineage,
     recipe_key,
 )
 from alphalattice.kernel.data_layer.reading import reading_session
+from alphalattice.kernel.data_layer.root import seed_rows
 from alphalattice.kernel.data_layer.store import StorePort, feature_table
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
@@ -31,8 +32,13 @@ T0 = 1_794_700_000_000_000  # 2026-11-14, UTC
 AGENT = {"workspace": "w1", "actor": ("agent", "claude"), "node": "research"}
 PERSON = {"workspace": "w1", "actor": ("person", "me")}
 N = 10**9  # ledger quantities are nano-units
-MOMENTUM, OUTCOME = definition_id("method", "momentum"), definition_id("method", "realized_outcome")
-SHARPE, FACTORS = definition_id("metric", "sharpe"), definition_id("feature_set", "momentum_set")
+
+
+def _identity(log, family, name):
+    with log.reading() as con:
+        found = lineage(con, family, name)
+    assert found is not None
+    return found
 
 
 def _define(log, family, name, version=1, *, text, **more):
@@ -117,9 +123,10 @@ def _research(log):
     log.record("selection.made", ("selection", "s1"), window, **AGENT)
     _define(log, "method", "momentum", text="Past return over a lookback.", **AGENT)
     _define(log, "method", "realized_outcome", text="What a signal earned after its cutoff.")
+    momentum = _identity(log, "method", "momentum")
     keys = {}
     for lookback in (12, 6):
-        keys[lookback] = recipe_key(MOMENTUM, 1, {"lookback": lookback})
+        keys[lookback] = recipe_key(momentum, 1, {"lookback": lookback})
         attrs = {"method": "momentum", "method_version": 1, "params": {"lookback": lookback}}
         attrs["recipe_key"] = keys[lookback]
         log.record("recipe.defined", ("recipe", uuid7()), attrs, **AGENT)
@@ -149,7 +156,10 @@ def _aftermath(root, log, artifacts):
     log.record("prediction.scored", ("prediction", "p1"), score)
     log.record("trial.kept", ("trial", "t1"), **PERSON)
     horizon = recipe_key(
-        OUTCOME, 1, {"horizon": "63d"}, [recipe_key(MOMENTUM, 1, {"lookback": 12})]
+        _identity(log, "method", "realized_outcome"),
+        1,
+        {"horizon": "63d"},
+        [recipe_key(_identity(log, "method", "momentum"), 1, {"lookback": 12})],
     )
     attrs = {"method": "realized_outcome", "method_version": 1, "params": {"horizon": "63d"}}
     attrs |= {"recipe_key": horizon, "reads": [artifacts["t1"]]}  # the signal it scores
@@ -258,7 +268,7 @@ def _renames(root, log):
     so the log refuses it as a split."""
     spec = {"method": "momentum", "method_version": 1, "factors": ["mom_12_1"]}
     _define(log, "feature_set", "momentum_set", text="Momentum factors.", spec=spec, **AGENT)
-    _cached(root, log, recipe_key(definition_id("method", "momentum"), 1, {"lookback": 12}))
+    _cached(root, log, recipe_key(_identity(log, "method", "momentum"), 1, {"lookback": 12}))
     for family, name, to, who in (
         ("method", "momentum", "price_momentum", AGENT),
         ("metric", "sharpe", "sharpe_ratio", PERSON),
@@ -267,7 +277,7 @@ def _renames(root, log):
         renamed = {"family": family, "name": name, "to": to}
         log.record("definition.renamed", ("definition", f"{family}/{name}"), renamed, **who)
     again = {"method": "price_momentum", "method_version": 1, "params": {"lookback": 12}}
-    again["recipe_key"] = recipe_key(MOMENTUM, 1, {"lookback": 12})
+    again["recipe_key"] = recipe_key(_identity(log, "method", "momentum"), 1, {"lookback": 12})
     with pytest.raises(DataError) as split:
         log.record("recipe.defined", ("recipe", uuid7()), again, **AGENT)
     assert split.value.failure.code == "data_layer.recipe_split"
@@ -283,7 +293,7 @@ def _cached(root, log, key):
         con.execute(entry, (key, T0, T0))
     port = StorePort.open(root, log)
     try:
-        table = f"lake.derived.{feature_table(definition_id('feature_set', 'momentum_set'))}"
+        table = f"lake.derived.{feature_table(_identity(log, 'feature_set', 'momentum_set'))}"
         columns = "recipe_key VARCHAR, input_digest VARCHAR, session_date DATE, mom_12_1 DOUBLE"
         port.lake.execute(f"CREATE TABLE {table} ({columns})").complete()
         port.lake.execute(f"ALTER TABLE {table} SET PARTITIONED BY (year(session_date))").complete()
@@ -315,14 +325,89 @@ def _log(root):
 
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
-def test_the_reference_history_replays_all_equal(history, tmp_path):
+@pytest.mark.parametrize(
+    "historical_seed", [None, 1, 2], ids=["minted", "legacy-ledger-only", "pre-pin-minted"]
+)
+def test_the_reference_history_replays_all_equal(request, tmp_path, historical_seed):
     """Every projected table, the chain head included, is rebuilt from the events alone."""
-    root, _ = history
+    if historical_seed is not None:
+        _replay_historical_ledger(tmp_path, historical_seed)
+        return
+    root, _ = request.getfixturevalue("history")
     with closing(_log(root)) as source, closing(replay(source, tmp_path / "r.sqlite")) as target:
         assert differences(source, target) == []
         assert verify_whole(source) and verify_whole(target)
+        births = source.execute(
+            "SELECT n.family, n.name, n.definition_id, l.registered_seq FROM definition_name n"
+            " JOIN definition_lineage l USING (definition_id) WHERE n.named_seq = l.registered_seq"
+        ).fetchall()
+        for _, _, identity, _ in births:
+            assert len(identity) == 36 and uuid.UUID(identity).version == 7, identity
+        seeded = source.execute("SELECT text FROM event_text WHERE seq = 1").fetchone()
+        seed_ids = {tuple(row) for row in json.loads(seeded[0])}
+        for family, name, identity, seq in births:
+            if seq == 1:
+                assert (family, name, identity) in seed_ids
+            else:
+                attrs = source.execute("SELECT attrs FROM event WHERE seq = ?", (seq,)).fetchone()
+                assert [family, name, identity] in json.loads(attrs[0])["definition_ids"]
+        for family, first, current in (
+            ("method", "momentum", "price_momentum"),
+            ("metric", "sharpe", "sharpe_ratio"),
+            ("feature_set", "momentum_set", "momentum_factors"),
+        ):
+            identity = lineage(source, family, first)
+            assert identity is not None and lineage(source, family, current) == identity
+            assert lineage(target, family, current) == identity
         empty = [t for t in PROJECTED if not source.execute(f"SELECT 1 FROM {t}").fetchone()]
     assert empty == []  # the history reaches every projected table
+
+
+def _replay_historical_ledger(tmp_path, seed_version):
+    """Restore a pre-pin registry and its keys from the original ledger tables."""
+    count = 105 if seed_version == 1 else 106
+    seed_text = None
+    expected = "blake3:156a8bf14d8a9a1afd9ba8f0321e6b17aeae697f50e6aee6e1192e2ac03d99b6"
+    key = {"family": "method", "name": "old-method", "version": 1}
+    attrs = key.copy()
+    if seed_version == 2:
+        seed_text = json.dumps(
+            [
+                (family, name, uuid7())
+                for family, name, version, *_ in seed_rows(historical_count=count)
+                if version == 1
+            ]
+        )
+        expected = uuid7()
+        attrs["definition_ids"] = [("method", "old-method", expected)]
+    seed = envelope("registry.seeded", attrs={"count": count}, text=seed_text, version=seed_version)
+    text = json.dumps(key | {"spec": {}, "status": "standard", "text": "Synthetic method."})
+    event = envelope(
+        "definition.registered", ("definition", "method/old-method"), attrs, text=text, version=1
+    )
+    columns = ", ".join(seed)
+    marks = ", ".join("?" for _ in seed)
+    with closing(sqlite3.connect(":memory:")) as source:
+        source.executescript(
+            f"CREATE TABLE event (seq INTEGER PRIMARY KEY, {columns});"
+            "CREATE TABLE event_text (seq INTEGER PRIMARY KEY, text TEXT);"
+            "CREATE TABLE artifact_body (artifact_id TEXT PRIMARY KEY, body BLOB);"
+        )
+        source.executemany(
+            f"INSERT INTO event ({columns}) VALUES ({marks})",
+            [tuple(seed.values()), tuple(event.values())],
+        )
+        if seed_text is not None:
+            source.execute("INSERT INTO event_text VALUES (1, ?)", (seed_text,))
+        source.execute("INSERT INTO event_text VALUES (2, ?)", (text,))
+        try:
+            rebuilt = replay(source, tmp_path / "replayed.sqlite")
+        except sqlite3.DatabaseError as error:
+            pytest.fail(f"ledger-only replay failed: {error}")
+        with closing(rebuilt):
+            assert lineage(rebuilt, "method", "old-method") == expected
+            assert lineage(rebuilt, "event_type", "artifact.pinned") is None
+            assert verify_whole(rebuilt)
 
 
 @pytest.mark.proves("data_layer.replay_rebuilds_every_projection")
@@ -332,7 +417,7 @@ def test_the_projections_hold_the_research_memory(history):
     with closing(_log(root)) as con:
         found = con.execute(
             "SELECT subject_id FROM tag WHERE key_id = ? AND value = 'AAPL' ORDER BY 1",
-            (definition_id("tag", "instrument"),),
+            (lineage(con, "tag", "instrument"),),
         ).fetchall()
         assert [r[0] for r in found] == ["t1", "t2", "t3"]
         state = con.execute("SELECT state, kept FROM trial WHERE trial_id = 't1'").fetchone()
@@ -357,21 +442,24 @@ def test_a_rename_moves_no_recipe_measure_cache_or_partition_key(history):
     reading views show the new names."""
     root, _ = history
     with closing(_log(root)) as con:
+        momentum = lineage(con, "method", "momentum")
+        sharpe = lineage(con, "metric", "sharpe")
+        factors = lineage(con, "feature_set", "momentum_set")
         lineages = dict(con.execute("SELECT name, definition_id FROM definition_lineage"))
-        assert (lineages["price_momentum"], lineages["sharpe_ratio"]) == (MOMENTUM, SHARPE)
-        assert lineages["momentum_factors"] == FACTORS
+        assert (lineages["price_momentum"], lineages["sharpe_ratio"]) == (momentum, sharpe)
+        assert lineages["momentum_factors"] == factors
         assert "momentum" not in lineages and "sharpe" not in lineages
-        recipes = con.execute("SELECT recipe_key FROM recipe WHERE method_id = ?", (MOMENTUM,))
-        keys = {recipe_key(MOMENTUM, 1, {"lookback": n}) for n in (12, 6)}
+        recipes = con.execute("SELECT recipe_key FROM recipe WHERE method_id = ?", (momentum,))
+        keys = {recipe_key(momentum, 1, {"lookback": n}) for n in (12, 6)}
         assert {row[0] for row in recipes} == keys  # one approach under either name: one recipe
         held = "SELECT definition_id FROM definition WHERE family = ? AND name = ? AND version = 1"
-        assert con.execute(held, ("metric", "sharpe")).fetchone()[0] == SHARPE
+        assert con.execute(held, ("metric", "sharpe")).fetchone()[0] == sharpe
         measured = "SELECT count(*) FROM measure WHERE metric_id = ? AND metric_version = 1"
-        assert con.execute(measured, (SHARPE,)).fetchone()[0] == 4
+        assert con.execute(measured, (sharpe,)).fetchone()[0] == 4
         refs = "SELECT ref_id, ref_version FROM definition_ref WHERE definition_id = ?"
-        assert [tuple(r) for r in con.execute(refs, (FACTORS,))] == [(MOMENTUM, 1)]
+        assert [tuple(r) for r in con.execute(refs, (factors,))] == [(momentum, 1)]
         shown = "SELECT DISTINCT metric FROM metric WHERE metric_id = ?"
-        assert [tuple(r) for r in con.execute(shown, (SHARPE,))] == [("sharpe_ratio",)]
+        assert [tuple(r) for r in con.execute(shown, (sharpe,))] == [("sharpe_ratio",)]
         cached = "SELECT input_digest FROM cache_entry WHERE recipe_key = ? AND part = '2024'"
         renamed = recipe_key(lineages["price_momentum"], 1, {"lookback": 12})
         assert con.execute(cached, (renamed,)).fetchone()[0] == "rows"
@@ -448,7 +536,7 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
             {"text": "{}"},
         )  # PENDING never VERIFIED
         bare = {"method": "momentum", "method_version": 1, "params": {}}
-        bare["recipe_key"] = recipe_key(MOMENTUM, 1, {})
+        bare["recipe_key"] = recipe_key(_identity(log, "method", "momentum"), 1, {})
         log.record("recipe.defined", ("recipe", uuid7()), bare, **AGENT)
         mine = {"selection_id": "s2", "recipe_key": "r", "seeds": [], "product_version": "0.2.8"}
         theirs = mine | {"recipe_key": bare["recipe_key"], "hypothesis_id": "h2", "goal_id": "g2"}
@@ -536,7 +624,6 @@ def test_a_projection_refusal_leaves_no_event(tmp_path):
 # Each unit of research work stores one parent; its workspace and goal are derived up it.
 REQUESTED = {"type": "factor.run", "product_version": "0.2.8", "input_hash": "i", "plan_hash": "p"}
 REQUESTED |= {"workflow_definition_hash": "d", "admitted_at": "2026-11-14T00:00:00Z"}
-RECIPE = recipe_key(MOMENTUM, 1, {})
 
 # kind, id, the columns it stores its parent in, those columns, its derived workspace and goal
 UNITS = (
@@ -579,9 +666,10 @@ def units(tmp_path_factory):
         log.record("hypothesis.stated", ("hypothesis", "h1"), {"goal_id": "g1"}, text="H", **w1)
         log.record("selection.made", ("selection", "s1"), {"cutoff_us": 1}, **w1)
         _define(log, "method", "momentum", text="Past return over a lookback.")
-        defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": RECIPE}
+        recipe = recipe_key(_identity(log, "method", "momentum"), 1, {})
+        defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": recipe}
         log.record("recipe.defined", ("recipe", uuid7()), defined, **w1)
-        trial = {"selection_id": "s1", "recipe_key": RECIPE, "seeds": [], "product_version": "x"}
+        trial = {"selection_id": "s1", "recipe_key": recipe, "seeds": [], "product_version": "x"}
         tested = trial | {"task_id": "k-sub", "hypothesis_id": "h1"}
         log.record("trial.registered", ("trial", "t-task"), tested, **w1)
         log.record("trial.registered", ("trial", "t-sub"), trial | {"task_id": "k-sub"}, **w1)
@@ -644,7 +732,9 @@ def _made(log, attrs):
 
 def _recipe(log, version, params, reads=()):
     with log.reading() as con:
-        key = recipe_key(MOMENTUM, version, params, projections.upstream(con, reads))
+        key = recipe_key(
+            _identity(log, "method", "momentum"), version, params, projections.upstream(con, reads)
+        )
     attrs = {"method": "momentum", "method_version": version, "params": params, "recipe_key": key}
     log.record("recipe.defined", ("recipe", uuid7()), attrs | {"reads": list(reads)}, **AGENT)
     return key
@@ -708,7 +798,7 @@ def _names_give_way_to_lineages(log, read, root):
     log.record("selection.made", ("selection", uuid7()), WINDOW, **AGENT)
     moved = {"family": "universe", "name": "sp500", "to": "spx"}
     log.record("definition.renamed", ("definition", "universe/sp500"), moved, **AGENT)
-    assert read("SELECT universe_id FROM selection") == [(definition_id("universe", "sp500"),)]
+    assert read("SELECT universe_id FROM selection") == [(_identity(log, "universe", "sp500"),)]
     log.record("task.requested", ("task", uuid7()), REQUESTED, version=2, **AGENT)
     assert "task_kind" not in {row[1] for row in read("PRAGMA table_info(task)")}
     assert read("SELECT task_kind FROM workspace_task") == [("factor.run",)]
@@ -734,7 +824,7 @@ def _upstream_from_reads(log, read, root):
     derived = _recipe(log, 1, {"lookback": 6}, [made])
     assert read("SELECT recipe_key, upstream_key FROM recipe_upstream") == [(derived, source)]
     given = {"method": "momentum", "method_version": 1, "params": {}, "upstream": [source]}
-    given["recipe_key"] = recipe_key(MOMENTUM, 1, {}, [source])
+    given["recipe_key"] = recipe_key(_identity(log, "method", "momentum"), 1, {}, [source])
     _code("recipe_upstream_given", lambda: log.record("recipe.defined", ("recipe", "r9"), given))
 
 

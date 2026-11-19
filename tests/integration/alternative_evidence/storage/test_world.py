@@ -338,7 +338,9 @@ def test_a_workspace_of_sixty_documents_is_admitted_in_events_of_a_fixed_size(tm
         held.unlink()
     acquire(tmp_path / "w1", filing(f"{accession}-000060", "8-K", b"<html>60</html>", ACCEPTED))
     admitted.append(admit(tmp_path / "w1", "w1"))
-    sizes = history.store().log.read("SELECT length(attrs) FROM event WHERE type = 'admission'")
+    sizes = history.store().log.read(
+        "SELECT length(json_remove(attrs, '$.definition_ids')) FROM event WHERE type = 'admission'"
+    )
     assert [None if a is None else (a["rows"], a["unreadable"]) for a in admitted] == [
         ({"SEC_EDGAR": 60}, 0),
         ({"SEC_EDGAR": 1}, 0),

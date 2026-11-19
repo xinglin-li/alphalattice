@@ -21,19 +21,21 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from typing import IO, Any
 
 import alphalattice.kernel.data_layer.return_series as return_series
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
+from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.root import (
     catalog_matches,
     configure_read_cache,
     duckdb_session,
-    schema_text,
     sql_path,
-    statements,
+    view_statements,
+    world_table_ids,
 )
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
@@ -67,7 +69,13 @@ def reading_session(root: Path, *, log: bool = True) -> Any | None:
                 f"ATTACH 'ducklake:sqlite:{catalog}' AS lake (DATA_PATH '{data}/', READ_ONLY)"
             ).complete()
             catalog_matches(connection)
-        for statement in statements(schema_text("views.sql")):
+        table_ids = {}
+        if lake and log:
+            table_ids = world_table_ids(connection, attached=True)
+        elif lake:
+            with closing(attach(root)) as con:
+                table_ids = world_table_ids(con)
+        for statement in view_statements(table_ids):
             if (lake or "lake." not in statement) and (log or "log." not in statement):
                 connection.execute(statement).complete()
     except BaseException:

@@ -11,6 +11,7 @@ rule on purpose and name what the check then reports.
 
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import re
@@ -418,6 +419,18 @@ def test_the_schema_meets_its_registry_with_only_its_known_breaks() -> None:
     assert sorted(found - expected) == [], "new breaks of the data model's rules"
     assert sorted(expected - found) == [], "known breaks that now hold: remove their handles"
     assert all(handle["says"] and handle["problems"] for handle in registry["known"].values())
+    project = ast.parse((SCHEMA.parent / "project.py").read_text(encoding="utf-8"))
+    assert not any(
+        isinstance(node, ast.FunctionDef) and node.name == "definition_id"
+        for node in ast.walk(project)
+    ), "a new definition's id is minted and recorded"
+    log = ast.parse((SCHEMA.parent / "log.py").read_text(encoding="utf-8"))
+    assert [
+        node.name
+        for node in log.body
+        if isinstance(node, ast.FunctionDef)
+        and any(isinstance(use, ast.Name) and use.id == "_legacy_lineage" for use in ast.walk(node))
+    ] == ["replay"], "only historical replay decodes the previous registration format"
 
 
 @pytest.mark.proves("data_layer.the_schema_meets_its_contract")

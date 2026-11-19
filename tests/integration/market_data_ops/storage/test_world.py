@@ -26,7 +26,6 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import sanitiz
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.project import definition_id
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -36,10 +35,6 @@ NEW = date(2026, 7, 31)
 SYMBOLS = ("AAPL", "MSFT")
 CURRENT = """(SELECT * FROM lake.world.{0} x WHERE NOT x.retracted AND NOT EXISTS (SELECT 1
     FROM lake.world.superseded s WHERE s.version_id = x.version_id))"""
-FIXTURE, OLD_ID, DISPLAY = (
-    definition_id("provider", name)
-    for name in ("fixture", world.LISTING_ALIAS, world.DISPLAY_ALIAS)
-)
 SAME = {  # each world read beside the 0.2.7 rows it must equal, by 0.2.7 listing id
     "raw_bar": (
         "SELECT i.old, r.session_date, r.open, r.close, r.volume, r.adjusted_close,"
@@ -62,15 +57,15 @@ SAME = {  # each world read beside the 0.2.7 rows it must equal, by 0.2.7 listin
         f" FROM {CURRENT.format('listing')} l"
         " JOIN ids i ON i.new = l.listing_id"
         f" JOIN {CURRENT.format('provider_symbol')} d ON d.listing_id = l.listing_id"
-        f" AND d.provider_id = '{DISPLAY}'"
+        " AND d.provider_id = '{display}'"
         f" JOIN {CURRENT.format('provider_symbol')} a ON a.listing_id = l.listing_id"
-        f" AND a.provider_id = '{OLD_ID}'",
+        " AND a.provider_id = '{old_id}'",
         "SELECT listing_id, 'XNAS', mic, display_symbol, listing_id FROM old.listing",
     ),
     "provider_symbol": (
         f"SELECT i.old, p.symbol, p.valid_from, p.valid_to"
         f" FROM {CURRENT.format('provider_symbol')} p JOIN ids i ON i.new = p.listing_id"
-        f" WHERE p.provider_id = '{FIXTURE}'",
+        " WHERE p.provider_id = '{fixture}'",
         "SELECT listing_id, provider_symbol, effective_from, effective_to"
         " FROM old.provider_symbol_mapping",
     ),
@@ -314,12 +309,16 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     lake.execute("CREATE TEMP TABLE ids (old VARCHAR, new UUID)")
     for old in ("listing-aapl", "listing-msft"):
         lake.execute("INSERT INTO ids VALUES (?, ?)", (old, world.world_listing(old)))
+    log = history.store().log
+    names = {"fixture": "fixture", "old_id": world.LISTING_ALIAS, "display": world.DISPLAY_ALIAS}
+    providers = {key: log.require_lineage("provider", name) for key, name in names.items()}
     differ = {
         name: lake.execute(
             f"SELECT (SELECT count(*) FROM (({new}) EXCEPT ALL ({old}))),"
             f" (SELECT count(*) FROM (({old}) EXCEPT ALL ({new}))), (SELECT count(*) FROM ({new}))"
         ).fetchone()
-        for name, (new, old) in SAME.items()
+        for name, (sql, old) in SAME.items()
+        for new in (sql.format_map(providers),)
     }
     lake.execute("DETACH old")
     bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # the last day corrected, and a new one
@@ -699,7 +698,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             with world.stage(
                 port.root,
                 "provider_symbol",
-                definition_id("provider", provider),
+                port.log.require_lineage("provider", provider),
                 world._arrow([{"listing_id": aapl, "symbol": symbol, "valid_from": DAYS[3]}]),
             ) as staged:
                 port.commit(staged)

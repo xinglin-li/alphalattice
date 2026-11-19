@@ -8,9 +8,9 @@ machine/catalog.sqlite  the DuckLake catalog (schema/catalog.sql), made at its f
                         extra is present; nothing is ever fetched
 data, blobs, staging    DuckLake's Parquet files, content-addressed blobs, compute staging
 
-The DDL in schema/ is the 0.2.8 reference schemas' text, unchanged. Nothing reads a data root
-yet: the Host's first append writes `registry.seeded`, the event every seed row names as its
-registration.
+The Host records the seed lineages' minted IDs in `registry.seeded`, the first event of a new
+root and the event each seed row names as its registration. Older roots keep the IDs already
+held in the name table.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sqlite3
+from collections.abc import Iterator, Mapping
 from contextlib import closing
 from dataclasses import dataclass
 from importlib import resources
@@ -29,7 +30,7 @@ from typing import Any, Final
 import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.project import register
+from alphalattice.kernel.data_layer.project import register, uuid7
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
 SCHEMA_VERSION: Final = 12
@@ -85,10 +86,13 @@ def schema_text(name: str) -> str:
     return resources.files(__package__).joinpath("schema", name).read_text(encoding="utf-8")
 
 
-def seed_rows(owner: str = "kernel", seq: int = 1) -> list[tuple]:
+def seed_rows(
+    owner: str = "kernel", seq: int = 1, *, historical_count: int | None = None
+) -> list[tuple]:
     """Every seed definition as a row, (family, name, version, then definition_version's columns
     after its version), registered by the event at `seq`. A seed row is version 1 unless it names
-    its version and its relation to the version before it."""
+    its version and its relation to the version before it. A v1 seed announcement's row count
+    distinguishes the registry before and after event types were added."""
     text = resources.files(__package__).joinpath("seed_registry.json").read_text(encoding="utf-8")
     seed = json.loads(text)
     out = [("family", name, {}, {}, words) for name, words in seed["families"].items()]
@@ -96,6 +100,7 @@ def seed_rows(owner: str = "kernel", seq: int = 1) -> list[tuple]:
         out += [
             (family, row["name"], row, {field: row[field] for field in fields}, row["description"])
             for row in seed[key]
+            if historical_count is None or row.get("first_seed_count", 0) <= historical_count
         ]
     tail = (None, None, owner, seq, seq, None)  # code_ref, golden, owner, two seqs, reason
     return [
@@ -113,12 +118,45 @@ def statements(text: str) -> list[str]:
     return [part.strip() for part in bare.split(";") if part.strip()]
 
 
-def build_log(connection: sqlite3.Connection) -> None:
-    """log.sql's tables in `connection`, with every seed definition registered at seq 1."""
+def build_log(
+    connection: sqlite3.Connection,
+    *,
+    seed_ids: Mapping[tuple[str, str], str] | None = None,
+    seed_version: int = 2,
+) -> None:
+    """Build the log's seed registry, minting ids for a new root and retaining them on replay."""
     connection.executescript(schema_text("log.sql"))
     with connection:
         for family, name, version, *fields in seed_rows():
-            register(connection, family, name, version, *fields)
+            if family == "event_type" and name == "registry.seeded" and version > seed_version:
+                continue
+            if seed_ids is not None and (family, name) not in seed_ids:
+                continue
+            identity = None
+            if version == 1:
+                identity = uuid7() if seed_ids is None else seed_ids[family, name]
+            register(connection, family, name, version, *fields, identity=identity)
+
+
+def world_table_ids(connection: Any, *, attached: bool = False) -> dict[str, str]:
+    """Resolve world tables from SQLite or from a reader's already attached log."""
+    schema = "log." if attached else ""
+    return dict(
+        connection.execute(
+            f"SELECT name, definition_id FROM {schema}definition_name WHERE family = 'world_table'"
+        ).fetchall()
+    )
+
+
+def view_statements(table_ids: Mapping[str, str]) -> Iterator[str]:
+    """Bind stored ids as constants so the catalog filters its table before the anti-join."""
+    if table_ids:
+        choices = " ".join(
+            f"""WHEN '{name.replace("'", "''")}' THEN '{identity.replace("'", "''")}'"""
+            for name, identity in table_ids.items()
+        )
+        yield f"CREATE MACRO world_table_id(table_name) AS CASE table_name {choices} END"
+    yield from statements(schema_text("views.sql"))
 
 
 def _build_index(connection: sqlite3.Connection) -> None:

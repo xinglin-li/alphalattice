@@ -13,7 +13,7 @@ import pytest
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.project import definition_id, register
+from alphalattice.kernel.data_layer.project import lineage, register, uuid7
 from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import SCHEMA_VERSION, THREADS, catalog, duckdb_session
 
@@ -57,8 +57,7 @@ def _event(con, type_, subject, *, phase=None, attrs=None, span=None, text=None)
     return seq
 
 
-METHOD, METRIC = definition_id("method", "momentum"), definition_id("metric", "sharpe")
-BACKTEST = definition_id("artifact_type", "backtest")
+METRIC = "fixture-metric"
 MOMENTUM = (
     "standard",
     None,
@@ -88,20 +87,25 @@ def log(tmp_path_factory):
     made = _event(con, "selection.made", ("selection", "s1"), attrs={"cutoff_us": 1})
     selection = ("s1", "w1", T0, None, "2015-01-01", "2024-12-31", "{}", made)
     con.execute(f"INSERT INTO selection VALUES ({', '.join('?' * 8)})", selection)
-    register(con, "method", "momentum", 1, *MOMENTUM, None)
+    method = register(con, "method", "momentum", 1, *MOMENTUM, None, identity=uuid7())
     recipe = _event(con, "recipe.defined", ("recipe", "r1"))
-    con.execute("INSERT INTO recipe VALUES ('r1', 'k1', ?, 1, '{}', ?)", (METHOD, recipe))
+    con.execute("INSERT INTO recipe VALUES ('r1', 'k1', ?, 1, '{}', ?)", (method, recipe))
     registered = _event(con, "trial.registered", ("trial", "t1"))
     trial = {"trial_id": "t1", "selection_id": "s1", "recipe_key": "k1"}
     trial |= {"seeds": "[7]", "product_version": "0.2.8", "state": "registered"}
     con.execute(*_insert("trial", **trial, registered_seq=registered))
     produced = _event(con, "artifact.produced", ("artifact", "a1"), attrs={"type": "backtest"})
-    artifact = {"artifact_id": "a1", "identity_kind": "recipe", "type_id": BACKTEST}
+    artifact = {
+        "artifact_id": "a1",
+        "identity_kind": "recipe",
+        "type_id": lineage(con, "artifact_type", "backtest"),
+    }
     artifact |= {"type_version": 1, "meaning": "A fixture backtest.", "recipe_key": "k1"}
     artifact |= {"selection_id": "s1", "trial_id": "t1", "storage": "table"}
     con.execute(*_insert("artifact", **artifact, body_state="present", produced_seq=produced))
+    metric = lineage(con, "metric", "sharpe")
     result = _event(con, "result.recorded", ("artifact", "a1"))
-    con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '{}', 0.9, ?)", (METRIC, result))
+    con.execute("INSERT INTO measure VALUES ('a1', ?, 1, '{}', 0.9, ?)", (metric, result))
     active = _event(con, "book.activated", ("book", "b1"))
     con.execute("INSERT INTO book VALUES ('b1', 'w1', 'paper', 'active', NULL, ?, NULL)", (active,))
     fill = _event(con, "ledger.posted", ("book", "b1"))
@@ -109,7 +113,7 @@ def log(tmp_path_factory):
         "INSERT INTO ledger_entry VALUES (?, ?, 'b1', ?, 'listing', ?, ?)",
         [(fill, 1, "book", "AAPL", 10 * N), (fill, 2, "market", "AAPL", -10 * N)],
     )
-    yield con, {"first": first, "note": note, "registered": registered, "metric": METRIC}
+    yield con, {"first": first, "note": note, "registered": registered, "metric": metric}
     con.close()
 
 
@@ -206,6 +210,8 @@ def test_the_log_refuses_what_its_rules_forbid(log, statement, why):
     """Each rule of log.sql refuses its breach by name and leaves the log as it was."""
     con, seqs = log
     sql, args = statement if isinstance(statement, tuple) else (statement, seqs)
+    if isinstance(args, tuple):
+        args = tuple(seqs["metric"] if value == METRIC else value for value in args)
     before = con.execute("SELECT total_changes()").fetchone()[0]
     with pytest.raises(sqlite3.DatabaseError, match=why):
         con.execute(sql, args)
@@ -215,7 +221,7 @@ def test_the_log_refuses_what_its_rules_forbid(log, statement, why):
 @pytest.mark.proves("data_layer.seed_registry_is_whole")
 def test_a_new_log_holds_the_seed_registry_whole(log):
     """Each seed row is a registered family's version, registered at sequence 1: version 1, but for
-    task.requested's version 2; registry.seeded, the four research tags and each artifact type's
+    version 2 of task.requested and registry.seeded; the four research tags and each artifact type's
     measures exist."""
     con, _ = log
     rows = con.execute(
@@ -227,8 +233,8 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (107, {(1, 1)})  # artifact.unpinned
-    assert later == {("event_type", "task.requested")}
+    assert (len(rows), {row[3:5] for row in rows}) == (108, {(1, 1)})
+    assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
     assert "registry.seeded" in named["event_type"]
@@ -243,11 +249,12 @@ def settled(tmp_path_factory):
     create_data_root(root)
     con = sqlite3.connect(root / "machine" / "log.sqlite", isolation_level=None)
     con.execute("PRAGMA foreign_keys = ON")  # log.sql's first pragma holds per connection
-    con.execute(*_insert("definition_version", **SHARPE))
+    metric = lineage(con, "metric", "sharpe")
+    con.execute(*_insert("definition_version", **(SHARPE | {"definition_id": metric})))
     con.execute(
         "UPDATE definition_version SET status = 'deprecated', status_seq = 2"
         " WHERE definition_id = ? AND version = 1",
-        (METRIC,),
+        (metric,),
     )
     con.execute("INSERT INTO workspace VALUES ('w1', 'main', NULL, 'active', 1, NULL)")
     active = _event(con, "book.activated", ("book", "b1"))
@@ -277,7 +284,7 @@ PLANS = {
         "event_subject",
     ),
     "a metric's measures": (
-        f"measure WHERE metric_id = '{METRIC}' AND metric_version = 2",
+        "measure WHERE metric_id = :metric AND metric_version = 2",
         "measure_by_metric",
     ),
     "a recipe's trials": ("trial WHERE recipe_key = 'k1'", "trial_recipe"),
@@ -326,7 +333,10 @@ def test_the_log_reads_through_its_views(settled, sql, expected):
 def test_each_hot_read_uses_its_index(settled, source, index):
     """SQLite plans each hot read of the log through the index made for it."""
     con, _ = settled
-    plan = " ".join(row[3] for row in con.execute(f"EXPLAIN QUERY PLAN SELECT * FROM {source}"))
+    metric = {"metric": lineage(con, "metric", "sharpe")}
+    plan = " ".join(
+        row[3] for row in con.execute(f"EXPLAIN QUERY PLAN SELECT * FROM {source}", metric)
+    )
     assert index in plan, plan
 
 

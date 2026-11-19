@@ -20,7 +20,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import arrays, backup, create_data_root
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
-from alphalattice.kernel.data_layer.project import definition_id, recipe_key
+from alphalattice.kernel.data_layer.project import recipe_key
 from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
@@ -45,7 +45,7 @@ def _admit(root, port, close=1.0, count=1500):
         port.log.record(
             "definition.registered", ("definition", "provider/synthetic"), key, text=text
         )
-    provider = definition_id("provider", "synthetic")
+    provider = port.log.require_lineage("provider", "synthetic")
     with stage(root, "raw_bar", provider, pa.table(as_columns(rows)), floor_bytes=0) as staged:
         return port.commit(staged)
 
@@ -139,7 +139,7 @@ def sample(tmp_path_factory):
             method,
             text=canonical(method | {"text": "A synthetic method."}).decode(),
         )
-        later = recipe_key(definition_id("method", "synthetic"), 1, {})
+        later = recipe_key(log.require_lineage("method", "synthetic"), 1, {})
         defined = {"method": "synthetic", "method_version": 1, "params": {}, "recipe_key": later}
         log.record("recipe.defined", ("recipe", uuid7()), defined)
         log.record(  # a recipe's blob: its row records no digest, so the backup proves its own

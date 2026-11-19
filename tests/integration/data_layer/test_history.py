@@ -200,7 +200,8 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         # The class read and the brief are one search_memory step each in the log, failed with
         # their reads, holding neither the query nor the records.
         found = con.execute(
-            "SELECT phase, attrs FROM event WHERE type = 'search_memory' ORDER BY seq"
+            "SELECT phase, json_remove(attrs, '$.definition_ids')"
+            " FROM event WHERE type = 'search_memory' ORDER BY seq"
         ).fetchall()
         memory = {"gen_ai.operation.name": "search_memory", "gen_ai.memory.store.id": "experience"}
         condition = con.execute(

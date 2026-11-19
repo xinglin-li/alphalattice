@@ -7,43 +7,42 @@
 -- What we knew at `cutoff_us`: among the versions known by then, the one no later version had replaced by then, unless
 -- it withdraws the fact. A version is replaced when world.superseded says so, which the Host writes with the replacing
 -- row, so no read ranks every version. Every world table gets this macro; a selection's cutoff_us is the argument.
--- world.superseded names a table by its lineage's id, written here as the id itself: an id is assigned once and never
--- moves, and a lookup of it in the log from inside the anti-join keeps DuckDB from filtering the table first, ten times
--- slower. store.TABLE_IDS holds the same ids. The anti-join is an ANTI JOIN, not a correlated NOT EXISTS: a reader's
+-- world.superseded names a table by its lineage's id. The connection binds world_table_id from the log's name
+-- table once, so DuckDB can filter the table before the anti-join. It is an ANTI JOIN, not a correlated NOT EXISTS: a reader's
 -- filter on the macro (a listing) then reaches the table scan, which skips the row groups it excludes.
 -- A decision at session t reads knowledge no later than the lesser of its selection's cutoff and t's decision time.
 CREATE MACRO sector_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.sector r
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted
-  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = 'blake3:2a6feeec4af118b1de1d635efccdd659dc65391b7de2379d92ce032873eccc7f' AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
+  AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s WHERE s.table_id = world_table_id('sector') AND s.version_id = r.version_id AND s.superseded_asof <= make_timestamptz(cutoff_us));
 
 CREATE MACRO raw_bar_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.raw_bar r
-ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473'
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = world_table_id('raw_bar')
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO corporate_action_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.corporate_action r
-ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:86df14c7a7c125636b4d7c5f69931a0209b331d185dc1211694c7a2d5b72036e'
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = world_table_id('corporate_action')
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO provider_symbol_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.provider_symbol r
-ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:aa4380b4805a50588d8ddf14cf3115e8db90e4b1cdb47855ca74a1572cf20a51'
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = world_table_id('provider_symbol')
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO universe_member_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.universe_member r
-ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:4eff40b9de1e126de71c58606d308ec45cfe5c8419b5ceeba7a506a4d533cbc0'
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = world_table_id('universe_member')
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
 CREATE MACRO evidence_doc_asof(cutoff_us) AS TABLE
 SELECT r.* FROM lake.world.evidence_doc r
-ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = 'blake3:f32f870f25736dde4f9aed2ef136f06e8d3deb862aa447ad8eabfe844d8e2577'
+ANTI JOIN (SELECT version_id FROM lake.world.superseded WHERE table_id = world_table_id('evidence_doc')
            AND superseded_asof <= make_timestamptz(cutoff_us)) s ON s.version_id = r.version_id
 WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 
@@ -53,21 +52,21 @@ WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 -- effective_date <= t.
 CREATE VIEW raw_bar_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.raw_bar r
-LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473' AND s.version_id = r.version_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('raw_bar') AND s.version_id = r.version_id;
 
 CREATE VIEW universe_member_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.universe_member r
-LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:4eff40b9de1e126de71c58606d308ec45cfe5c8419b5ceeba7a506a4d533cbc0' AND s.version_id = r.version_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('universe_member') AND s.version_id = r.version_id;
 
 CREATE VIEW corporate_action_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.corporate_action r
-LEFT JOIN lake.world.superseded s ON s.table_id = 'blake3:86df14c7a7c125636b4d7c5f69931a0209b331d185dc1211694c7a2d5b72036e' AND s.version_id = r.version_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('corporate_action') AND s.version_id = r.version_id;
 
 -- What we know now.
 CREATE VIEW raw_bar_latest AS
 SELECT r.* FROM lake.world.raw_bar r
 ANTI JOIN (SELECT version_id FROM lake.world.superseded
-           WHERE table_id = 'blake3:a11a3fa2f483c4d789d991e5d8a05e9696158cb3a1187103301788f8de27a473') s
+           WHERE table_id = world_table_id('raw_bar')) s
   ON s.version_id = r.version_id
 WHERE NOT r.retracted;
 

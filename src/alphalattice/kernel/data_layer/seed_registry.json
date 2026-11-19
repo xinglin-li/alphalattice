@@ -1,6 +1,6 @@
 {
   "schema": "alphalattice.data_layer.seed_registry.v1",
-  "note": "The definitions 0.2.8 starts with, each version 1 of a definition lineage in log.sqlite, whose id is the digest of its family and this first name (from the 0.2.8 reference schemas' definitions). A family's spec is contract content the Host checks for form.",
+  "note": "The definitions 0.2.8 starts with, each version 1 of a definition lineage in log.sqlite, whose id the Host mints and records at seeding (from the 0.2.8 reference schemas' definitions). A family's spec is contract content the Host checks for form.",
   "families": {
     "event_type": "what may be written to the log, and the shape of its attributes",
     "artifact_type": "what an artifact is, where its body lives and which measures every one of its kind records",
@@ -27,6 +27,19 @@
       "text": "none",
       "durable": false,
       "description": "The seed definitions were registered."
+    },
+    {
+      "name": "registry.seeded",
+      "version": 2,
+      "relation": "not_comparable",
+      "work": false,
+      "subject": null,
+      "required": [
+        "count"
+      ],
+      "text": "required",
+      "durable": false,
+      "description": "The seed definitions were registered with the lineage ids in the event text."
     },
     {
       "name": "definition.registered",
@@ -621,6 +634,7 @@
     },
     {
       "name": "artifact.pinned",
+      "first_seed_count": 107,
       "work": false,
       "subject": "artifact",
       "required": [
@@ -632,6 +646,7 @@
     },
     {
       "name": "artifact.unpinned",
+      "first_seed_count": 107,
       "work": false,
       "subject": "artifact",
       "required": [

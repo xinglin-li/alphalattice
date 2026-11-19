@@ -209,6 +209,8 @@ def test_store_appends_only_actual_changes_and_refuses_gaps_and_rewrites(
     assert world.universe_set_id(reversed(cohort)) == world.universe_set_id(cohort)
     history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
     try:
+        name = world.universe_name("w1", record.market_profile_id)
+        history.define("universe", name, "Synthetic universe for the membership journal.")
         world._universe_journal(expected, "w1")
         world._universe_journal(
             expected, "w1"

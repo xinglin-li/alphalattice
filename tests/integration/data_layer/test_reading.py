@@ -10,6 +10,7 @@ import sqlite3
 import statistics
 import uuid
 from contextlib import closing
+from copy import deepcopy
 from datetime import date, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -22,7 +23,7 @@ from alphalattice.kernel.data_layer import create_data_root, history, reading, r
 from alphalattice.kernel.data_layer import log as log_module
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.data_layer.project import definition_id
+from alphalattice.kernel.data_layer.project import lineage, recipe_key
 from alphalattice.kernel.data_layer.reading import compare, reading_session
 from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
 from tests.integration.data_layer import test_project as project_fixture
@@ -144,7 +145,18 @@ def test_experience_returns_each_trial_with_its_measures_and_no_body(
     with closing(session):
         rows = session.execute(f"SELECT * FROM {view} ORDER BY {order}").fetchall()
         actual = {"columns": [column[0] for column in session.description], "rows": rows}
-    assert json.loads(json.dumps(actual, default=lambda value: value.isoformat())) == EXPECTED[view]
+    expected = deepcopy(EXPECTED[view])
+    if view == "experience":
+        with closing(sqlite3.connect(analytics_log / "machine" / "log.sqlite")) as con:
+            method = lineage(con, "method", "momentum")
+            universe = lineage(con, "universe", "sp500")
+        assert method is not None and universe is not None
+        columns = expected["columns"]
+        for row in expected["rows"]:
+            params = json.loads(row[columns.index("params")])
+            row[columns.index("recipe_key")] = recipe_key(method, 1, params)
+            row[columns.index("universe_id")] = universe
+    assert json.loads(json.dumps(actual, default=lambda value: value.isoformat())) == expected
 
 
 @pytest.fixture(scope="module")
@@ -400,13 +412,15 @@ def _world(root, returns, sessions=260):
     """A world of four listings of universe sp500, each `returns[i](t)` a day from 2024-01-01 at
     a price of 100; the fourth left the universe in June and rose half a day, so it shows only if
     membership at the cutoff is ignored. Returns the log's moments just before and after it was
-    admitted, every world row being known at its admission."""
+    admitted, and the registered universe id."""
     with HostLog.open(root) as log:
         for family, name in (("provider", "yf"), ("universe", "sp500")):
             key = {"family": family, "name": name, "version": 1}
             text = canonical(key | {"text": f"The {name} {family}."}).decode()
             log.record("definition.registered", ("definition", f"{family}/{name}"), key, text=text)
         before = log.clock()
+        universe = log.require_lineage("universe", "sp500")
+        provider = log.require_lineage("provider", "yf")
         port = StorePort.open(root, log)
         try:
             listings = [str(uuid.UUID(int=i + 1)) for i in range(4)]
@@ -422,20 +436,16 @@ def _world(root, returns, sessions=260):
                         | {"adjusted_close": prices[listing], "source_observed_at": "2024-11-01"}
                     )
             members = [
-                {"universe_id": UNIVERSE, "listing_id": listing, "valid_from": "2023-01-01"}
+                {"universe_id": universe, "listing_id": listing, "valid_from": "2023-01-01"}
                 | {"valid_to": "2024-06-01" if listing == listings[3] else None}
                 for listing in listings
             ]
-            provider = definition_id("provider", "yf")
             for table, rows in (("raw_bar", bars), ("universe_member", members)):
                 with stage(root, table, provider, pa.table(as_columns(rows))) as staged:
                     port.commit(staged)
         finally:
             port.close()
-        return before, log.clock()
-
-
-UNIVERSE = definition_id("universe", "sp500")
+        return before, log.clock(), universe
 
 
 @pytest.mark.proves("data_layer.market_condition_is_measured_at_its_cutoff")
@@ -473,12 +483,12 @@ def test_a_markets_condition_is_measured_from_what_world_knew_at_the_cutoff(
     members and bars known then, and a Host records it on a new selection of that cutoff."""
     root = tmp_path / "data"
     create_data_root(root)
-    before, after = _world(root, returns, sessions)
+    before, after, universe = _world(root, returns, sessions)
     session = reading_session(root)
     assert session is not None, "the reading views need DuckDB's sqlite extension"
     with closing(session):
         cutoff = after if known else before
-        found = reading.market_condition(session, universe=UNIVERSE, cutoff_us=cutoff)
+        found = reading.market_condition(session, universe=universe, cutoff_us=cutoff)
     expected = {"market_vol_63d": vol, "market_return_252d": trend}
     expected["market_dispersion_21d"] = dispersion
     assert found == {

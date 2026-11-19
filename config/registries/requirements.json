@@ -802,7 +802,7 @@
       "seconds": 10
     },
     "data_layer.lineage_id_is_its_first_registration": {
-      "description": "A definition lineage's id is a digest of its family and the name it was first registered under, never a name.",
+      "description": "A first version, task or wait reference, or finished step can introduce a definition lineage from the name that event holds.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -909,7 +909,7 @@
       "seconds": 10
     },
     "data_layer.replay_rebuilds_every_projection": {
-      "description": "A history replayed into an empty log rebuilds every projected table and the chain head ALL EQUAL, and a projection reading anything but its event is named by its table.",
+      "description": "Replay reproduces every projected table and the chain head, including minted definition IDs and renames, and names a divergent projection by its table.",
       "lower_layer": "A projection is SQL inside the event's own SQLite transaction; only a real database replays it.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",

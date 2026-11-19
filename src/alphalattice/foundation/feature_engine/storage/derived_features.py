@@ -31,7 +31,6 @@ from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.store import feature_table
 
 SETTING: Final = "ALPHALATTICE_FEATURE_READS"
@@ -86,7 +85,12 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
             " or unset the setting",
             code="feature.derived_reads_need_workspace",
         )
-    table = feature_table(definition_id("feature_set", stable_id))
+    identity = history.define("feature_set", stable_id, "A catalog's derived feature rows.")
+    if identity is None:
+        raise DataError(
+            "the Host's feature registry is not open", code="feature.derived_reads_need_host"
+        )
+    table = feature_table(identity)
     with database.transaction() as connection:
         connection.execute(
             f"CREATE TABLE IF NOT EXISTS {PARTS} (recipe_key VARCHAR NOT NULL, part VARCHAR NOT"
@@ -94,7 +98,8 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
             " PRIMARY KEY (recipe_key, part))"
         )
         scope, parameters = "true", []
-        if listing_ids and _declared(connection):
+        current = _declared(connection, table)
+        if listing_ids and current:
             scope, parameters = "list_contains(?::VARCHAR[], listing_id)", [sorted(listing_ids)]
         connection.execute(
             "CREATE OR REPLACE TEMP TABLE feature_parts_now AS"
@@ -109,7 +114,7 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
         connection.execute(
             "CREATE OR REPLACE TEMP TABLE feature_parts_moved AS SELECT n.* FROM feature_parts_now"
             f" n LEFT JOIN {PARTS} h USING (recipe_key, part)"
-            " WHERE h.input_digest IS DISTINCT FROM n.input_digest"
+            + (" WHERE h.input_digest IS DISTINCT FROM n.input_digest" if current else "")
         )
         moved = connection.execute(
             "SELECT recipe_key, part, input_digest FROM feature_parts_moved ORDER BY ALL"
@@ -159,14 +164,15 @@ def mirror(database: WorkspaceDatabase, stable_id: str, listing_ids: Collection[
         port.maintain()  # what the earlier builds' listing batches wrote, once per build
 
 
-def _declared(connection: Any) -> bool:
-    """Whether the workspace has declared its derived view, after its first copy."""
+def _declared(connection: Any, table: str) -> bool:
+    """The held view already reads this table; a previous unregistered mirror needs a full copy."""
     return bool(
         connection.execute(
             "SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [derived_views.TABLE]
         ).fetchall()
         and connection.execute(
-            f"SELECT 1 FROM {derived_views.TABLE} WHERE view_name = ?", [VIEW]
+            f"SELECT 1 FROM {derived_views.TABLE} WHERE view_name = ? AND contains(body, ?)",
+            [VIEW, f" FROM lake.derived.{table} t "],
         ).fetchall()
     )
 

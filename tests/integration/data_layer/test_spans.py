@@ -107,7 +107,9 @@ def test_each_ended_span_is_its_step_event(log):
         "claude",
         "research",
     )
-    assert json.loads(inner["attrs"]) == {"tool": "grep"}
+    attrs = json.loads(inner["attrs"])
+    attrs.pop("definition_ids", None)
+    assert attrs == {"tool": "grep"}
     assert (
         outer["started_us"] <= inner["started_us"] <= inner["occurred_us"] <= outer["occurred_us"]
     )
@@ -225,7 +227,9 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
         step["span_id"],
     )
     assert step["workspace_id"] == call["workspace_id"] == "w1"
-    assert json.loads(call["attrs"]) == {"call": _TARGET, "trial_id": "t7"}
+    attrs = json.loads(call["attrs"])
+    attrs.pop("definition_ids", None)
+    assert attrs == {"call": _TARGET, "trial_id": "t7"}
     assert json.loads(step["attrs"])["route"] == "POST /api/read"
     exported = [
         span

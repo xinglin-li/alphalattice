@@ -670,7 +670,7 @@
     "definition_id"
    ],
    "id": {
-    "definition_id": "digest: blake3 of the family and the name it was first registered under"
+    "definition_id": "uuid7: minted by the Host at first registration. Existing lineages retain their original opaque id"
    },
    "times": {
     "registered_seq": "log_seq",
@@ -1476,12 +1476,6 @@
    "problems": [
     "status: log.artifact.body_state: its moves are declared, not enforced",
     "status: log.hypothesis.standing: its moves are declared, not enforced"
-   ]
-  },
-  "definition-id-digest": {
-   "says": "A definition's id is a digest of its family and first name, not an id the Host mints.",
-   "problems": [
-    "id: log.definition_lineage.definition_id: a digest id"
    ]
   }
  }

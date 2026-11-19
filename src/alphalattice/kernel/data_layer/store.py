@@ -47,7 +47,6 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import (
     THREADS,
     bound_reads,
@@ -58,6 +57,8 @@ from alphalattice.kernel.data_layer.root import (
     schema_text,
     sql_path,
     statements,
+    view_statements,
+    world_table_ids,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
 
@@ -92,8 +93,6 @@ SOURCE: Final = ("source_observed_at", "source_payload_digest")
 """The world columns that record how a source wrote a value, never the fact. A world table's
 content is its every other catalog column (its key, its values and `retracted`): a staged row is
 a new version only when its content differs from its key's newest version's."""
-TABLE_IDS: Final = {table: definition_id("world_table", table) for table in WORLD_KEYS}
-"""Each world table's lineage id, as the seed registers it: world.superseded names a table by it."""
 LINEAGES: Final = {
     "provider_id": "provider",
     "scheme_id": "sector_scheme",
@@ -243,6 +242,8 @@ class StorePort:
     def __init__(self, root: Path, log: HostLog, lake: Any):
         """Hold the data root, its log and the Host's DuckDB session; `open` makes one."""
         self.root, self.log, self.lake = root, log, lake
+        with log.reading() as con:
+            self.table_ids = world_table_ids(con)
         self._writer = threading.Lock()
         self._keeping = ThreadPoolExecutor(1, thread_name_prefix="derived-file-keep")
         self.started: dict[str, list[str]] = {}
@@ -274,10 +275,10 @@ class StorePort:
         ):
             lake.execute(sql).complete()
         catalog_matches(lake)  # before the views, which name its columns
-        for sql in statements(schema_text("views.sql")):
+        port = cls(root, log, lake)
+        for sql in view_statements(port.table_ids):
             if "log." not in sql:
                 lake.execute(sql).complete()
-        port = cls(root, log, lake)
         port.started = start(root, log, lake)
         for sql in statements(schema_text("telemetry.sql")):
             lake.execute(sql).complete()
@@ -889,24 +890,24 @@ class StorePort:
     def _supersede(self, table: str, target: str, rows: str, admission: str) -> None:
         """Record the world versions this batch replaces and later writes of held values."""
         run = self.lake.execute
-        table_id, key = TABLE_IDS[table], WORLD_KEYS[table]
+        table_id, key = f"world_table_id('{table}')", WORLD_KEYS[table]
         same = " AND ".join(f"t.{k} = n.{k}" for k in key)
         pair = " AND ".join(f"o.{k} = c.{k}" for k in key)
         run(  # once, by its earliest replacement: an interval's pair replaces it once
-            f"INSERT INTO lake.world.superseded SELECT '{table_id}', t.version_id,"
+            f"INSERT INTO lake.world.superseded SELECT {table_id}, t.version_id,"
             f" min(n.known_asof), '{admission}' FROM {target} t, ({rows}) n"
             f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-            f" WHERE s.table_id = '{table_id}' AND s.version_id = t.version_id)"
+            f" WHERE s.table_id = {table_id} AND s.version_id = t.version_id)"
             " GROUP BY t.version_id"
         ).complete()
         run(
-            f"INSERT INTO lake.world.superseded SELECT '{table_id}', o.version_id,"
+            f"INSERT INTO lake.world.superseded SELECT {table_id}, o.version_id,"
             f" c.known_asof, '{admission}' FROM ({rows}) o, ({rows}) c"
             f" WHERE {pair} AND o._opening AND NOT c._opening"
         ).complete()
         if table in TIMED:
             run(
-                f"INSERT INTO lake.world.rewritten SELECT '{table_id}', _held,"
+                f"INSERT INTO lake.world.rewritten SELECT {table_id}, _held,"
                 f" {OBSERVED}, '{admission}' FROM temp.admitting"
                 f" WHERE fate = '{REWRITTEN}'"
             ).complete()
@@ -1226,10 +1227,10 @@ def newest(table: str) -> str:
     also carries `ordered_at`: its value's last write by its source, the later of the version's own
     and each world.rewritten write of it, -infinity when there is none, so a row with a source time
     orders after a version without one."""
-    table_id = TABLE_IDS[table]
+    table_id = f"world_table_id('{table}')"
     current = (
         f"SELECT x.* FROM lake.world.{table} x WHERE NOT EXISTS (SELECT 1 FROM"
-        f" lake.world.superseded s WHERE s.table_id = '{table_id}'"
+        f" lake.world.superseded s WHERE s.table_id = {table_id}"
         " AND s.version_id = x.version_id)"
     )
     if table not in TIMED:
@@ -1237,7 +1238,7 @@ def newest(table: str) -> str:
     return (
         f"(SELECT c.*, coalesce(greatest(c.{OBSERVED}, w.latest), '-infinity'::TIMESTAMPTZ)"
         f" AS ordered_at FROM ({current}) c LEFT JOIN (SELECT version_id, max({OBSERVED})"
-        f" AS latest FROM lake.world.rewritten WHERE table_id = '{table_id}' GROUP BY ALL) w"
+        f" AS latest FROM lake.world.rewritten WHERE table_id = {table_id} GROUP BY ALL) w"
         " ON w.version_id = c.version_id)"
     )
 
@@ -1245,7 +1246,7 @@ def newest(table: str) -> str:
 def feature_table(feature_set_id: str) -> str:
     """A feature set's table in `derived`, named by its lineage's id and never its name, so a
     renamed feature set keeps every cached partition: feature_set_ and the id's hex digits."""
-    return "feature_set_" + feature_set_id.removeprefix("blake3:")
+    return "feature_set_" + feature_set_id.removeprefix("blake3:").replace("-", "")
 
 
 def admissible(table: str, provider_id: str | None, rows: Any, *, legacy: bool = False) -> Any:
@@ -1494,7 +1495,7 @@ def _current(table: str) -> str:
     """A world table's current versions, as a subquery: those not withdrawn and not replaced."""
     return (
         f"(SELECT * FROM lake.world.{table} x WHERE NOT x.retracted AND NOT EXISTS (SELECT 1"
-        f" FROM lake.world.superseded s WHERE s.table_id = '{TABLE_IDS[table]}'"
+        f" FROM lake.world.superseded s WHERE s.table_id = world_table_id('{table}')"
         " AND s.version_id = x.version_id))"
     )
 

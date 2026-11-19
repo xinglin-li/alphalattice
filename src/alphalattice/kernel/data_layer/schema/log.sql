@@ -103,7 +103,7 @@ CREATE TRIGGER chain_checkpoint_no_delete BEFORE DELETE ON chain_checkpoint BEGI
 -- A version's content is never edited; only its status moves. A version moves only when values move. `spec` is the
 -- family's contract content; the typed views below read it. No key holds a name (engineering.md, Keys never change).
 CREATE TABLE definition_lineage (
-  definition_id TEXT PRIMARY KEY,  -- blake3 of (family, the name it was first registered under); assigned once
+  definition_id TEXT PRIMARY KEY,  -- Host-minted UUIDv7 at first registration. A retained old id stays opaque
   family TEXT NOT NULL,
   name TEXT NOT NULL,              -- its current name: agents and the person read this
   registered_seq INTEGER NOT NULL,
@@ -115,7 +115,7 @@ BEGIN SELECT RAISE(ABORT, 'a lineage keeps its id and family'); END;
 CREATE TRIGGER definition_lineage_no_delete BEFORE DELETE ON definition_lineage
 BEGIN SELECT RAISE(ABORT, 'a lineage is kept forever'); END;
 -- Every name a lineage has held, its renames. A name is never reused in its family, so an event written under an old
--- name, and the lineage's first-name digest, still name it.
+-- name continues to find its lineage id.
 CREATE TABLE definition_name (
   family TEXT NOT NULL,
   name TEXT NOT NULL,

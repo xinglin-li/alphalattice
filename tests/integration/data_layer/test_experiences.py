@@ -15,7 +15,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, experiences
 from alphalattice.kernel.data_layer.chain import digest
 from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7
-from alphalattice.kernel.data_layer.project import definition_id, differences, recipe_key
+from alphalattice.kernel.data_layer.project import differences, recipe_key
 from alphalattice.kernel.data_layer.reading import reading_session
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/experiences.py"
@@ -27,7 +27,6 @@ REQUESTED |= {
     "admitted_at": "2026-11-14T00:00:00Z",
     "goal_id": "g1",
 }
-RECIPE = recipe_key(definition_id("method", "momentum"), 1, {})
 USAGE = {"gen_ai.usage.input_tokens": 1200, "gen_ai.usage.output_tokens": 300, "cost_usd": 0.25}
 NOTE = experiences.note_text(
     "Momentum pays", "12-1 momentum on the S&P 500", "It paid, thinly", ["Mind costs"]
@@ -54,13 +53,14 @@ def _world(log: HostLog, trials: int = 3) -> None:
     log.record(
         "selection.made", ("selection", "s1"), {"cutoff_us": 1, "universe": "sp500"}, **AGENT
     )
-    defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": RECIPE}
+    recipe = recipe_key(log.require_lineage("method", "momentum"), 1, {})
+    defined = {"method": "momentum", "method_version": 1, "params": {}, "recipe_key": recipe}
     log.record("recipe.defined", ("recipe", uuid7()), defined, **AGENT)
     for n in range(trials):
         trial, trace = f"t{n}", f"{n + 1:032x}"
         registered = {
             "selection_id": "s1",
-            "recipe_key": RECIPE,
+            "recipe_key": recipe,
             "seeds": [n],
             "product_version": "x",
             "task_id": "k1",
@@ -76,7 +76,7 @@ def _world(log: HostLog, trials: int = 3) -> None:
             "type": "backtest",
             "type_version": 1,
             "meaning": "Does momentum pay?",
-            "recipe_key": RECIPE,
+            "recipe_key": recipe,
             "selection_id": "s1",
             "trial_id": trial,
             "storage": "none",

@@ -7,13 +7,12 @@ from alphalattice.control.workspace_runtime import derived_views
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.kernel.data_layer import derived_reads  # noqa: F401  (registers the setup)
 from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.root import create_data_root
 from alphalattice.kernel.data_layer.store import StorePort, feature_table
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/derived_reads.py"
 LISTING = str(uuid.UUID(int=7))
-TABLE = feature_table(definition_id("feature_set", "desktop"))
+TABLE = feature_table(str(uuid.UUID(int=8)))
 
 
 @pytest.mark.proves("data_layer.a_workspace_reads_derived_rows_under_its_names")

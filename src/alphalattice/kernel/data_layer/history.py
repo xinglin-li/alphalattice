@@ -1372,16 +1372,24 @@ def record_new(
         return record(type_, subject, attrs, **more)
 
 
-def define(family: str, name: str, text: str, spec: Mapping[str, Any] | None = None) -> None:
-    """Register `family/name` version 1 once, as the Host's own definition."""
+def define(family: str, name: str, text: str, spec: Mapping[str, Any] | None = None) -> str | None:
+    """Register a Host definition once and return its lineage, or None while recording defers."""
     key = {"family": family, "name": name, "version": 1}
     body = key | {"spec": dict(spec or {}), "status": "standard", "owner": "host", "text": text}
-    words = json.dumps(body, sort_keys=True)
     exists = "SELECT 1 FROM definition WHERE family = ? AND name = ? AND version = 1"
-    subject = ("definition", f"{family}/{name}")
-    record_new(
-        exists, (family, name), "definition.registered", subject, key, text=words, node="host"
-    )
+    with _once:
+        if not recording():
+            return None
+        with _open["log"].unit() as con:
+            if con.execute(exists, (family, name)).fetchone() is None:
+                record(
+                    "definition.registered",
+                    ("definition", f"{family}/{name}"),
+                    key,
+                    text=json.dumps(body, sort_keys=True),
+                    node="host",
+                )
+            return project.require_lineage(con, family, name)
 
 
 def version(family: str, name: str) -> int | None:
@@ -1428,7 +1436,7 @@ def _record_condition(selection: str, window: Mapping[str, Any], actor: tuple[st
     universe = (
         None
         if window.get("universe") is None
-        else definition_id("universe", str(window["universe"]))
+        else definition_lineage("universe", str(window["universe"]))
     )
     if reading is None or universe is None:
         return
@@ -1505,19 +1513,10 @@ def record_return_series(
     return artifact
 
 
-def definition_id(family: str, name: str) -> str | None:
-    """The lineage `name` names in `family`, by any name it held: what a recipe or a row keys by,
-    never the name. None outside a Host, while deferred, or when nothing registers it."""
+def definition_lineage(family: str, name: str) -> str | None:
+    """Resolve any held name to its stored id in the open Host log."""
     log = _open.get("log")
-    found = (
-        None
-        if log is None
-        else log.read(
-            "SELECT definition_id FROM definition_name WHERE family = ? AND name = ?",
-            (family, name),
-        )
-    )
-    return str(found[0][0]) if found else None
+    return None if log is None else log.lineage(family, name)
 
 
 def read_experience_class(

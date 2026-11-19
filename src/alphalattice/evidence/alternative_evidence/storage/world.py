@@ -39,7 +39,6 @@ from blake3 import blake3
 
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.data_layer.project import definition_id
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
 
 from ..documents.contracts import AlternativeEvidenceDocumentReference
@@ -296,6 +295,7 @@ def _admit(port: Any, bodies: list[_Body], amended: dict[str, str]) -> dict[str,
         key=lambda body: str(body.reference.retrieved_at or ""),
     )
     rows: dict[str, list[dict[str, Any]]] = {}
+    providers = {name: port.log.require_lineage("provider", name) for name in PROVIDERS}
     already: set[str] = set()
     for body in readable:
         assert body.content is not None
@@ -303,21 +303,21 @@ def _admit(port: Any, bodies: list[_Body], amended: dict[str, str]) -> dict[str,
         if digest in by_digest:
             already.add(by_digest[digest][0])
             continue
-        provider = definition_id("provider", body.reference.source_name)
+        provider = providers[body.reference.source_name]
         source = (provider, source_ref(body.reference))
         doc_id = by_source.setdefault(source, str(uuid7()))
         by_digest[digest] = (doc_id, None)
         _keep(port.root / "blobs", digest, body.content)
         rows.setdefault(body.reference.source_name, []).append(
-            _row(body.reference, doc_id, digest, len(body.content))
+            _row(body.reference, doc_id, provider, digest, len(body.content))
         )
     waiting: set[str] = set()
-    already -= _link(port, rows, amended, by_source, waiting)
+    already -= _link(port, rows, amended, by_source, waiting, providers)
     taken: dict[str, int] = {}
     for name, batch in rows.items():
         for part in _rounds(batch):
             with stage(
-                port.root, "evidence_doc", definition_id("provider", name), _arrow(part),
+                port.root, "evidence_doc", providers[name], _arrow(part),
                 lag=AVAILABILITY,
             ) as staged:  # fmt: skip
                 taken[name] = taken.get(name, 0) + port.commit(staged).rows
@@ -335,6 +335,7 @@ def _link(
     amended: dict[str, str],
     by_source: dict[tuple[str, str], str],
     waiting: set[str],
+    providers: dict[str, str],
 ) -> set[str]:
     """Name each new amending filing's original, and add the next version of each one world holds
     without its link whose original is now known, from its own row; the accessions still unknown
@@ -350,7 +351,7 @@ def _link(
     for batch in rows.values():
         for row in batch:
             row["amends_doc_id"] = original(row["source_ref"])
-    names = {definition_id("provider", name): name for name in PROVIDERS}
+    names = {identity: name for name, identity in providers.items()}
     with closing(port.lake.cursor()) as cursor:
         unlinked = cursor.execute(
             f"SELECT CAST(doc_id AS VARCHAR) AS doc_id, {', '.join(FACTS)}"
@@ -393,6 +394,7 @@ def _rounds(batch: list[dict[str, Any]]) -> Iterable[list[dict[str, Any]]]:
 def _row(
     reference: AcquiredEvidenceDocumentReference | AcquiredEvidenceDocument,
     doc_id: str,
+    provider: str,
     digest: str,
     size: int,
 ) -> dict[str, Any]:
@@ -402,7 +404,7 @@ def _row(
     )
     return {
         "doc_id": doc_id,
-        "provider_id": definition_id("provider", reference.source_name),
+        "provider_id": provider,
         "source_ref": source_ref(reference),
         "doc_digest": digest,
         "byte_count": size,

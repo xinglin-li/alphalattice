@@ -20,8 +20,8 @@ back. Every action of a commit runs, though one raises; the first error is raise
 The log keeps its own clock (`clock`): a live event's recorded_us is the larger of the wall clock
 and the last value plus one microsecond, so it never steps back when the wall clock does.
 
-Each event type's projection is project.py's; `replay` copies the events alone into an empty log
-through the same write and rebuilds every projected table ALL EQUAL.
+Each event type's projection lives in project.py. `replay` rebuilds the projection through the
+same write. Replay decodes historical first registrations and reads minted ids from the events.
 """
 
 from __future__ import annotations
@@ -51,8 +51,15 @@ from alphalattice.kernel.data_layer.chain import (
     fold,
     fold_segments,
 )
-from alphalattice.kernel.data_layer.project import ENDED, project
-from alphalattice.kernel.data_layer.root import build_log
+from alphalattice.kernel.data_layer.project import (
+    ENDED,
+    definition_names,
+    lineage,
+    project,
+    require_lineage,
+)
+from alphalattice.kernel.data_layer.project import uuid7 as uuid7
+from alphalattice.kernel.data_layer.root import build_log, seed_rows, sqlite_read_only_uri
 
 BATCH_SIZE: Final = 64
 """Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256).
@@ -67,13 +74,6 @@ ATTRS_CHARACTERS: Final = 4096
 """The most characters an event's attributes hold (log.sql's CHECK on `attrs`)."""
 LOCK_AT: Final = 1 << 30
 """The byte a Windows Host locks: past any name the lock file holds."""
-
-
-def uuid7(now_ns: int | None = None) -> str:
-    """A UUIDv7 (RFC 9562): 48 bits of Unix milliseconds, then 74 random bits."""
-    ms = (time.time_ns() if now_ns is None else now_ns) // 1_000_000
-    value = (ms & (1 << 48) - 1) << 80 | 0x7 << 76 | secrets.randbits(12) << 64
-    return str(uuid.UUID(int=value | 0b10 << 62 | secrets.randbits(62)))
 
 
 def envelope(
@@ -182,7 +182,10 @@ class HostLog:
         log = cls(con, lock, batch=batch, seconds=seconds)
         if con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None:
             count = con.execute("SELECT count(*) FROM definition_version").fetchone()[0]
-            log.append(envelope("registry.seeded", attrs={"count": count}), None)
+            text = None
+            if _current(con, "registry.seeded") == 2:
+                text = canonical(_seed_definition_ids(con)).decode()
+            log.record("registry.seeded", attrs={"count": count}, text=text)
         log._checkpoint_month(time.time_ns() // 1000 if now_us is None else now_us)
         log.flush()
         return log
@@ -227,13 +230,15 @@ class HostLog:
             if row.get("type_version") is None:
                 row = {**row, "type_version": _current(con, row["type"])}
             spec = _spec(con, row)
-            admit(row, text, spec, _superseded(con), live=live, body=body)
+            attrs = admit(row, text, spec, _superseded(con), live=live, body=body)
             durable = bool(spec.get("durable"))
             if not con.in_transaction:
                 con.execute("BEGIN IMMEDIATE")
                 self._arm()
             con.execute("SAVEPOINT event")
             try:
+                if live:
+                    row = _mint_definition_ids(con, row, attrs, text)
                 seq = _write(con, row, text, body, live=live)
             except BaseException:
                 con.execute("ROLLBACK TO event")
@@ -295,6 +300,16 @@ class HostLog:
         """The Host's connection for several reads that must see one state, open batch included."""
         with self._guard:
             yield self._con
+
+    def lineage(self, family: str, name: str) -> str | None:
+        """The Host's id for a name, including one registered in its open batch."""
+        with self.reading() as con:
+            return lineage(con, family, name)
+
+    def require_lineage(self, family: str, name: str) -> str:
+        """Resolve a held name or refuse the missing registration by family and name."""
+        with self.reading() as con:
+            return require_lineage(con, family, name)
 
     def clock(self, at_least: int = 0) -> int:
         """The log's next moment, in microseconds: the larger of the wall clock, the last moment
@@ -500,7 +515,7 @@ def _run(actions: list[Callable[[bool], None]], *, committed: bool) -> None:
 def attach(root: Path, *, shared: bool = False) -> sqlite3.Connection:
     """A read-only connection to the data root's log, for any process but the Host; `shared`, one
     any thread may use under its holder's lock."""
-    uri = f"file:{(root / 'machine' / 'log.sqlite').as_posix()}?mode=ro"
+    uri = sqlite_read_only_uri((root / "machine" / "log.sqlite").absolute())
     con = sqlite3.connect(uri, uri=True, check_same_thread=not shared)
     con.row_factory = sqlite3.Row
     return con
@@ -628,6 +643,22 @@ def _superseded(con: sqlite3.Connection) -> Callable[[str, Any, Any], bool]:
     return superseded
 
 
+def _mint_definition_ids(
+    con: sqlite3.Connection, row: Mapping[str, Any], attrs: dict[str, Any], text: str | None
+) -> Mapping[str, Any]:
+    if "definition_ids" in attrs:
+        raise DataError("the Host mints definition ids", code="data_layer.definition_id_reserved")
+    names = definition_names(row["type"], row.get("phase"), row["node"], attrs, text)
+    minted = [
+        (family, name, uuid7())
+        for family, name in dict.fromkeys(names)
+        if lineage(con, family, name) is None
+    ]
+    if minted:
+        return {**row, "attrs": canonical({**attrs, "definition_ids": minted}).decode()}
+    return row
+
+
 def _write(
     con: sqlite3.Connection,
     row: Mapping[str, Any],
@@ -635,6 +666,7 @@ def _write(
     body: bytes | None,
     *,
     live: bool,
+    legacy_identity: Callable[[str, str], str] | None = None,
 ) -> int:
     """The unit `append` commits: the event, its text, the chain, the projection, the body."""
     columns = [column for column in ENVELOPE if column in row]
@@ -645,7 +677,7 @@ def _write(
         con.execute("INSERT INTO event_text VALUES (?, ?)", (seq, text))
     stored = con.execute("SELECT * FROM event WHERE seq = ?", (seq,)).fetchone()
     _fold(con, stored)
-    project(con, stored, text)
+    project(con, stored, text, legacy_identity)
     _body(con, stored, body, live=live)
     return seq
 
@@ -673,16 +705,60 @@ def _body(con: sqlite3.Connection, event: sqlite3.Row, body: bytes | None, *, li
         con.execute("INSERT INTO artifact_body VALUES (?, ?)", (event["subject_id"], body))
 
 
+def _seed_definition_ids(con: sqlite3.Connection) -> list[tuple[str, str, str]]:
+    """The ids the Host records in the seed event, in stable order."""
+    rows = con.execute(
+        "SELECT n.family, n.name, n.definition_id FROM definition_name n"
+        " JOIN definition_lineage l USING (definition_id)"
+        " WHERE n.named_seq = l.registered_seq AND l.registered_seq = 1 ORDER BY n.family, n.name"
+    )
+    return [(family, name, identity) for family, name, identity in rows]
+
+
+def _legacy_lineage(family: str, first_name: str) -> str:
+    """Decode the original key of a first registration written without an id."""
+    return digest(canonical(["definition", family, first_name]))
+
+
 def replay(source: sqlite3.Connection, path: Path) -> sqlite3.Connection:
     """A new log at `path` holding `source`'s events, each written again through the one write.
 
-    Nothing but the events, their texts and inline bodies is copied, one event at a time; every
-    projected table is rebuilt from them, so `project.differences(source, replayed)` is empty
-    when the log is the only truth. A forgotten text is admitted as it was once (live=False).
+    Copy events, texts and inline bodies. The seed event carries the original seed ids, and
+    the event that first named a later lineage carries its id. In a v1-seeded log, recover the
+    ids of older registrations from their original names and use the recorded ids where present.
     """
+    seeded = source.execute(
+        "SELECT e.type_version, t.text, e.attrs FROM event e LEFT JOIN event_text t USING (seq)"
+        " WHERE e.seq = 1 AND e.type = 'registry.seeded'"
+    ).fetchone()
+    seed_version = 1 if seeded is None else seeded[0]
+    seed_count = None if seeded is None else json.loads(seeded[2]).get("count")
+    if seeded is not None and (type(seed_count) is not int or seed_count < 1):
+        raise DataError(
+            "registry.seeded has no positive definition count", code="data_layer.chain_broken"
+        )
+    legacy_identity = _legacy_lineage if seed_version == 1 else None
+    if legacy_identity is None:
+        identities = {(family, name): identity for family, name, identity in json.loads(seeded[1])}
+    else:
+        identities = {
+            (family, name): legacy_identity(family, name)
+            for family, name, version, *_ in seed_rows(historical_count=seed_count)
+            if version == 1
+        }
     con = sqlite3.connect(path, isolation_level=None)
     con.row_factory = sqlite3.Row
-    build_log(con)
+    try:
+        build_log(con, seed_ids=identities, seed_version=seed_version)
+        actual = con.execute("SELECT count(*) FROM definition_version").fetchone()[0]
+        if seed_count is not None and actual != seed_count:
+            raise DataError(
+                f"registry.seeded records {seed_count} definitions but replay rebuilt {actual}",
+                code="data_layer.chain_broken",
+            )
+    except BaseException:
+        con.close()
+        raise
     con.execute("PRAGMA foreign_keys = ON")
     rows = source.cursor()
     rows.row_factory = sqlite3.Row  # whatever rows the caller's connection makes
@@ -697,7 +773,7 @@ def replay(source: sqlite3.Connection, path: Path) -> sqlite3.Connection:
             row = {column: event[column] for column in ENVELOPE}
             text, body = event["text"], event["body"]
             admit(row, text, _spec(con, row), _superseded(con), live=False, body=body)
-            _write(con, row, text, body, live=False)
+            _write(con, row, text, body, live=False, legacy_identity=legacy_identity)
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")

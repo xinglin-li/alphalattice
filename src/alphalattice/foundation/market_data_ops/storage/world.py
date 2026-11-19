@@ -28,9 +28,10 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import closing
+from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
@@ -58,7 +59,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import attach
-from alphalattice.kernel.data_layer.project import definition_id
+from alphalattice.kernel.data_layer.project import lineage, require_lineage
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
 from alphalattice.kernel.quant.sector_history import SectorReclassification
@@ -184,6 +185,9 @@ def _universe_journal(events: Sequence[Any], workspace_id: str) -> None:
         )
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
     for event in events:
+        identity = universe_lineage(workspace_id, event.market_profile_id)
+        if identity is None:
+            raise ValueError("universe manifest is not registered")
         attrs = {
             "sequence": event.sequence,
             "listing_id": event.listing_id,
@@ -198,9 +202,9 @@ def _universe_journal(events: Sequence[Any], workspace_id: str) -> None:
             "SELECT 1 FROM event WHERE subject_kind = 'universe' AND subject_id = ?"
             " AND type IN ('universe.member_added', 'universe.member_removed')"
             " AND json_extract(attrs, '$.content_digest') = ?",
-            (universe_lineage(workspace_id, event.market_profile_id), event.event_hash),
+            (identity, event.event_hash),
             UNIVERSE_EVENTS[event.kind],
-            ("universe", universe_lineage(workspace_id, event.market_profile_id)),
+            ("universe", identity),
             attrs,
             occurred_us=(event.decided_at - epoch) // timedelta(microseconds=1),
             workspace=None,
@@ -256,9 +260,9 @@ def universe_name(workspace_id: str, profile_id: str) -> str:
     return f"{workspace_id}/{profile_id}"
 
 
-def universe_lineage(workspace_id: str, profile_id: str) -> str:
+def universe_lineage(workspace_id: str, profile_id: str) -> str | None:
     """The universe definition id assigned to a workspace's governed profile."""
-    return definition_id("universe", universe_name(workspace_id, profile_id))
+    return _lineage("universe", universe_name(workspace_id, profile_id))
 
 
 def universe_set_digest(listing_ids: Iterable[str]) -> str:
@@ -266,19 +270,22 @@ def universe_set_digest(listing_ids: Iterable[str]) -> str:
     return digest(canonical(sorted({world_listing(listing) for listing in listing_ids})))
 
 
-def universe_set_id(listing_ids: Iterable[str]) -> str:
+def universe_set_id(listing_ids: Iterable[str]) -> str | None:
     """The registered universe lineage of a frozen member set."""
-    return definition_id("universe", universe_set_digest(listing_ids))
+    return _lineage("universe", universe_set_digest(listing_ids))
 
 
 def admit_member_set(listing_ids: Iterable[str], valid_from: date, provider: str) -> str:
     """Admit a frozen set through StorePort, with the source's registered legacy lag."""
     listings = sorted(set(listing_ids))
     content = universe_set_digest(listings)
-    identity = definition_id("universe", content)
-    history.define(
+    identity = history.define(
         "universe", content, "A frozen universe member set.", {"content_digest": content}
     )
+    if identity is None:
+        raise DataError(
+            "the Host's universe log is not open", code="data_layer.history_unavailable"
+        )
     _commit_universe_members(identity, ((item, valid_from, None) for item in listings), provider)
     return identity
 
@@ -305,27 +312,38 @@ def _commit_universe_members(
         with stage(
             port.root,
             "universe_member",
-            definition_id("provider", provider),
+            port.log.require_lineage("provider", provider),
             _arrow(rows),
             lag=MARKET_CLOSE,
         ) as staged:
             port.commit(staged)
 
 
-def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
-    """Rows of `sql` over the log: in the process that holds it, through the HostLog's own
-    connection, its open batch included; in any other, through a read-only one (`log.attach`).
-    Both are Python's sqlite3, the one SQLite library a process opens the log with. No rows in a
-    data root with no log yet."""
+@contextmanager
+def _log_connection() -> Iterator[sqlite3.Connection | None]:
+    """Read the Host's current batch, or the same data root's committed log outside a Host."""
     host = history.opened_log()
     held = host[0] if host is not None else history.holding()
     if held is not None:
-        return [tuple(row) for row in held.read(sql, tuple(params))]
-    root = history.data_root()
-    if not (root / "machine" / "log.sqlite").is_file():
-        return []
-    with closing(attach(root)) as con:
-        return [tuple(row) for row in con.execute(sql, tuple(params)).fetchall()]
+        with held.reading() as con:
+            yield con
+    else:
+        root = history.data_root()
+        if (root / "machine" / "log.sqlite").is_file():
+            with closing(attach(root)) as con:
+                yield con
+        else:
+            yield None
+
+
+def _log_rows(sql: str, params: Sequence[Any]) -> list[tuple[Any, ...]]:
+    with _log_connection() as con:
+        return [] if con is None else [tuple(row) for row in con.execute(sql, params)]
+
+
+def _lineage(family: str, name: str) -> str | None:
+    with _log_connection() as con:
+        return None if con is None else lineage(con, family, name)
 
 
 def _universe_surface(connection: Any = None) -> Any:
@@ -353,9 +371,9 @@ def _member_ids(connection: Any, set_id: str, cutoff_us: int) -> tuple[str, ...]
         [
             cutoff_us,
             set_id,
-            definition_id("provider", LISTING_ALIAS),
+            _lineage("provider", LISTING_ALIAS),
             cutoff_us,
-            definition_id("world_table", "provider_symbol"),
+            _lineage("world_table", "provider_symbol"),
             cutoff_us,
         ],
     ).fetchall()
@@ -400,9 +418,12 @@ def admit_universe_bootstrap(record: Any, provider: str, workspace_id: str) -> N
     log = opened[0]
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
     with log.unit() as con:
+        identity = require_lineage(
+            con, "universe", universe_name(workspace_id, record.market_profile_id)
+        )
         held = con.execute(
             "SELECT attrs FROM event WHERE type = 'universe.bootstrapped' AND subject_id = ?",
-            (universe_lineage(workspace_id, record.market_profile_id),),
+            (identity,),
         ).fetchall()
         if held:
             if len(held) != 1 or json.loads(held[0][0]) != attrs:
@@ -410,7 +431,7 @@ def admit_universe_bootstrap(record: Any, provider: str, workspace_id: str) -> N
             return
         log.record(
             "universe.bootstrapped",
-            ("universe", universe_lineage(workspace_id, record.market_profile_id)),
+            ("universe", identity),
             attrs,
             occurred_us=(record.admitted_at - epoch) // timedelta(microseconds=1),
             node="market_data_ops",
@@ -581,9 +602,9 @@ def membership_schedule(
         [
             days,
             market,
-            definition_id("provider", LISTING_ALIAS),
+            _lineage("provider", LISTING_ALIAS),
             cutoff_us,
-            definition_id("world_table", "provider_symbol"),
+            _lineage("world_table", "provider_symbol"),
             cutoff_us,
             universe_lineage(workspace_id, market_profile_id),
             cutoff_us,
@@ -658,7 +679,7 @@ def _admit_universe_intervals(
     bootstrap: Any, events: Sequence[Any], provider: str, workspace_id: str
 ) -> None:
     """Admit the bootstrap cohort and its journal as legacy membership intervals."""
-    identity = history.definition_id(
+    identity = history.definition_lineage(
         "universe", universe_name(workspace_id, bootstrap.market_profile_id)
     )
     if identity is None:
@@ -868,8 +889,8 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
             history.define(
                 "sector_scheme", provider, f"The sector classification supplied by {provider}."
             )
-            scheme = definition_id("sector_scheme", provider)
-            alias = definition_id("provider", LISTING_ALIAS)
+            scheme = port.log.require_lineage("sector_scheme", provider)
+            alias = port.log.lineage("provider", LISTING_ALIAS)
             prior = (
                 "(SELECT arg_min(r.prior_sector_name, r.effective_session)"
                 f" FROM {WORKSPACE}.sector_classification_revision r"
@@ -924,7 +945,7 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
                 with stage(
                     port.root,
                     "sector",
-                    definition_id("provider", provider),
+                    port.log.require_lineage("provider", provider),
                     batch,
                     lag=MARKET_CLOSE,
                 ) as staged:
@@ -970,7 +991,7 @@ def sector_map(
         [
             cutoff_us,
             cutoff_us,
-            definition_id("provider", LISTING_ALIAS),
+            _lineage("provider", LISTING_ALIAS),
             list(listings),
             session,
             session,
@@ -1029,7 +1050,7 @@ def sector_transitions(listings: Sequence[str], *, cutoff_us: int, cursor: Any) 
         " lag(sector_code) OVER (PARTITION BY symbol, scheme_id ORDER BY valid_from) AS prior"
         " FROM facts) SELECT symbol, valid_from, prior, sector_code FROM changes"
         " WHERE prior IS NOT NULL AND prior <> sector_code ORDER BY valid_from, symbol",
-        [cutoff_us, cutoff_us, definition_id("provider", LISTING_ALIAS), list(listings)],
+        [cutoff_us, cutoff_us, _lineage("provider", LISTING_ALIAS), list(listings)],
     ).fetchall()
     return tuple(SectorReclassification(*row) for row in rows)
 
@@ -1116,11 +1137,15 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
     dated = [row for row in listings if row[5] is not None]  # a listing with no row of any date
     ids = {row[0]: world_listing(row[0]) for row in dated}
     run("CREATE OR REPLACE TEMP TABLE market_ids (old VARCHAR, new UUID)").complete()
+    provider_ids = {
+        name: port.log.require_lineage("provider", name)
+        for name in sorted(providers | PROVIDERS.keys())
+    }
     run("CREATE OR REPLACE TEMP TABLE market_providers (name VARCHAR, id VARCHAR)").complete()
     port.lake.executemany("INSERT INTO temp.market_ids VALUES (?, ?)", list(ids.items()))
     port.lake.executemany(
         "INSERT INTO temp.market_providers VALUES (?, ?)",
-        [(name, definition_id("provider", name)) for name in sorted(providers)],
+        [(name, provider_ids[name]) for name in sorted(providers)],
     )
     rows: dict[str, int] = {}
     dropped: dict[str, int] = {}
@@ -1129,8 +1154,7 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
     def commit(table: str, provider: str, batch: Any, lag: Any) -> None:
         if not batch.num_rows:
             return
-        lineage = definition_id("provider", provider)
-        with stage(port.root, table, lineage, batch, lag=lag) as staged:
+        with stage(port.root, table, provider_ids[provider], batch, lag=lag) as staged:
             done = port.commit(staged)
         if done.rows:
             rows[table] = rows.get(table, 0) + done.rows
@@ -1155,7 +1179,7 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         for row in dated
     ).items():
         commit("listing", provider, _arrow(batch), MARKET_CLOSE)
-    for provider, batch in _symbols(run, dated, ids).items():
+    for provider, batch in _symbols(run, dated, ids, provider_ids).items():
         commit("provider_symbol", provider, _arrow(batch), MARKET_CLOSE)
     for provider, batch in _bars(port.lake):
         commit("raw_bar", provider, batch, MARKET_CLOSE)
@@ -1230,7 +1254,7 @@ def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str
 
 
 def _symbols(
-    run: Any, dated: list[tuple[Any, ...]], ids: Mapping[str, str]
+    run: Any, dated: list[tuple[Any, ...]], ids: Mapping[str, str], providers: Mapping[str, str]
 ) -> dict[str, list[dict[str, Any]]]:
     """Each provider's symbol rows, an interval with an end as one row, which StorePort writes as
     its two versions, carrying the source's lifecycle state; an alias keeps the valid_from it
@@ -1253,7 +1277,7 @@ def _symbols(
     display = dict(run(f"SELECT listing_id, display_symbol FROM {WORKSPACE}.listing").fetchall())
     for listing, *_, first in dated:
         for alias, symbol in ((LISTING_ALIAS, listing), (DISPLAY_ALIAS, display[listing])):
-            valid = aliases.get((definition_id("provider", alias), ids[listing]), first)
+            valid = aliases.get((providers[alias], ids[listing]), first)
             row = {"listing_id": ids[listing], "symbol": symbol, "valid_from": valid}
             out.setdefault(alias, []).append(row | {"valid_to": None})
     return out

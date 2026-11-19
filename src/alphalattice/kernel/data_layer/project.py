@@ -1,8 +1,8 @@
 """Each event type's projection: the rows of log.sqlite that derive from the event log.
 
 A projection reads the event's own fields, its attributes and, for a definition, its text; never a
-clock, a file or another store. So `log.replay`, which copies the events into an empty log through
-the same write, rebuilds every projected table ALL EQUAL, and `differences` names any table that
+clock, a file or another store. `log.replay` also supplies the retained IDs for historical
+registrations. `differences` names any projected table that
 does not. The meaning of each type is the 0.2.8 reference's (tools/records/2026-11/2026-11-14/
 schemas/project.py); a refusal here rolls the event back with everything else of its unit.
 """
@@ -12,8 +12,11 @@ from __future__ import annotations
 import json
 import math
 import re
+import secrets
 import sqlite3
 import struct
+import time
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -60,6 +63,7 @@ PROJECTED: Final = (
 MACHINE_TEXT: Final = frozenset(
     {
         "definition.registered",
+        "registry.seeded",
         "task.requested",
         "task.saved",
         "work_item.saved",
@@ -108,9 +112,20 @@ def on(*types: str) -> Callable[[Projection], Projection]:
     return register
 
 
-def project(con: sqlite3.Connection, event: sqlite3.Row, text: str | None) -> None:
+def project(
+    con: sqlite3.Connection,
+    event: sqlite3.Row,
+    text: str | None,
+    legacy_identity: Callable[[str, str], str] | None = None,
+) -> None:
     """Apply one written event's projection, in the transaction that wrote it."""
     a = json.loads(event["attrs"])
+    for family, name, identity in a.get("definition_ids", ()):
+        _insert_lineage(con, family, name, identity, event["seq"])
+    if legacy_identity is not None and "definition_ids" not in a:
+        for family, name in definition_names(event["type"], event["phase"], event["node"], a, text):
+            if lineage(con, family, name) is None:
+                _insert_lineage(con, family, name, legacy_identity(family, name), event["seq"])
     handler = HANDLERS.get(event["type"])
     if handler is not None:
         handler(con, event, a, text)
@@ -228,11 +243,11 @@ def _sized(data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + data
 
 
-def definition_id(family: str, name: str) -> str:
-    """The id of the lineage first registered as `name` in `family`: a digest of that first
-    registration, assigned once. A rename keeps it, and a name is never reused in its family, so
-    the same definition has the same id on every machine and in every replay."""
-    return digest(canonical(["definition", family, name]))
+def uuid7(now_ns: int | None = None) -> str:
+    """A UUIDv7 (RFC 9562): 48 bits of Unix milliseconds, then 74 random bits."""
+    ms = (time.time_ns() if now_ns is None else now_ns) // 1_000_000
+    value = (ms & (1 << 48) - 1) << 80 | 0x7 << 76 | secrets.randbits(12) << 64
+    return str(uuid.UUID(int=value | 0b10 << 62 | secrets.randbits(62)))
 
 
 def lineage(con: sqlite3.Connection, family: str, name: str) -> str | None:
@@ -243,7 +258,7 @@ def lineage(con: sqlite3.Connection, family: str, name: str) -> str | None:
     return None if found is None else str(found[0])
 
 
-def _named(con: sqlite3.Connection, family: str, name: str) -> str:
+def require_lineage(con: sqlite3.Connection, family: str, name: str) -> str:
     """The lineage `name` names in `family`, refused by name when none does."""
     found = lineage(con, family, name)
     if found is None:
@@ -251,33 +266,41 @@ def _named(con: sqlite3.Connection, family: str, name: str) -> str:
     return found
 
 
-def _first_sight(con: sqlite3.Connection, family: str, name: str, seq: int) -> str:
-    """The lineage of a name an event carries, named on first sight: a node by the events it emits,
-    a task's or a wait's event type by the task that names it, before anything registers them."""
-    found = lineage(con, family, name)
-    if found is None:
-        found = definition_id(family, name)
-        con.execute(
-            "INSERT INTO definition_lineage VALUES (?, ?, ?, ?, ?)", (found, family, name, seq, seq)
-        )
-        con.execute("INSERT INTO definition_name VALUES (?, ?, ?, ?)", (family, name, found, seq))
-    return found
+def definition_names(
+    type_: str, phase: str | None, node: str, attrs: Attrs, text: str | None
+) -> Iterable[tuple[str, str]]:
+    """Names this event can register, explicitly or when the projection first sees them."""
+    if type_ == "definition.registered":
+        definition = json.loads(text or "{}")
+        if definition.get("version") == 1:
+            yield definition["family"], definition["name"]
+    elif type_ == "task.requested":
+        yield "event_type", attrs["type"]
+    elif type_ == "wait.started" and attrs.get("event_type") is not None:
+        yield "event_type", attrs["event_type"]
+    if phase in ENDED:
+        yield "node", node
 
 
-def register(con: sqlite3.Connection, family: str, name: str, version: int, *fields: Any) -> str:
-    """One definition version, named by any name its lineage held; version 1 of a name no lineage
-    ever held starts one. `fields` are definition_version's columns after the version. Returns
-    the lineage's id."""
+def _insert_lineage(con: Con, family: str, name: str, identity: str, seq: int) -> None:
+    con.execute(
+        "INSERT INTO definition_lineage VALUES (?, ?, ?, ?, ?)", (identity, family, name, seq, seq)
+    )
+    con.execute("INSERT INTO definition_name VALUES (?, ?, ?, ?)", (family, name, identity, seq))
+
+
+def register(
+    con: Con, family: str, name: str, version: int, *fields: Any, identity: str | None = None
+) -> str:
+    """Register a version of a named lineage, with its supplied id on a seed's first version."""
     found = lineage(con, family, name)
     if found is None:
-        if version != 1:
-            raise _refuse("definition_unregistered", f"{family} {name} has no version 1")
-        found = definition_id(family, name)
-        seq = fields[-3]  # registered_seq
-        con.execute(
-            "INSERT INTO definition_lineage VALUES (?, ?, ?, ?, ?)", (found, family, name, seq, seq)
-        )
-        con.execute("INSERT INTO definition_name VALUES (?, ?, ?, ?)", (family, name, found, seq))
+        if version != 1 or identity is None:
+            raise _refuse(
+                "definition_unregistered", f"{family} {name} has no version 1 registration id"
+            )
+        found = identity
+        _insert_lineage(con, family, name, found, fields[-3])  # registered_seq
     con.execute(
         f"INSERT INTO definition_version VALUES (?, ?, {', '.join('?' * len(fields))})",
         (found, version, *fields),
@@ -289,7 +312,7 @@ def register(con: sqlite3.Connection, family: str, name: str, version: int, *fie
             ref_version = spec.get(version_field) if version_field else None
             con.execute(
                 "INSERT INTO definition_ref VALUES (?, ?, ?, ?, ?)",
-                (found, version, field, _named(con, referred, named), ref_version),
+                (found, version, field, require_lineage(con, referred, named), ref_version),
             )
     return found
 
@@ -341,8 +364,8 @@ def _daily(con: sqlite3.Connection, e: sqlite3.Row, a: dict[str, Any]) -> None:
             e["occurred_us"],
             e["actor_kind"],
             e["actor_id"],
-            _first_sight(con, "node", e["node"], e["seq"]),
-            _named(con, "event_type", e["type"]),
+            require_lineage(con, "node", e["node"]),
+            require_lineage(con, "event_type", e["type"]),
             e["phase"],
             e["occurred_us"] - e["started_us"],
             int(a.get("gen_ai.usage.input_tokens", 0)),
@@ -488,7 +511,7 @@ def _task_requested(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         (
             task,
             *home,
-            _first_sight(con, "event_type", a["type"], e["seq"]),
+            require_lineage(con, "event_type", a["type"]),
             e["trace_id"],
             a["product_version"],
             e["seq"],
@@ -661,7 +684,7 @@ def _wait(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             a["kind"],
             None
             if a.get("event_type") is None
-            else _first_sight(con, "event_type", a["event_type"], e["seq"]),
+            else require_lineage(con, "event_type", a["event_type"]),
             _json(a.get("match")),
             a.get("fires_us"),
             a["purpose"],
@@ -702,7 +725,7 @@ SAME_WINDOW: Final = (
 def window(con: sqlite3.Connection, workspace: str | None, a: Mapping[str, Any]) -> tuple[Any, ...]:
     """A selection's window as its columns, SAME_WINDOW's arguments: the universe by its lineage."""
     universe = a.get("universe")
-    universe_id = None if universe is None else _named(con, "universe", universe)
+    universe_id = None if universe is None else require_lineage(con, "universe", universe)
     spec = _json(a.get("spec", {}))
     return (workspace, a["cutoff_us"], universe_id, a.get("valid_from"), a.get("valid_to"), spec)
 
@@ -747,7 +770,7 @@ def _recipe(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             "the Host fills a recipe's upstream from the artifacts it reads",
         )
     reads = upstream(con, a.get("reads", ()))
-    method = _named(con, "method", a["method"])
+    method = require_lineage(con, "method", a["method"])
     key = recipe_key(method, a["method_version"], a["params"], reads)
     if a.get("recipe_key") != key:
         raise _refuse(
@@ -1007,7 +1030,7 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         raise _refuse(
             "artifact_trial_unregistered", "a trial's artifact follows the trial's registration"
         )
-    kind = _named(con, "artifact_type", a["type"])
+    kind = require_lineage(con, "artifact_type", a["type"])
     values = [e["subject_id"], a["identity_kind"], kind, a["type_version"]]
     values += [a["meaning"], a.get("recipe_key"), a.get("selection_id"), trial]
     values += [_json(a.get("shape")), a.get("valid_from"), a.get("valid_to")]
@@ -1035,7 +1058,14 @@ def _result(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     for metric, version, named, value in a["measures"]:
         con.execute(
             "INSERT INTO measure VALUES (?, ?, ?, ?, ?, ?)",
-            (e["subject_id"], _named(con, "metric", metric), version, dims(named), value, e["seq"]),
+            (
+                e["subject_id"],
+                require_lineage(con, "metric", metric),
+                version,
+                dims(named),
+                value,
+                e["seq"],
+            ),
         )
     owner = con.execute(
         "SELECT trial_id FROM artifact WHERE artifact_id = ?", (e["subject_id"],)
@@ -1103,7 +1133,7 @@ def _scored(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         " outcome_seq = coalesce(outcome_seq, ?) WHERE prediction_id = ?",
         (
             a["score"],
-            _named(con, "metric", a["metric"]),
+            require_lineage(con, "metric", a["metric"]),
             a["metric_version"],
             e["seq"],
             e["subject_id"],
