@@ -746,6 +746,69 @@
   ],
   "metrics": [
     {
+      "name": "alpha_development_target",
+      "unit": "target units",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's transformed Alpha development target."
+    },
+    {
+      "name": "alpha_development_economic_return",
+      "unit": "ratio",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's Alpha development economic return."
+    },
+    {
+      "name": "alpha_development_score",
+      "unit": "score",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's published Alpha development forecast."
+    },
+    {
+      "name": "alpha_mae",
+      "unit": "target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean absolute prediction error on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_mse",
+      "unit": "squared target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean squared prediction error on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_zero_relative_oos_r2",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {},
+      "description": "Out-of-sample R-squared against the zero forecast on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_gross_decile_spread",
+      "unit": "target units",
+      "direction": "higher",
+      "params": {},
+      "description": "Mean gross top-minus-bottom decile target spread across Alpha formation sessions."
+    },
+    {
+      "name": "alpha_formation_decile_turnover",
+      "unit": "ratio",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean one-way decile turnover between consecutive Alpha formation sessions."
+    },
+    {
+      "name": "alpha_fold_mse_std",
+      "unit": "squared target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Standard deviation of mean squared error across Alpha development folds."
+    },
+    {
       "name": "n_obs",
       "unit": "count",
       "direction": "none",
@@ -844,6 +907,37 @@
     }
   ],
   "artifact_types": [
+    {
+      "name": "alpha_development_chunk",
+      "storage": "table",
+      "table": "results.breakdown",
+      "measures": [
+        "alpha_development_target",
+        "alpha_development_economic_return",
+        "alpha_development_score"
+      ],
+      "keep": "while_active",
+      "description": "The sealed validation or score rows of one Alpha development chunk."
+    },
+    {
+      "name": "alpha_development_summary",
+      "storage": "none",
+      "table": null,
+      "measures": [
+        "alpha_mae",
+        "alpha_mse",
+        "alpha_zero_relative_oos_r2",
+        "alpha_gross_decile_spread",
+        "alpha_formation_decile_turnover",
+        "alpha_fold_mse_std",
+        "coverage",
+        "ic_mean",
+        "ic_ir",
+        "n_obs"
+      ],
+      "keep": "while_active",
+      "description": "The measures of one sealed Alpha candidate development report."
+    },
     {
       "name": "backtest",
       "storage": "table",

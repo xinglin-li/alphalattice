@@ -73,6 +73,14 @@ A workspace's market data enters the data root's world when the Host opens it. I
 
 Execution outcomes are kept in the machine's data-root catalog. `ALPHALATTICE_EXECUTION_OUTCOME_STORE=legacy` reads retained pre-upgrade outcome files for rollback; `catalog` selects the catalog and is the default. Newly published outcomes have catalog bodies only, so the legacy setting can read them only when their earlier files remain. Other setting values are refused.
 
+Alpha development publishes its validation and score rows to the data-root catalog
+and records candidate summary measures in the log. A workspace on a data root
+reads admitted chunks from the catalog by default. Set
+`ALPHALATTICE_ALPHA_DEVELOPMENT_STORE=legacy` to read evidence through its
+prior artifact reader for rollback. That reader uses the configured Alpha
+array store for score bodies and the workspace files for validation rows.
+A standalone workspace without a catalog uses the prior reader by default.
+
 The Strategy Lab's numerical lanes are kept once per machine in the data root: each lane's body under `blobs/`, its kind, shape and dtypes in the log, held by every workspace that cites it. Every read checks the body against that profile and proves its bytes; a lane that differs is refused with `data_layer.array_profile_mismatch` or `data_layer.array_tampered`, and a lane whose body is gone with `data_layer.array_missing`: restore the data root from its last backup. At the first 0.2.8 start the upgrade copies each workspace's lane files into the data root and leaves the files in place; until it has, a workspace reads its lanes from its own files. `ALPHALATTICE_ARRAY_STORE=legacy` reads those files for rollback, and `door` reads the data root only. A lane written after the upgrade has no file, so the legacy setting cannot read it. Other values are refused with `portfolio_strategy_lab.array_store_invalid`. A workspace copy, a model sandbox's or a saved-object readback's, and a workspace backup carry the workspace's lanes under `artifacts/portfolio-strategy-lab/carried/`, and the Host that opens the copy or the restored workspace moves them onto its own data root before it reads them.
 
 At the first 0.2.8 start, the upgrade also copies and verifies Alpha's existing array and score bodies in the data root, leaving their workspace files in place. The same `ALPHALATTICE_ARRAY_STORE` setting selects Alpha reads: `door` is the default and `legacy` reads the retained workspace files for rollback. Alpha bodies newly written through the data root have no legacy file, so the legacy setting cannot read them. Other values are refused for Alpha with `alpha_research.array_store_invalid`.

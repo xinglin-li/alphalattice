@@ -1217,11 +1217,43 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 parent/child/decision/score lineage fails readback.
         """
         marker = self.load_marker(marker_hash)
-        fold_surfaces = tuple(
-            self.load_fold_surface(value) for value in marker.development_fold_surface_hashes
-        )
         candidate_reports = tuple(
             self.load_candidate_report(value) for value in marker.candidate_report_hashes
+        )
+        catalog_folds = catalog_numerical = None
+        named_evidence = {}
+        catalog_scores: dict[str, pa.Table] = {}
+        if self.catalog_development_reads():
+            named_evidence = {
+                key: self.load_candidate_fold_evidence(key, verify_score=False)
+                for key in dict.fromkeys(
+                    key for report in candidate_reports for key in report.fold_evidence_hashes
+                )
+            }
+            catalog_folds, catalog_numerical, catalog_scores = self.read_development_folds(
+                marker.development_fold_surface_hashes,
+                tuple(
+                    fold.numerical_result_hash
+                    for fold in named_evidence.values()
+                    if fold.numerical_result_hash is not None
+                ),
+                legacy_scores=tuple(
+                    fold.score_chunk
+                    for fold in named_evidence.values()
+                    if isinstance(fold, LegacyAlphaCandidateFoldEvidence)
+                    and fold.score_chunk is not None
+                ),
+            )
+            catalog_scores.update(
+                {
+                    result.score_chunk.content_hash: scores
+                    for result, scores in catalog_numerical.values()
+                    if result.score_chunk is not None and scores is not None
+                }
+            )
+        fold_surfaces = tuple(
+            self.load_fold_surface(value) if catalog_folds is None else catalog_folds[value][0]
+            for value in marker.development_fold_surface_hashes
         )
         candidate_inference_evidence = tuple(
             self.load_candidate_inference_evidence(value)
@@ -1344,7 +1376,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 "current Alpha candidate report binding changed",
             )
             folds = tuple(
-                self.load_candidate_fold_evidence(value) for value in report.fold_evidence_hashes
+                self.load_candidate_fold_evidence(value)
+                if catalog_folds is None
+                else named_evidence[value]
+                for value in report.fold_evidence_hashes
             )
             score_hashes: list[str] = []
             estimator_hashes: list[str] = []
@@ -1366,8 +1401,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     "current Alpha fold evidence binding changed",
                 )
                 if isinstance(fold, AlphaCandidateFoldEvidence):
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1384,8 +1421,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                         AlphaCandidateNumericalFoldResult | LegacyAlphaCandidateFoldEvidence
                     ) = numerical
                 elif fold.numerical_result_hash is not None:
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1432,7 +1471,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha numerical score/validation surface rows changed",
                         )
-                        score_table = self.resolve_numerical_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_numerical_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     else:
                         self._require_binding(
                             authority.score_chunk.request_hash == marker.request_hash
@@ -1448,7 +1491,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha score/validation surface rows changed",
                         )
-                        score_table = self.resolve_candidate_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_candidate_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     scored_row_count += sum(
                         str(value) == "SCORED" for value in score_table["availability"].to_pylist()
                     )

@@ -240,7 +240,7 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
         m for f, *_, spec in rows if f == "artifact_type" for m in json.loads(spec)["measures"]
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
-    assert (len(rows), {row[3:5] for row in rows}) == (108, {(1, 1)})
+    assert (len(rows), {row[3:5] for row in rows}) == (119, {(1, 1)})
     assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]

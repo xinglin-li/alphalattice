@@ -7,7 +7,7 @@ import json
 import os
 import pathlib
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date
@@ -324,8 +324,11 @@ class AlphaDevelopmentArtifactStore:
         packed_capacity: Callable[[int], None] = lambda _bytes: None,
         sharing_workspace: Path | None = None,
     ) -> None:
+        """Open the workspace's Alpha evidence and its retained artifact files."""
         self.root = artifact_root.resolve() / "alpha-research"
         self._packed_capacity = packed_capacity
+        self._development_chunks: dict[str, tuple[str, pa.Table]] | None = None
+        self._development_summaries: dict[str, history.AlphaDevelopmentMeasures] | None = None
         # A fold's listing positions and a score's values are numerical lanes: Parquet named by
         # the digest of their packed bytes; a store in a legacy format reads its `.bin` files.
         self._lanes = ContentAddressedStore(
@@ -1839,9 +1842,25 @@ class AlphaDevelopmentArtifactStore:
             ),
         )
 
-    def resolve_validation_chunk(self, value: AlphaDevelopmentValidationChunkRef) -> pa.Table:
-        target = self._path("current/development-validation-chunks", value.content_hash, "parquet")
-        columns = tuple(pq.ParquetFile(target).schema_arrow.names)
+    def resolve_validation_chunk(
+        self, value: AlphaDevelopmentValidationChunkRef, *, catalog_rows: pa.Table | None = None
+    ) -> pa.Table:
+        """Verify the exact validation rows named by the fold."""
+        if (
+            catalog_rows is None
+            and self._development_chunks is None
+            and self.catalog_development_reads()
+        ):
+            catalog_rows = history.read_alpha_development_chunks((value.content_hash,))[
+                value.content_hash
+            ]
+        if catalog_rows is None:
+            target = self._path(
+                "current/development-validation-chunks", value.content_hash, "parquet"
+            )
+            columns = tuple(pq.ParquetFile(target).schema_arrow.names)
+        else:
+            columns = tuple(catalog_rows.schema.names)
         if columns not in (
             self._DEVELOPMENT_VALIDATION_COLUMNS,
             self._DEVELOPMENT_ECONOMIC_VALIDATION_COLUMNS,
@@ -1854,6 +1873,7 @@ class AlphaDevelopmentArtifactStore:
             columns=columns,
             category="development-validation-chunks",
             kind="AlphaDevelopmentValidationChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "request_hash": value.request_hash,
                 "development_surface_hash": value.development_surface_hash,
@@ -1876,13 +1896,16 @@ class AlphaDevelopmentArtifactStore:
         the chunk a second time.
         """
 
-        result = self._load(
+        result = self._fold_surface_reference(value)
+        return result, self.resolve_validation_chunk(result.validation_chunk)
+
+    def _fold_surface_reference(self, value: str) -> AlphaDevelopmentFoldSurface:
+        return self._load(
             "development-fold-surfaces",
             value,
             "surface_fold_hash",
             AlphaDevelopmentFoldSurface,
         )
-        return result, self.resolve_validation_chunk(result.validation_chunk)
 
     def publish_candidate_score_chunk(
         self,
@@ -1918,14 +1941,20 @@ class AlphaDevelopmentArtifactStore:
     def resolve_candidate_score_chunk(
         self,
         value: AlphaCandidateDevelopmentScoreChunkRef | AlphaNumericalDevelopmentScoreChunkRef,
+        *,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
+        """Verify a legacy or numerical score chunk by its sealed reference."""
         if isinstance(value, AlphaNumericalDevelopmentScoreChunkRef):
-            return self.resolve_numerical_score_chunk(value)
+            if catalog_rows is None:
+                return self.resolve_numerical_score_chunk(value)
+            return self.resolve_numerical_score_chunk(value, catalog_rows=catalog_rows)
         return self._resolve_development_chunk(
             reference=value,
             columns=self._DEVELOPMENT_SCORE_COLUMNS,
             category="development-score-chunks",
             kind="AlphaCandidateDevelopmentScoreChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "request_hash": value.request_hash,
                 "development_surface_hash": value.development_surface_hash,
@@ -1970,12 +1999,16 @@ class AlphaDevelopmentArtifactStore:
     def resolve_numerical_score_chunk(
         self,
         value: AlphaNumericalDevelopmentScoreChunkRef,
+        *,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
+        """Verify the score rows named by one numerical fold result."""
         return self._resolve_development_chunk(
             reference=value,
             columns=self._DEVELOPMENT_SCORE_COLUMNS,
             category="numerical-development-score-chunks",
             kind="AlphaNumericalDevelopmentScoreChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "execution_binding_hash": value.execution_binding_hash,
                 "development_surface_binding_hash": value.development_surface_binding_hash,
@@ -2113,7 +2146,10 @@ class AlphaDevelopmentArtifactStore:
     def load_candidate_fold_evidence(
         self,
         value: str,
+        *,
+        verify_score: bool = True,
     ) -> AlphaCandidateFoldEvidence | LegacyAlphaCandidateFoldEvidence:
+        """Load a sealed fold record and verify its legacy children."""
         uri = self.uri("current/candidate-fold-evidence", value)
         payload = self._load_identity_json(
             uri=uri,
@@ -2136,7 +2172,7 @@ class AlphaDevelopmentArtifactStore:
                 LegacyAlphaCandidateFoldEvidence,
                 LegacyAlphaCandidateFoldEvidence.model_validate(payload),
             )
-            if result.score_chunk is not None:
+            if verify_score and result.score_chunk is not None:
                 if isinstance(result.score_chunk, AlphaNumericalDevelopmentScoreChunkRef):
                     self.resolve_numerical_score_chunk(result.score_chunk)
                 else:
@@ -2192,17 +2228,27 @@ class AlphaDevelopmentArtifactStore:
         result carries no score chunk.
         """
 
-        result = self._load(
+        return self._verify_numerical_fold(self._numerical_fold_reference(value))
+
+    def _numerical_fold_reference(self, value: str) -> AlphaCandidateNumericalFoldResult:
+        return self._load(
             "candidate-numerical-fold-results",
             value,
             "numerical_result_hash",
             AlphaCandidateNumericalFoldResult,
         )
-        scores = (
-            None
-            if result.score_chunk is None
-            else self.resolve_numerical_score_chunk(result.score_chunk)
-        )
+
+    def _verify_numerical_fold(
+        self, result: AlphaCandidateNumericalFoldResult, *, catalog_rows: pa.Table | None = None
+    ) -> tuple[AlphaCandidateNumericalFoldResult, pa.Table | None]:
+        if result.score_chunk is None:
+            scores = None
+        elif catalog_rows is None:
+            scores = self.resolve_numerical_score_chunk(result.score_chunk)
+        else:
+            scores = self.resolve_numerical_score_chunk(
+                result.score_chunk, catalog_rows=catalog_rows
+            )
         if result.estimator_state_hash is not None:
             state = self.load_development_estimator_state(result.estimator_state_hash)
             if (
@@ -2231,6 +2277,75 @@ class AlphaDevelopmentArtifactStore:
                         "candidate numerical score evidence changed"
                     )
         return result, scores
+
+    def read_development_folds(
+        self,
+        fold_hashes: Sequence[str],
+        numerical_hashes: Sequence[str],
+        *,
+        legacy_scores: Sequence[
+            AlphaCandidateDevelopmentScoreChunkRef | AlphaNumericalDevelopmentScoreChunkRef
+        ] = (),
+    ) -> tuple[
+        dict[str, tuple[AlphaDevelopmentFoldSurface, pa.Table]],
+        dict[str, tuple[AlphaCandidateNumericalFoldResult, pa.Table | None]],
+        dict[str, pa.Table],
+    ]:
+        """Project a stage's named validation rows and scores in one catalog read."""
+        if not self.catalog_development_reads():
+            return (
+                {key: self.read_fold_surface(key) for key in dict.fromkeys(fold_hashes)},
+                {
+                    key: self.read_candidate_numerical_fold_result(key)
+                    for key in dict.fromkeys(numerical_hashes)
+                },
+                {
+                    ref.content_hash: self.resolve_candidate_score_chunk(ref)
+                    for ref in legacy_scores
+                },
+            )
+        folds = {key: self._fold_surface_reference(key) for key in dict.fromkeys(fold_hashes)}
+        numerical = {
+            key: self._numerical_fold_reference(key) for key in dict.fromkeys(numerical_hashes)
+        }
+        rows = history.read_alpha_development_chunks(
+            (
+                *(value.validation_chunk.content_hash for value in folds.values()),
+                *(
+                    value.score_chunk.content_hash
+                    for value in numerical.values()
+                    if value.score_chunk is not None
+                ),
+                *(ref.content_hash for ref in legacy_scores),
+            )
+        )
+        return (
+            {
+                key: (
+                    value,
+                    self.resolve_validation_chunk(
+                        value.validation_chunk,
+                        catalog_rows=rows[value.validation_chunk.content_hash],
+                    ),
+                )
+                for key, value in folds.items()
+            },
+            {
+                key: self._verify_numerical_fold(
+                    value,
+                    catalog_rows=None
+                    if value.score_chunk is None
+                    else rows[value.score_chunk.content_hash],
+                )
+                for key, value in numerical.items()
+            },
+            {
+                ref.content_hash: self.resolve_candidate_score_chunk(
+                    ref, catalog_rows=rows[ref.content_hash]
+                )
+                for ref in legacy_scores
+            },
+        )
 
     def find_candidate_numerical_fold_result(
         self,
@@ -2289,7 +2404,37 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def publish_candidate_report(self, value: AlphaCandidateDevelopmentReport) -> str:
-        return self._publish("candidate-development-reports", value, "report_hash")
+        """Seal the report and record its candidate measures in Host history."""
+        uri = self._publish("candidate-development-reports", value, "report_hash")
+        metrics = value.metrics
+        if metrics is None:
+            return uri
+        named = (
+            ("alpha_mae", metrics.mae),
+            ("alpha_mse", metrics.mse),
+            ("alpha_zero_relative_oos_r2", metrics.zero_relative_oos_r2),
+            ("ic_mean", metrics.rank_ic_mean),
+            ("ic_ir", metrics.icir),
+            ("alpha_gross_decile_spread", metrics.gross_decile_spread_mean),
+            ("alpha_formation_decile_turnover", metrics.formation_decile_turnover_mean),
+            ("alpha_fold_mse_std", metrics.fold_mse_std),
+        )
+        measures: history.AlphaDevelopmentMeasures = [
+            (name, 1, {"availability": metric.availability.value}, metric.value)
+            for name, metric in named
+        ]
+        measures.extend(
+            (
+                ("n_obs", 1, {"axis": "comparison"}, metrics.common_surface_row_count),
+                ("n_obs", 1, {"axis": "scored"}, metrics.scored_row_count),
+                ("coverage", 1, {"aggregation": "fold_mean"}, metrics.fold_coverage_mean),
+            )
+        )
+        if self._development_summaries is None:
+            history.record_alpha_development_summary(value.report_hash, measures)
+        else:
+            self._development_summaries[value.report_hash] = measures
+        return uri
 
     def load_candidate_report(self, value: str) -> AlphaCandidateDevelopmentReport:
         return self._load(
@@ -2311,6 +2456,35 @@ class AlphaDevelopmentArtifactStore:
             value,
             "evidence_hash",
             AlphaCandidateInferenceEvidence,
+        )
+
+    @contextmanager
+    def admit_development_chunks(self) -> Iterator[None]:
+        """Publish one catalog admission for the development stage's immutable chunks."""
+        if not history.recording():
+            yield
+            return
+        chunks: dict[str, tuple[str, pa.Table]] = {}
+        summaries: dict[str, history.AlphaDevelopmentMeasures] = {}
+        self._development_chunks = chunks
+        self._development_summaries = summaries
+        try:
+            yield
+            history.write_alpha_development_chunks(chunks, summaries=summaries)
+        finally:
+            self._development_chunks = None
+            self._development_summaries = None
+
+    @staticmethod
+    def catalog_development_reads() -> bool:
+        """Read the catalog on a data root and the files on a standalone workspace."""
+        mode = os.environ.get("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE")
+        if mode not in {None, "legacy", "catalog"}:
+            raise AlphaDevelopmentArtifactReadbackError("alpha_research.development_store_invalid")
+        if mode is not None:
+            return mode == "catalog"  # contract: row U retires the legacy reader.
+        return bool(
+            history.recording() or (history.data_root() / "machine" / "catalog.sqlite").is_file()
         )
 
     def _publish_development_chunk(
@@ -2364,13 +2538,16 @@ class AlphaDevelopmentArtifactStore:
                 pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
                 os.replace(staged, target)
             staged.unlink(missing_ok=True)
-        self._resolve_development_chunk(
+        read = self._resolve_development_chunk(
             reference=reference,
             columns=columns,
             category=category,
             kind=kind,
             identity=identity,
+            legacy_publication=True,
         )
+        if self._development_chunks is None:
+            history.write_alpha_development_chunks({content_hash: (metadata_hash, read)})
         return reference
 
     def _resolve_development_chunk(
@@ -2381,6 +2558,8 @@ class AlphaDevelopmentArtifactStore:
         category: str,
         kind: str,
         identity: dict[str, object],
+        legacy_publication: bool = False,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
         content_hash = str(reference.content_hash)
         metadata_hash = str(reference.metadata_hash)
@@ -2389,30 +2568,47 @@ class AlphaDevelopmentArtifactStore:
         if uri != self.uri(f"current/{category}", content_hash):
             raise AlphaDevelopmentArtifactReadbackError(f"{kind} URI changed")
         if (
-            category in {"development-score-chunks", "numerical-development-score-chunks"}
-            and self._array_door()
+            catalog_rows is None
+            and self._development_chunks is None
+            and not legacy_publication
+            and self.catalog_development_reads()
         ):
-            raw = self._score_body(content_hash, "current/" + category, kind)
+            catalog_rows = history.read_alpha_development_chunks((content_hash,))[content_hash]
+        if catalog_rows is not None:
+            metadata = catalog_rows.schema.metadata or {}
+            if metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode():
+                raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
+            table = catalog_rows.replace_schema_metadata(None)
+            derived = _chunk_content_hash(table, identity)
         else:
-            raw = self._path(f"current/{category}", content_hash, "parquet").read_bytes()
-        parquet = pq.ParquetFile(pa.BufferReader(raw))
-        metadata = parquet.schema_arrow.metadata or {}
-        if (
-            metadata.get(b"alphalattice.snapshot_kind") != kind.encode()
-            or metadata.get(b"alphalattice.content_hash") != content_hash.encode()
-            or metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode()
-        ):
-            raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
-        table = pq.read_table(pa.BufferReader(raw)).replace_schema_metadata(None)
+            if (
+                category in {"development-score-chunks", "numerical-development-score-chunks"}
+                and self._array_door()
+            ):
+                raw = self._score_body(content_hash, "current/" + category, kind)
+            else:
+                raw = self._path(f"current/{category}", content_hash, "parquet").read_bytes()
+            parquet = pq.ParquetFile(pa.BufferReader(raw))
+            metadata = parquet.schema_arrow.metadata or {}
+            if (
+                metadata.get(b"alphalattice.snapshot_kind") != kind.encode()
+                or metadata.get(b"alphalattice.content_hash") != content_hash.encode()
+                or metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode()
+            ):
+                raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
+            table = pq.read_table(pa.BufferReader(raw)).replace_schema_metadata(None)
+            derived = _verified_content_hash(raw, table, identity)
         if (
             tuple(table.schema.names) != columns
             or table.num_rows != row_count
-            or _verified_content_hash(raw, table, identity) != content_hash
+            or derived != content_hash
         ):
             raise AlphaDevelopmentArtifactReadbackError(f"{kind} content changed")
         for field, expected in identity.items():
             if getattr(reference, field) != expected:
                 raise AlphaDevelopmentArtifactReadbackError(f"{kind} identity changed")
+        if self._development_chunks is not None:
+            self._development_chunks[content_hash] = (metadata_hash, table)
         return table
 
     def publish_estimator_state(self, value: AlphaEstimatorState) -> str:

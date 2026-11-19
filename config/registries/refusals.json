@@ -1241,6 +1241,21 @@
 "owner": "alpha_research",
 "category": "INVALID_ARGUMENT"
 },
+"alpha_research.development_breakdown_count_changed": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The recorded chunk row or metric lane count differs from its sealed profile."
+},
+"alpha_research.development_breakdown_profile_invalid": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The catalog profile is collected or describes a different schema or metadata seal."
+},
+"alpha_research.development_breakdown_profile_repeated": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "More than one catalog profile claims the same sealed development chunk."
+},
 "alpha_research.development_child_estimator_missing": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
@@ -1439,6 +1454,11 @@
 "alpha_research.development_split_empty": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
+},
+"alpha_research.development_store_invalid": {
+"owner": "alpha_research",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The Alpha development evidence reader setting allows catalog or legacy."
 },
 "alpha_research.development_surface_incomplete": {
 "owner": "alpha_research",

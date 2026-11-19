@@ -154,18 +154,24 @@ def test_shared_score_rows_bind_positions_availability_and_unique_cells():
     validation = pa.table(
         {"row_index": [0, 1], "formation_session": [date(2020, 1, 1)] * 2, "listing_id": ["A", "B"]}
     )
-    # The store resolves each chunk once, as part of loading the child that
-    # names it, and hands the rows back with the child.
+    # The stage returns the matching fold and its numerical result with their rows.
     store = SimpleNamespace(
-        read_candidate_numerical_fold_result=lambda h: (
-            SimpleNamespace(
-                fold_commitment_hash="a", score_chunk=SimpleNamespace(content_hash="b")
-            ),
-            scores,
-        ),
-        read_fold_surface=lambda h: (
-            SimpleNamespace(fold_commitment_hash="a", validation_chunk="c"),
-            validation,
+        read_development_folds=lambda folds, numerical: (
+            {
+                folds[0]: (
+                    SimpleNamespace(fold_commitment_hash="a", validation_chunk="c"),
+                    validation,
+                )
+            },
+            {
+                numerical[0]: (
+                    SimpleNamespace(
+                        fold_commitment_hash="a", score_chunk=SimpleNamespace(content_hash="b")
+                    ),
+                    scores,
+                )
+            },
+            {},
         ),
     )
     assert read_development_score_rows(
@@ -320,7 +326,8 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         )
         assert entry.fold_commitment_hash in {value.fold_commitment_hash for value in records}
 
-    # Projection consumes the same verified children, not a second score read.
+    # The rollback path reads each verified score once and checks its file on each call.
+    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     score_reads: list[str] = []
     resolve = AlphaDevelopmentArtifactStore.resolve_numerical_score_chunk
 
@@ -350,6 +357,21 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
             reader.projection(receipt.receipt_hash)
     finally:
         target.write_bytes(original)
+    assert reader.projection(receipt.receipt_hash) == projection
+
+    monkeypatch.setattr(AlphaDevelopmentArtifactStore, "resolve_numerical_score_chunk", resolve)
+    reads: list[tuple[str, ...]] = []
+    real_read = history.read_alpha_development_chunks
+
+    def counted_catalog(digests: tuple[str, ...]) -> dict[str, Any]:
+        reads.append(digests)
+        return real_read(digests)
+
+    monkeypatch.setattr(history, "read_alpha_development_chunks", counted_catalog)
+    monkeypatch.delenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", raising=False)
+    assert reader.projection(receipt.receipt_hash) == projection
+    assert len(reads) == 1
+    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     assert reader.projection(receipt.receipt_hash) == projection
 
 
@@ -694,9 +716,11 @@ def test_a_receipt_cannot_pair_one_recipe_with_another_recipes_values() -> None:
         _receipt(rank, _mutated(training_row_count=119))
 
 
+@pytest.mark.usefixtures("outcome_catalog_root")
 def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     tmp_path: Path,
     request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Requirement: a chunk whose content hash a process derived once is served for the
     same file bytes, so each read still hashes the file: bytes changed after a read are refused,
@@ -714,6 +738,7 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     request.addfinalizer(proof.configure_chunk_proof_memo)
     proof.configure_chunk_proof_memo(capacity=1)
 
+    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     store = AlphaDevelopmentArtifactStore(tmp_path)
     table = pa.table(
         {
@@ -750,10 +775,30 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     pq.write_table(changed.replace_schema_metadata(score_metadata), encoded, compression="zstd")
     packed = pq.read_table(path)
     packed = packed.set_column(0, "packed", pa.array([encoded.getvalue().to_pybytes()]))
-    pq.write_table(packed, path)
-    with pytest.raises(owner.AlphaDevelopmentArtifactReadbackError, match="content changed"):
-        store.resolve_numerical_score_chunk(reference)
-    path.write_bytes(original)
+    try:
+        pq.write_table(packed, path)
+        with pytest.raises(owner.AlphaDevelopmentArtifactReadbackError, match="content changed"):
+            store.resolve_numerical_score_chunk(reference)
+    finally:
+        path.write_bytes(original)
+    assert store.resolve_numerical_score_chunk(reference).equals(table)
+    with store.admit_development_chunks():
+        assert store.publish_numerical_score_chunk(table, **identity) == reference
+        assert (
+            store.publish_numerical_score_chunk(table, **{**identity, "candidate_id": "other"})
+            == other
+        )
+    chunks = history.read_alpha_development_chunks((reference.content_hash, other.content_hash))
+    assert set(chunks) == {reference.content_hash, other.content_hash}
+    assert all(rows.equals(table) for rows in chunks.values())
+    moved = path.with_suffix(".legacy")
+    path.rename(moved)
+    try:
+        monkeypatch.delenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", raising=False)
+        assert store.resolve_numerical_score_chunk(reference).equals(table)
+    finally:
+        moved.rename(path)
+    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     assert store.resolve_numerical_score_chunk(reference).equals(table)
 
 
@@ -1500,29 +1545,31 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
     assert "ordered_listing_ids" not in comparison["score_support"]
     assert "availability" not in comparison["score_support"]
 
-    # The graph is a value of one request: the next request walks again, and a
-    # chunk changed in between is refused then, not served from the last walk.
+    # Catalog reads remain equal while a rollback file is damaged. The next
+    # rollback request walks again and refuses that changed file.
     score_chunk = next(
         value.score_chunk for value in left_graph.folds if value.score_chunk is not None
     )
-    target = (
-        reader.root
-        / "current"
-        / "numerical-development-score-chunks"
-        / f"{score_chunk.content_hash}.parquet"
+    from alphalattice.kernel.data_layer import history
+
+    target = history.alpha_part_body_path(
+        score_chunk.content_hash, "current/numerical-development-score-chunks"
     )
     assert target.is_file(), target
     original = target.read_bytes()
+    receipt_hash = left_graph.receipt.receipt_hash
+    expected = reader.projection_of(left_graph)
     try:
         target.write_bytes(original[: len(original) // 2] + original[len(original) // 2 :][::-1])
-        with pytest.raises(AuthoringError):
-            reader.read(left["receipt"]["receipt_hash"])
+        assert reader.projection(receipt_hash) == expected
+        with monkeypatch.context() as rollback:
+            rollback.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
+            with pytest.raises(AuthoringError):
+                reader.read(receipt_hash)
     finally:
         target.write_bytes(original)
-    assert (
-        reader.read(left["receipt"]["receipt_hash"]).receipt.receipt_hash
-        == (left["receipt"]["receipt_hash"])
-    )
+    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
+    assert reader.projection(receipt_hash) == expected
 
 
 def test_saved_alpha_comparison_refuses_mismatched_input_binding(

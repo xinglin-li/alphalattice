@@ -672,6 +672,7 @@ class AlphaExperimentExecutor:
         output_workspace: Path,
         recorder: NumericalCallRecorder | None = None,
     ) -> DeskExecutionResult:
+        """Run the admitted Alpha batch and seal its evidence receipt."""
         prepared = self.prepare_execution(program=program, document=document, authority=authority)
         fold_plan, method = prepared.fold_plan, prepared.method
         recipe_binding, model_recipe = prepared.recipe_binding, prepared.model_recipe
@@ -695,16 +696,17 @@ class AlphaExperimentExecutor:
             collector = _MaterializationCollector(
                 array_workspace, declared=fold_plan.base_feature_ids
             )
-            result = execute_alpha_model_batch(
-                program=development_program,
-                batch=batch,
-                fold_plan=fold_plan,
-                store=store,
-                array_workspace=collector,
-                model_catalog=self._model_catalog,
-                model_mandate=prepared.admitted_mandate,
-                operational_progress=self._operational_progress,
-            )
+            with store.admit_development_chunks():
+                result = execute_alpha_model_batch(
+                    program=development_program,
+                    batch=batch,
+                    fold_plan=fold_plan,
+                    store=store,
+                    array_workspace=collector,
+                    model_catalog=self._model_catalog,
+                    model_mandate=prepared.admitted_mandate,
+                    operational_progress=self._operational_progress,
+                )
             materialization = collector.seal(
                 recipe_binding=recipe_binding, fold_count=fold_plan.fold_count
             )
