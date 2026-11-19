@@ -305,8 +305,21 @@ def catalog(root: Path) -> bool | None:
             f"ATTACH 'ducklake:sqlite:{sql_path(path)}' AS lake (DATA_PATH '{data}/')"
         ).complete()
         connection.execute("USE lake").complete()
-        for statement in statements(schema_text("catalog.sql")):
-            connection.execute(statement).complete()
+        # Each run of DDL commits once, in file order: a DuckLake commit per statement made a
+        # catalog in two seconds. An option call stands alone, after its schema or table commits.
+        run: list[str] = []
+        for statement in [*statements(schema_text("catalog.sql")), None]:
+            if statement is not None and not statement.upper().startswith("CALL "):
+                run.append(statement)
+                continue
+            if run:
+                connection.execute("BEGIN TRANSACTION").complete()
+                for ddl in run:
+                    connection.execute(ddl).complete()
+                connection.execute("COMMIT").complete()
+                run = []
+            if statement is not None:
+                connection.execute(statement).complete()
     finally:
         connection.close()
     return True
