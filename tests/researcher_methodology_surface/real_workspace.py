@@ -119,8 +119,11 @@ PROFILE_PATH = ROOT / "config" / "market-profiles" / "us-current-index-research.
 MARKET_PROFILE_ID = "us-current-index-research"
 
 # The optimal development data set's time (testing.md): two years, the floor the universe source's
-# standard declares (development_universe.STANDARD), which the readiness gate applies. The panel's
-# own floors (316 index sessions, 274 observations for the widest factor) are cleared by about 500.
+# standard declares (development_universe.STANDARD), which the readiness gate applies. Its 502
+# sessions clear the panel's own floors (316 index sessions, 274 observations for the widest
+# factor), but a Factor or Alpha study's walk keeps only the 250 before the outcomes' sealed
+# 252-session holdout, where a year-long lookback has no value: such a study needs about three
+# years and all 53 Factors (universe qualification requires them), so it runs at FACTOR_SCALE.
 AS_OF = date(2026, 7, 31)
 
 

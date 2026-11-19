@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "839b645887d3c77aa7cc3d7bc15eff70212f2b976ff5234faa0fe9d06ba1b687",
+   "successor": "4534822cf05b236f2ef640c70a638124a1e6e6dc1ac813539dd0f6cbd849876f",
+   "change": "Factor redundancy needs fewer periods on a smaller research universe",
+   "reason": "Three implementation roles move from the code closure of factor_policies_at_scale's formal-period floor, which applies only off the shipped scale; the shipped scale still returns {}, so no shipped value moves"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c56e822a0adbe8511f8d85074d28801db1368a302631047108f0b1dbed2a49c0",
+   "successor": "09f282c8916858d7cf95ede1e78b591a2f286cf33cf54d8ff7a884b974dc8e25",
+   "change": "Factor redundancy needs fewer periods on a smaller research universe",
+   "reason": "Three implementation roles move from the code closure of factor_policies_at_scale's formal-period floor, which applies only off the shipped scale; the shipped scale still returns {}, so no shipped value moves"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "53523f0c2263565a77422eaf178637a370eadfff155ce886bb5288f8d08a4147",
+   "successor": "34f48ab96f607f73a247a0a9cc1cac9e87206104c110b76b0b585d4af2c48d6c",
+   "change": "Factor redundancy needs fewer periods on a smaller research universe",
+   "reason": "Three implementation roles move from the code closure of factor_policies_at_scale's formal-period floor, which applies only off the shipped scale; the shipped scale still returns {}, so no shipped value moves"
+  }
+ ]
+}

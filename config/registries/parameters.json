@@ -11209,6 +11209,11 @@
 "count": 1,
 "description": "The shipped standard's history years, at which the Factor policies keep their defaults byte-equal."
 },
+"src/alphalattice/foundation/factor_research/experiments/execution.py::minimum_formal_periods::3": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest formal periods a scaled Factor redundancy pair needs; the walk's scale shrinks the default twenty no further."
+},
 "src/alphalattice/foundation/factor_research/experiments/execution.py::train_sessions::2": {
 "class": "LIMIT",
 "count": 1,

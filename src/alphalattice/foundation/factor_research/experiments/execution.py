@@ -111,7 +111,8 @@ def factor_policies_at_scale(*, minimum_listings: int, history_years: int) -> di
     shipped plan and identity keeps the defaults. A smaller universe (a development standard)
     needs `minimum_listings` in each period. Its sealed holdout stays the one the execution
     outcomes seal, and its train, validation and step lengths shrink in proportion until the
-    complete folds fit the development sessions left before that holdout."""
+    complete folds fit the development sessions left before that holdout; the formal periods a
+    redundancy pair needs shrink with them, to no fewer than three."""
     if (minimum_listings, history_years) == SHIPPED_FACTOR_SCALE:
         return {}
     defaults = build_factor_walk_forward_policy()
@@ -127,7 +128,10 @@ def factor_policies_at_scale(*, minimum_listings: int, history_years: int) -> di
             minimum_cross_section_observations=minimum_listings
         ),
         "redundancy_policy": build_factor_redundancy_policy(
-            minimum_common_listings=minimum_listings
+            minimum_common_listings=minimum_listings,
+            minimum_formal_periods=max(
+                3, int(build_factor_redundancy_policy().minimum_formal_periods * scale)
+            ),
         ),
         "walk_forward_policy": build_factor_walk_forward_policy(
             train_sessions=max(2, int(defaults.train_sessions * scale)),

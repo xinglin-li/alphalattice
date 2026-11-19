@@ -124,6 +124,8 @@ def test_a_shorter_standard_is_persisted_applied_and_named_by_its_manifests(
     )
     assert policies["evidence_policy"].minimum_cross_section_observations == 10
     assert policies["redundancy_policy"].minimum_common_listings == 10
+    # Twenty formal periods scaled as the walk is (0.157), floored at three.
+    assert policies["redundancy_policy"].minimum_formal_periods == 3
     walk = policies["walk_forward_policy"]
     # The outcomes' sealed 252 stay; three complete folds fit the 238 development sessions left.
     assert (walk.train_sessions, walk.validation_sessions, walk.step_sessions) == (119, 39, 39)
