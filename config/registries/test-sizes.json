@@ -1902,12 +1902,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_executor_creation_and_process_start_refusals_publish_nothing*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds real Risk inputs and injects executor and child-process start failures during publication.",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
       "owner": "tests.workspace_readiness",
       "reason": "Runs first-use preparation through recoverable sector exclusion and Feature readback; it reads the ten-year Factor-scale first use (real_workspace.FACTOR_SCALE, over 100 listings), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
@@ -2019,11 +2013,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_parallel_derivation_publishes_the_identical_snapshot_and_bytes*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs serial and process-pool causal derivation and compares their published snapshots and bytes."
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_missing_daily_market_observation_keeps_the_other_members_usable*",
       "owner": "tests.feature_engine",
       "reason": "Builds the sixty-member Panel and rematerializes its closure around a missing daily observation; it reads the sixty-member Panel, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
@@ -2070,13 +2059,6 @@
       "owner": "tests.researcher_methodology_surface",
       "reason": "Cold setup publishes two real sector experiments before retained evidence verification; retain this bound until a publication consumer seed is available; it reads the ten-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on*",
-      "owner": "tests.alternative_evidence_desk",
-      "reason": "Real multi-unit preparation and partial-failure recovery: historical 74.255 s; focused node 44.308 s on 2026-11-04, above the 30 s Medium bound.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
     },
     {
       "pattern": "tests/integration/causal_outcomes/test_held_friday_update.py::test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need*",
@@ -2135,20 +2117,6 @@
       "reason": "It reads the ten-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 73.423 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "A real market-maintenance and risk journey measured 30.001 s before and 30.230 s after in the same paired run.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-03: measured at the Medium boundary; restore Medium when this journey is reduced"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits*",
@@ -2211,13 +2179,6 @@
       "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
       "size_contract": "nightly_only",
       "admitted": "2026-11-16: 11 passes at most 51.8 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request",
-      "owner": "tests.alternative_evidence_desk",
-      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 38.9 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     },
     {
       "pattern": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
@@ -2434,22 +2395,12 @@
       "admitted": "2026-11-16: A test is killed only as hung, by Bazel's size timeouts (small 60 s, medium 300 s, large 900 s); its speed is held at admission (admission_limits, solo) and reported, never by a kill under load. 7 of 7 timeouts on 11-15 and 11-16 were medium tests whose green runs take 25 to 43 s at the median and up to 63 s, against a 60 s kill"
     },
     {
-      "budget": "large:tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel*",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
       "budget": "large:tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
       "value": 900,
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
     },
     {
       "budget": "large:tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request",
       "value": 900,
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
     },

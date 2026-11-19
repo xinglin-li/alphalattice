@@ -333,9 +333,34 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     )
 
     workspace = build_real_risk_workspace(tmp_path / "workspace")
-    active = build_real_risk_workspace(tmp_path / "active")
     outcome_host()
     resolver = ArtifactResolver(workspace.artifact_root)
+    # While the panel is ACTIVE, its reader refuses an unadmitted or misstated manifest.
+    panel = resolver.load_feature_panel_manifest(workspace.panel_manifest_ref)
+    summary = dict(panel["safe_summary"])
+    unadmitted = {
+        **panel,
+        "safe_summary": {
+            **summary,
+            "quality_governance": {**summary["quality_governance"], "gateway_qualified": False},
+        },
+    }
+    with (
+        patch.object(ArtifactResolver, "load_feature_panel_manifest", return_value=unadmitted),
+        pytest.raises(ValueError, match="Feature Input Gateway admission"),
+    ):
+        FeaturePanelReader(resolver).listing_axis(workspace.panel_manifest_ref)
+    chunks = [dict(item) for item in panel["chunks"]]
+    chunks[0]["row_count"] = int(chunks[0]["row_count"]) + 1
+    misstated = {**panel, "chunks": chunks}
+    with (
+        patch.object(ArtifactResolver, "load_feature_panel_manifest", return_value=misstated),
+        pytest.raises(ValueError, match="chunk row count mismatch"),
+    ):
+        FeaturePanelReader(resolver).listing_axis(workspace.panel_manifest_ref)
+    assert FeaturePanelReader(resolver).listing_axis(workspace.panel_manifest_ref) == (
+        FeaturePanelReader(resolver).listing_ids(workspace.panel_manifest_ref)
+    )
     first = _publish(workspace, hours=0)
     assert first.receipt.action == "PUBLISHED"
     assert (
@@ -380,33 +405,6 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
     )
     with pytest.raises(ValueError, match="requires an ACTIVE Feature Panel snapshot"):
         FeaturePanelReader(resolver).listing_axis(workspace.panel_manifest_ref)
-
-    active_resolver = ArtifactResolver(active.artifact_root)
-    panel = active_resolver.load_feature_panel_manifest(active.panel_manifest_ref)
-    summary = dict(panel["safe_summary"])
-    unadmitted = {
-        **panel,
-        "safe_summary": {
-            **summary,
-            "quality_governance": {**summary["quality_governance"], "gateway_qualified": False},
-        },
-    }
-    with (
-        patch.object(ArtifactResolver, "load_feature_panel_manifest", return_value=unadmitted),
-        pytest.raises(ValueError, match="Feature Input Gateway admission"),
-    ):
-        FeaturePanelReader(active_resolver).listing_axis(active.panel_manifest_ref)
-    chunks = [dict(item) for item in panel["chunks"]]
-    chunks[0]["row_count"] = int(chunks[0]["row_count"]) + 1
-    misstated = {**panel, "chunks": chunks}
-    with (
-        patch.object(ArtifactResolver, "load_feature_panel_manifest", return_value=misstated),
-        pytest.raises(ValueError, match="chunk row count mismatch"),
-    ):
-        FeaturePanelReader(active_resolver).listing_axis(active.panel_manifest_ref)
-    assert FeaturePanelReader(active_resolver).listing_axis(active.panel_manifest_ref) == (
-        FeaturePanelReader(active_resolver).listing_ids(active.panel_manifest_ref)
-    )
 
 
 def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
