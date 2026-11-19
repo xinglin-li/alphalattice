@@ -11188,6 +11188,36 @@
 "class": "EXECUTION",
 "count": 1,
 "description": "The factor by which each later wait before a rate-limited retry grows."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SESSIONS_PER_YEAR_AT_LEAST::245": {
+"class": "METHOD",
+"count": 1,
+"description": "A calendar year's US sessions counted low, so Factor folds sized from a standard's history years fit every window of that span."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's Factor listing floor, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::10": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's history years, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::train_sessions::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest training sessions a scaled Factor walk-forward fold keeps."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::bootstrap_from_candidate_manifest_document::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest listings a candidate set's Factor floor may name: a cross-section needs a pair."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::minimum_factor_listings::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped research standard's Factor listing floor, read by the Factor experiment's evidence and redundancy policies."
 }
 },
 "note": "Six registries name what the product is made of. Three are already held where they live: the packages (``config/package-architecture.json``, the structural guards), the operations (``operations.py``, ``operation_registry``) and the identity roles (``config/identity-roles.json``, the source-identity guards). The other three are held here, each against a baseline in ``config/registries/`` that may only shrink:",

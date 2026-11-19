@@ -933,7 +933,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
     # The development universe, three of whose members move with no event that explains them.
-    provider = universe.development_provider(moved=("DVE", "DVJ", "DVK"))
+    provider = universe.development_provider(moved=universe.MOVED)
     live = LocalPortfolioWebSession.from_workspace(
         tmp_path / "first-use", clock=lambda: OBSERVED_AT
     )
@@ -1223,10 +1223,8 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             monkeypatch.setattr(owner, "update_research_workspace_manifest", written)
         live.dispatcher.drain_for_tests(timeout=900)
         continued = registry.task(stopped.task_id)
-        # The development universe goes on to the Factor experiment, whose statistical floor of
-        # 100 listings stops it by name; the nightly's 120-listing first use runs on through it.
-        assert continued.lifecycle.value == "BLOCKED", continued.failure_code
-        assert continued.failure_code == "research_experiment.insufficient_listing_support:11<100"
+        # The development standard's Factor floor (ten listings) lets the first use run through.
+        assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
         assert len(answered) == 2  # the experiment input's write, then the data update's
         assert not [body for body in answered if b"configuration_changed_restart" in body]
         assert [t.task_kind for t in registry.tasks()].count("workspace_preparation") == 1

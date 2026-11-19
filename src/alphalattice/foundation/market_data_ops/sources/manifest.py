@@ -210,8 +210,11 @@ def _canonical_hash(value: object) -> str:
 def default_qualification_policy_hash(
     standard: ResearchWhitelistStandard = ORIGINAL_RESEARCH_WHITELIST_STANDARD,
 ) -> str:
-    """Stable identity of a current-universe history-quality policy, the original's by default."""
-    return _canonical_hash(asdict(standard))
+    """Stable identity of a current-universe history-quality policy, the original's by default.
+    The Factor floor is research scale, not a quality rule, so it is no part of this identity."""
+    rules = asdict(standard)
+    rules.pop("minimum_factor_listings")
+    return _canonical_hash(rules)
 
 
 def qualification_obligation(kind: str, identity: str) -> str:

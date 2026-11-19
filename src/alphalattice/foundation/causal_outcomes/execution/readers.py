@@ -1453,86 +1453,83 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         raise PermissionError("GENERIC_SEALED_HOLDOUT_RELEASE_AUTHORITY_UNAVAILABLE")
 
 
+def committed_outcome_chunks(
+    workspace: Path,
+) -> Iterator[tuple[_ExecutionOutcomeArtifactStore, CausalExecutionOutcomeChunk, Path]]:
+    """Each outcome chunk `workspace` committed, its store and the path of its legacy file: the
+    manifests its markers commit, in its artifacts and its research inputs (development chunks
+    only there), and its policy-holdout extensions. A chunk with no file there was written to the
+    catalog of the data root it was served on."""
+
+    def json_files(folder: Path) -> list[Path]:
+        try:
+            return sorted(path for path in folder.iterdir() if path.suffix == ".json")
+        except FileNotFoundError:
+            return []
+
+    workspace = workspace.resolve()
+    roots = [(workspace / "artifacts", False)]
+    inputs = workspace / "research-inputs"
+    if inputs.is_dir():
+        roots.extend(
+            (path / "source/artifacts", True) for path in sorted(inputs.iterdir()) if path.is_dir()
+        )
+    for artifact_root, bound in roots:
+        if not artifact_root.resolve().is_relative_to(workspace):
+            raise ValueError("causal_outcomes.upgrade_path_invalid")
+        store = _ExecutionOutcomeArtifactStore(artifact_root)
+        published = {
+            CausalExecutionOutcomeMarker.model_validate_json(path.read_bytes()).snapshot_hash
+            for path in json_files(store.root / "markers")
+        }
+        diagnostic = {marker.snapshot_hash for marker in store.development_only_markers()}
+        readers = (
+            (store.manifests(), published, CausalExecutionOutcomeDevelopmentReader),
+            (store.development_only_manifests(), diagnostic, DevelopmentOnlyExecutionOutcomeReader),
+        )
+        chunks: list[CausalExecutionOutcomeChunk] = []
+        for manifests, markers, reader_type in readers:
+            reader = reader_type(artifact_root)
+            for manifest in manifests:
+                if manifest.snapshot_hash not in markers:
+                    continue  # no marker: the old producer never committed it
+                reader.marker_for_snapshot(manifest.snapshot_hash)
+                reader.resolve_method_seal(manifest.snapshot_hash)
+                chunks.extend(manifest.development_chunks)
+                if not bound and isinstance(manifest, CausalExecutionOutcomeManifest):
+                    chunks.extend(manifest.sealed_holdout_chunks)
+        if not bound:
+            for index in json_files(store.root / "policy-holdout-releases" / "by-claim"):
+                release = CausalExecutionOutcomePolicyHoldoutReader.load_release(
+                    artifact_root=artifact_root, claim_hash=index.stem
+                )
+                chunks.append(release.extension_chunk)
+        for chunk in chunks:
+            path = store._parquet_path(chunk.split, chunk.content_hash)
+            if not path.resolve().is_relative_to(workspace):
+                raise ValueError("causal_outcomes.upgrade_path_invalid")
+            yield store, chunk, path
+
+
 def execution_outcome_upgrade_family() -> Family:
     """The upgrade runner's one migration, verification and rollback switch for outcomes."""
 
     def legacy_tables(runner: UpgradeRunner) -> Iterator[tuple[str, pa.Table]]:
-        def json_files(folder: Path) -> list[Path]:
-            try:
-                return sorted(path for path in folder.iterdir() if path.suffix == ".json")
-            except FileNotFoundError:
-                return []
-
         for workspace in runner.workspaces:
-            workspace = workspace.resolve()
-            roots = [(workspace / "artifacts", False)]
-            inputs = workspace / "research-inputs"
-            if inputs.is_dir():
-                roots.extend(
-                    (path / "source/artifacts", True)
-                    for path in sorted(inputs.iterdir())
-                    if path.is_dir()
-                )
-            for artifact_root, bound in roots:
-                if not artifact_root.resolve().is_relative_to(workspace):
-                    raise ValueError("causal_outcomes.upgrade_path_invalid")
-                store = _ExecutionOutcomeArtifactStore(artifact_root)
-                marker_root = store.root / "markers"
-                published = {
-                    CausalExecutionOutcomeMarker.model_validate_json(
-                        path.read_bytes()
-                    ).snapshot_hash
-                    for path in json_files(marker_root)
-                }
-                diagnostic = {marker.snapshot_hash for marker in store.development_only_markers()}
-                readers = (
-                    (store.manifests(), published, CausalExecutionOutcomeDevelopmentReader),
-                    (
-                        store.development_only_manifests(),
-                        diagnostic,
-                        DevelopmentOnlyExecutionOutcomeReader,
-                    ),
-                )
-                chunks: list[CausalExecutionOutcomeChunk] = []
-                for manifests, markers, reader_type in readers:
-                    reader = reader_type(artifact_root)
-                    for manifest in manifests:
-                        if manifest.snapshot_hash not in markers:
-                            continue  # no marker: the old producer never committed it
-                        reader.marker_for_snapshot(manifest.snapshot_hash)
-                        reader.resolve_method_seal(manifest.snapshot_hash)
-                        chunks.extend(manifest.development_chunks)
-                        if not bound and isinstance(manifest, CausalExecutionOutcomeManifest):
-                            chunks.extend(manifest.sealed_holdout_chunks)
-                if not bound:
-                    indexes = store.root / "policy-holdout-releases" / "by-claim"
-                    for index in json_files(indexes):
-                        release = CausalExecutionOutcomePolicyHoldoutReader.load_release(
-                            artifact_root=artifact_root, claim_hash=index.stem
-                        )
-                        chunks.append(release.extension_chunk)
-                for chunk in chunks:
-                    path = store._parquet_path(chunk.split, chunk.content_hash)
-                    if not path.resolve().is_relative_to(workspace):
-                        raise ValueError("causal_outcomes.upgrade_path_invalid")
-                    if not path.exists():  # written to the catalog only, by this version
-                        held = history.read_execution_outcome(chunk.content_hash, ["listing_id"])
-                        if held.num_rows != chunk.row_count:  # else outcome_missing refused it
-                            raise ValueError("causal_outcomes.upgrade_chunk_invalid")
-                        continue  # the catalog holds its rows: nothing to upgrade
-                    table = (
-                        pq.read_table(store.resolve_chunk(chunk))
-                        .combine_chunks()
-                        .sort_by(
-                            [
-                                ("formation_session", "ascending"),
-                                ("listing_id", "ascending"),
-                            ]
-                        )
-                    )
-                    if table.num_rows != chunk.row_count:
+            for store, chunk, path in committed_outcome_chunks(workspace):
+                if not path.exists():  # written to the catalog only, by this version
+                    held = history.read_execution_outcome(chunk.content_hash, ["listing_id"])
+                    if held.num_rows != chunk.row_count:  # else outcome_missing refused it
                         raise ValueError("causal_outcomes.upgrade_chunk_invalid")
-                    yield chunk.content_hash, table
+                    continue  # the catalog holds its rows: nothing to upgrade
+                table = (
+                    pq.read_table(store.resolve_chunk(chunk))
+                    .combine_chunks()
+                    .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
+                )
+                if table.num_rows != chunk.row_count:
+                    raise ValueError("causal_outcomes.upgrade_chunk_invalid")
+                yield chunk.content_hash, table
 
     def step(runner: UpgradeRunner) -> None:
         for digest, table in legacy_tables(runner):
@@ -1563,5 +1560,6 @@ __all__ = [
     "CausalExecutionOutcomeDevelopmentReader",
     "CausalExecutionOutcomePolicyHoldoutReader",
     "CausalOutcomeDevelopmentRows",
+    "committed_outcome_chunks",
     "execution_outcome_upgrade_family",
 ]

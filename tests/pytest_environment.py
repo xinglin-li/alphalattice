@@ -307,6 +307,33 @@ def with_its_tasks(workspace: Path) -> Path:
     return workspace
 
 
+def with_its_outcomes(copy: Path, source: Path) -> Path:
+    """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
+    carried into the copy's own served root: the catalog of the root a workspace was served on
+    holds their bodies, not the workspace, so a copy served on a fresh root lacks them and its
+    first start plans an upgrade."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        named_workspace_id,  # lazy: a golden copy's only
+    )
+    from alphalattice.foundation.causal_outcomes.execution.readers import (
+        committed_outcome_chunks,
+    )
+    from alphalattice.kernel.data_layer import history
+
+    held = sorted(
+        {c.content_hash for _store, c, file in committed_outcome_chunks(copy) if not file.exists()}
+    )
+    if not held:
+        return copy
+    with history.own_root(source):
+        bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
+    with history.own_root(served_root(copy)):
+        history.open_history(str(named_workspace_id(copy)), copy.name, copy.resolve())
+        for digest, table in bodies:
+            history.write_execution_outcome(digest, table)
+    return copy
+
+
 def upgraded(workspace: Path) -> Path:
     """`workspace`, an old workspace's copy, as its acknowledged first start leaves it on this
     test's data root: every family run on it (its Strategy Lab lanes moved through the array

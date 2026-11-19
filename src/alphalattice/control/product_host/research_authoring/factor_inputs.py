@@ -58,7 +58,10 @@ from alphalattice.foundation.factor_research.experiments.authoring import (
     FactorExperimentCompiler,
     factor_inventory_from_panel_manifest,
 )
-from alphalattice.foundation.factor_research.experiments.execution import FactorExperimentExecutor
+from alphalattice.foundation.factor_research.experiments.execution import (
+    FactorExperimentExecutor,
+    factor_policies_at_scale,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -76,6 +79,9 @@ from alphalattice.foundation.feature_engine.panels.observation_clock_authority i
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+from alphalattice.foundation.market_data_ops.sources.universe import (
+    bootstrap_from_candidate_manifest_document,
+)
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data_layer import history
@@ -1071,8 +1077,15 @@ def build_factor_executor(
     feature_kernels: FeatureKernelRegistry | None = None,
     resolved_panel: dict[str, Any] | None = None,
     feature_input: ResolvedDevelopmentFeatureInput | None = None,
+    walk_forward_policy: Any | None = None,
 ) -> FactorExperimentExecutor:
-    """The Factor factory shared by legacy Desk installation and Local Web."""
+    """The Factor factory shared by legacy Desk installation and Local Web. A caller that
+    states no policy gets the workspace standard's (`factor_scale_policies`)."""
+    if evidence_policy is None and redundancy_policy is None and walk_forward_policy is None:
+        scale = factor_scale_policies(workspace, envelope.universe_handle)
+        evidence_policy = scale.get("evidence_policy")
+        redundancy_policy = scale.get("redundancy_policy")
+        walk_forward_policy = scale.get("walk_forward_policy")
     if resolved_panel is None:
         authority = WorkspaceResearchAuthorityResolver(
             workspace=workspace,
@@ -1113,7 +1126,24 @@ def build_factor_executor(
         inventory=factor_inventory_from_panel_manifest(resolved_panel),
         evidence_policy=evidence_policy,
         redundancy_policy=redundancy_policy,
+        walk_forward_policy=walk_forward_policy,
     )
+
+
+def factor_scale_policies(workspace: Path, market_profile_id: str) -> dict[str, Any]:
+    """The Factor policies of the workspace's active universe standard: its listing floor and
+    history years (`factor_policies_at_scale`); none for a workspace with no active candidate set,
+    or at the shipped scale."""
+    record = MarketDataRepository(workspace).readiness.load(market_profile_id)
+    document = record.active_candidate_manifest_document if record else None
+    if document is None:
+        return {}
+    standard = bootstrap_from_candidate_manifest_document(dict(document)).standard
+    policies: dict[str, Any] = factor_policies_at_scale(
+        minimum_listings=standard.minimum_factor_listings,
+        history_years=standard.minimum_history_calendar_years,
+    )
+    return policies
 
 
 def normalize_factor_document(

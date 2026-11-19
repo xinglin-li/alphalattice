@@ -35,6 +35,9 @@ class ResearchWhitelistStandard:
     maximum_missing_ratio: float
     maximum_consecutive_missing_sessions: int
     data_validity_class: str
+    minimum_factor_listings: int = 100
+    """The listings a Factor experiment needs in each period: the research scale this universe
+    supports, not a qualification rule, so the history-quality policy identity leaves it out."""
 
 
 ORIGINAL_RESEARCH_WHITELIST_STANDARD = ResearchWhitelistStandard(
@@ -45,6 +48,7 @@ ORIGINAL_RESEARCH_WHITELIST_STANDARD = ResearchWhitelistStandard(
     data_validity_class="CURRENT_UNIVERSE_RESEARCH_ONLY",
 )
 _ORIGINAL_YEARS = ORIGINAL_RESEARCH_WHITELIST_STANDARD.minimum_history_calendar_years
+_ORIGINAL_LISTINGS = ORIGINAL_RESEARCH_WHITELIST_STANDARD.minimum_factor_listings
 
 
 @dataclass(frozen=True)
@@ -91,6 +95,9 @@ class CurrentUniverseCandidateManifest:
     """The research history floor the candidates are admitted against; a document names it
     only when it differs from the original standard's, so every original document is
     unchanged."""
+    minimum_factor_listings: int = _ORIGINAL_LISTINGS
+    """The Factor experiment's listing floor this universe supports, named as the history floor
+    is: only when it differs from the original's."""
 
     @property
     def members(self) -> tuple[str, ...]:
@@ -112,6 +119,8 @@ class CurrentUniverseBootstrap:
             != self.source_manifest.minimum_history_calendar_years
         ):
             raise ValueError("bootstrap standard and candidates name different history floors")
+        if self.standard.minimum_factor_listings != self.source_manifest.minimum_factor_listings:
+            raise ValueError("bootstrap standard and candidates name different Factor floors")
 
     @property
     def candidate_symbols(self) -> tuple[str, ...]:
@@ -146,21 +155,29 @@ def membership_fingerprint(manifest: CurrentUniverseCandidateManifest) -> str:
 
 def candidate_manifest_document(manifest: CurrentUniverseCandidateManifest) -> dict[str, object]:
     """Return canonical JSON-shaped provenance suitable for the workspace authority."""
-    return {
-        "created_at": manifest.created_at.isoformat(),
-        "as_of_timestamp": manifest.as_of_timestamp.isoformat(),
-        "construction_rule": manifest.construction_rule,
-        "data_validity_class": manifest.data_validity_class,
-        "sources": [
-            {**asdict(source), "retrieved_at": source.retrieved_at.isoformat()}
-            for source in manifest.sources
-        ],
-        "candidates": [asdict(candidate) for candidate in manifest.candidates],
-        "content_hash": manifest.content_hash,
-    } | (
-        {}
-        if manifest.minimum_history_calendar_years == _ORIGINAL_YEARS
-        else {"minimum_history_calendar_years": manifest.minimum_history_calendar_years}
+    return (
+        {
+            "created_at": manifest.created_at.isoformat(),
+            "as_of_timestamp": manifest.as_of_timestamp.isoformat(),
+            "construction_rule": manifest.construction_rule,
+            "data_validity_class": manifest.data_validity_class,
+            "sources": [
+                {**asdict(source), "retrieved_at": source.retrieved_at.isoformat()}
+                for source in manifest.sources
+            ],
+            "candidates": [asdict(candidate) for candidate in manifest.candidates],
+            "content_hash": manifest.content_hash,
+        }
+        | (
+            {}
+            if manifest.minimum_history_calendar_years == _ORIGINAL_YEARS
+            else {"minimum_history_calendar_years": manifest.minimum_history_calendar_years}
+        )
+        | (
+            {}
+            if manifest.minimum_factor_listings == _ORIGINAL_LISTINGS
+            else {"minimum_factor_listings": manifest.minimum_factor_listings}
+        )
     )
 
 
@@ -179,6 +196,9 @@ def bootstrap_from_candidate_manifest_document(
         years = document.get("minimum_history_calendar_years", _ORIGINAL_YEARS)
         if type(years) is not int:
             raise ValueError("candidate manifest history floor is not a whole number of years")
+        listings = document.get("minimum_factor_listings", _ORIGINAL_LISTINGS)
+        if type(listings) is not int:
+            raise ValueError("candidate manifest Factor floor is not a whole number of listings")
         sources = tuple(
             CandidateSource(
                 index=str(item["index"]),
@@ -213,6 +233,7 @@ def bootstrap_from_candidate_manifest_document(
             candidates=candidates,
             content_hash=content_hash,
             minimum_history_calendar_years=years,
+            minimum_factor_listings=listings,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("persisted candidate manifest is malformed") from exc
@@ -221,6 +242,7 @@ def bootstrap_from_candidate_manifest_document(
         or manifest.data_validity_class != ORIGINAL_RESEARCH_WHITELIST_STANDARD.data_validity_class
         or manifest.candidates != tuple(sorted(manifest.candidates, key=lambda item: item.symbol))
         or not 1 <= manifest.minimum_history_calendar_years <= _ORIGINAL_YEARS
+        or not 2 <= manifest.minimum_factor_listings <= _ORIGINAL_LISTINGS
     ):
         raise ValueError("persisted candidate manifest violates the original whitelist standard")
     expected_document = candidate_manifest_document(
@@ -233,6 +255,7 @@ def bootstrap_from_candidate_manifest_document(
             candidates=manifest.candidates,
             content_hash="",
             minimum_history_calendar_years=manifest.minimum_history_calendar_years,
+            minimum_factor_listings=manifest.minimum_factor_listings,
         )
     )
     expected_document.pop("content_hash")
@@ -243,6 +266,7 @@ def bootstrap_from_candidate_manifest_document(
         standard=replace(
             ORIGINAL_RESEARCH_WHITELIST_STANDARD,
             minimum_history_calendar_years=manifest.minimum_history_calendar_years,
+            minimum_factor_listings=manifest.minimum_factor_listings,
         ),
     )
 

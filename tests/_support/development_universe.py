@@ -41,7 +41,17 @@ THROUGH = date(2026, 9, 4)
 CHANGED_AT = datetime(2026, 8, 12, tzinfo=UTC)
 """From here the source and the provider answer with the later changes: the ticker, venue and
 Sector changes, the correction and the delisting's departure."""
-STANDARD = replace(ORIGINAL_RESEARCH_WHITELIST_STANDARD, minimum_history_calendar_years=2)
+_SCALE = {"minimum_history_calendar_years": 2, "minimum_factor_listings": 10}
+"""The development standard: two years of history, and a Factor floor of ten listings, which
+the eleven past features clear, so a first use goes on through the Factor experiment."""
+STANDARD = replace(
+    ORIGINAL_RESEARCH_WHITELIST_STANDARD,
+    **{
+        k: v
+        for k, v in _SCALE.items()
+        if k in ORIGINAL_RESEARCH_WHITELIST_STANDARD.__dataclass_fields__
+    },
+)
 REFERENCE = "SPY"
 ROW_CAP = 10_000
 """At most this many rows in each family this provider writes; the bars, the widest, are checked at
@@ -106,6 +116,8 @@ LISTINGS = (
 at five or more), and four excluded by name, each as the full data excludes its kind: a split
 and a dividend on one day (its action audit fails), a delisting, a mid-period start whose
 first adjusted closes are missing, and a halt longer than the standard's longest gap."""
+MOVED = ("DVE", "DVJ", "DVK")
+"""The eligible listings a scenario's unexplained moves take, in this order."""
 RENAMED = "DVW"
 """DVA's symbol after its ticker change; the provider serves its history under both."""
 SECTOR_CHANGE = ("DVF", "Healthcare")
@@ -123,13 +135,11 @@ def calendar_sessions(start: date | None = None, end: date = THROUGH) -> tuple[d
     return tuple(row["session_date"] for row in schedule.to_pylist())
 
 
-_FLOOR = (
-    {"minimum_history_calendar_years": STANDARD.minimum_history_calendar_years}
-    if "minimum_history_calendar_years" in CurrentUniverseCandidateManifest.__dataclass_fields__
-    else {}
-)
-"""The candidate set names its floor where the running product reads it; a release before that
-(0.2.7) keeps the ten-year field set, and its floor comes from the QA control that builds it."""
+_FLOOR = {
+    k: v for k, v in _SCALE.items() if k in CurrentUniverseCandidateManifest.__dataclass_fields__
+}
+"""The candidate set names its floors where the running product reads them; a release before
+that (0.2.7) keeps the original field set; its floor comes from the QA control that builds it."""
 
 
 def bootstrap(observed_at: datetime = OBSERVED_AT) -> CurrentUniverseBootstrap:
@@ -192,10 +202,10 @@ class DevelopmentProvider:
     """The development universe's provider, deterministic and offline.
 
     `clock` is the Host's: from `CHANGED_AT` it serves the later Sector and the corrected bar.
-    `moved` names listings whose close doubles on one session with no event, the unexplained
-    raw move a first use stops on for review. `sessions` are the US calendar's
-    (`development_provider`), or a bound on them where no calendar is read. It refuses every
-    fetch while `unavailable`.
+    `moved` names listings whose close doubles with no event, the unexplained raw move a first
+    use stops on for review: on `moved_sessions` sessions a week apart from the middle one.
+    `sessions` are the US calendar's (`development_provider`), or a bound on them where no
+    calendar is read. It refuses every fetch while `unavailable`.
     """
 
     name = "yfinance"
@@ -205,10 +215,12 @@ class DevelopmentProvider:
         *,
         clock: Callable[[], datetime] = lambda: OBSERVED_AT,
         moved: Sequence[str] = (),
+        moved_sessions: int = 1,
         sessions: Sequence[date],
     ) -> None:
         self.clock = clock
         self.moved = tuple(moved)
+        self.moved_at = {len(sessions) // 2 + 5 * n for n in range(moved_sessions)}
         self.sessions = tuple(sessions)
         self.by_symbol = {item.provider_symbol or item.symbol: item for item in LISTINGS}
         self.by_symbol[RENAMED] = self.by_symbol["DVA"]
@@ -245,7 +257,7 @@ class DevelopmentProvider:
                 bar = replace(bar, volume=0.0)
             if "flat-bars" in item.cases and ordinal % 89 == 7:
                 bar = replace(bar, open=close, high=close, low=close)
-            if symbol in self.moved and ordinal == len(self.sessions) // 2:
+            if symbol in self.moved and ordinal in self.moved_at:
                 bar = replace(bar, open=close * 2, high=close * 2, low=close * 2, close=close * 2)
             bars.append(bar)
         return [bar for index, bar in enumerate(bars) if self._served(item, index)]
@@ -403,7 +415,12 @@ class DevelopmentProvider:
 
 
 def development_provider(
-    *, clock: Callable[[], datetime] = lambda: OBSERVED_AT, moved: Sequence[str] = ()
+    *,
+    clock: Callable[[], datetime] = lambda: OBSERVED_AT,
+    moved: Sequence[str] = (),
+    moved_sessions: int = 1,
 ) -> DevelopmentProvider:
     """The development universe's provider over the US sessions from the floor to `THROUGH`."""
-    return DevelopmentProvider(clock=clock, moved=moved, sessions=calendar_sessions())
+    return DevelopmentProvider(
+        clock=clock, moved=moved, moved_sessions=moved_sessions, sessions=calendar_sessions()
+    )
