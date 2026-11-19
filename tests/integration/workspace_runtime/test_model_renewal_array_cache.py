@@ -18,6 +18,7 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
     AlphaDevelopmentArtifactStore,
 )
 from alphalattice.investment.alpha_research.scores import model_renewal
+from alphalattice.kernel.data_layer import arrays, history
 
 
 def _store_with_arrays(root, payload: bytes) -> tuple[AlphaDevelopmentArtifactStore, str]:
@@ -80,13 +81,14 @@ def test_full_proof_rehashes_bytes_even_when_mtime_is_restored(tmp_path):
     full proof; the restored bytes read again."""
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
+    original_body = path.read_bytes()
     original_stat = path.stat()
     with model_renewal.verified_lifecycle_admissions():
         model_renewal._arrays(store, identity)
         damaged = bytearray(payload)
         damaged[len(damaged) // 2] ^= 0x01
-        path.write_bytes(damaged)
+        path.write_bytes(arrays._packed_body(bytes(damaged)))
         os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
         with (
             content_store.full_content_proof(),
@@ -94,7 +96,7 @@ def test_full_proof_rehashes_bytes_even_when_mtime_is_restored(tmp_path):
         ):
             model_renewal._arrays(store, identity)
 
-        path.write_bytes(payload)
+        path.write_bytes(original_body)
         os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
         with content_store.full_content_proof():
             restored = model_renewal._arrays(store, identity)
@@ -110,8 +112,8 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
     calls = 0
     reads = Counter()
     tracked = {
-        (first_store.root / "current/lifecycle-arrays" / f"{first_hash}.bin").resolve(),
-        (second_store.root / "current/lifecycle-arrays" / f"{second_hash}.bin").resolve(),
+        first_store._packed_source_path("lifecycle-arrays", first_hash).resolve(),
+        second_store._packed_source_path("lifecycle-arrays", second_hash).resolve(),
     }
     open_file = Path.open
 
@@ -133,7 +135,7 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
     with content_store.verified_array_read_scope():
         second = model_renewal._arrays(second_store, second_hash)
     assert calls == 2
-    assert all(reads[path] == 1 for path in tracked)
+    assert len(tracked) == 1 and sum(reads.values()) == 2
     assert first["features"] is not second["features"]
 
 
@@ -146,7 +148,7 @@ def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monke
     load = np.load
     load_calls = 0
     reads = 0
-    payload_path = (store.root / "current/lifecycle-arrays" / f"{identity}.bin").resolve()
+    payload_path = store._packed_source_path("lifecycle-arrays", identity).resolve()
     open_file = Path.open
 
     def counted_load(*args, **kwargs):
@@ -315,11 +317,11 @@ def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypa
         model_renewal._verify_arrays(store, identity)
         model_renewal._verify_arrays(other, same_hash)
     assert calls == 2
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
     before = path.stat()
     damaged = bytearray(payload)
     damaged[len(damaged) // 2] ^= 1
-    path.write_bytes(damaged)
+    path.write_bytes(arrays._packed_body(bytes(damaged)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with (
         content_store.full_content_proof(),
@@ -393,11 +395,11 @@ def test_prepared_readback_proof_keeps_training_binding_check_and_current_rehash
     ):
         model_renewal._verify_prepared_values(store, prepared)
     assert checks == 2
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
     before = path.stat()
-    payload = bytearray(path.read_bytes())
+    payload = bytearray(history.read_alpha_part(identity, "current/lifecycle-arrays"))
     payload[len(payload) // 2] ^= 1
-    path.write_bytes(payload)
+    path.write_bytes(arrays._packed_body(bytes(payload)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with (
         content_store.full_content_proof(),

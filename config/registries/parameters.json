@@ -1,5 +1,10 @@
 {
 "entries": {
+"src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::alpha_array_files::64": {
+"class": "METHOD",
+"count": 1,
+"description": "An Alpha part filename contains the 64 hexadecimal characters of its unchanged SHA-256 identity."
+},
 "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::complete_onboarding_audit::-2": {
 "class": "METHOD",
 "count": 1,

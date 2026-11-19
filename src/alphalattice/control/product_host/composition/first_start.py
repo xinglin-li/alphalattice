@@ -42,6 +42,9 @@ from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterL
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     execution_outcome_upgrade_family,
 )
+from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+    alpha_array_upgrade_family,
+)
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     lane_upgrade_family,
 )
@@ -79,7 +82,16 @@ def strategy_lab_lanes() -> Family:
     return lane_upgrade_family(named_workspace_id)
 
 
-FAMILIES: Final[tuple[Callable[[], Family], ...]] = (execution_outcomes, strategy_lab_lanes)
+def alpha_arrays() -> Family:
+    """Alpha's old array bodies and score chunks into the array door."""
+    return alpha_array_upgrade_family(named_workspace_id)
+
+
+FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
+    execution_outcomes,
+    strategy_lab_lanes,
+    alpha_arrays,
+)
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""
 

@@ -43,6 +43,22 @@ def test_two_workspaces_citing_one_lane_hold_one_body() -> None:
     holds = log.read("SELECT root_kind, root_id FROM live_ref ORDER BY root_id")
     assert [tuple(row) for row in holds] == [("workspace", "w1"), ("workspace", "w2")]
     assert [path.name for path in (root / "blobs").iterdir()] == [arrays.describe(lane).artifact_id]
+    # An Alpha part's typed relation and its body share the same workspace holders.
+    workspaces = ("w1", "w2")
+    for workspace in (*workspaces, *workspaces):
+        digest = history.keep_alpha_part(
+            "a" * 64, "layout", b"body", upgrade_owner=(log, root, workspace)
+        )
+    link = history._alpha_part_link(log.read, "a" * 64, "layout")
+    assert link is not None and digest == link[2]
+    for artifact in (link[0], link[1]):
+        rows = log.read(
+            "SELECT root_id FROM live_ref WHERE artifact_id = ?"
+            " AND root_kind = 'workspace' ORDER BY root_id",
+            (artifact,),
+        )
+        assert [row[0] for row in rows] == ["w1", "w2"]
+    assert len(list((root / "blobs").iterdir())) == 2
 
 
 @pytest.mark.proves("data_layer.workspace_copy_carries_its_lanes")
@@ -56,12 +72,17 @@ def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(tmp_path: P
     lane = {"value": np.array([np.nan, -0.0])}
     columns = arrays.keep(root, log, lane, workspace=held)
     packed = arrays.keep_packed(root, log, b"legacy", workspace=held)
-    assert history.carry_arrays(source, copy) == 2
+    alpha = history.keep_alpha_part(
+        "a" * 64, "alpha-layout", b"alpha body", upgrade_owner=(log, root, held)
+    )
+    assert history.carry_arrays(source, copy) == 3
     with history.own_root(tmp_path / "copy-root"):
         history.open_history("copy", "copy", copy)
         try:
             assert history.read_array(columns, packed=True) == lane["value"].tobytes()
             assert history.read_array(packed, packed=True) == b"legacy"
+            assert history.alpha_part_body_digest("a" * 64, "alpha-layout") == alpha
+            assert history.read_alpha_part("a" * 64, "alpha-layout") == b"alpha body"
             holds = history._open["log"].read("SELECT DISTINCT root_id FROM live_ref")
             assert [row[0] for row in holds] == ["copy"]
         finally:

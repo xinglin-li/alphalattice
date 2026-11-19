@@ -172,14 +172,33 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     reads, checks, trace = Counter(), Counter(), []
     active = peak = 0
     open_file, load = Path.open, np.load
+    array_paths = {
+        **{
+            store._packed_source_path("frozen-observation-arrays", value).resolve(): (
+                "frozen-observation-arrays",
+                value,
+            )
+            for value in snapshot.array_files
+        },
+        **{
+            store._packed_source_path("lifecycle-arrays", value).resolve(): (
+                "lifecycle-arrays",
+                value,
+            )
+            for value in hashes - set(snapshot.array_files)
+        },
+    }
 
     def counted_open(path, mode="r", *args, **kwargs):
         resolved = Path(path).resolve()
-        if "r" in mode and resolved.is_relative_to(store.root.resolve()):
+        if "r" in mode and (
+            resolved in array_paths or resolved.is_relative_to(store.root.resolve())
+        ):
             with lock:
-                trace.append((resolved.parent.name, get_ident()))
-                if resolved.parent.name in {"lifecycle-arrays", "frozen-observation-arrays"}:
-                    reads[resolved.stem] += 1
+                kind, identity = array_paths.get(resolved, (resolved.parent.name, resolved.stem))
+                trace.append((kind, get_ident()))
+                if resolved in array_paths:
+                    reads[identity] += 1
         return open_file(path, mode, *args, **kwargs)
 
     @contextmanager
@@ -275,20 +294,35 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
         "prepared": authority.prepared[-1].array_file_hash,
     }[damaged_source]
     category = "frozen-observation-arrays" if damaged_source == "frozen" else "lifecycle-arrays"
-    path = store.root / "current" / category / f"{identity}.bin"
+    from alphalattice.kernel.data_layer import arrays, history
+
+    path = store._packed_source_path(category, identity)
     before = path.stat()
-    payload = bytearray(path.read_bytes())
+    payload = bytearray(history.read_alpha_part(identity, "current/" + category))
     payload[len(payload) // 2] ^= 1
-    path.write_bytes(payload)
+    path.write_bytes(arrays._packed_body(bytes(payload)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     reads, checks, completed = [], Counter(), Counter()
     rendezvous, lock = Barrier(2), Lock()
     active = 0
     open_file, load = Path.open, np.load
+    array_paths = {
+        **{
+            store._packed_source_path(
+                "frozen-observation-arrays", value
+            ).resolve(): "frozen-observation-arrays"
+            for value in snapshot.array_files
+        },
+        **{
+            store._packed_source_path("lifecycle-arrays", value).resolve(): "lifecycle-arrays"
+            for value in hashes - set(snapshot.array_files)
+        },
+    }
 
     def counted_open(path, mode="r", *args, **kwargs):
         if "r" in mode:
-            reads.append(Path(path).parent.name)
+            resolved = Path(path).resolve()
+            reads.append(array_paths.get(resolved, resolved.parent.name))
         return open_file(path, mode, *args, **kwargs)
 
     @contextmanager
@@ -341,7 +375,10 @@ def test_admission_decodes_every_npz_member_without_pickle(
     np.savez(stream, features=np.zeros((1, 1)), untrusted=np.array([{}], dtype=object))
     payload = stream.getvalue()
     identity = sha256(payload).hexdigest()
-    (store.root / "current/lifecycle-arrays" / f"{identity}.bin").write_bytes(payload)
+    assert (
+        store._publish_packed_bytes(category="current/lifecycle-arrays", payload=payload)
+        == identity
+    )
     prepared = type(authority.prepared[-1]).create(
         **{
             **{
@@ -648,7 +685,7 @@ alpha:
     output_store = AlphaCurrentArtifactStore(tmp_path / "output/alpha-lifecycle")
     identity = output_store._hash_from_uri(evidence.artifact_uris[0], "current/" + CATEGORY)
     receipt = output_store._load(CATEGORY, identity, "content_hash", AlphaLifecycleResearchReceipt)
-    path = output_store._path("current/lifecycle-arrays", receipt.projection_files[0], "bin")
+    path = output_store._packed_source_path("lifecycle-arrays", receipt.projection_files[0])
     assert opened[path] >= 1  # the run and its replay read the array in full
     original = path.read_bytes()
     # A complete readback keeps its value in the process (EV2): the array is not read again.
@@ -756,7 +793,7 @@ def test_formula_snapshot_roundtrip_is_bound_without_changing_legacy_shape(tmp_p
         replace(reopened, formula_values={"mom_252_21": source.close + 1}).require_unchanged_prefix(
             reopened
         )
-    path = store._path("current/frozen-observation-arrays", new.array_files[-1], "bin")
+    path = store._packed_source_path("frozen-observation-arrays", new.array_files[-1])
     payload = path.read_bytes()
     path.write_bytes(payload[:-1] + bytes([payload[-1] ^ 1]))
     with full_content_proof(), pytest.raises(ValueError, match="frozen_input_content_invalid"):

@@ -194,7 +194,7 @@ def _verify_arrays(store: AlphaDevelopmentArtifactStore, identity: str) -> None:
 
     verified_source_value(
         ("lifecycle-npz-proof", str(store.root), identity),
-        (store._path("current/lifecycle-arrays", identity, "bin"),),
+        (store._packed_source_path("lifecycle-arrays", identity),),
         check,
         nbytes=0,
     )
@@ -849,7 +849,7 @@ def _verify_prepared_values(
 
     verified_source_value(
         ("lifecycle-prepared-values-proof", str(store.root), *semantic_identity),
-        (store._path("current/lifecycle-arrays", prepared.array_file_hash, "bin"),),
+        (store._packed_source_path("lifecycle-arrays", prepared.array_file_hash),),
         check,
         nbytes=0,
     )

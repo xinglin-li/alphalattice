@@ -330,11 +330,13 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
     ]
 
     # Call-local reuse must not conceal a changed file on this same reader.
-    scores = reader.root / "current/numerical-development-score-chunks"
-    target = scores / f"{score_reads[0]}.parquet"
+    from alphalattice.kernel.data_layer import history
+
+    layout = "current/numerical-development-score-chunks"
+    target = history.alpha_part_body_path(score_reads[0], layout)
     original = target.read_bytes()
     try:
-        target.write_bytes((scores / f"{score_reads[1]}.parquet").read_bytes())
+        target.write_bytes(history.alpha_part_body_path(score_reads[1], layout).read_bytes())
         with pytest.raises(AuthoringError, match="child_unavailable"):
             reader.projection(receipt.receipt_hash)
     finally:
@@ -698,6 +700,7 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     from alphalattice.investment.alpha_research.experiments import (
         development_chunk_identity as proof,
     )
+    from alphalattice.kernel.data_layer import history
 
     request.addfinalizer(proof.configure_chunk_proof_memo)
     proof.configure_chunk_proof_memo(capacity=1)
@@ -725,12 +728,20 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     assert store.resolve_numerical_score_chunk(other).equals(table)
     assert len(proof._VERIFIED_CHUNKS) == 1 and first not in proof._VERIFIED_CHUNKS
     assert store.resolve_numerical_score_chunk(reference).equals(table)
-    path = next(tmp_path.rglob(f"{reference.content_hash}.parquet"))
+    layout = "current/numerical-development-score-chunks"
+    body_digest = history.alpha_part_body_digest(reference.content_hash, layout)
+    assert body_digest is not None
+    path = history.array_body_path(body_digest)
     original = path.read_bytes()
     changed = table.set_column(1, "score", pa.array([0.1, -0.2, 0.4]))
-    pq.write_table(
-        changed.replace_schema_metadata(pq.read_schema(path).metadata), path, compression="zstd"
-    )
+    score_metadata = pq.read_schema(
+        pa.BufferReader(history.read_alpha_part(reference.content_hash, layout))
+    ).metadata
+    encoded = pa.BufferOutputStream()
+    pq.write_table(changed.replace_schema_metadata(score_metadata), encoded, compression="zstd")
+    packed = pq.read_table(path)
+    packed = packed.set_column(0, "packed", pa.array([encoded.getvalue().to_pybytes()]))
+    pq.write_table(packed, path)
     with pytest.raises(owner.AlphaDevelopmentArtifactReadbackError, match="content changed"):
         store.resolve_numerical_score_chunk(reference)
     path.write_bytes(original)

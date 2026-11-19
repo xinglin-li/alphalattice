@@ -14,7 +14,7 @@ from datetime import date
 from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Self, TypeVar, cast
+from typing import Any, Literal, Self, TypeVar, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -96,6 +96,9 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
     total_return_array_identity,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
@@ -382,6 +385,7 @@ class AlphaDevelopmentArtifactStore:
         value: BaseModel,
         identity_field: str,
     ) -> str:
+        history.flush()  # every array a sealed document can cite must already be committed
         with span("serialize", "alpha_json"):
             payload = value.model_dump(mode="json")
         content_hash = str(payload[identity_field])
@@ -401,9 +405,16 @@ class AlphaDevelopmentArtifactStore:
             self._atomic_write(target, serialized)
         return self.uri(category, content_hash)
 
-    def _publish_packed_bytes(self, *, category: str, payload: bytes) -> str:
+    def _publish_packed_bytes(self, *, category: str, payload: bytes, durable: bool = True) -> str:
         with span("hash", "alpha_packed"):
             content_hash = sha256(payload).hexdigest()
+        if category.startswith("current/") and self._packed_is_door(
+            category.removeprefix("current/")
+        ):
+            history.keep_alpha_part(
+                content_hash, category, payload, capacity=self._packed_capacity, durable=durable
+            )
+            return content_hash
         target = self._path(category, content_hash, "bin")
         if not target.exists():
             self._packed_capacity(len(payload))
@@ -429,6 +440,8 @@ class AlphaDevelopmentArtifactStore:
         ):
             raise self._packed_readback_error("alpha_research.shared_input_outside_workspace")
         payload = source._frozen_payload(category, content_hash)
+        if self._packed_is_door(category):
+            return self._publish_packed_bytes(category="current/" + category, payload=payload)
         if target.exists() or self._sharing_workspace is None:
             return self._publish_packed_bytes(category="current/" + category, payload=payload)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -449,6 +462,77 @@ class AlphaDevelopmentArtifactStore:
 
     _packed_readback_error = AlphaDevelopmentArtifactReadbackError
 
+    def _packed_is_door(self, category: str) -> bool:
+        if category not in {
+            "frozen-observation-arrays",
+            "frozen-feature-arrays",
+            "lifecycle-arrays",
+        }:
+            return False
+        return self._array_door()
+
+    def _array_door(self) -> bool:
+        try:
+            return cast(bool, history.alpha_array_door())
+        except DataError as error:
+            raise self._packed_readback_error("alpha_research.array_store_invalid") from error
+
+    def _publish_lane(self, *, category: str, columns: Mapping[str, npt.NDArray[Any]]) -> str:
+        if not self._array_door():
+            return self._lanes.publish_columns(category=category, columns=columns)
+        described = arrays.describe(columns)
+        payload = described.body()
+        history.keep_alpha_part(
+            described.content_digest, category + "/parquet", payload, capacity=self._packed_capacity
+        )
+        return cast(str, described.content_digest)
+
+    def _load_lane(self, *, category: str, content_hash: str) -> bytes:
+        if not self._array_door():
+            return self._lanes.load_packed_bytes(category=category, content_hash=content_hash)
+        self._lanes.require_hash(content_hash)
+        try:
+            layout = category + "/parquet"
+            if history.alpha_part_body_digest(content_hash, layout) is None:
+                layout = category + "/bin"  # contract: pre-Parquet lanes retire at row U
+            payload = cast(bytes, history.read_alpha_part(content_hash, layout))
+            if layout.endswith("/parquet"):
+                table = pq.ParquetFile(pa.BufferReader(payload)).read()
+                payload = b"".join(
+                    np.ascontiguousarray(table.column(name).to_numpy()).tobytes()
+                    for name in table.column_names
+                )
+            if arrays.packed_digest(payload) != content_hash:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
+            return payload
+        except DataError as error:
+            code = (
+                "content_store.artifact_missing"
+                if error.failure.code == "data_layer.part_missing"
+                else "content_store.artifact_tampered"
+            )
+            raise ContentAddressedStoreError(f"{code}: {content_hash}") from error
+
+    def _score_body(self, content_hash: str, layout: str, kind: str) -> bytes:
+        try:
+            return cast(bytes, history.read_alpha_part(content_hash, layout))
+        except DataError as error:
+            if error.failure.code == "data_layer.part_missing":
+                raise FileNotFoundError(f"{kind} is missing") from error
+            raise self._packed_readback_error(f"{kind} content changed") from error
+
+    def _packed_source_path(self, category: str, content_hash: str) -> Path:
+        """The source whose identity invalidates an Alpha packed read."""
+        path = self._path(f"current/{category}", content_hash, "bin")
+        if not self._packed_is_door(category):
+            return path
+        try:
+            return cast(Path, history.alpha_part_body_path(content_hash, "current/" + category))
+        except DataError as error:
+            if error.failure.code in {"data_layer.part_missing", "data_layer.array_missing"}:
+                raise FileNotFoundError(f"alpha array is missing: {content_hash}") from error
+            raise
+
     def _frozen_payload(self, category: str, content_hash: str) -> bytes:
         """Read immutable model/input bytes; this grants no current-pointer authority."""
         payload, _ = self._frozen_payload_with_identity(category, content_hash)
@@ -462,7 +546,36 @@ class AlphaDevelopmentArtifactStore:
         The bytes are taken at their content-addressed name; full proof (an export, a stage's
         check of what it wrote, the scrub) hashes them and refuses a mismatch (LAWS.md EV2).
         """
-        path = self._path(f"current/{category}", content_hash, "bin")
+        path = self._packed_source_path(category, content_hash)
+        if self._packed_is_door(category):
+            try:
+                before = path.stat()
+                payload = history.read_alpha_part(content_hash, "current/" + category)
+                after = path.stat()
+            except DataError as error:
+                if error.failure.code in {
+                    "data_layer.part_missing",
+                    "data_layer.array_missing",
+                    "data_layer.array_collected",
+                }:
+                    raise FileNotFoundError(f"alpha array is missing: {content_hash}") from error
+                raise self._packed_readback_error(
+                    "alpha_research.frozen_input_content_invalid"
+                ) from error
+            if (before.st_dev, before.st_ino, before.st_size) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+            ):
+                raise self._packed_readback_error("alpha_research.frozen_input_content_invalid")
+            return payload, (
+                str(path),
+                str(after.st_dev),
+                str(after.st_ino),
+                str(after.st_size),
+                content_hash,
+                content_hash,
+            )
         resolved = path.resolve()
         if not resolved.is_relative_to(self.root.parent):
             raise self._packed_readback_error("alpha_research.frozen_input_path_outside_root")
@@ -497,7 +610,7 @@ class AlphaDevelopmentArtifactStore:
         self, category: str, content_hash: str
     ) -> tuple[dict[str, npt.NDArray[Any]], tuple[str, ...]]:
         """Retain only immutable decoded arrays, kept under their sealed name (LAWS.md EV2)."""
-        path = self._path(f"current/{category}", content_hash, "bin")
+        path = self._packed_source_path(category, content_hash)
 
         def verify() -> tuple[tuple[tuple[str, npt.NDArray[Any]], ...], tuple[str, ...]]:
             payload, file_identity = self._frozen_payload_with_identity(category, content_hash)
@@ -914,6 +1027,7 @@ class AlphaDevelopmentArtifactStore:
     def load_score_aggregation_surface(
         self, content_hash: str
     ) -> tuple[AlphaScoreAggregationSurface, tuple[str, ...], np.ndarray]:
+        """Read and verify the aggregation's row axis and scores."""
         surface = self._read_identity_json(
             AlphaScoreAggregationSurface,
             category=ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
@@ -921,9 +1035,20 @@ class AlphaDevelopmentArtifactStore:
             identity_field="surface_hash",
         )
         target = self._path(ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY, content_hash, "parquet")
-        if not target.is_file():
-            raise FileNotFoundError("Alpha score aggregation surface is missing")
-        table = pq.read_table(target)
+        if self._array_door():
+            table = pq.read_table(
+                pa.BufferReader(
+                    self._score_body(
+                        content_hash,
+                        ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
+                        "Alpha score aggregation surface",
+                    )
+                )
+            )
+        else:
+            if not target.is_file():
+                raise FileNotFoundError("Alpha score aggregation surface is missing")
+            table = pq.read_table(target)
         if table.column_names != ["row_id", "aggregated_score"]:
             raise AlphaDevelopmentArtifactReadbackError(
                 "Alpha score aggregation surface schema is invalid"
@@ -956,6 +1081,7 @@ class AlphaDevelopmentArtifactStore:
         evidence: AlphaDevelopmentTrialEvidence,
         surface: AlphaCampaignPredictionSurface,
     ) -> str:
+        """Keep a campaign prediction under its evidence's semantic identity."""
         if surface.trial_evidence_hash != evidence.evidence_hash:
             raise ValueError("ALPHA_CAMPAIGN_PREDICTION_EVIDENCE_MISMATCH")
         values = np.asarray(surface.predictions, dtype=np.float64)
@@ -983,7 +1109,15 @@ class AlphaDevelopmentArtifactStore:
                 "prediction": pa.array(values, type=pa.float64()),
             }
         )
-        if not target.exists():
+        if self._array_door():
+            output = pa.BufferOutputStream()
+            pq.write_table(table, output, compression="zstd")
+            history.keep_alpha_part(
+                artifact_hash,
+                "development/campaign/prediction-surfaces",
+                output.getvalue().to_pybytes(),
+            )
+        elif not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
             pq.write_table(table, staged, compression="zstd")
@@ -995,14 +1129,26 @@ class AlphaDevelopmentArtifactStore:
     def load_campaign_prediction_surface(
         self, *, evidence: AlphaDevelopmentTrialEvidence
     ) -> tuple[tuple[str, ...], np.ndarray]:
+        """Read the prediction surface bound to the trial's evidence."""
         target = self._path(
             "development/campaign/prediction-surfaces",
             evidence.prediction_artifact_hash,
             "parquet",
         )
-        if not target.is_file():
-            raise FileNotFoundError("Alpha campaign prediction surface is missing")
-        table = pq.read_table(target)
+        if self._array_door():
+            table = pq.read_table(
+                pa.BufferReader(
+                    self._score_body(
+                        evidence.prediction_artifact_hash,
+                        "development/campaign/prediction-surfaces",
+                        "Alpha campaign prediction surface",
+                    )
+                )
+            )
+        else:
+            if not target.is_file():
+                raise FileNotFoundError("Alpha campaign prediction surface is missing")
+            table = pq.read_table(target)
         if table.column_names != ["row_id", "prediction"]:
             raise AlphaDevelopmentArtifactReadbackError(
                 "Alpha campaign prediction surface schema is invalid"
@@ -1124,7 +1270,7 @@ class AlphaDevelopmentArtifactStore:
         """Read one exact packed listing-position lane by content hash."""
 
         try:
-            return self._lanes.load_packed_bytes(
+            return self._load_lane(
                 category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY, content_hash=content_hash
             )
         except ContentAddressedStoreError as error:
@@ -1162,7 +1308,7 @@ class AlphaDevelopmentArtifactStore:
             if (
                 len(payload) != fold.row_count * np.dtype(fold.listing_position_dtype).itemsize
                 or sha256(payload).hexdigest() != fold.listing_position_lane_hash
-                or self._lanes.publish_columns(
+                or self._publish_lane(
                     category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY,
                     columns={
                         "listing_position": np.frombuffer(
@@ -1190,7 +1336,7 @@ class AlphaDevelopmentArtifactStore:
             or score_values_identity(values) != simple_score_binding.values_identity
         ):
             raise ValueError("Alpha simple-score values do not match their binding")
-        payload_hash = self._lanes.publish_columns(
+        payload_hash = self._publish_lane(
             category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, columns={"score": values}
         )
         self._publish_identity_json(
@@ -1459,7 +1605,7 @@ class AlphaDevelopmentArtifactStore:
                 or artifact.values_identity != binding.values_identity
             ):
                 raise ValueError("value artifact axis or binding mismatch")
-            payload = self._lanes.load_packed_bytes(
+            payload = self._load_lane(
                 category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, content_hash=artifact.payload_hash
             )
             dtype = np.dtype(artifact.dtype)  # the store proves the payload's digest at the edges
@@ -1502,7 +1648,7 @@ class AlphaDevelopmentArtifactStore:
                 content_hash=binding_hash,
                 identity_field="binding_hash",
             )
-            payload = self._lanes.load_packed_bytes(
+            payload = self._load_lane(
                 category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, content_hash=artifact.payload_hash
             )
             expected_shape = (
@@ -2196,18 +2342,28 @@ class AlphaDevelopmentArtifactStore:
             provisional.model_dump(mode="json", exclude={"metadata_hash", "uri"})
         )
         reference = model.model_validate({**values, "metadata_hash": metadata_hash})
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        target.parent.mkdir(parents=True, exist_ok=True)
         metadata = {
             b"alphalattice.snapshot_kind": kind.encode(),
             b"alphalattice.content_hash": content_hash.encode(),
             b"alphalattice.metadata_hash": metadata_hash.encode(),
         }
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-        if not target.exists():
-            pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, target)
-        staged.unlink(missing_ok=True)
+        if (
+            category in {"development-score-chunks", "numerical-development-score-chunks"}
+            and self._array_door()
+        ):
+            output = pa.BufferOutputStream()
+            pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
+            history.keep_alpha_part(
+                content_hash, "current/" + category, output.getvalue().to_pybytes()
+            )
+        else:
+            target = self._path(f"current/{category}", content_hash, "parquet")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
+            if not target.exists():
+                pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
+                os.replace(staged, target)
+            staged.unlink(missing_ok=True)
         self._resolve_development_chunk(
             reference=reference,
             columns=columns,
@@ -2232,8 +2388,13 @@ class AlphaDevelopmentArtifactStore:
         row_count = int(reference.row_count)
         if uri != self.uri(f"current/{category}", content_hash):
             raise AlphaDevelopmentArtifactReadbackError(f"{kind} URI changed")
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        raw = target.read_bytes()
+        if (
+            category in {"development-score-chunks", "numerical-development-score-chunks"}
+            and self._array_door()
+        ):
+            raw = self._score_body(content_hash, "current/" + category, kind)
+        else:
+            raw = self._path(f"current/{category}", content_hash, "parquet").read_bytes()
         parquet = pq.ParquetFile(pa.BufferReader(raw))
         metadata = parquet.schema_arrow.metadata or {}
         if (
@@ -2429,6 +2590,124 @@ class AlphaDevelopmentArtifactStore:
             "report_hash",
             AlphaDecisionReproducibilityReport,
         )
+
+
+_ALPHA_PACKED = frozenset(
+    {
+        "current/frozen-observation-arrays",
+        "current/frozen-feature-arrays",
+        "current/lifecycle-arrays",
+    }
+)
+_ALPHA_LANES = frozenset({FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY, SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY})
+_ALPHA_SCORES = frozenset(
+    {
+        "current/current-candidate-score-chunks",
+        "current/current-score-chunks",
+        "current/development-score-chunks",
+        "current/numerical-development-score-chunks",
+        "development/campaign/prediction-surfaces",
+        ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
+    }
+)
+_ALPHA_HISTORY = "current/workspace-observation-history/parts/"
+
+
+def alpha_array_files(workspace: Path) -> list[tuple[Path, str]]:
+    """The old Alpha part files and the layout each existing reader commits."""
+
+    def refuse(error: OSError) -> None:
+        raise error
+
+    found: list[tuple[Path, str]] = []
+    for folder, children, _ in os.walk(workspace, onerror=refuse):
+        if "alpha-research" not in children:
+            continue
+        children.remove("alpha-research")
+        root = Path(folder, "alpha-research")
+        if root.is_symlink():
+            raise DataError(
+                "the Alpha artifact directory is a link", code="data_layer.part_invalid"
+            )
+        for part, folders, files in os.walk(root, onerror=refuse):
+            if any(Path(part, name).is_symlink() for name in folders):
+                raise DataError(
+                    "an Alpha artifact directory is a link", code="data_layer.part_invalid"
+                )
+            directory = Path(part).relative_to(root).as_posix()
+            for name in files:
+                path = Path(part, name)
+                score = directory in _ALPHA_SCORES and path.suffix == ".parquet"
+                lane = (
+                    (directory in _ALPHA_PACKED and path.suffix == ".bin")
+                    or (directory in _ALPHA_LANES and path.suffix in {".bin", ".parquet"})
+                    or (directory.startswith(_ALPHA_HISTORY) and path.suffix == ".parquet")
+                )
+                if score or lane:
+                    if (
+                        len(path.stem) != 64
+                        or any(c not in "0123456789abcdef" for c in path.stem)
+                        or path.is_symlink()
+                    ):
+                        raise DataError("an Alpha part is invalid", code="data_layer.part_invalid")
+                    layout = (
+                        directory + "/" + path.suffix[1:]
+                        if directory in _ALPHA_LANES
+                        else directory
+                    )
+                    found.append((path, layout))
+    return sorted(found)
+
+
+def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
+    """Keep old Alpha bodies under their identities, verify ALL EQUAL, and retain the files."""
+
+    def step(runner: Any) -> None:
+        for workspace in runner.workspaces:
+            held = holder(workspace)
+            for path, layout in alpha_array_files(workspace):
+                if layout not in _ALPHA_SCORES:
+                    arrays.read_file(
+                        path
+                    )  # prove the old lane's own cited digest before keeping it
+                history.keep_alpha_part(
+                    path.stem,
+                    layout,
+                    path.read_bytes(),
+                    upgrade_owner=(runner.log, runner.root, held),
+                )
+            runner.log.flush()
+
+    def verify(runner: Any) -> bool:
+        for workspace in runner.workspaces:
+            for path, layout in alpha_array_files(workspace):
+                digest = history._alpha_part_body(runner.log.read, path.stem, layout)
+                if (
+                    digest is None
+                    or arrays.read_packed(runner.root, runner.log.read, digest) != path.read_bytes()
+                ):
+                    return False
+        return True
+
+    def switch(mode: Literal["old", "new"]) -> None:
+        if mode == "old":
+            os.environ["ALPHALATTICE_ARRAY_STORE"] = "legacy"
+        else:
+            os.environ.pop("ALPHALATTICE_ARRAY_STORE", None)
+
+    def holds(workspace: Path) -> bool:
+        try:
+            workspace.stat()
+        except FileNotFoundError:  # a new workspace has no old Alpha parts
+            return False
+        held = holder(workspace)
+        for path, layout in alpha_array_files(workspace):
+            digest = history.alpha_part_body_digest(path.stem, layout)
+            if digest is None or not history.array_held_by(digest, held):
+                return True
+        return False
+
+    return Family("alpha-arrays", step, verify, switch, holds)
 
 
 __all__ = [

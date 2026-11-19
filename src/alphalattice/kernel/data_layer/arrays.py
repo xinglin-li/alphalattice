@@ -87,6 +87,11 @@ def digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
     )
 
 
+def packed_digest(payload: bytes) -> str:
+    """The unchanged lane identity over packed bytes, without constructing an array."""
+    return _cited([memoryview(payload)])
+
+
 def _cited(buffers: list[memoryview]) -> str:
     """The one SHA-256 the door computes: the digest documents cite, over the bytes in order."""
     found = hashlib.sha256()
@@ -114,11 +119,17 @@ def keep(
 
 
 def keep_packed(
-    root: Path, log: HostLog, payload: bytes, *, workspace: str | None, durable: bool = True
+    root: Path,
+    log: HostLog,
+    payload: bytes,
+    *,
+    workspace: str | None,
+    durable: bool = True,
+    capacity: Callable[[int], None] | None = None,
 ) -> str:
     """Keep a legacy lane known only by its packed bytes (its dtype and shape were never written);
     returns the digest, the SHA-256 of `payload`."""
-    return _keep(root, log, describe_packed(payload), workspace, durable)
+    return _keep(root, log, describe_packed(payload), workspace, durable, capacity)
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +198,7 @@ def read_columns(root: Path, read: Read, content_digest: str) -> dict[str, npt.N
     return columns
 
 
-def read_packed(root: Path, read: Read, content_digest: str) -> bytes:
+def read_packed(root: Path, read: Read, content_digest: str, *, packed_only: bool = False) -> bytes:
     """The bytes a digest names: the array's columns' C-order bytes, in order, proved."""
     known, table = _body(root, read, content_digest)
     if known["kind"] == PACKED:
@@ -198,6 +209,8 @@ def read_packed(root: Path, read: Read, content_digest: str) -> bytes:
             raise _mismatch(content_digest, "its size")
         _prove(known, [memoryview(payload)], content_digest)
         return payload.to_pybytes()
+    if packed_only:
+        raise _mismatch(content_digest, "its kind: it is not packed")
     columns = _columns(known, table, content_digest)
     buffers = [memoryview(values).cast("B") for values in columns.values()]
     _prove(known, buffers, content_digest)
@@ -330,7 +343,14 @@ def import_carried(root: Path, log: HostLog, folder: Path, *, workspace: str) ->
     return kept
 
 
-def _keep(root: Path, log: HostLog, array: Described, workspace: str | None, durable: bool) -> str:
+def _keep(
+    root: Path,
+    log: HostLog,
+    array: Described,
+    workspace: str | None,
+    durable: bool,
+    capacity: Callable[[int], None] | None = None,
+) -> str:
     described, content_digest, artifact = array.profile, array.content_digest, array.artifact_id
     body = array.body
     target = root / "blobs" / artifact
@@ -347,10 +367,15 @@ def _keep(root: Path, log: HostLog, array: Described, workspace: str | None, dur
                     f"the array {content_digest} was collected", code="data_layer.array_collected"
                 )
             if target not in _unplaced and not target.is_file():
-                _place(target, body())  # its committed profile's body a crash left staged
+                payload = body()
+                if capacity is not None:
+                    capacity(len(payload))
+                _place(target, payload)  # its committed profile's body a crash left staged
             _hold(log, artifact, workspace)
         else:
             payload = body()
+            if capacity is not None:
+                capacity(len(payload))
             staged = _staged(target)
             staged.write_bytes(payload)
             _unplaced[target] = staged

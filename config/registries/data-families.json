@@ -1327,6 +1327,7 @@
         "alpha_research.publication.AlphaCurrentArtifactStore"
       ],
       "writers": [
+        "data_layer.history:_carry",
         "alpha_research.publication.artifacts:AlphaCurrentArtifactStore",
         "alpha_research.scores.model_renewal:_array_file"
       ],

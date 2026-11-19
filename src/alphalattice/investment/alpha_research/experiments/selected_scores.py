@@ -29,9 +29,12 @@ from typing import Any, Literal, Self
 
 import numpy as np
 import numpy.typing as npt
+import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -227,10 +230,29 @@ def _resolve_selected_folds(
             or int(trial["horizon_sessions"]) != horizon_sessions
         ):
             raise AlphaSelectedScoreError("alpha_research.selected_scores_trial_not_this_fold")
-        path = prediction_surface_root / f"{trial['prediction_artifact_hash']}.parquet"
-        if not path.is_file():
-            raise AlphaSelectedScoreError("alpha_research.selected_scores_prediction_missing")
-        table = pq.read_table(path)
+        content_hash = str(trial["prediction_artifact_hash"])
+        try:
+            if history.alpha_array_door():
+                table = pq.read_table(
+                    pa.BufferReader(
+                        history.read_alpha_part(
+                            content_hash, "development/campaign/prediction-surfaces"
+                        )
+                    )
+                )
+            else:
+                path = prediction_surface_root / f"{content_hash}.parquet"
+                table = pq.read_table(path)
+        except FileNotFoundError as error:
+            raise AlphaSelectedScoreError(
+                "alpha_research.selected_scores_prediction_missing"
+            ) from error
+        except AlphaLatticeError as error:
+            if error.failure.code == "data_layer.part_missing":
+                raise AlphaSelectedScoreError(
+                    "alpha_research.selected_scores_prediction_missing"
+                ) from error
+            raise AlphaSelectedScoreError(str(error)) from error
         if set(table.schema.names) != {"row_id", "prediction"}:
             raise AlphaSelectedScoreError(
                 "alpha_research.selected_scores_prediction_schema_invalid"

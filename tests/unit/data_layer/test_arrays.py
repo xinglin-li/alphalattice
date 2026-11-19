@@ -61,6 +61,9 @@ def test_every_lane_kind_reads_back_bit_exact(tmp_path: Path, kind: str) -> None
         name: (v.dtype.str, v.tobytes()) for name, v in columns.items()
     }
     assert arrays.read_packed(tmp_path, read, array.content_digest) == _packed(columns)
+    with pytest.raises(DataError) as refused:
+        arrays.read_packed(tmp_path, read, array.content_digest, packed_only=True)
+    assert refused.value.failure.code == "data_layer.array_profile_mismatch"
 
 
 @pytest.mark.proves("data_layer.array_door_keeps_every_lane_kind_bit_exact")
@@ -69,6 +72,10 @@ def test_a_legacy_packed_lane_reads_back_as_its_bytes_alone(tmp_path: Path) -> N
     array = arrays.describe_packed(b"\x00\x01legacy lane")
     _path, read = _kept(tmp_path, array)
     assert arrays.read_packed(tmp_path, read, array.content_digest) == b"\x00\x01legacy lane"
+    assert (
+        arrays.read_packed(tmp_path, read, array.content_digest, packed_only=True)
+        == b"\x00\x01legacy lane"
+    )
     with pytest.raises(DataError) as refused:
         arrays.read_columns(tmp_path, read, array.content_digest)
     assert refused.value.failure.code == "data_layer.array_profile_mismatch"

@@ -40,6 +40,8 @@
 "data_layer.array_digest_reused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A digest names one array; the same bytes as another dtype or shape are not kept under it."},
 "data_layer.array_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
 "data_layer.array_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No array, or no body for its profile, is held for the digest; restore the data root from its backup."},
+"data_layer.part_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The Alpha part relation is absent; restore the workspace and data root from their backup."},
+"data_layer.part_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An Alpha part relation or carried body is invalid; restore the workspace and data root from their backup."},
 "data_layer.array_profile_mismatch": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body's columns, dtype or shape differ from its profile; restore the data root from its backup."},
 "data_layer.array_tampered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body does not prove its digest; restore the data root from its backup."},
 "data_layer.artifact_holder_unnamed": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A hold on an artifact names the workspace that keeps it."},
@@ -389,6 +391,11 @@
 "owner": "portfolio_strategy_lab",
 "category": "INVALID_ARGUMENT",
 "classification_note": "ALPHALATTICE_ARRAY_STORE names the lanes' reader: door, the default, or legacy for rollback."
+},
+"alpha_research.array_store_invalid": {
+"owner": "alpha_research",
+"category": "INVALID_ARGUMENT",
+"classification_note": "ALPHALATTICE_ARRAY_STORE names the Alpha array reader: door, the default, or legacy for rollback."
 },
 "portfolio_strategy_lab.eligible_pool_short": {
 "owner": "portfolio_strategy_lab",

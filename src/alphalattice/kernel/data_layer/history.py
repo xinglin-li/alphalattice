@@ -65,6 +65,18 @@ OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
 OTLP_CONTENT_ENV: Final = "ALPHALATTICE_OTLP_INCLUDE_CONTENT"
 EVIDENCE_TYPE: Final = "research_evidence"
 """The artifact type of a trial's execution evidence, registered by the Host as its own."""
+
+
+def alpha_array_door() -> bool:
+    """Select Alpha's array reader; the old reader remains available until row U."""
+    mode = os.environ.get("ALPHALATTICE_ARRAY_STORE", "door")
+    if mode not in {"door", "legacy"}:
+        raise DataError(
+            "the Alpha array store is invalid", code="alpha_research.array_store_invalid"
+        )
+    return mode == "door"
+
+
 _EVIDENCE_TEXT: Final = "What one research trial's Desk run did: its program, inputs and artifacts."
 _RETURN_SERIES_TEXT: Final = "A trial's headline monthly return series, kept with its profile."
 _CONDITION_TEXT: Final = "A market's condition at a selection's cutoff, as registered metrics."
@@ -315,6 +327,7 @@ def open_history(
         # a copy's lanes move onto this log before anything reads them, its workers included
         where, log = Path(_open["root"]), _open["log"]
         arrays.import_carried(where, log, folder, workspace=_open["workspace"])
+        _import_alpha_parts(where, log, folder, _open["workspace"])
         spec: dict[str, Any] = {
             "storage": "none",  # the evidence stays in the workspace's store until row 8a
             "table": None,
@@ -798,6 +811,183 @@ def array_profile(content_digest: str) -> dict[str, Any] | None:
         return arrays.profile(read, content_digest)
 
 
+def array_body_path(content_digest: str) -> Path:
+    """The array owner's body path for a sealed-source cache; read through the door."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (root, read):
+        known = arrays.profile(read, content_digest)
+        if known is None or known["body_state"] != "present":
+            raise DataError(f"no array is named {content_digest}", code="data_layer.array_missing")
+        return root / "blobs" / known["artifact_id"]
+
+
+def _alpha_part_link(read: Callable[..., Any], content_hash: str, layout: str) -> Any:
+    """The checked relation and array profile, read together from the log."""
+    rows = read(
+        "SELECT a.artifact_id, u.artifact_id, b.content_digest, b.body_state,"
+        " b.type_id = (SELECT definition_id FROM definition_name"
+        " WHERE family = 'artifact_type' AND name = 'array'), b.shape"
+        " FROM artifact a JOIN definition_name d ON d.definition_id = a.type_id"
+        " LEFT JOIN event_artifact u ON u.seq = a.produced_seq AND u.role = 'used'"
+        " LEFT JOIN artifact b ON b.artifact_id = u.artifact_id"
+        " WHERE d.family = 'artifact_type' AND d.name = 'alpha_part'"
+        " AND a.content_digest = ? AND json_extract(a.shape, '$.layout') = ?",
+        (content_hash, layout),
+    )
+    if not rows:
+        return None
+    if (
+        len(rows) != 1
+        or rows[0][1] is None
+        or rows[0][2] is None
+        or rows[0][3] != "present"
+        or rows[0][4] != 1
+        or rows[0][5] is None
+    ):
+        raise DataError(
+            "the Alpha part's array relation is invalid", code="data_layer.part_invalid"
+        )
+    return rows[0]
+
+
+def _alpha_part_body(read: Callable[..., Any], content_hash: str, layout: str) -> str | None:
+    link = _alpha_part_link(read, content_hash, layout)
+    return None if link is None else str(link[2])
+
+
+def keep_alpha_part(
+    content_hash: str,
+    layout: str,
+    payload: bytes,
+    *,
+    capacity: Callable[[int], None] | None = None,
+    durable: bool = True,
+    upgrade_owner: tuple[HostLog, Path, str | None] | None = None,
+) -> str:
+    """Keep a legacy-format body and relate it to its unchanged content and layout identities."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _once:
+        if upgrade_owner is not None:
+            log, root, workspace = upgrade_owner
+        else:
+            with _held_log() as found:
+                current = found
+            log, workspace, root = current if current is not None else (held(), None, data_root())
+        link = _alpha_part_link(log.read, content_hash, layout)
+        if link is not None:
+            existing = str(link[2])
+            # The first body for this semantic identity remains authoritative and is held here.
+            body = arrays.read_packed(root, log.read, existing)
+            if (
+                arrays.keep_packed(
+                    root, log, body, workspace=workspace, durable=False, capacity=capacity
+                )
+                != existing
+            ):
+                raise DataError("the Alpha part body changed", code="data_layer.part_invalid")
+            arrays._hold(log, str(link[0]), workspace)
+            if durable:
+                log.flush()
+            return existing
+        described = arrays.describe_packed(payload)
+        digest = arrays._keep(root, log, described, workspace, False, capacity)
+        name = "alpha_part"
+        versions = log.read(
+            "SELECT version FROM definition_current WHERE family = 'artifact_type' AND name = ?",
+            (name,),
+        )
+        if not versions:
+            key = {"family": "artifact_type", "name": name, "version": 1}
+            definition = key | {
+                "spec": {"storage": "none", "table": None, "measures": [], "keep": "while_active"},
+                "status": "standard",
+                "owner": "host",
+                "text": "An Alpha part's content and layout identities and the array it uses.",
+            }
+            log.record(
+                "definition.registered",
+                ("definition", "artifact_type/" + name),
+                key,
+                text=json.dumps(definition, sort_keys=True),
+                node="host",
+            )
+            version = 1
+        else:
+            version = int(versions[0][0])
+        log.record(
+            "artifact.produced",
+            ("artifact", uuid7()),
+            {
+                "type": name,
+                "type_version": version,
+                "identity_kind": "content",
+                "storage": "none",
+                "meaning": "An Alpha part's content and layout identities.",
+                "content_digest": content_hash,
+                "shape": {"layout": layout},
+                "used": [described.artifact_id],
+                "held": workspace is not None,
+            },
+            workspace=workspace,
+            node="host",
+        )
+        if durable:
+            log.flush()
+        return digest
+
+
+def read_alpha_part(content_hash: str, layout: str) -> bytes:
+    """Resolve the typed Alpha part relation and read its verified packed body."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (root, read):
+        link = _alpha_part_link(read, content_hash, layout)
+        if link is None:
+            raise DataError("the Alpha part is missing", code="data_layer.part_missing")
+        digest, artifact, shape = str(link[2]), str(link[1]), link[5]
+
+        def profile(_sql: str, args: tuple[Any, ...]) -> list[Any]:
+            if args != (digest, arrays.TYPE):
+                raise DataError("the Alpha array profile changed", code="data_layer.part_invalid")
+            return [(artifact, "present", shape)]
+
+        return arrays.read_packed(root, profile, digest, packed_only=True)
+
+
+def alpha_part_body_digest(content_hash: str, layout: str) -> str | None:
+    """The packed-body digest linked to a content and layout pair, if upgraded."""
+    with _array_reader() as (_root, read):
+        return _alpha_part_body(read, content_hash, layout)
+
+
+def alpha_part_body_path(content_hash: str, layout: str) -> Path:
+    """The linked array's source path for the existing sealed-source verifier."""
+    with _array_reader() as (root, read):
+        link = _alpha_part_link(read, content_hash, layout)
+        if link is None:
+            raise DataError("the Alpha part is missing", code="data_layer.part_missing")
+        return root / "blobs" / str(link[1])
+
+
+def array_held_by(content_hash: str, workspace: str | None) -> bool:
+    """Whether an array is present and, when named, held by this workspace."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    with _array_reader() as (_root, read):
+        profile = arrays.profile(read, content_hash)
+        if profile is None or profile["body_state"] != "present":
+            return False
+        return workspace is None or bool(
+            read(
+                "SELECT 1 FROM live_ref WHERE artifact_id = ? AND root_kind = 'workspace'"
+                " AND root_id = ?",
+                (profile["artifact_id"], workspace),
+            )
+        )
+
+
 def arrays_lacking(digests: Iterable[str]) -> list[str]:
     """The digests the door holds no array for, in one read of the log."""
     import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
@@ -815,7 +1005,10 @@ def move_carried(folder: Path, workspace_id: str) -> int:
         return 0
     log = held()
     held_id = workspace_on_log(folder, folder.name, workspace_id)
-    return arrays.import_carried(Path(_open["root"]), log, folder, workspace=held_id)
+    root = Path(_open["root"])
+    count = arrays.import_carried(root, log, folder, workspace=held_id)
+    _import_alpha_parts(root, log, folder, held_id)
+    return count
 
 
 def carry_arrays(workspace: Path, copy: Path, *, root: Path | None = None) -> int:
@@ -843,7 +1036,97 @@ def _carry(arrays: Any, read: Callable[..., Any], root: Path, workspace: Path, c
         "SELECT workspace_id FROM workspace WHERE folder = ? AND status = 'active'",
         (str(workspace.resolve()),),
     )
-    return int(arrays.carry(read, root, str(known[0][0]), copy)) if known else 0
+    if not known:
+        return 0
+    workspace_id = str(known[0][0])
+    count = int(arrays.carry(read, root, workspace_id, copy))
+    rows = read(
+        "SELECT a.content_digest, json_extract(a.shape, '$.layout'), b.content_digest,"
+        " b.body_state, b.type_id = (SELECT definition_id FROM definition_name"
+        " WHERE family = 'artifact_type' AND name = 'array'), held.artifact_id"
+        " FROM live_ref l JOIN artifact a ON a.artifact_id = l.artifact_id"
+        " JOIN definition_name d ON d.definition_id = a.type_id"
+        " LEFT JOIN event_artifact u ON u.seq = a.produced_seq AND u.role = 'used'"
+        " LEFT JOIN artifact b ON b.artifact_id = u.artifact_id"
+        " LEFT JOIN live_ref held ON held.artifact_id = b.artifact_id"
+        " AND held.root_kind = 'workspace' AND held.root_id = l.root_id"
+        " WHERE l.root_kind = 'workspace' AND l.root_id = ?"
+        " AND d.family = 'artifact_type' AND d.name = 'alpha_part'"
+        " ORDER BY a.content_digest, json_extract(a.shape, '$.layout')",
+        (workspace_id,),
+    )
+    target = copy / arrays.CARRIED / "alpha-parts.json"
+    if rows or target.exists():
+        keys: set[tuple[Any, Any]] = set()
+        for row in rows:
+            if (
+                (row[0], row[1]) in keys
+                or not row[0]
+                or not row[1]
+                or not row[2]
+                or row[3] != "present"
+                or row[4] != 1
+                or row[5] is None
+            ):
+                raise DataError(
+                    "an Alpha part relation cannot be carried", code="data_layer.part_invalid"
+                )
+            keys.add((row[0], row[1]))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps([list(row[:3]) for row in rows], separators=(",", ":")).encode()
+        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        staged.write_bytes(payload)
+        os.replace(staged, target)
+    return count
+
+
+def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) -> None:
+    """Restore carried Alpha content/layout relations after the carried arrays are admitted."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    source = folder / arrays.CARRIED / "alpha-parts.json"
+    if source.is_symlink():
+        raise DataError("carried Alpha part relations are a link", code="data_layer.part_invalid")
+    try:
+        payload = source.read_bytes()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise DataError(
+            "carried Alpha part relations are unreadable", code="data_layer.part_invalid"
+        ) from error
+    try:
+        rows = json.loads(payload)
+        if not isinstance(rows, list):
+            raise ValueError("not a list")
+        seen: set[tuple[str, str]] = set()
+        for row in rows:
+            if not isinstance(row, list) or len(row) != 3:
+                raise ValueError("not a part relation")
+            content, layout, digest = row
+            if (
+                not isinstance(content, str)
+                or not isinstance(digest, str)
+                or any(
+                    len(v) != 64 or any(c not in "0123456789abcdef" for c in v)
+                    for v in (content, digest)
+                )
+                or not isinstance(layout, str)
+                or not layout
+                or (content, layout) in seen
+            ):
+                raise ValueError("invalid or duplicate part relation")
+            seen.add((content, layout))
+            body = arrays.read_packed(root, log.read, digest, packed_only=True)
+            if (
+                keep_alpha_part(content, layout, body, upgrade_owner=(log, root, workspace))
+                != digest
+            ):
+                raise ValueError("part relation differs from the held one")
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        raise DataError(
+            "carried Alpha part relations are invalid", code="data_layer.part_invalid"
+        ) from error
 
 
 def _query(con: sqlite3.Connection) -> Callable[[str, tuple[Any, ...]], list[Any]]:
