@@ -105,6 +105,7 @@ RESULTS_KEYS: Final = {
     "execution_outcome": ("artifact_id", "listing_id", "formation_session"),
     "holding": ("artifact_id", "as_of", "listing_id"),
     "series": ("artifact_id", "name", "session_date"),
+    "sector_evaluation": ("artifact_id", "sector_index"),
     "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
     "validation_receipt": ("artifact_id",),
     "risk_covariance_cell": ("artifact_id", "listing_i", "listing_j"),

@@ -39,6 +39,7 @@ from ..models.catalog import SECTOR_CATALOG_ROLE, numerical_binding_role
 from ..models.contracts import SectorForecastCatalogBinding
 from ..targets.execution import SectorTargetEvidence, build_sector_target_recipe
 from .development_artifacts import (
+    SECTOR_DEVELOPMENT_EXECUTION_ROLE,
     SectorArtifactReadbackError,
     SectorDevelopmentArtifactStore,
     SectorExperimentEvidence,
@@ -111,7 +112,9 @@ class SectorEvidenceVerifier:
         try:
             evidence = self._store.load_target_evidence(experiment.target_evidence_hash)
             surface = self._store.load_forecast_surface(experiment.forecast_surface_hash)
-            evaluation = self._store.load_evaluation(experiment.evaluation_hash)
+            evaluation = self._store.load_evaluation(
+                experiment.evaluation_hash, experiment=experiment.experiment_hash
+            )
         except FileNotFoundError as error:
             # A named child that is gone is an incomplete graph, and replay must
             # refuse cleanly rather than let a bare miss escape the walk.
@@ -189,9 +192,10 @@ class SectorEvidenceVerifier:
             raise SectorResearchError("sector_research.evidence_implementation_drift")
         if capability.admitted_recipe_hash != surface.recipe.recipe_hash:
             raise SectorResearchError("sector_research.evidence_recipe_not_admitted")
-        if (
-            surface.program_binding.development_source_closure_hash
-            != sector_development_source_closure_hash()
+        if not is_current(
+            SECTOR_DEVELOPMENT_EXECUTION_ROLE,
+            surface.program_binding.development_source_closure_hash,
+            sector_development_source_closure_hash(),
         ):
             raise SectorResearchError("sector_research.evidence_execution_closure_drift")
 

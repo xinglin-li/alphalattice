@@ -218,6 +218,16 @@
     "listing_id"
    ]
   },
+  "catalog.results.sector_evaluation": {
+   "home": "results",
+   "key": ["artifact_id", "sector_index"],
+   "id": {
+    "artifact_id": "link",
+    "sector_index": "value: the sector's zero-based position in the experiment evaluation"
+   },
+   "up": "artifact_id",
+   "times": {}
+  },
   "catalog.results.series": {
    "home": "results",
    "key": [

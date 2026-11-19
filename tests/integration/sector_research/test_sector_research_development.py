@@ -166,7 +166,9 @@ def test_sector_numerical_thread_policy_refuses_a_pool_that_ignored_the_limit(
         pytest.fail("The Sector numerical body must not run after a pool ignored its limit")
 
 
-def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else() -> None:
+def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome_catalog_root: Path
+) -> None:
     """Clean target is the hand computed sector mean and nothing else."""
 
     table, sectors, sessions, surface, evidence = _synthetic_evidence()
@@ -196,6 +198,132 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else() -> Non
     assert partial.available[3][0] is False
     assert partial.unavailable_reasons[3][0] == "SECTOR_SAMPLE_BELOW_MINIMUM"
     assert partial.available[3][1] is True
+    partial_evidence = seal_sector_target_evidence(
+        surface=partial,
+        causal_outcome_snapshot_hash="b" * 64,
+        outcome_method_binding_hash="c" * 64,
+        maturity_lag_sessions=2,
+        actual_session_span=2,
+        forecast_horizon_sessions=1,
+    )
+    from types import SimpleNamespace
+
+    from alphalattice.investment.sector_research.contracts import sector_array_identity
+    from alphalattice.investment.sector_research.experiments.development_artifacts import (
+        SectorDevelopmentArtifactStore,
+        SectorForecastProgramBinding,
+        SectorForecastSurface,
+        evaluate_sector_forecast_surface,
+        sector_results_upgrade_family,
+    )
+    from alphalattice.kernel.data_layer import history
+
+    workspace = tmp_path / "workspace"
+    store = SectorDevelopmentArtifactStore(workspace / "artifacts")
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
+    # Keep the standalone target case and migrate the full experiment in one admission.
+    store.publish_target_evidence(partial_evidence)
+    catalog = build_installed_sector_forecast_catalog()
+    recipe = catalog.seal_recipe(method_id="ZERO_SECTOR_FORECAST")
+    forecast_sessions = sessions[24:25]
+    binding = SectorForecastProgramBinding.create(
+        target_evidence_hash=evidence.evidence_hash,
+        catalog_hash=catalog.binding.catalog_hash,
+        method_id=recipe.method_id,
+        recipe_hash=recipe.recipe_hash,
+        numerical_binding_hash=catalog.resolve(recipe)
+        .describe_numerical_binding()
+        .numerical_binding_hash,
+        training_start=sessions[0],
+        training_end=sessions[21],
+        forecast_start=forecast_sessions[0],
+        forecast_end=forecast_sessions[0],
+        forecast_horizon_sessions=1,
+        maturity_lag_sessions=2,
+        refit_every_sessions=0,
+        minimum_history_sessions=0,
+        forecast_formation_sessions=forecast_sessions,
+        development_source_closure_hash="d" * 64,
+    )
+    values = ((0.125, None),)
+    forecast = SectorForecastSurface.create(
+        target_evidence_hash=evidence.evidence_hash,
+        recipe=recipe,
+        program_binding=binding,
+        ordered_sectors=evidence.ordered_sectors,
+        forecast_formation_sessions=forecast_sessions,
+        values=values,
+        unavailable_reasons=((None, INSUFFICIENT_MATURED_HISTORY),),
+        training_row_counts=(22,),
+        values_identity=sector_array_identity(grid_to_matrix(values)),
+    )
+    evaluation = evaluate_sector_forecast_surface(evidence=evidence, surface=forecast)
+    experiment = SectorExperimentEvidence.create(
+        causal_outcome_snapshot_hash=evidence.causal_outcome_snapshot_hash,
+        sector_revision=evidence.recipe.sector_revision,
+        method_id=recipe.method_id,
+        catalog_hash=binding.catalog_hash,
+        target_evidence_hash=evidence.evidence_hash,
+        forecast_surface_hash=forecast.surface_hash,
+        evaluation_hash=evaluation.evaluation_hash,
+        ordered_child_uris=(
+            sector_artifact_uri(SECTOR_TARGET_EVIDENCE_CATEGORY, evidence.evidence_hash),
+            sector_artifact_uri(SECTOR_FORECAST_SURFACE_CATEGORY, forecast.surface_hash),
+            sector_artifact_uri(SECTOR_FORECAST_EVALUATION_CATEGORY, evaluation.evaluation_hash),
+        ),
+    )
+    store.publish_experiment_results(evidence, forecast, evaluation, experiment)
+
+    def read():
+        return (
+            store.load_target_evidence(evidence.evidence_hash),
+            store.load_forecast_surface(forecast.surface_hash),
+            store.load_evaluation(
+                evaluation.evaluation_hash, experiment=experiment.experiment_hash
+            ),
+            store.load_experiment_evidence(experiment.experiment_hash),
+        )
+
+    old = read()
+    family = sector_results_upgrade_family()
+    runner = SimpleNamespace(
+        workspaces=(workspace,),
+        log=history._open["log"],
+        root=outcome_catalog_root,
+        map_id=lambda _family, _digest, artifact: artifact,
+    )
+    assert family.holds(workspace)
+    family.step(runner)
+    assert family.verify(runner)
+    admissions = runner.log.read(
+        "SELECT attrs FROM event WHERE type = 'admission.committed'"
+        " AND json_extract(attrs, '$.tables.sector_evaluation') IS NOT NULL"
+    )
+    assert len(admissions) == 1
+    attrs = json.loads(admissions[0][0])
+    assert attrs["tables"] == {"series": 121, "sector_evaluation": 2}
+    assert len(attrs["artifact_ids"]) == 3
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
+    assert store.load_target_evidence(partial_evidence.evidence_hash) == partial_evidence
+    _, partial_rows = history.read_sector_result(partial_evidence.evidence_hash)
+    assert partial_rows.num_rows == len(sessions) * len(evidence.ordered_sectors) * 2 - 2
+    assert store.list_category(SECTOR_TARGET_EVIDENCE_CATEGORY) == tuple(
+        sorted((evidence.evidence_hash, partial_evidence.evidence_hash))
+    )
+    assert read() == old
+    assert evaluation.evaluated_counts == (1, 0)
+    assert store.list_category(SECTOR_FORECAST_EVALUATION_CATEGORY) == (evaluation.evaluation_hash,)
+    assert not family.holds(workspace)
+    with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
+        store.load_evaluation(evaluation.evaluation_hash, experiment="0" * 64)
+    with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
+        store.load_target_evidence("0" * 64)
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
+    assert read() == old
+    assert store.load_target_evidence(partial_evidence.evidence_hash) == partial_evidence
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "invalid")
+    with pytest.raises(SectorResearchError, match=r"sector_research\.results_store_invalid"):
+        store.load_target_evidence(partial_evidence.evidence_hash)
 
 
 def test_same_shaped_wrong_inputs_are_refused_before_any_model() -> None:
@@ -434,7 +562,7 @@ def sector_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_r
 
 
 def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type: ignore[no-untyped-def]
-    sector_publication, real_risk_workspace: RealRiskWorkspace
+    sector_publication, real_risk_workspace: RealRiskWorkspace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Host derives every identity and the verifier walks to the seal."""
 
@@ -454,6 +582,57 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     lineage = service.verify(experiment_hash=ewma.experiment.experiment_hash)
     assert lineage.outcome_method_binding_hash == seal.method_bound.binding_hash
     assert lineage.surface.surface_hash == ewma.surface.surface_hash
+
+    # Upgrade the real workspace's old results, then compare both reader settings.
+    from types import SimpleNamespace
+
+    from alphalattice.investment.sector_research.experiments.development_artifacts import (
+        sector_results_upgrade_family,
+    )
+    from alphalattice.kernel.data_layer import history
+
+    family = sector_results_upgrade_family()
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
+    reads = (
+        (
+            ewma.target_evidence,
+            ewma.target_evidence.evidence_hash,
+            service.store.load_target_evidence,
+        ),
+        (ewma.surface, ewma.surface.surface_hash, service.store.load_forecast_surface),
+        (ewma.evaluation, ewma.evaluation.evaluation_hash, service.store.load_evaluation),
+        (ewma.experiment, ewma.experiment.experiment_hash, service.store.load_experiment_evidence),
+    )
+    old = tuple(read(digest) for _, digest, read in reads)
+    categories = (
+        "development/sector-target-evidence",
+        "development/sector-forecast-surfaces",
+        "development/sector-forecast-evaluations",
+        "development/sector-experiment-evidence",
+    )
+    old_lists = tuple(service.store.list_category(category) for category in categories)
+    runner = SimpleNamespace(
+        workspaces=(real_risk_workspace.workspace,),
+        log=history._open["log"],
+        root=history._open["root"],
+        map_id=lambda _family, _digest, artifact: artifact,
+    )
+    assert family.holds(real_risk_workspace.workspace)
+    family.step(runner)
+    assert family.verify(runner)
+    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
+    assert tuple(read(digest) for _, digest, read in reads) == old
+    assert tuple(service.store.list_category(category) for category in categories) == old_lists
+    with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
+        service.store.load_target_evidence("0" * 64)
+    for value, digest, read in reads[:2]:
+        profile, rows = history.read_sector_result(digest)
+        assert profile == {"descriptor": digest}
+        assert rows.num_rows > 0
+        assert read(digest) == value
+        monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
+        assert read(digest) == value
+        monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
 
     # The explicit warmup is visible in the real run: the earliest refits have
     # fewer than twenty-one matured labels and refuse; later ones emit values.

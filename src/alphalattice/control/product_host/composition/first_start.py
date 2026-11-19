@@ -52,6 +52,9 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     risk_covariance_upgrade_family,
 )
+from alphalattice.investment.sector_research.experiments.development_artifacts import (
+    sector_results_upgrade_family,
+)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
@@ -109,6 +112,7 @@ FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     alpha_arrays,
     protected_validation,
     risk_covariance,
+    sector_results_upgrade_family,
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""

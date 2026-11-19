@@ -365,6 +365,15 @@ CREATE TABLE results.series (
   value DOUBLE NOT NULL
 );
 
+-- key: (artifact_id, sector_index). The evaluation of one Sector experiment, in its sealed order.
+CREATE TABLE results.sector_evaluation (
+  artifact_id VARCHAR NOT NULL,
+  sector_index INTEGER NOT NULL,
+  evaluated_count BIGINT NOT NULL,
+  mean_error DOUBLE,
+  mean_squared_error DOUBLE
+);
+
 -- key: (artifact_id, listing_id, formation_session). One execution outcome: a formation close, the actual entry and
 -- holding-end opens after it, their statuses, and the return between them; a price that was missing leaves its value
 -- and the return null. The hashes name the source rows and the row itself, as 0.2.7 wrote them.

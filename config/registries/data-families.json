@@ -3724,8 +3724,8 @@
       "summary": "sector forecast development evidence",
       "class": "sealed-result",
       "tier": 4,
-      "home": "log trial and artifact",
-      "location": "experiment-output",
+      "home": "dated target and forecast grids in results.series and measures in results.sector_evaluation through one StorePort admission; descriptors in the workspace, result profiles in the log",
+      "location": "machine-data-root and experiment-output",
       "bytes": null,
       "writers": [
         "sector_research.experiments.development_artifacts:SectorDevelopmentArtifactStore"

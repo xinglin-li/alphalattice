@@ -51,6 +51,8 @@
 "data_layer.validation_workspace_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The validation workspace is not registered in this Host log."},
 "data_layer.outcome_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The recorded outcome's catalog body is incomplete."},
 "data_layer.outcome_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested outcome body is not present in the catalog."},
+"data_layer.sector_result_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested Sector result has no present catalog body."},
+"data_layer.sector_result_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A Sector result's identity, descriptor or body does not match its recorded profile."},
 "data_layer.array_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "An array is one or more columns of one shape."},
 "data_layer.array_digest_reused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A digest names one array; the same bytes as another dtype or shape are not kept under it."},
 "data_layer.array_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
@@ -17496,6 +17498,19 @@
 "category": "INVALID_ARGUMENT"
 },
 "sector_research.recipe_schema_not_installed": {
+"owner": "sector_research",
+"category": "FAILED_PRECONDITION"
+},
+"sector_research.results_store_invalid": {
+"owner": "sector_research",
+"category": "INVALID_ARGUMENT",
+"classification_note": "The Sector results reader is catalog or legacy."
+},
+"sector_research.upgrade_identity_invalid": {
+"owner": "sector_research",
+"category": "FAILED_PRECONDITION"
+},
+"sector_research.upgrade_path_invalid": {
 "owner": "sector_research",
 "category": "FAILED_PRECONDITION"
 },

@@ -309,7 +309,7 @@ def catalog(root: Path) -> bool | None:
 def catalog_matches(lake: Any) -> None:
     """Refuse catalog tables whose columns differ from catalog.sql.
 
-    Older 0.2.8 roots may lack validation_receipt; the next StorePort open adds it.
+    Older 0.2.8 roots may lack an additive results table until its writer opens it.
     Tables a later step adds (a feature set's) are not catalog.sql's and are not compared.
     """
     declared = {
@@ -328,8 +328,10 @@ def catalog_matches(lake: Any) -> None:
         name
         for name, columns in declared.items()
         if held.get(name) != columns
-        and not (name == "results.validation_receipt" and name not in held)
-    )  # the Host's next StorePort open adds this one new results table
+        and not (
+            name in {"results.validation_receipt", "results.sector_evaluation"} and name not in held
+        )
+    )
     if moved:
         raise DataError(
             f"the data root's catalog was made by another catalog schema ({', '.join(moved)}"
