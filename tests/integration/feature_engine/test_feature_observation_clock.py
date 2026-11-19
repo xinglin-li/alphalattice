@@ -885,11 +885,38 @@ def test_runtime_plan_jointly_bounds_desktop_workers_models_and_duckdb(
         connection.execute("CREATE TABLE observations(value INTEGER)")
         connection.execute("INSERT INTO observations VALUES (1)")
     before = database.path.read_bytes()
+    # A test node sets OMP_NUM_THREADS; this row is the machine without one.
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     monkeypatch.setattr(reader_threads, "_THREADS", [2])
     with database.connect(read_only=True) as connection:
         assert int(connection.execute("SELECT current_setting('threads')").fetchone()[0]) == 2
         assert connection.execute("SELECT SUM(value) FROM observations").fetchone()[0] == 1
     assert database.path.read_bytes() == before
+    # A test node gives each process one thread (OMP_NUM_THREADS); every DuckDB pool sized to all
+    # ten cores in every worker held mac1 at load 80 (11-19).
+    from alphalattice.kernel.shared_kernel import environment
+
+    reader_threads._THREADS.clear()  # the list patched above: nothing applied
+    monkeypatch.setattr(reader_threads.pa, "set_cpu_count", lambda threads: None)
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    # The getter reports the applied budget alone, which a feature pool sizes by.
+    assert reader_threads.reader_threads() is None
+    with database.connect(read_only=True) as connection:
+        pools = connection.execute(
+            "SELECT current_setting('threads'), current_setting('async_threads')"
+        ).fetchone()
+        assert tuple(map(int, pools)) == (1, 1)  # both pools
+    with monkeypatch.context() as created:  # the instance as it was created, before any SET
+        created.setattr(reader_threads, "configure_duckdb", lambda connection: connection)
+        with reader_threads.connect_duckdb(database.path, read_only=True) as connection:
+            pools = connection.execute(
+                "SELECT current_setting('threads'), current_setting('async_threads')"
+            ).fetchone()
+            assert tuple(map(int, pools)) == (1, 1)  # neither pool starts wider than the share
+    assert reader_threads.apply_reader_threads(4) == 1  # a budget applied later never widens it
+    for value, pools in (("2", {"threads": 2, "async_threads": 2}), ("", {}), ("0", {}), ("x", {})):
+        monkeypatch.setenv("OMP_NUM_THREADS", value)
+        assert environment.duckdb_thread_config() == pools  # none set: every instance as before
 
 
 def test_runtime_plan_is_workload_aware_across_desktop_and_throughput_profiles() -> None:

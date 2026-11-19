@@ -61,6 +61,7 @@ from alphalattice.kernel.data_layer.root import (
     world_table_ids,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
+from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
 if find_spec("pyarrow") is not None:
     import pyarrow.acero  # noqa: F401  (load the admission grouping engine at process start)
@@ -278,6 +279,7 @@ class StorePort:
             config={
                 "autoinstall_known_extensions": False,
                 "autoload_known_extensions": False,
+                **duckdb_thread_config(),
                 "threads": THREADS,
             },
         )

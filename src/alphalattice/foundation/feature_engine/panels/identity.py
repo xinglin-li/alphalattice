@@ -26,6 +26,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
 )
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_values
+from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
 PANEL_IDENTITY_COLUMNS = (
     "manifest_revision",
@@ -153,7 +154,7 @@ def panel_rows_match_their_hashes(
     if not {*provenance, "session_date", "listing_id", "row_hash"} <= set(table.column_names):
         return False
     row_hash = _row_hash_sql(identity_basis=identity_basis, factors=factors, stamped=False)
-    connection = duckdb.connect(":memory:")
+    connection = duckdb.connect(":memory:", config=duckdb_thread_config())
     try:
         connection.register("panel_partition", _in_batches(table))
         found = connection.execute(
@@ -240,7 +241,7 @@ def _hash_panel_rows(
         missing = tuple(sorted(expected.difference(table.column_names)))
         raise ValueError(f"panel row-hash input is missing columns: {missing}")
     relation = "panel_row_hash_input"
-    connection = duckdb.connect(":memory:")
+    connection = duckdb.connect(":memory:", config=duckdb_thread_config())
     try:
         connection.register(relation, _in_batches(table))
         sql = _panel_row_hash_select_sql(

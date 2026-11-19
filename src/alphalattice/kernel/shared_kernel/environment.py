@@ -23,7 +23,38 @@ from typing import Any
 OFFLINE_SWITCH = "ALPHALATTICE_NETWORK_DISABLED"
 """The operator's offline switch: ``=1`` keeps the process offline, whatever a workspace allows."""
 
+THREAD_SHARE = "OMP_NUM_THREADS"
+"""The operator's thread share for each process: OpenMP's variable, which Arrow reads too."""
+
 _HELD_OFFLINE: ContextVar[bool] = ContextVar("alphalattice_held_offline", default=False)
+
+
+def thread_share(environment: Mapping[str, str] | None = None) -> int | None:
+    """The threads the operator gives each process (`OMP_NUM_THREADS`), or None when it names none.
+
+    A machine running many processes at once, as a test node does, sets it so that no process
+    sizes a pool to every core. The product's DuckDB instances take it, as Arrow's CPU pool does,
+    and a budget applied later never widens it (`reader_threads.apply_reader_threads`).
+
+    Args:
+        environment: The environment to read, the process's own when omitted.
+
+    Returns:
+        A positive count, or None when the variable is unset or not one positive integer.
+    """
+    value = (os.environ if environment is None else environment).get(THREAD_SHARE, "").strip()
+    return int(value) if value.isdigit() and int(value) > 0 else None
+
+
+def duckdb_thread_config(environment: Mapping[str, str] | None = None) -> dict[str, int]:
+    """A DuckDB instance's pools under the operator's share; empty when it names none.
+
+    Both pools: its worker threads, and its async I/O pool, which DuckDB sizes to four times the
+    cores in every instance (`async_threads`; 163 threads for one default instance on 32 cores,
+    5 under a share of one, 11-19).
+    """
+    share = thread_share(environment)
+    return {"threads": share, "async_threads": share} if share else {}
 
 
 def offline(environment: Mapping[str, str] | None = None) -> bool:
@@ -251,6 +282,8 @@ def numerical_thread_limit(limits: int) -> Iterator[None]:
 
 __all__ = [
     "OFFLINE_SWITCH",
+    "THREAD_SHARE",
+    "duckdb_thread_config",
     "held_offline",
     "numerical_thread_counts",
     "numerical_thread_limit",
@@ -259,4 +292,5 @@ __all__ = [
     "package_versions",
     "recorded_environment",
     "running_held_offline",
+    "thread_share",
 ]

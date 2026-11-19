@@ -31,7 +31,11 @@ import sqlite_vec
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
-from alphalattice.kernel.shared_kernel.environment import package_versions
+from alphalattice.kernel.shared_kernel.environment import (
+    duckdb_thread_config,
+    package_versions,
+    thread_share,
+)
 
 SCHEMA_VERSION: Final = 14
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
@@ -49,9 +53,10 @@ SPEC_FIELDS: Final = {
     "world_tables": ("world_table", ()),
 }
 """Each seed list's definition family and the fields its rows keep as their spec."""
-THREADS: Final = min(8, os.cpu_count() or 1)
+THREADS: Final = min(8, thread_share() or os.cpu_count() or 1)
 """Threads of a DuckDB session over the lake. Its statements are many and small, and each pipeline
-fans out to every thread: past eight, a statement pays more in that fan-out than its scans gain."""
+fans out to every thread: past eight, a statement pays more in that fan-out than its scans gain.
+The operator's thread share (`thread_share`) lowers it."""
 READ_AHEAD: Final = 0
 """Scan jobs an instance opened over the lake reads ahead of decoding: none. DuckDB's default is
 bounded only by memory, and each queued job holds its Parquet file open. The lake's files are many
@@ -271,6 +276,7 @@ def duckdb_session(root: Path) -> Any | None:
             "extension_directory": str(root / "extensions"),
             "autoinstall_known_extensions": False,
             "autoload_known_extensions": False,
+            **duckdb_thread_config(),
             "threads": THREADS,
         },
     )
