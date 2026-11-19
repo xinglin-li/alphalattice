@@ -301,6 +301,28 @@ elif batch.get("owner"):
     history.store()
     setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
     history.write_execution_outcome("a" * 64, values)
+elif batch["table"] == "results":
+    from types import SimpleNamespace
+
+    with HostLog.open(root) as log:
+        port = store.StorePort.open(root, log)
+        tables = {table: pa.table(store.as_columns(rows)) for table, rows in batch["rows"].items()}
+        with store.stage(root, tables) as staged:
+            if point == "commit":
+                execute = port.lake.execute
+                inserts = []
+
+                def before_second_insert(sql, *args):
+                    if sql.startswith("INSERT INTO lake.results."):
+                        if inserts:
+                            os._exit(9)
+                        inserts.append(sql)
+                    return execute(sql, *args)
+
+                port.lake = SimpleNamespace(execute=before_second_insert)
+            else:
+                store.repair = lambda *a: os._exit(9)
+            port.commit(staged)
 else:
     with HostLog.open(root) as log:
         port = store.StorePort.open(root, log)
@@ -322,6 +344,23 @@ BATCHES = {
         None,
         [outcome(d, None if i % 3 else 0.1) for i, d in enumerate(DAYS)],
     ),
+    "results set": (
+        "results",
+        None,
+        {
+            "execution_outcome": [outcome(day) for day in DAYS],
+            "breakdown": [
+                {
+                    "artifact_id": "art-2" if day == DAYS[-1] else "art-1",
+                    "metric_id": "metric-1",
+                    "metric_version": 1,
+                    "dims": json.dumps({"session": day}, separators=(",", ":")),
+                    "value": 0.1,
+                }
+                for day in DAYS
+            ],
+        },
+    ),
     "array": ("array", None, [1.0, -0.0]),
 }
 
@@ -336,6 +375,8 @@ BATCHES = {
         pytest.param("results", "commit", 0, False, id="results after the files"),
         pytest.param("results", "repair", 1500, True, id="results after the catalog commit"),
         pytest.param("results", "delete", 1500, False, id="results after the event"),
+        pytest.param("results set", "commit", 0, False, id="table set before catalog commit"),
+        pytest.param("results set", "repair", 1500, True, id="table set after catalog commit"),
         pytest.param("array", "commit", 0, False, id="array after its staged body"),
         pytest.param("array", "repair", 1, False, id="array after its profile commit"),
     ],
@@ -368,19 +409,41 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
         _an_array_after_a_kill(root, point, given)
         return
     assert len(list((root / "staging").iterdir())) == 2  # the folder and its dead producer's lock
+    orphans = []
+    if batch == "results set" and point == "commit":
+        orphans = [path.relative_to(root).as_posix() for path in (root / "data").rglob("*.parquet")]
+        assert orphans  # the first table wrote files before the second insert was stopped
     schema = "world" if table in WORLD_KEYS else "results"
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
-        found = port.lake.execute(f"SELECT count(*) FROM lake.{schema}.{table}").fetchone()[0]
+        tables = tuple(given) if batch == "results set" else (table,)
+        found = tuple(
+            port.lake.execute(f"SELECT count(*) FROM lake.{schema}.{name}").fetchone()[0]
+            for name in tables
+        )
         events = log.read(
             "SELECT event_id FROM event e JOIN admission a ON a.admission_id = e.subject_id"
             " WHERE e.type = 'admission.committed' AND a.dataset = ?",
             (table,),
         )
+        if batch == "results set":
+            snapshots = port.lake.execute(
+                "SELECT snapshot_id FROM lake.snapshots() WHERE commit_message = 'admission'"
+            ).fetchall()
+            records = log.read("SELECT attrs FROM event WHERE type = 'admission.committed'")
+            assert len(records) == len(snapshots) == int(rows > 0)
+            if rows:
+                attrs = json.loads(records[0][0])
+                assert attrs["catalog_snapshot"] == snapshots[0][0]
+                assert attrs["tables"] == {name: rows for name in tables}
+                assert attrs["row_count"] == rows * len(tables)
+                assert attrs["artifact_ids"] == ["art-1", "art-2"]
         port.close()
-    assert (found, len(events)) == (rows, int(rows > 0))
+    assert (found, len(events)) == ((rows,) * len(tables), int(rows > 0))
     assert port.started["repaired"] == [row[0] for row in events if repaired]
-    assert [handle.split("/")[0] for handle in port.started["collected"]] == ["staging"]
+    staging, *collected = port.started["collected"]
+    assert staging.startswith("staging/") and set(collected) == set(orphans)
+    assert all(not (root / path).exists() for path in orphans)
     assert list((root / "staging").iterdir()) == []
     if batch == "results":
         from datetime import datetime

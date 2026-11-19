@@ -30,7 +30,7 @@ import logging
 import shutil
 import sqlite3
 import threading
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
@@ -100,7 +100,10 @@ LINEAGES: Final = {
     "universe_id": "universe",
 }
 """The world columns that name a lineage, with its family: a row names a registered one."""
-RESULTS_KEYS: Final = {"execution_outcome": ("artifact_id", "listing_id", "formation_session")}
+RESULTS_KEYS: Final = {
+    "execution_outcome": ("artifact_id", "listing_id", "formation_session"),
+    "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
+}
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
 outside provider: its admission names no provider and lists the artifacts it holds."""
@@ -180,6 +183,13 @@ class Staged(NamedTuple):
     """A legacy batch's lag rule, by name and version; None for an observed one."""
     artifacts: tuple[str, ...] = ()
     """A results admission's artifact ids, its rows' lineage; empty for a world one."""
+
+
+class StagedSet(NamedTuple):
+    """Several results tables staged under one admission and one producer lock."""
+
+    admission_id: str
+    tables: tuple[Staged, ...]
 
 
 class Committed(NamedTuple):
@@ -375,7 +385,7 @@ class StorePort:
             },
         }
 
-    def commit(self, staged: Staged) -> Committed:
+    def commit(self, staged: Staged | StagedSet) -> Committed:
         """Commit one staged admission as one catalog snapshot, then its owed event. A world row
         already its key's newest version is not admitted again, so a repeated batch adds nothing
         and takes no snapshot. The event is durable, so it is on disk when this returns. Refused
@@ -383,9 +393,15 @@ class StorePort:
         results keys already admitted, and a provider, scheme or universe no lineage in the log
         registers."""
         with self._writer:
-            self._registered(staged)
-            lag = None if staged.lag is None else self._lag_seconds(*staged.lag)
-            count, dropped, rewritten = self._catalog_commit(staged, self.log.clock(), lag)
+            tables = staged.tables if isinstance(staged, StagedSet) else (staged,)
+            for table in tables:
+                self._registered(table)
+            if isinstance(staged, StagedSet) or staged.table in RESULTS_KEYS:
+                count = self._catalog_results(staged, tables, self.log.clock())
+                dropped, rewritten = {}, 0
+            else:
+                lag = None if staged.lag is None else self._lag_seconds(*staged.lag)
+                count, dropped, rewritten = self._catalog_commit(staged, self.log.clock(), lag)
             repair(self.log, self.lake)
             delete(self.root, self.log, f"staging/{staged.admission_id}")
             if not count and not rewritten:
@@ -789,50 +805,64 @@ class StorePort:
         table, admission = staged.table, staged.admission_id
         parquet = self.root / "staging" / admission / f"{table}.parquet"
         source = f"read_parquet('{sql_path(parquet)}')"
-        world = table in WORLD_KEYS
-        key = WORLD_KEYS[table] if world else RESULTS_KEYS[table]
+        key = WORLD_KEYS[table]
         same = " AND ".join(f"t.{k} = n.{k}" for k in key)
         described = self.lake.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
         columns = {row[0] for row in described}
-        target = f"lake.{'world' if world else 'results'}.{table}"
+        target = f"lake.world.{table}"
         run = self.lake.execute
-        rows, dropped, rewritten = f"SELECT * FROM {source}", {}, 0
-        if world:  # read once, before the supersession changes which version is a key's newest
-            rule = None if staged.lag is None or lag is None else (*staged.lag, lag)
-            known_rows = self._known(table, source, columns, known, rule)
-            run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
+        rule = None if staged.lag is None or lag is None else (*staged.lag, lag)
+        known_rows = self._known(table, source, columns, known, rule)
+        run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
+        try:
             fates = dict(run("SELECT fate, count(*) FROM temp.admitting GROUP BY ALL").fetchall())
             dropped = {fate: int(count) for fate, count in fates.items() if fate in DROPPED}
             rewritten = int(fates.get(REWRITTEN, 0))
             rows = "SELECT * EXCLUDE (fate, _held) FROM temp.admitting WHERE fate = 'admit'"
-        try:
-            parts, count = self._parts(table, rows) if world else (None, staged.row_count)
-            if world and (count or staged.lag is not None):
+            parts, count = self._parts(table, rows)
+            if count or staged.lag is not None:
                 self._in_order(table, target, same, staged.lag)
             if not count and not rewritten:
                 if dropped:
                     self._judged(staged, known, dropped)
                 return 0, dropped, 0
-            if not world and run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same}").fetchone():
+            owed = self._owed(staged, known, parts, count, dropped, rewritten)
+            self._write(admission, ((table, rows),), owed)
+        finally:
+            run("DROP TABLE IF EXISTS temp.admitting").complete()
+        return count, dropped, rewritten
+
+    def _catalog_results(
+        self, staged: Staged | StagedSet, tables: tuple[Staged, ...], known: int
+    ) -> int:
+        """Check the named results keys, then write every nonempty table in one snapshot."""
+        writes = []
+        for batch in tables:
+            if not batch.row_count:
+                continue
+            table = batch.table
+            parquet = self.root / "staging" / staged.admission_id / f"{table}.parquet"
+            rows = f"SELECT * FROM read_parquet('{sql_path(parquet)}')"
+            same = " AND ".join(f"t.{k} = n.{k}" for k in RESULTS_KEYS[table])
+            if self.lake.execute(
+                f"SELECT 1 FROM lake.results.{table} t, ({rows}) n WHERE {same}"
+            ).fetchone():
                 raise DataError(
                     f"{table} already holds rows of these keys; an artifact's rows are admitted"
                     " once",
                     code="data_layer.result_key_present",
                 )
-            owed = self._owed(staged, known, parts, count, dropped, rewritten)
-            self._write(staged, target, rows, columns, owed)
-        finally:
-            if world:
-                run("DROP TABLE IF EXISTS temp.admitting").complete()
-        return count, dropped, rewritten
+            writes.append((table, rows))
+        count = sum(batch.row_count for batch in tables)
+        if count:
+            owed = self._owed(staged, known, None, count, {}, 0)
+            self._write(staged.admission_id, writes, owed)
+        return count
 
     def _write(
-        self, staged: Staged, target: str, rows: str, columns: set[str], owed: dict[str, Any]
+        self, admission: str, writes: Collection[tuple[str, str]], owed: dict[str, Any]
     ) -> None:
-        """The one catalog transaction: the event it owes, the supersession of each world version
-        the rows replace, and of an interval's open version by its closing one, the later writes of
-        held values, then the rows in their key order."""
-        table, admission = staged.table, staged.admission_id
+        """Put the owed event and every table's writes in the same catalog transaction."""
         run = self.lake.execute
         run("BEGIN").complete()
         try:
@@ -840,35 +870,46 @@ class StorePort:
                 "CALL lake.set_commit_message('host', 'admission', extra_info => ?)",
                 (canonical(owed).decode(),),
             ).complete()
-            if table in WORLD_KEYS:
-                table_id, key = TABLE_IDS[table], WORLD_KEYS[table]
-                same = " AND ".join(f"t.{k} = n.{k}" for k in key)
-                pair = " AND ".join(f"o.{k} = c.{k}" for k in key)
-                run(  # once, by its earliest replacement: an interval's pair replaces it once
-                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', t.version_id,"
-                    f" min(n.known_asof), '{admission}' FROM {target} t, ({rows}) n"
-                    f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-                    f" WHERE s.table_id = '{table_id}' AND s.version_id = t.version_id)"
-                    " GROUP BY t.version_id"
-                ).complete()
-                run(
-                    f"INSERT INTO lake.world.superseded SELECT '{table_id}', o.version_id,"
-                    f" c.known_asof, '{admission}' FROM ({rows}) o, ({rows}) c"
-                    f" WHERE {pair} AND o._opening AND NOT c._opening"
-                ).complete()
-                if table in TIMED:
-                    run(
-                        f"INSERT INTO lake.world.rewritten SELECT '{table_id}', _held,"
-                        f" {OBSERVED}, '{admission}' FROM temp.admitting"
-                        f" WHERE fate = '{REWRITTEN}'"
-                    ).complete()
-                rows = f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
-            order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
-            run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
+            for table, rows in writes:
+                if table in WORLD_KEYS:
+                    target = f"lake.world.{table}"
+                    self._supersede(table, target, rows, admission)
+                    rows = (
+                        f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
+                    )
+                else:
+                    target = f"lake.results.{table}"
+                order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
+                run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
             run("COMMIT").complete()
         except BaseException:
             run("ROLLBACK").complete()
             raise
+
+    def _supersede(self, table: str, target: str, rows: str, admission: str) -> None:
+        """Record the world versions this batch replaces and later writes of held values."""
+        run = self.lake.execute
+        table_id, key = TABLE_IDS[table], WORLD_KEYS[table]
+        same = " AND ".join(f"t.{k} = n.{k}" for k in key)
+        pair = " AND ".join(f"o.{k} = c.{k}" for k in key)
+        run(  # once, by its earliest replacement: an interval's pair replaces it once
+            f"INSERT INTO lake.world.superseded SELECT '{table_id}', t.version_id,"
+            f" min(n.known_asof), '{admission}' FROM {target} t, ({rows}) n"
+            f" WHERE {same} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
+            f" WHERE s.table_id = '{table_id}' AND s.version_id = t.version_id)"
+            " GROUP BY t.version_id"
+        ).complete()
+        run(
+            f"INSERT INTO lake.world.superseded SELECT '{table_id}', o.version_id,"
+            f" c.known_asof, '{admission}' FROM ({rows}) o, ({rows}) c"
+            f" WHERE {pair} AND o._opening AND NOT c._opening"
+        ).complete()
+        if table in TIMED:
+            run(
+                f"INSERT INTO lake.world.rewritten SELECT '{table_id}', _held,"
+                f" {OBSERVED}, '{admission}' FROM temp.admitting"
+                f" WHERE fate = '{REWRITTEN}'"
+            ).complete()
 
     def _in_order(self, table: str, target: str, same: str, lag: tuple[str, int] | None) -> None:
         """Refuse rows known before a version of their key already admitted: a key's versions
@@ -1067,7 +1108,7 @@ class StorePort:
 
     def _owed(
         self,
-        staged: Staged,
+        staged: Staged | StagedSet,
         known: int,
         parts: list[dict[str, Any]] | None,
         count: int,
@@ -1079,16 +1120,26 @@ class StorePort:
         admits no row touches no part."""
         whole = [{"part": "all", "min_known_asof_us": known, "max_known_asof_us": known}]
         attrs: dict[str, Any] = {
-            "provider_id": staged.provider_id,
-            "dataset": staged.table,
             "row_count": count,
             "known_us": known,
             "parts": whole if parts is None else parts,
         }
-        if staged.lag is not None:
-            attrs |= {"lag_rule": staged.lag[0], "lag_rule_version": staged.lag[1]}
-        if staged.artifacts:
-            attrs["artifact_ids"] = list(staged.artifacts)
+        if isinstance(staged, StagedSet):
+            attrs |= {
+                "provider_id": None,
+                "dataset": "results",
+                "tables": {batch.table: batch.row_count for batch in staged.tables},
+            }
+            artifacts = sorted(
+                {artifact for batch in staged.tables for artifact in batch.artifacts}
+            )
+        else:
+            attrs |= {"provider_id": staged.provider_id, "dataset": staged.table}
+            if staged.lag is not None:
+                attrs |= {"lag_rule": staged.lag[0], "lag_rule_version": staged.lag[1]}
+            artifacts = list(staged.artifacts)
+        if artifacts:
+            attrs["artifact_ids"] = artifacts
         if dropped:
             attrs["dropped"] = dropped
         if rewritten:
@@ -1108,17 +1159,18 @@ class StorePort:
 @contextmanager
 def stage(
     root: Path,
-    table: str,
-    provider_id: str | None,
-    rows: Any,
+    table: str | Mapping[str, Any],
+    provider_id: str | None = None,
+    rows: Any = None,
     *,
     lag: tuple[str, int] | None = None,
     floor_bytes: int = FREE_FLOOR_BYTES,
-) -> Iterator[Staged]:
+) -> Iterator[Staged | StagedSet]:
     """Write one admission's rows, an Arrow table or record batch reader, under staging as they
     came, in Arrow from the caller to the Parquet; the commit request it yields
     is all the writer needs. `provider_id` is a world table's provider lineage in the log, and None
-    for a results table, whose rows' artifact_id is their lineage. Its producer holds
+    for a results table, whose rows' artifact_id is their lineage. A mapping of results table names
+    to Arrow rows stages them together, with no provider or lag. Its producer holds
     the admission's lock until the block ends, so a Host that starts meanwhile leaves it: commit
     it inside the block. A legacy batch, rows 0.2.7 kept with no knowledge time, names its
     source's lag rule as `lag=(name, version)`. Refused by name below the free-space floor, and
@@ -1132,7 +1184,16 @@ def stage(
             code="data_layer.below_free_floor",
         )
     admission = uuid7()  # first: the rows and the staging folder carry it
-    staged = admissible(table, provider_id, rows, legacy=lag is not None)
+    if isinstance(table, str):
+        sources = ((table, rows),)
+    else:
+        if not table or provider_id is not None or rows is not None or lag is not None:
+            raise TypeError("Stage a results set with a nonempty mapping of table names to rows.")
+        sources = tuple(table.items())
+    prepared = [
+        (name, admissible(name, provider_id, source, legacy=lag is not None))
+        for name, source in sources
+    ]
     import pyarrow.parquet as pq  # lazy: the optional data extra, as DuckDB
 
     lock = root / "staging" / f"{admission}.lock"
@@ -1144,14 +1205,18 @@ def stage(
             code="data_layer.staging_taken",
         )
     try:
-        (root / "staging" / admission).mkdir()
-        pq.write_table(staged, root / "staging" / admission / f"{table}.parquet")
-        artifacts = (
-            tuple(sorted(set(staged.column("artifact_id").to_pylist())))
-            if table in RESULTS_KEYS
-            else ()
-        )
-        yield Staged(admission, table, provider_id, staged.num_rows, lag, artifacts)
+        folder = root / "staging" / admission
+        folder.mkdir()
+        tables = []
+        for name, data in prepared:
+            pq.write_table(data, folder / f"{name}.parquet")
+            artifacts = (
+                tuple(sorted(data.column("artifact_id").unique().to_pylist()))
+                if name in RESULTS_KEYS
+                else ()
+            )
+            tables.append(Staged(admission, name, provider_id, data.num_rows, lag, artifacts))
+        yield tables[0] if len(tables) == 1 else StagedSet(admission, tuple(tables))
     finally:
         drop(held, lock)
 
