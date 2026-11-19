@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
+    read_research_workspace_manifest,
 )
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
@@ -1072,13 +1073,17 @@ def test_a_malformed_content_length_is_refused_with_a_stable_reason(
 def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str) -> None:
     from tests.portfolio_strategy_lab.process_death import forced_process
 
-    workspace = tmp_path / "workspace"
+    key = uuid4().hex
+    # Carrying the child's tasks looks up the folder in the worker's longer-lived log.
+    workspace = tmp_path / f"work-{key[:12]}"
+    publish_research_workspace_manifest(workspace, _manifest(f"qa-hard-stop-{key}"))
     with forced_process(workspace, __name__, phase) as interrupted:
         pass
+    manifest = read_research_workspace_manifest(workspace)
     if phase == "WORK":  # a stop during start resumes nothing, and its stop removes the connection
         early = LocalPortfolioWebSession(
             workspace=workspace,
-            workspace_manifest=_hard_stop(workspace),
+            workspace_manifest=manifest,
             resolver=_Resolver(_resolved()),
         )
         early.stop_requested = lambda: True
@@ -1090,7 +1095,7 @@ def test_local_web_reopens_after_forced_process_death(tmp_path: Path, phase: str
         assert not published.path(Path(published.workspace)).exists()
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
-        workspace=workspace, workspace_manifest=_hard_stop(workspace), resolver=resolver
+        workspace=workspace, workspace_manifest=manifest, resolver=resolver
     )
     service.start()
     try:
@@ -1352,15 +1357,11 @@ def test_the_control_catalog_projection_matches_the_installed_catalog(
     ]
 
 
-def _hard_stop(workspace: Path) -> Any:
-    """The killed Host's manifest, by an id of its own: a wider Host may share this machine."""
-    return _manifest(f"qa-hard-stop-{workspace.parent.name}")
-
-
 def _crash_child(workspace: str, phase: str) -> None:
+    root = Path(workspace)
     resolver = _Resolver(_resolved())
     service = LocalPortfolioWebSession(
-        workspace=Path(workspace), workspace_manifest=_hard_stop(Path(workspace)), resolver=resolver
+        workspace=root, workspace_manifest=read_research_workspace_manifest(root), resolver=resolver
     )
     resolve = resolver.resolve
     verify = PortfolioResearchTaskAdapter.verify_stage
