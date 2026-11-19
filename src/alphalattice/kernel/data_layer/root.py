@@ -326,9 +326,11 @@ def catalog(root: Path) -> bool | None:
 
 
 def catalog_matches(lake: Any) -> None:
-    """Refuse a catalog, attached as `lake`, whose tables are not catalog.sql's: a catalog is made
-    once by its schema and, like the root's databases, never migrated or rebuilt in place. A
-    table a later step adds (a feature set's) is not catalog.sql's and is not compared."""
+    """Refuse catalog tables whose columns differ from catalog.sql.
+
+    Older 0.2.8 roots may lack validation_receipt; the next StorePort open adds it.
+    Tables a later step adds (a feature set's) are not catalog.sql's and are not compared.
+    """
     declared = {
         f"{schema}.{table}": re.findall(r"^  (\w+) ", body, re.M)
         for schema, table, body in re.findall(
@@ -341,7 +343,12 @@ def catalog_matches(lake: Any) -> None:
         " WHERE database_name = 'lake' ORDER BY schema_name, table_name, column_index"
     ).fetchall():
         held.setdefault(f"{schema}.{table}", []).append(column)
-    moved = sorted(name for name, columns in declared.items() if held.get(name) != columns)
+    moved = sorted(
+        name
+        for name, columns in declared.items()
+        if held.get(name) != columns
+        and not (name == "results.validation_receipt" and name not in held)
+    )  # the Host's next StorePort open adds this one new results table
     if moved:
         raise DataError(
             f"the data root's catalog was made by another catalog schema ({', '.join(moved)}"

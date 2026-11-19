@@ -416,6 +416,22 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         assert reading.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM universe_member_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
+    # A catalog predating validation receipts is extended when the Host opens its writer.
+    with closing(duckdb_session(tmp_path)) as previous:
+        path = (tmp_path / "machine" / "catalog.sqlite").as_posix()
+        previous.execute(
+            f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{tmp_path.as_posix()}/data/')"
+        )
+        previous.execute("DROP TABLE lake.results.validation_receipt")
+    from alphalattice.kernel.data_layer.log import HostLog
+    from alphalattice.kernel.data_layer.store import StorePort
+
+    with HostLog.open(tmp_path) as log:
+        port = StorePort.open(tmp_path, log)
+        assert port.lake.execute(
+            "SELECT count(*) FROM lake.results.validation_receipt"
+        ).fetchone() == (0,)
+        port.close()
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")

@@ -381,3 +381,19 @@ CREATE TABLE results.breakdown (
   dims VARCHAR NOT NULL,           -- the measure's form: canonical JSON of typed dimensions (project.dims)
   value DOUBLE
 );
+
+-- key: (artifact_id). One metric-free protected-validation closure, preserving its sealed identity.
+CREATE TABLE results.validation_receipt (
+  artifact_id VARCHAR NOT NULL,
+  permit_hash VARCHAR NOT NULL,
+  candidate_hash VARCHAR NOT NULL,
+  package_hash VARCHAR NOT NULL,
+  fixture_hash VARCHAR NOT NULL,
+  pre_protected_state_hash VARCHAR NOT NULL,
+  closure VARCHAR NOT NULL,
+  claim_limits VARCHAR[] NOT NULL,
+  reselection_disposition VARCHAR NOT NULL,
+  sealed_at TIMESTAMPTZ NOT NULL,
+  sealed_offset_microseconds BIGINT NOT NULL,
+  receipt_hash VARCHAR NOT NULL
+);

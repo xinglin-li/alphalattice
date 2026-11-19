@@ -53,6 +53,7 @@ from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.oversight.model_validation.protected_gate import validation_upgrade_family
 
 UNHELD: Final = ("data_layer.outcome_missing",)
 """The refusal that says only that the catalog holds no body for a chunk: no profile for its
@@ -87,10 +88,16 @@ def alpha_arrays() -> Family:
     return alpha_array_upgrade_family(named_workspace_id)
 
 
+def protected_validation() -> Family:
+    """The protected gate's receipts and permit claims, held by their original workspace."""
+    return validation_upgrade_family(named_workspace_id)
+
+
 FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     execution_outcomes,
     strategy_lab_lanes,
     alpha_arrays,
+    protected_validation,
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""

@@ -319,7 +319,9 @@ def test_a_synthetic_finalization_runs_once_under_one_task(tmp_path: Path) -> No
     assert finalized.package.protected_formation_count == len(PROTECTED_SESSIONS)
 
 
-def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none() -> None:
+def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The firewall the receipt exists to be: identities, limits, no number."""
 
     fields = set(PortfolioValidationReceipt.model_fields)
@@ -342,6 +344,84 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none() 
             claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
             sealed_at=datetime.now(UTC),
         )
+
+    # A legacy workspace upgrades before switching; the same gate reads survive rollback.
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+    from alphalattice.oversight.model_validation.protected_gate import (
+        PermitClaimRecord,
+        validation_upgrade_family,
+    )
+
+    root, workspace = tmp_path / "data", tmp_path / "workspace"
+    workspace.mkdir()
+    history.close_history()
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
+    monkeypatch.setenv("ALPHALATTICE_VALIDATION_STORE", "legacy")
+    store = ProtectedValidationStore(workspace / "runtime" / "artifacts")
+    receipt = PortfolioValidationReceipt.create(
+        permit_hash="1" * 64,
+        candidate_hash="2" * 64,
+        package_hash="3" * 64,
+        fixture_hash="4" * 64,
+        pre_protected_state_hash="5" * 64,
+        closure="CLOSED_EXACT",
+        claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
+        sealed_at=datetime.fromisoformat("2026-01-01T10:00:00+05:30"),
+    )
+    claim = PermitClaimRecord.create(
+        permit_hash=receipt.permit_hash,
+        candidate_hash=receipt.candidate_hash,
+        package_hash=receipt.package_hash,
+        receipt_hash=receipt.receipt_hash,
+        claimed_at=datetime.now(UTC),
+    )
+    assert store.publish_receipt(receipt) == receipt.receipt_hash
+    assert store.publish_claim(claim) == claim.claim_hash
+    history.open_history("validation-ws", "validation", workspace, root)
+    try:
+        family = validation_upgrade_family(lambda _: "validation-ws")
+        assert family.holds(workspace)
+        log = history.opened_log()[0]
+        runner = UpgradeRunner(
+            root,
+            log,
+            (workspace,),
+            (family,),
+            lambda *_: {"workspace": "fixture"},
+            subject="validation-test",
+        )
+        runner.run()
+        assert family.verify(runner) and not family.holds(workspace)
+        reads = (
+            lambda: store.find_receipt_for_permit(receipt.permit_hash),
+            lambda: store.load_receipt(receipt.receipt_hash),
+            lambda: store.find_claim(receipt.permit_hash),
+        )
+        for mode in ("legacy", "catalog", "legacy"):
+            monkeypatch.setenv("ALPHALATTICE_VALIDATION_STORE", mode)
+            assert tuple(read() for read in reads) == (receipt, receipt, claim)
+        assert history.validation_claim(receipt.permit_hash) == claim.model_dump(mode="json")
+        other = PortfolioValidationReceipt.create(
+            **receipt.model_dump(mode="python", exclude={"receipt_hash", "permit_hash"}),
+            permit_hash="6" * 64,
+        )
+        wrong = history.validation_receipt_table(
+            [other.model_dump(mode="python")], {other.receipt_hash: "other"}
+        )
+        with monkeypatch.context() as changed:
+            changed.setenv("ALPHALATTICE_VALIDATION_STORE", "catalog")
+            changed.setattr(history, "read_validation_receipts", lambda *args, **kwargs: wrong)
+            for read in reads[:2]:
+                with pytest.raises(ValueError, match="receipt_index_tampered"):
+                    read()
+        with pytest.raises(ValueError, match="claim_clock_invalid"):
+            PermitClaimRecord.create(
+                **claim.model_dump(exclude={"claim_hash", "claimed_at"}),
+                claimed_at=datetime(2025, 1, 1),
+            )
+    finally:
+        history.close_history()
 
 
 # ============================== rows 4 and 5: interruption and exact recovery

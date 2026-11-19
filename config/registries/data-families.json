@@ -2133,7 +2133,7 @@
       "summary": "the validation gate's permits, claims and receipts",
       "class": "event-log",
       "tier": 3,
-      "home": "log event and artifact",
+      "home": "catalog results.validation_receipt and log claim event; legacy artifacts for rollback",
       "location": "workspace-artifacts",
       "bytes": null,
       "covers": [
@@ -2143,6 +2143,8 @@
         "model_validation.ProtectedValidationStore"
       ],
       "writers": [
+        "model_validation.protected_gate:ProtectedValidationStore",
+        "model_validation.protected_gate:validation_upgrade_family",
         "workspace_runtime.content_store:CommittedIndex",
         "workspace_runtime.content_store:ContentAddressedStore"
       ],

@@ -104,6 +104,7 @@ RESULTS_KEYS: Final = {
     "holding": ("artifact_id", "as_of", "listing_id"),
     "series": ("artifact_id", "name", "session_date"),
     "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
+    "validation_receipt": ("artifact_id",),
 }
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
@@ -291,6 +292,18 @@ class StorePort:
         ):
             lake.execute(sql).complete()
         catalog_matches(lake)  # before the views, which name its columns
+        if not lake.execute(
+            "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
+            " AND schema_name = 'results' AND table_name = 'validation_receipt'"
+        ).fetchone():  # the one additive 0.2.8 catalog upgrade
+            ddl = next(
+                sql
+                for sql in statements(schema_text("catalog.sql"))
+                if sql.partition("(")[0].strip().endswith("results.validation_receipt")
+            )
+            lake.execute(
+                ddl.replace("results.validation_receipt", "lake.results.validation_receipt", 1)
+            ).complete()
         port = cls(root, log, lake)
         for sql in view_statements(port.table_ids):
             if "log." not in sql:

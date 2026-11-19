@@ -45,6 +45,8 @@
 "data_layer.outcome_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected outcome body cannot be reused as present."},
 "data_layer.return_series_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A trial's return series was not ordered calendar months of finite returns, 1 to 600 of them; nothing was kept."},
 "data_layer.trial_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A return series named a trial the log does not hold; nothing was kept."},
+"data_layer.validation_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Validation receipt or claim history is inconsistent."},
+"data_layer.validation_workspace_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The validation workspace is not registered in this Host log."},
 "data_layer.outcome_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The recorded outcome's catalog body is incomplete."},
 "data_layer.outcome_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested outcome body is not present in the catalog."},
 "data_layer.array_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "An array is one or more columns of one shape."},
@@ -14435,6 +14437,34 @@
 "owner": "product_host",
 "category": "FAILED_PRECONDITION",
 "classification_note": "The stored handoff/package/receipt/release graph cannot reopen consistently for activation."
+},
+"protected_validation.claim_receipt_mismatch": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.receipt_identity_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.receipt_index_tampered": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.store_invalid": {
+"owner": "protected_validation",
+"category": "INVALID_ARGUMENT"
+},
+"protected_validation.upgrade_identity_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.upgrade_path_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.upgrade_record_missing": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
 },
 "protected_validation.candidate_differs_from_frozen": {
 "owner": "protected_validation",
