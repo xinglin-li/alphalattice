@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -24,21 +26,45 @@ from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
-COMMIT_STAGE_ONLY: dict[str, str] = {
-    "boundaries": "4.7 s",
-    "claude-host-materialization": "a materializer pass over the host's derivatives",
-    "evidence-bindings": "1.7 s",
-    "identity-closures": "7.0 s",
-    "import-contracts": "2.7 s",
-    "operation-registry": "9.7 s",
-    "registries": "2.1 s",
-    "scoped-structural": "18.6 s",
-    "source-semgrep": "4.5 s",
-    "strict-mypy": "1.2 s warm, 27 s cold",
+COLD_AT_STAGE: dict[str, str] = {"strict-mypy": "1.2 s warm, 27 s cold"}
+"""The checks the hook leaves to the stages while their cache is cold, with their seconds (11-16,
+one staged change of a test and a source file): a cold one alone would pass the hook's budget.
+The hook runs every other guard step within its 30 seconds (the person, 11-19); a stage runs
+each step the hook did not judge on the same tree and inputs (REUSED_STEPS)."""
+VERDICTS = "alphalattice-guard-verdicts"
+"""The hook's passing verdicts, one file per key, in the Git common folder: the card's
+checkouts and its commit stage share it, and no checkout's tree holds it."""
+VERDICT_SCHEMA = "alphalattice.guard-verdict.v1"
+VERDICT_DAYS = 7
+"""How long a recorded verdict is kept; a stage reads it within minutes of its commit."""
+REUSED_STEPS: dict[str, str] = {
+    "strict-mypy": "tree",
+    "evidence-bindings": "tree",
+    "operation-registry": "tree",
+    "import-contracts": "tree",
+    "scoped-structural": "parent",
+    "identity-closures": "parent",
+    "boundaries": "parent",
+    "test-shape": "parent",
+    "source-semgrep": "parent",
+    "registries": "parent",
+    "identity-reach": "parent",
+    "counts": "parent",
 }
-"""The checks the hook leaves to the stages, each with its seconds measured on one staged change
-of a test and a source file (11-16, the median of three, each step alone): together they pass
-the hook's five-second budget. The hook runs every other check; every stage runs all."""
+"""The steps whose verdict a stage takes from the hook, by what each compares the tree with:
+`tree`, the tree alone; `parent`, the hook's HEAD and the stage's merge base, so a stage reuses
+it only when its card's change is the hook's. Every key also names the installed gate tools. A
+stage asks registries, identity-reach and counts in its staged snapshot, under the same names.
+Never reused: Ruff (changed files at the hook, every file at the stage), develop-conflict (a
+commit graph, not a tree), the materializer (it reads the person's user layer), tool-versions
+(it judges the environment, which the stage must read itself) and test-budget (the hook pairs
+moved tests from its HEAD, the stage from the merge base)."""
+SNAPSHOT_STEPS = {
+    "staged-registries": "registries",
+    "staged-identity-reach": "identity-reach",
+    "staged-counts": "counts",
+}
+"""A stage's staged-snapshot steps, each the hook's step of that name asked of the card's change."""
 GUARD_WORKERS = 6
 """The guard steps that run at once, each in its own process: a step changes the working
 directory, the environment or the import path, and most are pure Python, so only processes run
@@ -187,25 +213,204 @@ def _run(label: str, *args: str) -> None:
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
 
 
-def runs_at_commit(label: str) -> bool:
-    """The hook runs each check except the checks the commit stage owns."""
-    return label not in COMMIT_STAGE_ONLY
+def _strict_mark(root: Path = ROOT) -> Path:
+    """The file a whole strict run leaves in mypy's cache for this interpreter."""
+    version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return root / ".mypy_cache" / version / "alphalattice-strict-set"
+
+
+def mypy_cache_warm(root: Path = ROOT) -> bool:
+    """Whether strict mypy has run over its whole set here, so its cache answers in seconds; a
+    cache one module's run left is still cold for the set."""
+    return _strict_mark(root).is_file()
+
+
+def runs_at_commit(label: str, *, warm: bool | None = None) -> bool:
+    """The hook runs every check, a cold one in COLD_AT_STAGE only once its cache is warm."""
+    if label not in COLD_AT_STAGE:
+        return True
+    return mypy_cache_warm() if warm is None else warm
 
 
 def commit_scope(*, commit: bool) -> Callable[[str], bool]:
-    """Whether a check runs, naming each one skipped: the hook (``commit``) runs those outside
-    COMMIT_STAGE_ONLY. Every stage runs every check, since nothing proves the hook judged the
-    tree a stage judges (a merge commit runs no hook, and a clone may have none installed)."""
+    """Whether a check runs, naming each one skipped: the hook (``commit``) runs every check but a
+    cold one. Every stage runs every check the hook did not judge on its tree and inputs."""
     if not commit:
         return lambda label: True
 
     def runs(label: str) -> bool:
         if runs_at_commit(label):
             return True
-        print(f"PLAYPEN_GATE_SKIPPED {label}: the commit stage runs it", flush=True)
+        print(f"PLAYPEN_GATE_SKIPPED {label}: cold; the commit stage runs it", flush=True)
         return False
 
     return runs
+
+
+def verdict_context(*, staged: bool, base_ref: str, baseline: str | None) -> dict[str, Any]:
+    """What every reused step's verdict reads besides its name, read once: the tree it judges (the
+    hook's index, the stage's HEAD), the trees it compares with (the hook's HEAD and the merge
+    base; the stage's merge base for both), the target, the public ledger, the registry baseline
+    the interpreter and the installed gate tools."""
+    from importlib import metadata
+
+    def installed(name: str) -> str | None:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            return None
+
+    merge_base = _git_text("merge-base", base_ref, "HEAD")
+    public = ledger_records(ROOT)
+    return {
+        "schema": VERDICT_SCHEMA,
+        "tree": _git_text("write-tree") if staged else _git_text("rev-parse", "HEAD^{tree}"),
+        "parent": _git_text("rev-parse", f"{'HEAD' if staged else merge_base}^{{tree}}"),
+        "tools": {name: installed(name) for name in GATE_TOOLS},
+        "target": _git_text("rev-parse", "--verify", f"{base_ref}^{{commit}}"),
+        "ledger": public[0] if public else None,
+        "registry_baseline": baseline,
+        "python": sys.version,
+        "os": platform.system(),
+    }
+
+
+def verdict_inputs(label: str, context: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A step's inputs, or None for a step no stage reuses (REUSED_STEPS): a `tree` step reads
+    the tree and the interpreter; any other also what it compares the tree with and the rest."""
+    kind = REUSED_STEPS.get(label)
+    if kind is None:
+        return None
+    found = {"step": label} | {
+        name: context[name] for name in ("schema", "tree", "python", "os", "tools")
+    }
+    if kind == "tree":
+        return found
+    shared = ("target", "ledger", "registry_baseline")
+    return found | {"against": context[kind]} | {name: context[name] for name in shared}
+
+
+def verdict_key(inputs: Mapping[str, Any]) -> str:
+    """The record's name: the SHA-256 of its inputs' canonical JSON."""
+    text = json.dumps(inputs, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def verdict_folder() -> Path:
+    """The folder of the hook's passing verdicts, in this checkout's Git common folder: the real
+    one even inside staged_snapshot, whose GIT_DIR is a temporary repository."""
+    names = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")
+    clean = {key: value for key, value in os.environ.items() if key not in names}
+    common = _quiet_run(
+        ("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+        cwd=ROOT,
+        env=clean,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return Path(common) / VERDICTS
+
+
+def tree_is_committed(*, staged: bool = True) -> bool:
+    """Whether the files the steps read are the tree the key names: the index's for the hook
+    (``staged``), HEAD's for a stage, so no unstaged edit, no staged one at a stage, no untracked
+    file and no merge in progress. The hook records, and a stage reuses, only then."""
+    unstaged = _quiet_run(("git", "diff", "--quiet"), cwd=ROOT, check=False).returncode
+    if not staged:
+        unstaged |= _quiet_run(
+            ("git", "diff", "--cached", "--quiet"), cwd=ROOT, check=False
+        ).returncode
+    untracked = _git_text("ls-files", "--others", "--exclude-standard")
+    merging = _quiet_run(
+        ("git", "rev-parse", "-q", "--verify", "MERGE_HEAD"),
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+    ).returncode
+    return unstaged == 0 and not untracked and merging != 0
+
+
+def record_verdicts(passed: Mapping[str, str], keys: Mapping[str, str]) -> None:
+    """Keep each passing step's words under its key, replacing a file whole; drop old records."""
+    folder = verdict_folder()
+    folder.mkdir(exist_ok=True)
+    now = dt.datetime.now(dt.UTC)
+    for label, words in passed.items():
+        if label not in keys:
+            continue
+        record = {"step": label, "verdict": "PASS", "at": now.isoformat(), "words": words}
+        temporary = folder / f"{keys[label]}.{os.getpid()}.tmp"
+        temporary.write_text(json.dumps(record), encoding="utf-8")
+        os.replace(temporary, folder / f"{keys[label]}.json")
+    expired = now.timestamp() - VERDICT_DAYS * 86400
+    for entry in os.scandir(folder):
+        if entry.name.endswith(".json") and entry.stat().st_mtime < expired:
+            Path(entry.path).unlink(missing_ok=True)
+
+
+def record_hook_passes(passed: Mapping[str, str], keys: Mapping[str, str]) -> None:
+    """Keep the hook's passes for a stage only when tool-versions passed beside them: a pass
+    made with tools off their lock is no verdict a stage may trust. A failed write loses only
+    the reuse; the commit is judged by its checks."""
+    if "tool-versions" not in passed:
+        print("PLAYPEN_GATE_VERDICTS unrecorded: tool-versions did not pass", flush=True)
+        return
+    try:
+        record_verdicts(passed, keys)
+    except OSError as error:
+        print(f"PLAYPEN_GATE_VERDICTS unrecorded: {error}", flush=True)
+
+
+def recorded_verdict(key: str) -> dict[str, Any] | None:
+    """The hook's record under this key, or None: absent, unreadable or not a pass."""
+    try:
+        record = json.loads((verdict_folder() / f"{key}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) and record.get("verdict") == "PASS" else None
+
+
+def reuse_enabled() -> bool:
+    """A proof run sets ALPHALATTICE_GUARD_REUSE=0 to judge every step again."""
+    return os.environ.get("ALPHALATTICE_GUARD_REUSE", "1") != "0"
+
+
+def reused(label: str, key: str | None) -> bool:
+    """Print the hook's verdict for this step and say so, when one is recorded under its key."""
+    record = recorded_verdict(key) if key and reuse_enabled() else None
+    if key is None or record is None:
+        return False
+    print(
+        f"PLAYPEN_GATE_REUSED {label}: the hook passed this tree and its inputs at "
+        f"{record.get('at')} ({key[:12]})",
+        flush=True,
+    )
+    print(str(record.get("words", "")), end="", flush=True)
+    return True
+
+
+def step_keys(
+    labels: Iterable[str], *, staged: bool, base_ref: str, baseline: str | None
+) -> dict[str, str]:
+    """Each reusable step's key; none when the tree is not the committed one, or Git cannot say."""
+    try:
+        if not tree_is_committed(staged=staged):
+            print(
+                "PLAYPEN_GATE_VERDICTS none: the files differ from the tree the key names",
+                flush=True,
+            )
+            return {}
+        context = verdict_context(staged=staged, base_ref=base_ref, baseline=baseline)
+        found = {}
+        for label in labels:
+            inputs = verdict_inputs(label, context)
+            if inputs is not None:
+                found[label] = verdict_key(inputs)
+        return found
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"PLAYPEN_GATE_VERDICTS none: {type(error).__name__}: {error}", flush=True)
+        return {}
 
 
 @contextmanager
@@ -251,15 +456,15 @@ def staged_snapshot(base_ref: str) -> Iterator[None]:
                     os.environ[name] = prior
 
 
-def _check_host_materialization(at_commit: Callable[[str], bool]) -> None:
-    """The host files' drift check, a stop before the static checks: they read its derivatives."""
-    if at_commit("claude-host-materialization"):
-        _run(
-            "claude-host-materialization",
-            sys.executable,
-            str(ROOT / "scripts" / "materialize_claude_host.py"),
-            "--check",
-        )
+def _check_host_materialization() -> None:
+    """The host files' drift check: a stage's stop before the static checks, which read its
+    derivatives; at the hook, one step beside them, so its 5 s run while they do."""
+    _run(
+        "claude-host-materialization",
+        sys.executable,
+        str(ROOT / "scripts" / "materialize_claude_host.py"),
+        "--check",
+    )
 
 
 def budget_base(environ: Mapping[str, str]) -> str:
@@ -294,13 +499,17 @@ def static_refusals(
 
 
 def concurrent_refusals(
-    commands: Mapping[str, Sequence[str]], workers: int, *, bound: float = STEP_SECONDS
+    commands: Mapping[str, Sequence[str]],
+    workers: int,
+    *,
+    bound: float = STEP_SECONDS,
+    passed: dict[str, str] | None = None,
 ) -> list[str]:
     """Run each step's command as its own process, at most ``workers`` at once and the slowest
     started first; print each step's words in the steps' order once it ends, and return the
-    labels that refused. A child that cannot start, or outlives ``bound``, is named as
-    unmeasured and refused; at its bound the step's whole process tree is ended, so no child it
-    started keeps the gate waiting."""
+    labels that refused (``passed`` receives the words of each step that passed). A child that
+    cannot start, or outlives ``bound``, is named as unmeasured and refused; at its bound the
+    step's whole process tree is ended, so no child it started keeps the gate waiting."""
 
     def one(label: str) -> tuple[int | None, str]:
         with tempfile.TemporaryFile() as log:  # a file, not a pipe: no child holds the gate open
@@ -332,6 +541,8 @@ def concurrent_refusals(
             print(words, end="", flush=True)
             if code != 0:
                 refused.append(label)
+            elif passed is not None:
+                passed[label] = words
     return refused
 
 
@@ -1330,7 +1541,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--hook",
         action="store_true",
-        help=("with --staged, the commit hook runs the checks outside COMMIT_STAGE_ONLY"),
+        help=("with --staged, the commit hook: every check but a cold one, its passes recorded"),
     )
     return parser
 
@@ -1343,15 +1554,19 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     if args.registry_update and (not args.staged or not args.registry_baseline):
         parser.error("--registry-update requires --staged and --registry-baseline")
     if args.strict_mypy_only:
-        _run(
-            "strict-mypy",
-            sys.executable,
-            "-m",
-            "mypy",
-            "--config-file",
-            "pyproject.toml",
-            *_strict_targets(),
-        )
+        try:
+            _run(
+                "strict-mypy",
+                sys.executable,
+                "-m",
+                "mypy",
+                "--config-file",
+                "pyproject.toml",
+                *_strict_targets(),
+            )
+        finally:  # a refusal still leaves the whole set's cache
+            if _strict_mark().parent.is_dir():
+                _strict_mark().touch()
         return 0
     if args.evidence and args.fast:
         parser.error("--evidence and --fast are mutually exclusive")
@@ -1400,8 +1615,9 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             cache = Path(common.stdout.strip()) / "alphalattice-hook-facts"
             os.environ.setdefault("ALPHALATTICE_SCAN_CACHE_DIR", str(cache))
     at_commit = commit_scope(commit=hook)
-    if args.fast and not only:
-        _check_host_materialization(at_commit)
+    stage = args.fast and not args.staged and not only  # the commit stage's guard
+    if args.fast and not only and not hook:
+        _check_host_materialization()
     if not args.fast and not only and not _require_private_structural_inputs():
         return 1
     # The static checks below each read the same immutable tree and none feeds another, so
@@ -1421,6 +1637,7 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     # about a second, and was never what made this gate slow.
     mypy = (sys.executable, "-m", "mypy", "--config-file", "pyproject.toml")
     steps: list[tuple[str, Callable[[], object]]] = [
+        *([("claude-host-materialization", _check_host_materialization)] if args.fast else []),
         ("tool-versions", _check_tool_versions),
         *(
             [
@@ -1487,25 +1704,53 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         if not chosen:
             parser.error(f"--only names no step of this gate: {args.only}")
         return 1 if static_refusals(chosen) else 0
-    admitted = [(label, check) for label, check in steps if at_commit(label)]
+    admitted = [
+        (label, check)
+        for label, check in steps
+        if at_commit(label) and (hook or label != "claude-host-materialization")
+    ]
+    keys = (
+        step_keys(
+            (label for label, _ in admitted if not (stage and label in SNAPSHOT_STEPS.values())),
+            staged=args.staged,
+            base_ref=args.base,
+            baseline=args.registry_baseline,
+        )
+        if hook or stage
+        else {}
+    )
+    if stage:  # the steps the hook judged on this tree and its inputs are not run again
+        admitted = [(name, check) for name, check in admitted if not reused(name, keys.get(name))]
+    passed: dict[str, str] = {}
     if args.workers > 1 and len(admitted) > 1:
         script = (sys.executable, str(Path(__file__).resolve()), *sys.argv[1:], "--only")
         commands = {label: (*script, label) for label, _ in admitted}
-        refused = concurrent_refusals(commands, args.workers)
+        refused = concurrent_refusals(commands, args.workers, passed=passed)
     else:
         refused = static_refusals(admitted)
+    if hook and keys and passed:
+        record_hook_passes(passed, keys)
     if args.fast and args.all_python and not args.staged:
         try:
             with staged_snapshot(args.base):
-                refused += static_refusals(
+                twins = step_keys(
+                    SNAPSHOT_STEPS.values(),
+                    staged=True,
+                    base_ref=args.base,
+                    baseline=args.registry_baseline,
+                )
+                snapshot_steps = (
                     (
-                        (
-                            "staged-registries",
-                            lambda: _check_registries(staged=True, baseline=args.registry_baseline),
-                        ),
-                        ("staged-identity-reach", lambda: _check_identity_reach(staged=True)),
-                        ("staged-counts", lambda: _check_counts(staged=True, base_ref=args.base)),
-                    )
+                        "staged-registries",
+                        lambda: _check_registries(staged=True, baseline=args.registry_baseline),
+                    ),
+                    ("staged-identity-reach", lambda: _check_identity_reach(staged=True)),
+                    ("staged-counts", lambda: _check_counts(staged=True, base_ref=args.base)),
+                )
+                refused += static_refusals(
+                    (label, check)
+                    for label, check in snapshot_steps
+                    if not reused(label, twins.get(SNAPSHOT_STEPS[label]))
                 )
                 hook_env = dict(os.environ)
                 hook_env.pop("SKIP", None)

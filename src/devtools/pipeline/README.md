@@ -2,7 +2,7 @@
 
 ## Process policy
 
-- Run every static check that judges a change at commit, the test rules (test-shape, test-budget) included, so its red costs seconds rather than a stage. `COMMIT_STAGE_ONLY` names each check the hook leaves out, with its measured seconds over its five-second budget. Every stage still runs every check, since no stage can prove the hook judged its tree: a merge commit runs no hook, and a clone may have none. Run the guard's steps side by side, one process each, the slowest first, `GUARD_WORKERS` at once.
+- Run every static check that judges a change at commit, within the hook's 30-second budget, so its red costs seconds rather than a stage; `COLD_AT_STAGE` names the one left to the stage while its cache is cold (strict mypy). The hook records each passing step under the key of what it read (`REUSED_STEPS`: the tree, what the step compares it with, the target, the public ledger and the interpreter), in the Git common folder; a commit stage takes that verdict instead of running the step again, and runs every step with no such record. A merge commit runs no hook, a clone may have none, and the queue runs the composed commit's hook, so nothing else is skipped. Run the guard's steps side by side, one process each, the slowest first, `GUARD_WORKERS` at once.
 - Keep the impact runner's file-per-process default; batch only through its audited safe list and revoke batching on a process-global framework import.
 - Defer `post_merge_only` files from commit while retaining whole post-merge, candidate and nightly standing; a structural file must declare whole-tree scope and contain no fenced guard.
 - Run a structural guard with no declared `reach` in the commit stage only when its own file changed, the tree a

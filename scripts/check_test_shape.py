@@ -2250,7 +2250,7 @@ def _shape_args(argv: list[str] | None) -> argparse.Namespace:
 
 def _semgrep_only(staged: list[str], sources: list[str], head: str) -> int:
     """The semgrep source rules alone, held to the anti-pattern baseline as ``--semgrep`` holds
-    them: a stage runs them (over the hook's budget) as their own step, beside this check's other
+    them: the hook and every stage run them as their own step, beside this check's other
     rules, so a guard run judges each rule once."""
     python = [path for path in sources if path.endswith(".py") and not path.startswith("tests/")]
     try:

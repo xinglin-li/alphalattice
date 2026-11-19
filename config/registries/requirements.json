@@ -1657,6 +1657,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "pipeline.a_stage_reuses_the_hooks_pass_for_the_same_tree_and_inputs": {
+      "description": "If a stage ran again a step the hook passed on the same tree and inputs, each card would wait twice for one verdict; if it reused one on another tree, base, target or interpreter, a red would pass unjudged.",
+      "owner": "devtools.pipeline",
+      "layer": "unit",
+      "seconds": 1
+    },
     "pipeline.code_health_reports_every_row": {
       "description": "The daily code-health report reads sizes, boundaries, growers, dead code, dependencies and complexity from the tree, reuses an unchanged tree's rows, and reads a failed row as unmeasured, never zero.",
       "owner": "devtools.pipeline",
@@ -1877,7 +1883,7 @@
       "retired": "2026-11-15: the hook runs every check that judges a change, side by side; pipeline.the_hook_runs_every_check_that_judges_a_change proves it."
     },
     "pipeline.the_hook_runs_every_check_that_judges_a_change": {
-      "description": "If the hook left a check that judges a change to the commit stage, its red would cost a whole stage instead of seconds; strict typing runs when its inputs are staged.",
+      "description": "If the hook left a check that judges a change to the commit stage, its red would cost a whole stage instead of seconds; strict typing runs once its cache is warm.",
       "owner": "devtools.pipeline",
       "layer": "unit",
       "seconds": 1

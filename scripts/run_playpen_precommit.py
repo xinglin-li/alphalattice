@@ -17,6 +17,8 @@ from time import perf_counter
 from typing import cast
 
 HOOK_STARTED = perf_counter()
+HOOK_BUDGET_SECONDS = 30
+"""The hook's budget (the person, 11-19): every guard step runs at commit, six at once."""
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
 from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
@@ -328,7 +330,7 @@ def main() -> int:
     result = run_hooks()
     elapsed = perf_counter() - HOOK_STARTED
     system = platform.system()
-    over_budget = int(elapsed >= 5)
+    over_budget = int(elapsed >= HOOK_BUDGET_SECONDS)
     try:
         with (Path(os.environ["PRE_COMMIT_HOME"]) / "hook-timing.jsonl").open(
             "a", encoding="utf-8", newline="\n"
@@ -339,9 +341,9 @@ def main() -> int:
     except (KeyError, OSError) as error:
         print(f"playpen.hook_timing_unrecorded: {error}", file=sys.stderr)
     print(f"PLAYPEN_HOOK_TIMING os={system} seconds={elapsed:.3f} over_budget={over_budget}")
-    if elapsed >= 5:
+    if over_budget:
         print(
-            f"playpen.hook_budget: {elapsed:.3f}s exceeds the 5s target; "
+            f"playpen.hook_budget: {elapsed:.3f}s exceeds the {HOOK_BUDGET_SECONDS}s budget; "
             "the commit is judged by the checks, not by elapsed time",
             file=sys.stderr,
         )
