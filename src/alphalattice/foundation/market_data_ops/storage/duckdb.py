@@ -749,20 +749,30 @@ class MarketDataRepository(WorkspaceRepository):
         """
         connection = self._connect()
         try:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS market_profile (
-                    market_profile_id VARCHAR PRIMARY KEY,
-                    display_name VARCHAR NOT NULL,
-                    market VARCHAR NOT NULL,
-                    currency VARCHAR NOT NULL,
-                    calendar_id VARCHAR NOT NULL,
-                    provider VARCHAR NOT NULL,
-                    daily_price_basis VARCHAR NOT NULL,
-                    data_validity_class VARCHAR NOT NULL
-                )
-                """
-            )
+            existing = connection.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name = current_database()"
+                " AND schema_name = 'main' AND table_name = 'market_profile'"
+            ).fetchone()
+            if existing is None:
+                with self.database.transaction() as schema:
+                    schema.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS market_profile (
+                            market_profile_id VARCHAR PRIMARY KEY,
+                            display_name VARCHAR NOT NULL,
+                            market VARCHAR NOT NULL,
+                            currency VARCHAR NOT NULL,
+                            calendar_id VARCHAR NOT NULL,
+                            provider VARCHAR NOT NULL,
+                            daily_price_basis VARCHAR NOT NULL,
+                            data_validity_class VARCHAR NOT NULL
+                        )
+                        """
+                    )
+                    schema.execute(
+                        "COMMENT ON TABLE market_profile IS "
+                        f"'{world_tables.WORKSPACE_MARKET_FORMAT}'"
+                    )
             connection.execute(
                 """
                 ALTER TABLE market_profile

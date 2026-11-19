@@ -97,7 +97,7 @@ def bars(
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseManifest, Path]]:
-    """A 0.2.7 workspace its own owner wrote: two listings' bars, AAPL's adjusted closes and a
+    """A workspace its own owner wrote: two listings' bars, AAPL's adjusted closes and a
     dividend, and a Host history open on a data root of its own."""
     manifest = acquisition_manifest()
     store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
@@ -160,6 +160,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         assert "market-data" in [make().name for make in first_start.FAMILIES]
         monkeypatch.setenv(world_reads.SETTING, "world")
         family = world.market_upgrade_family(lambda _workspace: "w1")
+        assert not family.holds(store.workspace)
+        with store.database.transaction() as connection:
+            connection.execute("COMMENT ON TABLE market_profile IS NULL")
         assert family.holds(store.workspace)
         (store.workspace / "research-workspace.json").write_text('{"workspace_id":"w1"}')
         history.flush()

@@ -69,6 +69,8 @@ from alphalattice.kernel.quant.sector_history import SectorReclassification
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
 DATASET: Final = "market"
+WORKSPACE_MARKET_FORMAT: Final = "alphalattice.world-market.v1"
+"""A market profile created by a writer that already admits its observations to world."""
 MARKET_CLOSE: Final = ("market-close", 1)
 """The lag rule of 0.2.7's market rows, which carry no knowledge time: known at their session's
 close (lag_seconds 0)."""
@@ -1134,6 +1136,14 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
     def source(workspace: Path) -> tuple[MarketDataRepository, dict[str, list[int]]] | None:
         repository = MarketDataRepository(workspace, universe_reader="workspace")
         if not repository.path.is_file():
+            return None
+        with repository.database.read_transaction() as connection:
+            created = connection.execute(
+                "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
+                " AND schema_name = 'main' AND table_name = 'market_profile'"
+            ).fetchone()
+        if created == (WORKSPACE_MARKET_FORMAT,):
+            # A current workspace copied to another machine still uses ordinary market admission.
             return None
         marks = repository._market_marks()
         if not marks:
