@@ -96,22 +96,41 @@ def _started(workspace: Path) -> LocalPortfolioWebSession:
 
 
 @pytest.mark.proves("product_host.first_start_upgrades_every_old_workspace")
-@pytest.mark.parametrize("corpus", ["held", pytest.param("qa", marks=pytest.mark.real_evidence)])
 def test_the_first_start_upgrades_every_old_workspace_on_one_plan(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    request: pytest.FixtureRequest,
-    capsys: pytest.CaptureFixture[str],
-    corpus: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """requirement: the first 0.2.8 start upgrades every old workspace on one acknowledged plan."""
+    _upgrades_on_one_plan(tmp_path, monkeypatch, capsys, None)
+
+
+@pytest.mark.proves("product_host.first_start_upgrades_every_old_workspace")
+@pytest.mark.real_evidence
+def test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    evidence_roots: Any,
+) -> None:
+    """The same plan over three QA copies of 0.2.7 workspaces: the upgrade replay that keeps
+    original data, in the nightly."""
+    qa = evidence_roots.require("alpha_development_outcomes")
+    _upgrades_on_one_plan(tmp_path, monkeypatch, capsys, qa)
+
+
+def _upgrades_on_one_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    qa: Path | None,
+) -> None:
+    """Upgrade the old workspaces made from `qa`'s three QA copies, or held ones when None."""
+    corpus = "held" if qa is None else "qa"
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
     stops = ["stopped mid-family"]
-    if corpus == "held":
+    if qa is None:
         sources: list[Path | None] = [None, None, None]
         monkeypatch.setattr(first_start, "FAMILIES", (_held_family(stops),))
     else:
-        qa = request.getfixturevalue("evidence_roots").require("alpha_development_outcomes")
         sources = [qa / "alpha-base", qa / "alpha-after-1", qa / "alpha-before-1"]
         write = history.write_execution_outcome
 

@@ -2360,6 +2360,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "testing.original_data_tests_stay_off_the_merge_stage": {
+      "description": "A test reaching a declared evidence root is refused unless a nightly_only or release_only Large rule names an upgrade or restore replay as its reason to keep original data.",
+      "lower_layer": "The guard reads the whole tests tree, the evidence-root declarations and the size registry as committed, which a unit fixture cannot stand in for.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 10
+    },
     "testing.paid_agent_runs_only_on_request": {
       "description": "A test marked paid_agent, which spends money on a model turn, is deselected by every run unless that run sets ALPHALATTICE_PAID_AGENT_RUN=1.",
       "owner": "devtools.testing",
