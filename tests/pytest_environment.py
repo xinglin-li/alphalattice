@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import getpass
 import os
+import stat
 import sys
 import tempfile
 import time
@@ -16,12 +17,13 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
+from shutil import copyfile
 from typing import TYPE_CHECKING, Any, TextIO, cast
 from unittest.mock import patch
 
 import pytest
 
-from devtools.evaluation.golden_workspaces import remove_tree
+from devtools.evaluation.golden_workspaces import payload_path, remove_tree
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -318,6 +320,33 @@ def with_its_tasks(workspace: Path) -> Path:
     carry_tasks(workspace, workspace, root=served_root(workspace))
     carry_arrays(workspace, workspace, root=served_root(workspace))
     carry_research_inputs(workspace, workspace, root=served_root(workspace))
+    return workspace
+
+
+def golden_payload(workspace: Path, parent: Path | None) -> Path:
+    """Carry the Host's records and give the golden its own copies of the Host's file aliases."""
+    from alphalattice.kernel.data_layer.inputs import folder_files
+
+    def linked(root: Path) -> Iterator[tuple[Path, tuple[int, int]]]:
+        for _, file in folder_files(payload_path(root)):
+            info = file.lstat()
+            if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+                yield file, (info.st_dev, info.st_ino)
+
+    with_its_tasks(workspace)
+    source = payload_path(served_root(workspace))
+    if not source.is_dir():
+        return workspace
+    shared = {inode for _, inode in linked(source)}
+    if shared and parent is not None:
+        shared.difference_update(inode for _, inode in linked(parent))
+    if shared:
+        with tempfile.TemporaryDirectory(dir=source.parent) as pending:
+            staged = Path(pending) / "body"
+            for file, inode in linked(workspace):
+                if inode in shared:
+                    copyfile(file, staged)
+                    staged.replace(file)
     return workspace
 
 
