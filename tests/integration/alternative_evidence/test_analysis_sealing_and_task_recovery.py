@@ -59,6 +59,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     SubmittedEvidenceAnalysis,
     alternative_evidence_document_task_contract,
 )
+from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
 from tests.alternative_evidence_desk.document_intelligence_support import (
@@ -75,6 +76,10 @@ from tests.alternative_evidence_desk.planted_corpus import (
     _runtime,
     tampered_reference,
 )
+
+HISTORICAL_EXCEPTION = "KnowledgeRetrievalError"
+"""The retired retrieval core's exception, as a unit failure recorded before its retirement
+names it; a current failure is a typed AlphaLatticeError with its code."""
 
 
 def _admission(
@@ -540,8 +545,6 @@ def test_a_stage_failure_names_the_owners_own_code(
         UNIT_FAILURE_CATEGORY,
         _failure_code,
     )
-    from alphalattice.kernel.knowledge.hybrid import _retrieval_error
-    from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
     from tests.alternative_evidence_desk.portfolio_coverage_support import run_one
     from tests.alternative_evidence_desk.review_http_support import (
         build_authority,
@@ -549,10 +552,11 @@ def test_a_stage_failure_names_the_owners_own_code(
         start_service,
     )
 
-    corrupt = _retrieval_error(
-        "hybrid projection differs from source", code="retrieval.index_corrupt"
+    corrupt = AlphaLatticeError(
+        "hybrid projection differs from source",
+        category="retrieval",
+        code="retrieval.index_corrupt",
     )
-    assert isinstance(corrupt, KnowledgeRetrievalError)
     assert _failure_code(corrupt) == "alternative_evidence.task_failed:retrieval.index_corrupt"
 
     class _Refusing(BaseModel):
@@ -569,9 +573,11 @@ def test_a_stage_failure_names_the_owners_own_code(
         "alternative_evidence.stage_lineage_missing"
     )
     assert _failure_code(RuntimeError("lost process")) == "alternative_evidence.task_failed"
-    assert len(_failure_code(_retrieval_error("x" * 300, code="retrieval." + "y" * 200))) <= (
-        FAILURE_CODE_MAX_LENGTH
-    )
+    assert len(
+        _failure_code(
+            AlphaLatticeError("x" * 300, category="retrieval", code="retrieval." + "y" * 200)
+        )
+    ) <= (FAILURE_CODE_MAX_LENGTH)
     legacy = {
         "kind": "AlternativeEvidenceUnitFailure",
         "run_hash": "a" * 64,
@@ -588,11 +594,11 @@ def test_a_stage_failure_names_the_owners_own_code(
     assert historical.exception_type is historical.exception_message is None
     recorded = seal_unit_failure(
         **historical.model_dump(exclude={"failure_hash"}),
-        exception_type=type(corrupt).__name__,
+        exception_type=HISTORICAL_EXCEPTION,
         exception_message=str(corrupt),
     )
     assert recorded.failure_code == historical.failure_code
-    assert recorded.exception_type == "KnowledgeRetrievalError"
+    assert recorded.exception_type == HISTORICAL_EXCEPTION
     assert recorded.exception_message == "hybrid projection differs from source"
     with pytest.raises(ValidationError, match="identity_invalid"):
         AlternativeEvidenceUnitFailure.model_validate(
@@ -700,10 +706,14 @@ def test_a_stage_failure_names_the_owners_own_code(
                 )
 
             monkeypatch.setattr(authority.evidence_runtime, "select_evidence", invalid_need)
-    base_error = RuntimeError if untyped else KnowledgeRetrievalError
-    long_error = type("KnowledgeRetrievalError" + "Long" * 40, (base_error,), {})
+    base_error = RuntimeError if untyped else AlphaLatticeError
+    long_error = type(HISTORICAL_EXCEPTION + "Long" * 40, (base_error,), {})
     message = "   index    mismatch\tfor\nsource  " * 40
-    raised = long_error(message) if untyped else long_error(message, code="retrieval.index_corrupt")
+    raised = (
+        long_error(message)
+        if untyped
+        else long_error(message, category="retrieval", code="retrieval.index_corrupt")
+    )
 
     def fail_canonicalization(*_args: object, **_kwargs: object) -> object:
         raise raised

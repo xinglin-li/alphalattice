@@ -611,7 +611,6 @@ Check a sealed canary each session and refuse numerical mismatch by name; otherw
 
 *Held by:*
 `test: tests/integration/alpha_modeling/test_lightgbm_development_capability.py::test_lightgbm_fits_on_one_thread_unless_the_sealed_canary_holds`,
-`test: tests/integration/knowledge/test_retrieval_recipes.py::test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads`,
 `test: tests/integration/task_control/test_task_child.py::test_a_fit_log_records_the_numerical_thread_counts`.
 
 **PA4. No ambient knobs.**

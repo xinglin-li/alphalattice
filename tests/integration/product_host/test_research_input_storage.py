@@ -768,6 +768,16 @@ def test_a_cleanup_takes_only_its_eligible_targets_never_an_input(
             storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
         with pytest.raises(RuntimeError, match="Resume approved cleanup"):
             storage.plan()
+        # The started cleanup resumes even after its references changed, as when a release
+        # retires a reference field the plan was journalled with; its targets stay checked.
+        assert plan["references_hash"] != canonical_hash({"retired": plan["references_hash"]})
+        resumed = storage.owner.apply_input_plan(
+            plan["plan_hash"],
+            references_hash=canonical_hash({"retired": plan["references_hash"]}),
+            eligible_targets=plan["targets"],
+        )
+        assert resumed > 0
+        assert storage.confirm(plan["plan_hash"], caller="HUMAN")["deleted_paths"] == 0
         for bundle in (a, b):  # the inputs are untouched by any cleanup
             assert read_factor_bundle(tmp_path, bundle.binding_hash) == bundle
 

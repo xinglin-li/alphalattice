@@ -2121,6 +2121,16 @@
 "class": "LIMIT",
 "count": 2
 },
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_SESSION_THREADS::16": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most threads one preparation unit is planned (S2 measured 1 to 16, identical)."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::safe_intra_op_threads::4": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The desktop-safe threads of one unit when no CPU budget says otherwise."
+},
 "src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_CPU_BUDGET::1024": {
 "class": "LIMIT",
 "count": 1

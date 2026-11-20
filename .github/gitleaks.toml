@@ -28,9 +28,8 @@ regexes = [
   '''^2c86182120f21b145dc69138b4b833a2c3ee5d8398faa32f4dc448c8d0c7214c$''',
   '''^345651ff15a2b3380fce4403a1034f85eb723c161709d64af5153859a2f65b91$''',
   '''^5de25638e16094557c223a70738d7e017bafc6c89998ff604923752cc18b3d99$''',
-  # constants' names: kernel/shared_kernel/retired_spellings.py, kernel/knowledge/_embeddings.py and hybrid_contracts.py
+  # a constant's name: kernel/shared_kernel/retired_spellings.py
   '''^IW184_EVIDENCE_ROOT$''',
-  '''^XLM_ROBERTA_SENTENCEPIECE_V1$''',
   # the tests' sequential placeholder: tests/integration/local_application/test_local_web_client.py
   '''^0123456789abcdef0123456789abcdef$''',
 ]

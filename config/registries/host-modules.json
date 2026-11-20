@@ -115,7 +115,6 @@
     "src/alphalattice/control/product_host/storage/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/storage/backup.py": "COMPOSITION",
     "src/alphalattice/control/product_host/storage/contracts.py": "COMPOSITION",
-    "src/alphalattice/control/product_host/storage/evidence_references.py": "COMPOSITION",
     "src/alphalattice/control/product_host/storage/input_references.py": "COMPOSITION",
     "src/alphalattice/control/product_host/storage/inventory.py": "COMPOSITION",
     "src/alphalattice/control/product_host/storage/plan_previews.py": "COMPOSITION",

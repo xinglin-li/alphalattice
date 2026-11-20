@@ -41,7 +41,6 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.identity_successors import is_current, latest
 
@@ -400,7 +399,7 @@ class SealedCanonicals:
             return None
         try:
             _revision, content = self._publisher.library.read_revision(*located)
-        except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable):
+        except EvidenceDocumentUnverifiable:
             self.damaged += 1
             return None
         self.reused += 1

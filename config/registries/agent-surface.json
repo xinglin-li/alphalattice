@@ -64620,11 +64620,25 @@
       "replacement": "answer:STORAGE_READBACK.evidence",
       "status": "Deprecated"
     },
+    "operation:STORAGE_EVIDENCE_REBUILD": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since.",
+      "replacement": "operation:STORAGE_READBACK",
+      "status": "Deprecated"
+    },
     "refusal:native_bridge.child_not_a_specialist": {
       "reason": "Usage is read independently of specialist-role verification; the separate verification fact remains.",
       "removed_in": "0.1.6",
       "replacement": "native usage delivery with binding verification",
       "status": "Removed"
+    },
+    "refusal:storage.evidence_generation_record_misfiled": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since.",
+      "replacement": "operation:STORAGE_READBACK",
+      "status": "Deprecated"
     },
     "refusal:storage.input_binding_missing": {
       "announced": "0.2.8",

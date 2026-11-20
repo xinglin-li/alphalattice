@@ -1175,9 +1175,9 @@
       "roots": [
         "workspace"
       ],
-      "semantic_role": "the Evidence knowledge workspace: source objects, documents and the retrieval indexes, a cache keyed by content and model for the indexes",
-      "authority_owner": "knowledge.hybrid.WorkspaceHybridKnowledgeIndex",
-      "retention_owner": "knowledge",
+      "semantic_role": "the Evidence knowledge workspace: source objects and documents; the retired retrieval core's index files stay until the 0.2.8 deletion batch",
+      "authority_owner": "alternative_evidence.documents.workspace.AlternativeEvidenceDocumentPublisher",
+      "retention_owner": "alternative_evidence",
       "rebuildability": "SOURCES_REFETCHABLE_WHERE_SERVED_INDEXES_REBUILDABLE",
       "artifact_relationship": "WRITTEN_BY_ITS_OWNER",
       "eviction_authority": "SEPARATE_USER_GOVERNED_PLAN_REQUIRED"

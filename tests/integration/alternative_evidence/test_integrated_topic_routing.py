@@ -9,6 +9,8 @@ continued as one chain."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -87,7 +89,7 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 from alphalattice.evidence.alternative_evidence.runtime.history import (
     receipt_matter_selection_id,
 )
-from alphalattice.kernel.knowledge._embeddings import MODEL_WORK
+from alphalattice.kernel.data_layer import history
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _registry,
@@ -151,6 +153,29 @@ def _open(tmp_path: Path, request: AlternativeEvidenceRequest) -> tuple[Any, Any
     document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return runtime, document_set, generation
+
+
+@contextmanager
+def _store_calls() -> Iterator[list[str]]:
+    """The retrieval store's model work made inside it: each search (a query embedded, its pairs
+    scored), and each indexing that embedded a chunk the store did not hold."""
+    calls: list[str] = []
+
+    def counting(name: str) -> Any:
+        real = getattr(history, name)
+
+        def counted(*args: Any, **kw: Any) -> Any:
+            answer = real(*args, **kw)
+            if name == "search_references" or getattr(answer, "embedded", 0):
+                calls.append(name)
+            return answer
+
+        return counted
+
+    with pytest.MonkeyPatch.context() as patch:
+        for name in ("index_references", "search_references"):
+            patch.setattr(history, name, counting(name))
+        yield calls
 
 
 def test_the_policy_names_all_three_families_and_the_routing_table_covers_every_topic() -> None:
@@ -655,17 +680,16 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         assert runtime.selection_reuse_count == 2
         # Continuation: the chain keeps the routing and the same plan.
         assert matters.pending_windows > 0
-        work_before = MODEL_WORK.snapshot()
-        successor, successor_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=3,
-            window_limit=192,
-        )
-        work_after = MODEL_WORK.snapshot()
+        with _store_calls() as calls:
+            successor, successor_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=3,
+                window_limit=192,
+            )
         chain = successor.litigation_matters
         assert chain is not None and chain.continued_from == receipt.receipt_hash
         assert chain.plan_hash == matters.plan_hash
@@ -682,7 +706,7 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         # those, at their sealed ranges, spending no search; the ledger
         # counts the covered, the read and the pending apart, and a partial
         # overlap is reported apart from a cover.
-        assert work_after == work_before, "a continuation embeds nothing and scores no pair"
+        assert not calls, "a continuation embeds nothing and scores no pair"
         read = successor.routing.candidate_span_handles
         successor_plan = successor.routing.candidates()
         assert read and all(h.startswith("SPAN-C02-") for h in read)
@@ -1531,17 +1555,17 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
             "sealed",
             len(routing.candidates()),
         )
-        work_before = MODEL_WORK.snapshot()
-        second, second_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=4,
-            window_limit=192,
-        )
-        assert MODEL_WORK.snapshot() == work_before, "a read, not a search campaign"
+        with _store_calls() as calls:
+            second, second_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=4,
+                window_limit=192,
+            )
+        assert not calls, "a read, not a search campaign"
         chain = second.litigation_matters
         assert chain is not None and chain.session_index == 2 and chain.read_windows == 0
         assert second.routing is not None
@@ -1860,19 +1884,17 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
         assert first_ledger is not None
         assert first_ledger["candidates"]["sealed"] == len(plan)
         assert first_ledger["candidates"]["pending"] == sum(1 for c in plan if c.state == "PENDING")
-        work_before = MODEL_WORK.snapshot()
-        second, second_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=3,
-            window_limit=192,
-        )
-        assert MODEL_WORK.snapshot() == work_before, (
-            "a continuation embeds nothing and scores no pair"
-        )
+        with _store_calls() as calls:
+            second, second_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=3,
+                window_limit=192,
+            )
+        assert not calls, "a continuation embeds nothing and scores no pair"
         assert second.routing is not None
         read = second.routing.candidate_span_handles
         assert read and all(h.startswith("SPAN-C02-") for h in read)

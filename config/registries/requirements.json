@@ -155,7 +155,8 @@
       "description": "If the Evidence runtime's identity left out an owner of selection or a capability, reviews could reuse retrieval from a different runtime.",
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-19: the hand-written retrieval core that decided selection retired; the retrieval store's runtime identity is proved by alternative_evidence.runtime_identity_refuses_a_changed_capability"
     },
     "alternative_evidence.runtime_identity_refuses_a_changed_capability": {
       "description": "If a workspace installed an Evidence runtime whose semantic capability differs, its reviews would run on a model its identity never named.",
@@ -1485,13 +1486,15 @@
       "description": "If an int8 session loaded at the CPU budget's threads without equalling the canary one thread gives on this machine, threads could move retrieval numbers unseen.",
       "owner": "alphalattice.kernel.knowledge",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-19: the retired retrieval core's session pool, whose threads the canary judged, is gone; the retrieval store opens no shared session"
     },
     "knowledge.int8_recipe_is_the_retained_models_int8_graphs": {
       "description": "If the int8 recipe named other models, shared a sealed canary, installed over the fp32 packs or shared identities across machine classes, results from different machines would mix.",
       "owner": "alphalattice.kernel.knowledge",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-19: the retired retrieval core's per-machine int8 identities are gone; the recipe a new authority takes is proved by knowledge.a_new_authority_takes_the_int8_recipe"
     },
     "local_application.a_disconnected_waiter_reports_the_task_continues": {
       "description": "When a Host stays unavailable through the wait cap the answer reports that the Task continues.",

@@ -1,12 +1,11 @@
-"""Install, import or inspect the retrieval model packs of the supported recipes.
+"""Install, import or inspect the retrieval store's model packs.
 
     <retrieval python> scripts/install_retrieval_pack.py --status
-    <retrieval python> scripts/install_retrieval_pack.py --install hybrid-v3-bge-small-en --network
-    <gpu python>       scripts/install_retrieval_pack.py --install hybrid-v3-qwen3-gpu --network
-    <retrieval python> scripts/install_retrieval_pack.py --import hybrid-v2-minilm --from <pack-dir>
+    <retrieval python> scripts/install_retrieval_pack.py --install retrieval-store --network
+    <retrieval python> scripts/install_retrieval_pack.py --import retrieval-store --from <pack-dir>
 
 (`<retrieval python>` is `.venv-retrieval/Scripts/python.exe` on Windows and
-`.venv-retrieval/bin/python` elsewhere; `<gpu python>` is `.venv-gpu`'s, alike.)
+`.venv-retrieval/bin/python` elsewhere.)
 
 Packs live in the application model store (`--store`, else
 `ALPHALATTICE_MODEL_STORE`, else the platform's application-data directory),
@@ -35,7 +34,6 @@ from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import SUPPORTED_RECIPES
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN = resolve_playpen_root(Path(__file__))
@@ -168,9 +166,6 @@ def _refused(code: str, store: Path, error: Exception) -> dict[str, object]:
 def _status(store: Path) -> dict[str, object]:
     return {
         "store": str(store),
-        "recipes": {
-            recipe: model_store.recipe_readiness(store, recipe) for recipe in SUPPORTED_RECIPES
-        },
         model_store.RETRIEVAL_STORE: {
             pack.pack_id: model_store.pack_status(store, pack).status
             for pack in model_store.RETRIEVAL_STORE_PACKS
@@ -180,14 +175,12 @@ def _status(store: Path) -> dict[str, object]:
 
 
 def _install(store: Path, recipe: str, *, network: bool, source: Path | None) -> dict[str, object]:
-    if recipe not in model_store.INSTALLABLE:
-        raise SystemExit(
-            f"unsupported recipe: {recipe}; one of {', '.join(model_store.INSTALLABLE)}"
-        )
+    if recipe != model_store.RETRIEVAL_STORE:
+        raise SystemExit(f"unsupported recipe: {recipe}; {model_store.RETRIEVAL_STORE}")
     if source is None and not network:
         raise SystemExit("--install needs --network (an admitted download) or --from <directory>")
     results = {}
-    encoder, reranker = model_store.INSTALLABLE[recipe]
+    encoder, reranker = model_store.RETRIEVAL_STORE_PACKS
     for pack in (encoder, reranker):
         if source is not None:
             # A pack directory as a workspace holds it: the encoder at the
@@ -213,10 +206,7 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
         results[pack.pack_id] = status.status
     if model_store.PACK_INSTALLED in results.values():
         model_store.remember_store(store)
-    readiness = (
-        model_store.recipe_readiness(store, recipe) if recipe in model_store.RECIPE_PACKS else {}
-    )
-    return {"store": str(store), "recipe": recipe, "packs": results, **readiness}
+    return {"store": str(store), "recipe": recipe, "packs": results}
 
 
 def _bytes_printer(pack_id: str) -> model_store.Received:
@@ -243,16 +233,18 @@ def main(argv: list[str] | None = None) -> int:
         "--store", type=Path, help="The application model store (default: the platform's)."
     )
     parser.add_argument(
-        "--status", action="store_true", help="Every recipe's packs and runtime as they stand."
+        "--status", action="store_true", help="The retrieval store's packs as they stand."
     )
     parser.add_argument(
-        "--install", metavar="RECIPE", help="Fetch the recipe's packs at their pinned revisions."
+        "--install",
+        metavar="RECIPE",
+        help="Fetch the retrieval store's packs at their pinned revisions.",
     )
     parser.add_argument(
         "--import",
         dest="import_recipe",
         metavar="RECIPE",
-        help="Import the recipe's encoder pack from --from.",
+        help="Import the retrieval store's packs from --from.",
     )
     parser.add_argument(
         "--from", dest="source", type=Path, help="A directory holding a pack's files, for --import."

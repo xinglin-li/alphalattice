@@ -55,7 +55,7 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     from scripts import install_retrieval_pack as installer
 
     blocked = _blocked(tmp_path)
-    arguments = ["--install", "hybrid-v2-minilm", "--network"]
+    arguments = ["--install", "retrieval-store", "--network"]
     assert not blocked.resolve().is_relative_to(installer.PLAYPEN), "pytest's root is outside"
     assert installer.main(["--store", str(blocked), *arguments]) == 2
     refusal = _refusal(capsys)
@@ -606,7 +606,7 @@ def test_every_product_setup_script_words_an_unexpected_failure(
         monkeypatch.setattr(setup.NativeResearchBinding, "binding_entries", failed)
         arguments = ["unbind", "--session-id", "fixture-session"]
     else:
-        monkeypatch.setattr(setup.model_store, "recipe_readiness", failed)
+        monkeypatch.setattr(setup.model_store, "pack_status", failed)
         arguments = ["--status", "--store", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", [f"{script}.py", *arguments])
     assert setup.main() == 2
@@ -653,10 +653,10 @@ def _setup_runs(setup: Any, script: str, tmp_path: Path) -> list[tuple[str, list
     if script == "install_retrieval_pack":
         store = ["--store", str(tmp_path / "store")]
         return [
-            ("offline", ["--status", *store], setup.model_store, "recipe_readiness"),
+            ("offline", ["--status", *store], setup.model_store, "pack_status"),
             (
                 "network",
-                ["--install", "hybrid-v2-minilm", "--network", *store],
+                ["--install", "retrieval-store", "--network", *store],
                 setup.model_store,
                 "hub_fetcher",
             ),
@@ -809,7 +809,7 @@ def test_a_denied_store_reports_the_os_cause_before_any_download(
 
     monkeypatch.setattr(setup.model_store.tempfile, "TemporaryFile", denied)
     monkeypatch.setattr(setup.model_store, "hub_fetcher", lambda **_kwargs: fetch)
-    assert setup.main(["--store", str(tmp_path), "--install", "hybrid-v2-minilm", "--network"]) == 2
+    assert setup.main(["--store", str(tmp_path), "--install", "retrieval-store", "--network"]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["failure_code"] == "model_store.store_unwritable"
     assert payload["store"] == str(tmp_path.resolve())

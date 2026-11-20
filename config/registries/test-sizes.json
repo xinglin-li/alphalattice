@@ -2,15 +2,6 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
-    "tests/integration/knowledge/test_retrieval_recipes.py::test_the_retained_recipe_keeps_its_hashes": {
-      "inputs": [
-        "uv.lock",
-        "pyproject.toml",
-        "config/requirements-retrieval.lock",
-        "config/requirements-gpu.lock",
-        "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
-      ]
-    },
     "tests/integration/workspace_runtime/test_content_store.py::test_a_change_to_the_file_ends_its_fact": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py"
@@ -539,16 +530,6 @@
     },
     {
       "pattern": "tests/integration/alternative_evidence/test_finding_evidence_package.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_grounded_recall_and_issuer_batches.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_hybrid_index_lifecycle.py*",
       "owner": "tests.alternative_evidence_desk",
       "size": "medium"
     },
@@ -1596,21 +1577,6 @@
     },
     {
       "pattern": "tests/integration/product_host/test_research_input_storage.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_retrieval_recipes.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_shared_session_recovery.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_verified_pack_registry.py*",
       "owner": "tests.workspace_maintenance",
       "size": "medium"
     },

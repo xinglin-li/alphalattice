@@ -203,7 +203,6 @@ src/alphalattice/foundation/market_data_ops/sources/membership.py
 src/alphalattice/foundation/market_data_ops/sources/sector_forward.py
 src/alphalattice/kernel/shared_kernel/arrow_identity.py
 src/alphalattice/investment/alpha_research/experiments/development_evidence.py
-src/alphalattice/control/product_host/storage/evidence_references.py
 src/alphalattice/foundation/feature_engine/panels/development_overlay.py
 src/alphalattice/control/product_host/research_authoring/model_training.py
 src/alphalattice/control/product_host/research_authoring/lifecycle_handoff.py

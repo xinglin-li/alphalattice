@@ -330,11 +330,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "a data update that has not ended answers its own plan, a deferred one too, whose run "
     "resumes it once due; a cancelling one is not waiting",
     (
-        "control/product_host/storage/evidence_references.py",
-        "_IN_FLIGHT",
-        "CANCEL_REQUESTED,DEFERRED,QUEUED,RECOVERY_REQUIRED,REVIEW_PENDING,RUNNING",
-    ): "every unended state keeps the evidence it references",
-    (
         "control/product_host/storage/input_references.py",
         "ResearchInputStorage._references",
         "CANCELLED,SUCCEEDED",

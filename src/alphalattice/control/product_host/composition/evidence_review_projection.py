@@ -57,7 +57,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioReviewInputIncomplete,
@@ -939,7 +938,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     return evidence_as_of, expires_at
@@ -997,7 +996,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     continue

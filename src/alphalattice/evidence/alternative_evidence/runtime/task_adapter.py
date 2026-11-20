@@ -16,7 +16,6 @@ import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from functools import partial
 from typing import Self, cast
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
@@ -39,11 +38,6 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
-from alphalattice.kernel.knowledge.runtime import (
-    VERIFIED_PACKS,
-    before_first_inference,
-)
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
@@ -118,7 +112,7 @@ from .failure_diagnostics import failure_cause
 from .failure_diagnostics import failure_code as _diagnostic_failure_code
 from .history import require_answer_format
 from .policy import AdmittedEvidencePolicy
-from .progress import ACQUIRE, BUILD, SELECT, PreparationProgress
+from .progress import ACQUIRE, SELECT, PreparationProgress
 from .service import (
     AlternativeEvidenceAnalysisActor,
     AlternativeEvidenceDocumentIntelligenceRuntime,
@@ -537,10 +531,6 @@ def _verify_table_view(
         raise ValueError("alternative_evidence.brief_span_source_mismatch")
 
 
-_MODEL_STAGES = frozenset({BUILD, SELECT})
-"""The stages whose time is the model's: a later unit's wait for the first."""
-
-
 def split_unit_stage(stage_id: str) -> tuple[str | None, str]:
     """Split a unit-prefixed stage ID into unit and stage.
 
@@ -697,20 +687,11 @@ class AlternativeEvidenceDocumentTaskAdapter:
         del execution
         rank = self._rank(task, work_item.stage_id)
         stage = split_unit_stage(work_item.stage_id)[1]
-        later = rank > 0 and stage in _MODEL_STAGES
-        if later and stage == SELECT:
+        if rank > 0 and stage == SELECT:
             self._after_the_first_unit(task)
-        # A later unit's build waits only at its first model call (F2): its reading,
-        # cutting and session loading run while the first unit prepares. Its sessions
-        # are its own share of the CPU budget, the first unit's its whole plan.
-        gate = partial(self._after_the_first_unit, task) if later and stage == BUILD else None
         # One stage at a time holds the runtime's shared state; a stage gives it
         # up only where it touches none (`EvidenceWriter`).
-        with (
-            VERIFIED_PACKS.threads_for(PREPARATIONS.threads(task.task_id, first=rank == 0)),
-            before_first_inference(gate),
-            self.runtime.writer.held(rank=rank),
-        ):
+        with self.runtime.writer.held(rank=rank):
             return self._execute_stage(task, work_item)
 
     def _after_the_first_unit(self, task: TaskRecord) -> None:
@@ -730,8 +711,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 return None
             return self.unit_states(current)[first]["state"]
 
-        if first_unit_settled(state):  # the later units take their share of the budget
-            PREPARATIONS.open(task.task_id)
+        first_unit_settled(state)
 
     def _rank(self, task: TaskRecord, stage_id: str) -> int:
         """A unit's place in its run (heaviest first): who goes first at the writer."""
@@ -1390,7 +1370,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     run = self.runtime.artifacts.load(
                         COVERAGE_RUN_CATEGORY, path.stem, AlternativeEvidenceCoverageRun
                     )
-                except (ValueError, KnowledgeRetrievalError, FileNotFoundError):
+                except (ValueError, FileNotFoundError):
                     continue
                 if not run.units:
                     index.setdefault(run.scope_hash, []).append(run)
@@ -1407,7 +1387,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             return None
         try:
             return self._run(task)
-        except (ValueError, KnowledgeRetrievalError):
+        except ValueError:
             return None
 
     def recorded_run(self, run_hash: str) -> AlternativeEvidenceCoverageRun | None:
@@ -1422,7 +1402,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             run = self.runtime.artifacts.load(
                 COVERAGE_RUN_CATEGORY, run_hash, AlternativeEvidenceCoverageRun
             )
-        except (ValueError, KnowledgeRetrievalError, FileNotFoundError):
+        except (ValueError, FileNotFoundError):
             return None
         self._runs[run_hash] = run
         return run
@@ -1483,7 +1463,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             if now is not None:
                 try:
                     _cutoff, expires_at = self.preparation_window(candidate, found[1])
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     continue
@@ -1506,7 +1486,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 self._document_set(task, unit_id).canonicalization_binding_hash,
                 self._generation(task, unit_id).retrieval_binding_hash,
             )
-        except (ValueError, KeyError, KnowledgeRetrievalError):
+        except (ValueError, KeyError):
             return False
         installed = (
             self.runtime.acquisition.acquisition_binding_hash,
@@ -1825,7 +1805,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             try:
                 for unit in run.units:
                     self.prepared_packet(task.task_id, now=now, unit_id=unit.unit_id)
-            except (ValueError, KnowledgeRetrievalError):
+            except ValueError:
                 continue
             return task
         return None
@@ -1852,9 +1832,6 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     if str(error) == "alternative_evidence.brief_source_stale":
                         stale = True
                         continue
-                    stale = False
-                    break
-                except KnowledgeRetrievalError:
                     stale = False
                     break
             if stale:
@@ -2089,7 +2066,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     receipt_hash,
                     AlternativeEvidenceRetrievalAccessReceipt,
                 )
-            except (ValueError, KeyError, KnowledgeRetrievalError):
+            except (ValueError, KeyError):
                 rows.append({"task_id": task_id, "unit_id": unit_id, "selection": "UNREADABLE"})
                 continue
             rows.append(
@@ -2139,7 +2116,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             return None
         try:
             return self.source_check(UUID(task_id), unit_id=unit_id)
-        except (ValueError, KeyError, KnowledgeRetrievalError):
+        except (ValueError, KeyError):
             return None
 
     def prepared_receipts(self) -> dict[str, tuple[str, str | None]]:
@@ -2164,7 +2141,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     receipt_hash, _span_set = self.prepared_receipt_identity(
                         task.task_id, unit_id=unit_id
                     )
-                except (ValueError, KeyError, KnowledgeRetrievalError):
+                except (ValueError, KeyError):
                     continue
                 found.setdefault(receipt_hash, (str(task.task_id), unit_id))
         return found
@@ -2208,9 +2185,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
         # travels in the refusal instead of escaping as an untyped error.
         try:
             self.runtime.documents.verify(document_set)
-        except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable) as error:
+        except EvidenceDocumentUnverifiable as error:
             raise ValueError(
-                f"alternative_evidence.brief_document_unverifiable:{_refusal_code(error)}"
+                f"alternative_evidence.brief_document_unverifiable:{error.code}"
             ) from error
         references = {value.semantic_handle: value for value in document_set.documents}
         contents: dict[str, bytes] = {}
@@ -2236,9 +2213,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
                             reference.workspace_document_id, reference.workspace_revision
                         )
                     )
-                except (KnowledgeRetrievalError, EvidenceDocumentUnverifiable) as error:
+                except EvidenceDocumentUnverifiable as error:
                     raise ValueError(
-                        f"alternative_evidence.brief_document_unverifiable:{_refusal_code(error)}"
+                        f"alternative_evidence.brief_document_unverifiable:{error.code}"
                     ) from error
             content = contents[span.document_handle]
             text = content.decode("utf-8")
@@ -2826,13 +2803,6 @@ def _failure_code(error: Exception) -> str:
     if isinstance(error, HostStopping):
         raise error
     return _diagnostic_failure_code(error)
-
-
-def _refusal_code(error: KnowledgeRetrievalError | EvidenceDocumentUnverifiable) -> str:
-    """The code a document refusal names: the store library's, or the kernel's."""
-    if isinstance(error, EvidenceDocumentUnverifiable):
-        return error.code
-    return str(error.failure.code)
 
 
 __all__ = [

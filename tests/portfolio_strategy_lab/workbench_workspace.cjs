@@ -634,39 +634,16 @@ c.objectRow=publicBuilders.objectRow;
   assert.ok(String(w.notice()).includes('Preparation needs attention') && String(w.notice()).includes('TASK_EXECUTION_INTERRUPTED'));
   c.Data.preparation=()=>readback('SUCCEEDED',{task_id:TASK,inputs:[{input_id:'f',binding_hash:'b'}]});assert.equal(String(w.notice()),'','a prepared workspace has no notice');
   c.app.page='welcome';c.Data.preparation=()=>readback('INITIALIZATION_REQUIRED');assert.equal(String(w.notice()),'','never on the scene itself');
-  // --- the storage page's Evidence category, from the readback's `evidence` block
+  // --- the storage page's Evidence category, from the readback's `evidence` block: bytes by kind
+  // and the unreferenced source objects, none of it a cleanup target and no index row
   {
-    const evidence={summary:{source_object_bytes:1048576,source_blob_bytes:524288,vector_payload_bytes:262144,vector_object_count:12,index_payload_bytes:131072,sealed_artifact_bytes:65536,staging_bytes:0,task_state_bytes:4096},
-      indexes:[{index_id:'1111aaaa2222bbbb3333cccc',generation_format:'hybrid-v2',corpus_hash:'c'.repeat(64),database_bytes:131072,availability:'AVAILABLE',payload_bytes:131072,payload_available:true,payload_proof:'PROVED',record_count:340,protected_by:['ACTIVE_LEASE'],eligible:false,available_actions:['PIN']},{index_id:'4444dddd5555eeee6666ffff',generation_format:'hybrid-v2',corpus_hash:'d'.repeat(64),database_bytes:0,availability:'EVICTED_BY_RETENTION',payload_bytes:0,payload_available:false,payload_proof:'storage.evidence_index_payload_absent',record_count:0,protected_by:[],eligible:false,available_actions:['REBUILD']},{index_id:'7777aaaa8888bbbb9999cccc',generation_format:'legacy-v1',corpus_hash:'e'.repeat(64),database_bytes:0,availability:'EVICTED_BY_RETENTION',payload_bytes:0,payload_available:false,payload_proof:'storage.evidence_index_payload_absent',record_count:0,protected_by:[],eligible:false,available_actions:[],rebuild_limit:'This legacy index has no committed vector payload and cannot be rebuilt. Start a new Evidence preparation.'}],
-      unreferenced:{source_objects:2,indexes:0,vector_objects:1},pinned_index_ids:[]};
+    const evidence={source_object_bytes:1048576,source_blob_bytes:524288,vector_payload_bytes:262144,vector_object_count:12,index_payload_bytes:131072,sealed_artifact_bytes:65536,staging_bytes:0,task_state_bytes:4096,
+      unreferenced:{source_object_paths:['runtime/evidence-knowledge/knowledge/objects/x','runtime/evidence-knowledge/knowledge/objects/y'],source_object_bytes:2048}};
     bodies['/api/workspace/storage']={status:'AVAILABLE',display:{},inputs:[],pending_cleanup:[],by_root:{},managed_bytes:2097152,logical_bytes:2097152,free_disk_bytes:1e9,capacity_status:'WITHIN_BUDGET',budget:{},evidence};
-    const tableStub=c.table, trStub=c.tr; c.table=(headers,rows)=>'<table>'+headers.map(h=>h.label).join(' | ')+' '+(Array.isArray(rows) ? rows.join('') : String(rows))+'</table>'; c.tr=(cells)=>'<tr>'+cells.map(x=>String(x ?? '')).join(' | ')+'</tr>';
     c.app.page='storage';await w.refresh();let page=String(w.page()).replace(/\s+/g,' ');
-    assert.ok(page.includes('Originals')&&/1\.00[^K]*MiB/.test(page)&&page.includes('Vectors')&&page.includes('12 objects')&&page.includes('Sealed records'),'the Evidence category reads its summary as physical bytes: '+page.slice(page.indexOf('Originals')-40,page.indexOf('Originals')+300));
-    assert.ok(page.includes('1111aaaa2222')&&/[Aa]vailable/.test(page)&&page.includes('Active lease')&&page.includes('proved'),'an available index names its protection and its proof: '+page.slice(page.indexOf('1111aaaa'),page.indexOf('1111aaaa')+500));
-    assert.ok(page.includes('4444dddd5555')&&/[Ee]victed/.test(page)&&page.includes('Rebuild'),'an evicted index offers Rebuild: '+page.slice(page.indexOf('4444dddd'),page.indexOf('4444dddd')+500));
-    // U4: each row offers the actions the Host names for it, in its order, and nothing of the page's own
-    const rowOf=(id)=>page.slice(page.indexOf(id),page.indexOf('</tr>',page.indexOf(id)));
-    assert.ok(rowOf('1111aaaa2222').includes('Pin')&&!rowOf('1111aaaa2222').includes('Rebuild')&&!rowOf('1111aaaa2222').includes('Unpin'),'the available index: Pin alone: '+rowOf('1111aaaa2222'));
-    assert.ok(!rowOf('4444dddd5555').includes('Pin'),'the evicted index is offered no pin');
-    // a legacy index that cannot be rebuilt says so where its Rebuild would stand, the owner's words its hover
-    assert.ok(rowOf('7777aaaa8888').includes('Cannot be rebuilt')&&!rowOf('7777aaaa8888').includes('Rebuild'),'a legacy index says it cannot be rebuilt: '+rowOf('7777aaaa8888'));
-    c.table=tableStub;c.tr=trStub;
-    assert.ok(page.includes('Unreferenced')&&page.includes('Source objects 2')&&page.includes('Vector objects 1')&&!page.includes('Indexes 0'),'the unreferenced objects are counted by kind, zeros left out: '+page.slice(page.indexOf('Unreferenced'),page.indexOf('Unreferenced')+200));
-    posts.length=0;await w.preview('rebuild-index','4444dddd5555eeee6666ffff');
-    assert.ok(modal&&String(modal.title).includes('Rebuild this evidence index'),'the rebuild is confirmed as the row\'s own request: '+String(modal&&modal.title));
-    bodies['/api/workspace/storage/evidence-rebuild']={status:'REBUILT',receipt_hash:'r'.repeat(64)};await w.commit();
-    assert.deepEqual(posts.at(-1),['/api/workspace/storage/evidence-rebuild',{evidence_index_id:'4444dddd5555eeee6666ffff'}],'the rebuild names the exact index and nothing else');
-    await w.preview('pin-index',JSON.stringify(['4444dddd5555eeee6666ffff','PIN']));
-    assert.ok(!modal || !String(modal.title).includes('Pin this evidence index'),'a pin the Host does not offer is not confirmed');
-    await w.preview('pin-index',JSON.stringify(['1111aaaa2222bbbb3333cccc','PIN']));
-    bodies['/api/workspace/storage/pin']={status:'PINNED'};await w.commit();
-    assert.deepEqual(posts.at(-1),['/api/workspace/storage/pin',{input_binding_hash:'1111aaaa2222bbbb3333cccc',input_pinned:true}],'a pin names the index through the owner\'s pin route');
-    bodies['/api/workspace/storage']={...bodies['/api/workspace/storage'],pending_cleanup:['p'.repeat(64)],status:'RECOVERY_REQUIRED',evidence:{...evidence,indexes:evidence.indexes.map(ix=>({...ix,available_actions:[]}))}};
-    c.table=(headers,rows)=>'<table>'+(Array.isArray(rows) ? rows.join('') : String(rows))+'</table>';c.tr=(cells)=>'<tr>'+cells.map(x=>String(x ?? '')).join(' | ')+'</tr>';
-    await w.refresh();page=String(w.page()).replace(/\s+/g,' ');c.table=tableStub;c.tr=trStub;
-    const indexes=page.slice(page.indexOf('1111aaaa2222'),page.indexOf('</table>',page.indexOf('1111aaaa2222')));
-    assert.ok(!/\bPin\b|Rebuild|Unpin/.test(indexes),'no index action while recovery is required: '+indexes);
+    assert.ok(page.includes('Originals')&&/1\.00[^K]*MiB/.test(page)&&page.includes('Vectors')&&page.includes('12 objects')&&page.includes('Sealed records'),'the Evidence category reads its summary as physical bytes: '+page.slice(page.indexOf('Originals'),page.indexOf('Originals')+400));
+    assert.ok(!page.includes('Rebuild')&&!page.includes('Evidence indexes'),'no evidence index row or action is drawn');
+    assert.ok(page.includes('Unreferenced'),'the unreferenced source objects are counted: '+page.slice(page.indexOf('Unreferenced'),page.indexOf('Unreferenced')+200));
     bodies['/api/workspace/storage']={status:'AVAILABLE',display:{},inputs:[],pending_cleanup:[]};c.app.page='storage';await w.refresh();page=String(w.page()).replace(/\s+/g,' ');
     assert.ok(!page.includes('data-storage="evidence"'),'a readback without the category draws no Evidence section (N3, law 81)');
   }

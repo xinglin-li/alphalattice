@@ -898,22 +898,22 @@ GRAMMAR: Final[dict[str, Command]] = {
     "STORAGE_CONFIRM": Command(
         "storage",
         "confirm",
-        "Applies a storage clean-up plan, deleting the evidence indexes and Panel chunks it names.",
+        "Applies a storage clean-up plan, deleting the Panel chunks it names.",
     ),
     "STORAGE_EVIDENCE_REBUILD": Command(
         "storage",
         "rebuild",
-        "Rebuilds an evicted evidence index from its committed vectors, with a receipt.",
+        "Deprecated, removed in 0.3.0: refuses; the retrieval store keeps no evidence index.",
     ),
     "STORAGE_PIN": Command(
         "storage",
         "pin",
-        "Pins or unpins an evidence index against storage clean-up; a research input takes no pin.",
+        "Refuses: a research input takes no pin and the retrieval store keeps no evidence index.",
     ),
     "STORAGE_PLAN": Command(
         "storage",
         "plan",
-        "Plans a storage clean-up of unpinned evidence indexes and Panel chunks for confirmation.",
+        "Plans a storage clean-up of Panel chunks and saves it for confirmation.",
     ),
     "STORAGE_CAP_SHOW": Command(
         "storage", "cap", "Shows the operator storage cap, its automatic estimate and free disk."
@@ -927,7 +927,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "STORAGE_READBACK": Command(
         "storage",
         "show",
-        "Shows storage use, evidence indexes, pins and pending clean-up; inputs: `input list`.",
+        "Shows storage use, evidence bytes and pending clean-up; inputs: `input list`.",
     ),
     "STRATEGY_CALIBRATION_PLAN": Command(
         "calibration",

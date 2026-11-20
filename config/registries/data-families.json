@@ -1216,28 +1216,21 @@
       "class": "derived",
       "tier": 4,
       "home": "log knowledge_source, knowledge_chunk, knowledge_fts and knowledge_embedding; documents as catalog world.evidence_doc",
+      "retire": "the retired hand-written retrieval core wrote it; the retrieval store keeps retrieval, so no writer remains; its historical files stay on disk for the 0.2.8 deletion batch",
       "location": "workspace-runtime",
       "bytes": null,
       "covers": [
-        "table:cjk_fts",
         "artifacts:runtime/evidence-knowledge"
       ],
-      "authority_owners": [
-        "knowledge.hybrid.WorkspaceHybridKnowledgeIndex"
-      ],
-      "writers": [
-        "knowledge.hybrid:WorkspaceHybridKnowledgeIndex",
-        "knowledge.retrieval:WorkspaceKnowledgeLibrary"
-      ],
+      "authority_owners": [],
+      "writers": [],
       "readers": [
         "alternative_evidence.documents.workspace",
         "alternative_evidence.retrieval.service",
         "alternative_evidence.retrieval.session",
         "alternative_evidence.runtime.service",
         "alternative_evidence.storage.inventory",
-        "knowledge.runtime",
-        "product_host.composition.evidence_authority_setup",
-        "product_host.storage.evidence_references"
+        "product_host.composition.evidence_authority_setup"
       ]
     },
     "alpha-qualification": {
@@ -1373,7 +1366,6 @@
         "product_host.maintenance.data_update",
         "product_host.research_authoring.factor_inputs",
         "product_host.research_authoring.feature_research",
-        "product_host.storage.evidence_references",
         "product_host.storage.input_references"
       ]
     },
@@ -2663,8 +2655,7 @@
         "product_host.research_authoring.factor_inputs:_bind_factor_inputs",
         "product_host.research_authoring.factor_inputs:_copy_input",
         "product_host.research_authoring.factor_inputs:_record_input_publication",
-        "product_host.research_authoring.input_revisions:ResearchInputRevisions",
-        "product_host.storage.input_references:ResearchInputStorage"
+        "product_host.research_authoring.input_revisions:ResearchInputRevisions"
       ],
       "readers": [
         "product_host.composition.evidence_authority_setup",
@@ -3477,12 +3468,11 @@
       "summary": "cached reranking pair scores",
       "class": "cache-scratch",
       "tier": 3,
+      "retire": "the retired hand-written retrieval core's reranker wrote it; no reader needs the cached scores",
       "home": "log cache_entry",
       "location": "workspace-runtime",
       "bytes": null,
-      "writers": [
-        "knowledge._reranking:PairScoreStore"
-      ],
+      "writers": [],
       "readers": []
     },
     "local-client": {
@@ -3763,8 +3753,6 @@
     "market_data_ops.storage.duckdb:_source_prefix_arrow_hash": "serializes a table to an in-memory buffer to hash it",
     "sector_research.inputs.surface:_payload": "serializes a table to an in-memory buffer; the caller's store publishes the bytes",
     "portfolio_strategy_lab.application.calibration:_legacy_npz_digest": "writes an npz to an in-memory buffer to hash it",
-    "knowledge.hybrid:_read_manifest": "opens the index's SQLite file to read its manifest",
-    "knowledge.hybrid:_verify_projection": "opens the index's SQLite file to verify it",
     "task_control.runner:TaskHeartbeatReader": "opens an unswitched heartbeat SQLite file read-only; otherwise queries the held log or a mode=ro attach",
     "task_control.upgrade:_stored_heartbeats": "opens the old heartbeat SQLite file with mode=ro for equality verification before retiring it",
     "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
@@ -3772,7 +3760,6 @@
     "model_validation.protected_gate:ProtectedValidationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "product_host.composition.saved_object_readback:_request": "opens an HTTP request with urllib's opener",
     "product_host.composition.web_launcher:main": "opens the person's browser at a URL with webbrowser.open",
-    "alternative_evidence.runtime.task_adapter:AlternativeEvidenceDocumentTaskAdapter": "applies a planned preparation's session width in memory (PREPARATIONS.open)",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
     "data_layer.history_runtime:held": "opens the data root through HostLog.open, whose class is the data-root family's writer",

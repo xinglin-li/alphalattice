@@ -78,7 +78,6 @@ from alphalattice.interface.local_application.native_usage import codex_thread_s
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_WORDS,
     setup_environment,
 )
 from alphalattice.kernel.shared_kernel import spawn
@@ -190,9 +189,7 @@ HOST_DEPENDENCIES = {
     ),
     "retrieval_runtime": (
         "Read Evidence with its retrieval recipe",
-        LOCKED_SETUP_WORDS + " Then use install_retrieval_pack "
-        "--install hybrid-v2-minilm. Keep packs outside "
-        "the workspace; network acquisition still needs its permission.",
+        str(worded("native_setup.retrieval_runtime")),
         "AGENT",
     ),
     "background_notices": (

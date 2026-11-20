@@ -17843,7 +17843,7 @@
 "storage.input_pin_retired": {
 "owner": "storage",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A research input is kept on the data root while a binding names it, so it takes no pin; only an evidence index is pinned."
+"classification_note": "A research input is kept on the data root while a binding names it, so it takes no pin."
 },
 "storage.input_pin_unavailable": {
 "owner": "storage",

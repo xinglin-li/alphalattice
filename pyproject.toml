@@ -180,7 +180,7 @@ DEP001 = ["tokenizers", "fastembed", "torch"]
 # Wheels loaded by DuckDB, the calendar, timezone database, CVXPY's solver, and
 # the semantic runtimes are consumed dynamically. Keep dotenv and Optuna in the
 # existing install profile for compatibility (Optuna is also a documented research tool).
-DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "clarabel", "optuna", "onnxruntime", "sentencepiece", "sqlite-vec"]
+DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "clarabel", "optuna", "onnxruntime", "sentencepiece", "sqlite-vec", "tokenizers"]
 # These imports are in src/devtools, which is not included in the product wheel;
 # they are correctly declared in the development dependency group.
 DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging"]

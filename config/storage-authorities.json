@@ -403,24 +403,6 @@
       "retention_owner": "data_platform",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
       "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "cjk_fts",
-        "content",
-        "dense_nodes",
-        "metadata",
-        "term_fts",
-        "trigram_fts",
-        "vec_chunks"
-      ],
-      "database": "knowledge-hybrid-index",
-      "semantic_role": "a hybrid knowledge index: its passages, full-text postings and dense vectors",
-      "generation_model": "BY_REVISION",
-      "authority_owner": "knowledge.hybrid.WorkspaceHybridKnowledgeIndex",
-      "retention_owner": "knowledge",
-      "rebuildability": "REBUILDABLE_FROM_THE_CORPUS",
-      "artifact_relationship": "NONE"
     }
   ]
 }

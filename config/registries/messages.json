@@ -2,9 +2,13 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "storage.evidence_kept": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "What the evidence data layer keeps, physical bytes each object once; the index and vector files earlier builds left are counted, never released.", "zh-CN": "证据数据层保有的内容，按物理字节计，每个对象只计一次；早先构建留下的索引和向量文件只计入，从不释放。"}
+    },
     "storage.input_pin_retired": {
       "owner": "alphalattice.control.product_host", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "A research input version is kept on this machine while any study names it, so it takes no pin; only an evidence index is pinned. Read what storage holds (`alphalattice storage show`).", "zh-CN": "只要仍有研究引用某个研究输入版本，它就保留在本机上，因此无需钉住；只有证据索引可以钉住。请查看存储保有的内容（`alphalattice storage show`）。"}
+      "words": {"en": "A research input version is kept on this machine while any study names it, so it takes no pin. Read what storage holds (`alphalattice storage show`).", "zh-CN": "只要仍有研究引用某个研究输入版本，它就保留在本机上，因此无需钉住。请查看存储保有的内容（`alphalattice storage show`）。"}
     },
     "activity.observation_id_invalid": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
@@ -589,6 +593,15 @@
       "words": {
         "en": "Complete the listed setup steps in order, then run the offered serve command yourself in this shell. If it is refused, follow its terminal route.",
         "zh-CN": "请按顺序完成列出的缺失设置步骤，然后自己在当前终端运行提供的启动命令；只有遭到拒绝时才按其终端方案操作。"
+      }
+    },
+    "native_setup.retrieval_runtime": {
+      "owner": "alphalattice.interface.local_application",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "Run the locked retrieval setup online as the agent's act, disclosing it in one line. An empty cache needs no second person question or renewed first-use network consent. Only software outside the lock needs the person's permission. Then use install_retrieval_pack --install retrieval-store. Keep packs outside the workspace; network acquisition still needs its permission.",
+        "zh-CN": "由智能体联网运行已锁定的检索环境设置，并用一句话告知用户。缓存为空时，无需再次询问用户，也无需重新取得首次使用的联网同意。锁定清单之外的软件仍须经用户许可。然后运行 `install_retrieval_pack --install retrieval-store`。将模型包保存在工作区之外；联网获取仍需相应许可。"
       }
     },
     "native_setup.workbench_build": {

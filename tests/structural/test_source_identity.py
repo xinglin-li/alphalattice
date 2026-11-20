@@ -474,9 +474,6 @@ _ENVIRONMENT_READERS = {
     # The one helper (LAWS.md ID6).
     "src/alphalattice/kernel/shared_kernel/environment.py": "the helper",
     # Rebuild keys of caches whose content the environment decides, and packs it gates.
-    "src/alphalattice/kernel/knowledge/_embeddings.py": ("an embedding index's rebuild key"),
-    "src/alphalattice/kernel/knowledge/_reranking.py": "a reranker pack's rebuild key",
-    "src/alphalattice/kernel/knowledge/_torch.py": "a torch pack's rebuild key",
     "src/alphalattice/kernel/knowledge/model_store.py": "a stored model's rebuild key",
     "src/alphalattice/kernel/knowledge/catalog.py": "a knowledge pack's installed distributions",
     "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py": (

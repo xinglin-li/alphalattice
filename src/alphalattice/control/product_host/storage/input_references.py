@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any
 
 from alphalattice.control.data_platform.maintenance.registry import (
@@ -38,10 +36,8 @@ from alphalattice.control.product_host.research_authoring.input_revisions import
     ResearchInputRevisions,
 )
 from alphalattice.control.product_host.storage.contracts import (
-    PhysicalAvailability,
     storage_input_estimate,
 )
-from alphalattice.control.product_host.storage.evidence_references import EvidenceStorageReferences
 from alphalattice.control.product_host.storage.inventory import (
     MANAGED_ROOTS,
     RECOVERY_HEADROOM_BYTES,
@@ -60,10 +56,10 @@ from alphalattice.control.product_host.storage.retention import (
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
-from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
-    RETRIEVAL_GENERATION_FORMAT,
+from alphalattice.evidence.alternative_evidence.storage.inventory import (
+    EvidenceStorageBinding,
+    EvidenceStorageInventory,
 )
-from alphalattice.evidence.alternative_evidence.storage.inventory import EvidenceStorageBinding
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
     local_qa_preparation_retention_inventory,
 )
@@ -125,17 +121,11 @@ def _display_bytes(value: int) -> str:
     return f"{value:,} bytes"
 
 
-EVIDENCE_PIN_PREFIX = "evidence-index:"
-
-
 class ResearchInputStorage:
     """An application projection; policy and deletion remain with retention.
 
-    Evidence retrieval generations are accounted and released through the
-    same owner when the workspace has an evidence store: their index payloads
-    are candidates, their vector payloads, source blobs and sealed artifacts
-    are retained, and a generation an unfinished Task, an open reader or a
-    person still needs is protected.
+    A workspace's evidence store is reported beside its inputs, its bytes by kind and its
+    unreferenced source objects; none of it is a cleanup target.
     """
 
     def __init__(
@@ -161,45 +151,6 @@ class ResearchInputStorage:
         self.clock = clock or (lambda: datetime.now(UTC))
         self._capacity_sampled = False
 
-    def evidence_index_pinned(self, index_id: str) -> bool:
-        """Say whether the person pinned a generation's index (`storage pin`).
-
-        A pinned index is not retired after its use; an unreadable pin record keeps it and
-        never reads as unpinned.
-
-        Args:
-            index_id: The generation's index identity.
-
-        Returns:
-            True when the index is pinned or the pin record cannot be read.
-        """
-        try:
-            return f"{EVIDENCE_PIN_PREFIX}{index_id}" in self._all_pins()
-        except (OSError, ValueError, KeyError, TypeError, StorageRetentionError):
-            return True
-
-    def retire_evidence_index(self, index_id: str, retire: Callable[[], object]) -> bool:
-        """Retire a generation's index unless the person pinned it, under the mutation gate.
-
-        `pin` checks and writes under the same gate, so a pin never lands between this check
-        and the removal.
-
-        Args:
-            index_id: The generation's index identity.
-            retire: The index owner's removal, run only when the index is not pinned.
-
-        Returns:
-            False when the index is pinned or its pin record cannot be read; True once retired.
-
-        Raises:
-            GateBusy: A foreground caller found the gate held throughout its wait.
-        """
-        with self.session.mutation_gate.hold():
-            if self.evidence_index_pinned(index_id):
-                return False
-            retire()
-            return True
-
     def _all_pins(self) -> dict[str, int]:
         path = self.owner.governance_root / "input-pins.json"
         if not path.exists():
@@ -214,23 +165,6 @@ class ResearchInputStorage:
                 "storage.retention_root_mismatch", "Input pin receipt is invalid."
             )
         return dict(data["pins"])
-
-    def _evidence_pins(self) -> frozenset[str]:
-        return frozenset(
-            key[len(EVIDENCE_PIN_PREFIX) :]
-            for key in self._all_pins()
-            if key.startswith(EVIDENCE_PIN_PREFIX)
-        )
-
-    def _evidence_references(self) -> EvidenceStorageReferences | None:
-        if self.evidence is None:
-            return None
-        return EvidenceStorageReferences(
-            workspace=self.workspace,
-            binding=self.evidence,
-            registry=self.session.task_control_registry,
-            pinned_index_ids=self._evidence_pins(),
-        )
 
     def _references(self) -> dict[str, Any]:
         """Every fact a cleanup plan depends on, whose hash stales a plan when one changes. The
@@ -250,11 +184,6 @@ class ResearchInputStorage:
         preparation = self._preparation_references(manifest, busy=bool(tasks))
         evidence["source"]["targets"].update(preparation["targets"])
         evidence["source"]["preparation"] = preparation
-        references = self._evidence_references()
-        if references is not None:
-            # Every fact a plan over evidence indexes depends on: a new pin, an
-            # open reader or an unfinished Task changes the hash and stales it.
-            evidence["evidence_indexes"] = references.evidence()
         return evidence
 
     def _preparation_references(
@@ -415,31 +344,17 @@ class ResearchInputStorage:
         capacity = StorageCapStore(self.workspace).capacity(measured_data_bytes=used)
         pending = pending_input_cleanups(self.workspace)
         free = shutil.disk_usage(self.workspace).free
-        references = self._evidence_references()
+        inventory = (
+            None
+            if self.evidence is None
+            else EvidenceStorageInventory(workspace=self.workspace, binding=self.evidence)
+        )
         return {
             "status": "RECOVERY_REQUIRED" if pending else "AVAILABLE",
             "inputs": [],  # deprecated in 0.2.8: inputs are kept on the data root
             "evidence": None
-            if references is None
-            else {
-                **references.summary(),
-                "indexes": [
-                    {
-                        **body,
-                        "available_actions": self._index_actions(body, references, pending),
-                        "rebuild_limit": None
-                        if body["generation_format"] == RETRIEVAL_GENERATION_FORMAT
-                        else (
-                            "This legacy index has no committed vector payload "
-                            "and cannot be rebuilt. "
-                            "Start a new Evidence preparation."
-                        ),
-                    }
-                    for body in (row.body() for row in references.rows())
-                ],
-                "unreferenced": references.unreferenced(),
-                "pinned_index_ids": sorted(references.pinned),
-            },
+            if inventory is None
+            else {**inventory.summary(), "unreferenced": inventory.unreferenced()},
             "managed_bytes": used,
             "logical_bytes": sum(v[1] for v in files),
             "by_root": bytes_by_root(files),
@@ -461,39 +376,6 @@ class ResearchInputStorage:
             "references_hash": canonical_hash(evidence),
             "pending_cleanup": pending,
         }
-
-    def _index_actions(
-        self, row: dict[str, object], references: EvidenceStorageReferences, pending: object
-    ) -> list[str]:
-        """The actions the owner would take on one evidence index now.
-
-        Nothing while an approved cleanup waits to be recovered, which the owner
-        requires first; a rebuild only of an evicted index, when the evidence runtime
-        rebuilds; a pin of an available index, an unpin of a pinned one.
-
-        Args:
-            row: The index's row as the storage view shows it.
-            references: The evidence references the row came from.
-            pending: The cleanups waiting to be recovered.
-
-        Returns:
-            The actions, in the order a page offers them.
-        """
-        if pending:
-            return []
-        actions = []
-        if (
-            row["availability"] == PhysicalAvailability.EVICTED_BY_RETENTION.value
-            and row["generation_format"] == RETRIEVAL_GENERATION_FORMAT
-            and self.evidence is not None
-            and self.evidence.rebuild is not None
-        ):
-            actions.append("REBUILD")
-        if row["index_id"] in references.pinned:
-            actions.append("UNPIN")
-        elif row["availability"] == PhysicalAvailability.AVAILABLE.value:
-            actions.append("PIN")
-        return actions
 
     def _input_scope(self) -> dict[str, int]:
         """Keep the current input owner's listing/session facts separate from execution capacity:
@@ -596,7 +478,7 @@ class ResearchInputStorage:
             files = managed_file_inventory(self.workspace)
             targets = {
                 p: h
-                for p, h in (evidence["source"]["targets"] | self._evidence_targets()).items()
+                for p, h in evidence["source"]["targets"].items()
                 if confined(self.workspace, p).is_file()
             }
             retained = tuple(v for v in files if v[0] not in targets)
@@ -612,8 +494,6 @@ class ResearchInputStorage:
                 **({"relinks": relinks} if relinks else {}),
             }
             identity = self.owner.publish_input_plan(values)
-            references = self._evidence_references()
-            refusal = None if references is None else references.vector_cleanup_refusal()
             return {
                 "status": "CONFIRMATION_REQUIRED",
                 "plan_hash": identity,
@@ -625,17 +505,13 @@ class ResearchInputStorage:
                     "May I apply this exact storage cleanup plan, deleting its listed targets "
                     "and applying its listed model relinks?"
                 ),
-                # Not part of the plan's identity: what this plan could not
-                # offer and why, with the step that would make it offerable.
-                "refusals": [] if refusal is None else [refusal],
+                "refusals": [],
                 "limitations": [
                     "CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY",
                     "RAW_HISTORY_BASE_FEATURES_AND_RECOVERY_PATCHES_RETAINED",
                     "PANEL_GENERATIONS_PAST_THE_PREVIOUS_AND_UNPUBLISHED_CHUNKS_RELEASED",
                     "REPORTS_AND_DECISIONS_RETAINED",
                     "REPLAY_REQUIRES_RETAINED_INPUTS",
-                    "EVIDENCE_INDEX_PAYLOADS_ONLY_VECTORS_BLOBS_AND_ARTIFACTS_RETAINED",
-                    "EVICTED_EVIDENCE_INDEX_REBUILDS_FROM_ITS_COMMITTED_VECTORS",
                     "A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES",
                 ],
             }
@@ -665,10 +541,6 @@ class ResearchInputStorage:
         held = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
         return {manifest.semantic_model_relative_path: held}
 
-    def _evidence_targets(self) -> dict[str, str]:
-        references = self._evidence_references()
-        return {} if references is None else references.targets()
-
     def confirm(self, plan_hash: str, *, caller: str) -> dict[str, object]:
         """Require human confirmation and current references before applying the exact cleanup plan.
 
@@ -694,8 +566,7 @@ class ResearchInputStorage:
             deleted = self.owner.apply_input_plan(
                 plan_hash,
                 references_hash=canonical_hash(evidence),
-                eligible_targets=evidence["source"]["targets"] | self._evidence_targets(),
-                evidence_evictor=self._evict_evidence_index,
+                eligible_targets=evidence["source"]["targets"],
             )
             if any(
                 relative.startswith("artifacts/feature-panel/")
@@ -726,127 +597,42 @@ class ResearchInputStorage:
             **({"relinked": relinked} if relinked else {}),
         }
 
-    def _evict_evidence_index(self, relative: str, plan_hash: str) -> int:
-        """Release one evidence index through its owner, under the approved plan.
-
-        The owner refuses while a build, a waiting lease or an open session
-        holds the generation; the cleanup then stops where it is, journalled,
-        and resumes once the hold has ended.
-        """
-
-        assert self.evidence is not None and self.evidence.evict is not None
-        knowledge_relative = (
-            Path(relative)
-            .relative_to(
-                Path(self.evidence.knowledge_root.resolve()).relative_to(self.workspace.resolve())
-            )
-            .as_posix()
-        )
-        try:
-            return int(self.evidence.evict(knowledge_relative, plan_hash, self.clock()))
-        except OSError as error:
-            # The file system would not release a file: the cleanup stops where it is,
-            # journalled, and resumes on the same plan (it reached the caller as a
-            # bare fingerprint).
-            raise StorageRetentionError(
-                "storage.cleanup_interrupted",
-                "Cleanup stopped at a file the system would not release; resume the approved "
-                "cleanup once the file is free.",
-            ) from error
-        except ValueError as error:
-            if str(error) != "alternative_evidence.retrieval_index_in_use":
-                raise
-            raise StorageRetentionError(
-                "storage.cleanup_target_in_use",
-                "An evidence index is held by a build or an open reader; resume the "
-                "approved cleanup once it is released.",
-            ) from error
-
     def rebuild_evidence_index(self, index_id: str, *, caller: str) -> dict[str, object]:
-        """Restore one evicted evidence index from its committed vectors, receipted.
+        """Deprecated in 0.2.8, removed in 0.3.0: the Host's retrieval store keeps no
+        per-generation evidence index, so there is none to rebuild; it refuses as it has since.
 
-        Explicit, never a side effect of a read: the index owner re-derives the
-        corpus and rebuilds the index from the retained payload -- the pinned
-        model runs only when the payload itself is lost, and then its output
-        must reproduce the committed digest or the rebuild refuses.
+        Raises:
+            ValueError: `storage.evidence_rebuild_caller_not_admitted` for a service, else
+                `storage.evidence_runtime_not_admitted`.
         """
+        del index_id
         if caller == "SERVICE_AUTOMATION":
             raise ValueError("storage.evidence_rebuild_caller_not_admitted")
-        if self.evidence is None or self.evidence.rebuild is None:
-            raise ValueError("storage.evidence_runtime_not_admitted")
-        with self.session.mutation_gate.hold():
-            require_no_pending_cleanup(self.workspace)
-            facts = self.evidence.rebuild(index_id)
-            receipt = {
-                "kind": "EvidenceIndexRebuildReceipt",
-                "index_id": index_id,
-                "caller": caller,
-                "rebuilt_at": self.clock().isoformat(),
-                **facts,
-            }
-            identity = str(canonical_hash(receipt))
-            self.owner._publish("evidence-rebuilds", identity, receipt)
-        return {"status": "REBUILT", "receipt_hash": identity, **receipt}
+        raise ValueError("storage.evidence_runtime_not_admitted")
 
     def pin(self, binding_hash: str, *, pinned: bool, caller: str) -> dict[str, object]:
-        """Require human approval before atomically pinning or unpinning an evidence index.
+        """Require human approval; nothing is pinned any more.
 
-        A research input needs no pin: it is kept on the data root while a binding names it.
+        A research input needs no pin: it is kept on the data root while a binding names it. The
+        Host's retrieval store keeps no per-generation evidence index to pin.
 
         Args:
-            binding_hash: Exact evidence index identity.
+            binding_hash: The identity the person named.
             pinned: Whether to retain this explicit storage root.
             caller: Explicit caller required to be HUMAN.
 
         Returns:
-            Exact pinned/unpinned storage selection.
+            Never: every pin is refused by name.
 
         Raises:
-            ValueError: Caller is not human, cleanup is pending, the identity is a research
-                input, or the selected index is unavailable.
+            ValueError: Caller is not human, cleanup is pending, the identity is a kept research
+                input (`storage.input_pin_retired`), or nothing it names can be pinned.
         """
+        del pinned
         if caller != "HUMAN":
             raise ValueError("storage.human_confirmation_required")
         with self.session.mutation_gate.hold():
-            view = self.readback()
             require_no_pending_cleanup(self.workspace)
-            evidence_row = (
-                None
-                if view["evidence"] is None
-                else next(
-                    (v for v in view["evidence"]["indexes"] if v["index_id"] == binding_hash),
-                    None,
-                )
-            )
-            if evidence_row is not None:
-                return self._pin_evidence_index(evidence_row, pinned=pinned)
             if history.research_input_kept(binding_hash):
                 raise ValueError("storage.input_pin_retired")
             raise ValueError("storage.input_pin_unavailable")
-
-    def _pin_evidence_index(self, row: dict[str, Any], *, pinned: bool) -> dict[str, object]:
-        """A pin on a generation's index, kept in the same receipted pin record."""
-
-        if pinned and row["availability"] != "AVAILABLE":
-            raise ValueError("storage.input_pin_unavailable")
-        pins = self._all_pins()
-        key = f"{EVIDENCE_PIN_PREFIX}{row['index_id']}"
-        if pinned:
-            pins[key] = int(row["database_bytes"])
-        else:
-            pins.pop(key, None)
-        self._write_pins(pins)
-        return {"status": "PINNED" if pinned else "UNPINNED", "index_id": row["index_id"]}
-
-    def _write_pins(self, pins: dict[str, int]) -> None:
-        identity = canonical_hash(pins)
-        self.owner._publish("input-pin-receipts", identity, {k: v for k, v in pins.items()})
-        target = self.owner.governance_root / "input-pins.json"
-        with NamedTemporaryFile(dir=target.parent, delete=False) as handle:
-            handle.write(
-                json.dumps({"pins": pins, "receipt_hash": identity}, sort_keys=True).encode()
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
-            temporary = Path(handle.name)
-        os.replace(temporary, target)
