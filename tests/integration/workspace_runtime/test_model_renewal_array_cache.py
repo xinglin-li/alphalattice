@@ -182,7 +182,24 @@ def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monke
     assert third["features"] is not second["features"]
 
 
-def test_process_cache_keeps_unverified_mutable_values_out():
+@pytest.mark.parametrize(
+    "case",
+    [
+        "mutable-in-one-scope",
+        pytest.param(
+            "mutable-in-each-scope",
+            marks=pytest.mark.proves("workspace_runtime.an_unvouched_mutable_value_is_never_kept"),
+        ),
+        pytest.param(
+            "failed-build",
+            marks=pytest.mark.proves("workspace_runtime.a_failed_build_is_never_kept"),
+        ),
+    ],
+)
+def test_generic_request_cache_never_retains_mutable_shells(case):
+    """The process-wide request cache keeps no value it cannot vouch for: a mutable value no caller
+    vouches for is built again at each read, in one read scope or across scopes, and a builder
+    that fails is built again at the next read, which keeps what it accepts."""
     builds = 0
 
     def build_mutable():
@@ -190,59 +207,43 @@ def test_process_cache_keeps_unverified_mutable_values_out():
         builds += 1
         return {"values": []}
 
-    for _ in range(2):
-        with content_store.verified_array_read_scope():
-            content_store.verified_request_value(
-                ("mutable-process", "source"), build_mutable, nbytes=8
-            )
-    assert builds == 2
-
-
-def test_failed_semantic_builder_is_never_retained():
-    builds = 0
-
-    def build():
+    def build_once_refused():
         nonlocal builds
         builds += 1
         if builds == 1:
             raise ValueError("fixture validation failed")
         return (np.frombuffer(b"safe", dtype=np.uint8),)
 
-    with (
-        pytest.raises(ValueError, match="fixture validation failed"),
-        content_store.verified_array_read_scope(),
-    ):
-        content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-    with content_store.verified_array_read_scope():
-        accepted = content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-    with content_store.verified_array_read_scope():
-        reused = content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-
-    assert builds == 2, (
-        f"COUNT STOP op=rejected_builder observed={builds} budget=2 "
-        "fixture=one-refusal wayon=reduce-work"
-    )
-    assert accepted is reused
-
-
-def test_generic_request_cache_never_retains_mutable_shells():
-    builds = 0
-
-    def build_mutable():
-        nonlocal builds
-        builds += 1
-        return {"values": []}
-
-    with content_store.verified_array_read_scope():
-        first = content_store.verified_request_value(
-            ("mutable-fixture", "exact-source"), build_mutable, nbytes=8
+    def read(build):
+        return content_store.verified_request_value(
+            (case, "exact-source"), build, nbytes=8 if build is build_mutable else 4
         )
-        first["values"].append("caller mutation")
-        second = content_store.verified_request_value(
-            ("mutable-fixture", "exact-source"), build_mutable, nbytes=8
+
+    if case == "failed-build":
+        with (
+            pytest.raises(ValueError, match="fixture validation failed"),
+            content_store.verified_array_read_scope(),
+        ):
+            read(build_once_refused)
+        with content_store.verified_array_read_scope():
+            accepted = read(build_once_refused)
+        with content_store.verified_array_read_scope():
+            reused = read(build_once_refused)
+        assert builds == 2, (
+            f"COUNT STOP op=rejected_builder observed={builds} budget=2 "
+            "fixture=one-refusal wayon=reduce-work"
         )
-    assert builds == 2
-    assert second == {"values": []}
+        assert accepted is reused
+        return
+    scopes = 2 if case == "mutable-in-each-scope" else 1
+    fresh = []
+    for _ in range(scopes):
+        with content_store.verified_array_read_scope():
+            for _ in range(2 // scopes):
+                value = read(build_mutable)
+                fresh.append(value == {"values": []})
+                value["values"].append("caller mutation")
+    assert (builds, fresh) == (2, [True, True])
 
 
 def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_copy():

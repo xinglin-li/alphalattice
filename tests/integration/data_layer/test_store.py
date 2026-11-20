@@ -17,6 +17,7 @@ from functools import partial
 from pathlib import Path
 from time import perf_counter
 
+import duckdb
 import pyarrow as pa
 import pytest
 
@@ -33,6 +34,7 @@ from alphalattice.kernel.data_layer.store import (
     StorePort,
     as_columns,
     delete,
+    owed_events,
     repair,
     stage,
 )
@@ -728,6 +730,100 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     assert recorded == sorted(set(recorded))
     assert seen == [(0, None), (3, 1.0), (3, 2.0)]
     assert replaced == [(correction.admission_id,)]
+
+
+def _one_snapshot(root, refused: bool) -> None:
+    """Admissions in one block share one snapshot, each keeping its own admission and event, one
+    whose rows all drop against the block's own writes included; a refusal inside commits those
+    made before it."""
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        yf = log.require_lineage("provider", "yf")
+        before = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()[0]
+        made = []
+
+        def block() -> None:
+            with port.admitting():
+                for close, day in ((1.0, 1), (2.0, 2), (0.5, 1)):  # the last is older: dropped
+                    with stage(root, "raw_bar", yf, bars(2, close=close, day=day)) as staged:
+                        port.commit(staged)
+                    made.append(staged.admission_id)
+                if refused:  # a provider no lineage registers
+                    with stage(root, "raw_bar", str(uuid.UUID(int=9)), bars(1)) as unknown:
+                        port.commit(unknown)
+
+        if refused:
+            with pytest.raises(DataError, match="no provider lineage"):
+                block()
+        else:
+            block()
+        snapshots = port.lake.execute(
+            "SELECT snapshot_id FROM lake.snapshots() WHERE snapshot_id > ?", [before]
+        ).fetchall()
+        info = port.lake.execute(
+            "SELECT commit_extra_info FROM lake.snapshots() WHERE snapshot_id > ?", [before]
+        ).fetchone()[0]
+        admitted = [
+            tuple(row) for row in log.read("SELECT admission_id, catalog_snapshot FROM admission")
+        ]
+        rows = port.lake.execute(
+            "SELECT admission_id, count(*) FROM lake.world.raw_bar GROUP BY ALL ORDER BY ALL"
+        ).fetchall()
+        newest = port.lake.execute("SELECT max(close) FROM raw_bar_asof(?)", [2**62]).fetchone()
+        replaced = port.lake.execute("SELECT DISTINCT by_admission_id FROM lake.world.superseded")
+        superseded = replaced.fetchall()
+        port.close()
+    assert len(snapshots) == 1
+    assert [event["subject_id"] for event in owed_events(info)] == made
+    assert sorted(admitted) == sorted((made_id, snapshots[0][0]) for made_id in made)
+    assert rows == sorted((made_id, 2) for made_id in made[:2])
+    assert newest == (2.0,) and superseded == [(made[1],)]
+
+
+def _published_once_they_commit(root) -> None:
+    """A record naming a block's rows is published once a block that opened commits them: never
+    for one rolled back, and a block whose transaction never opened leaves none to join."""
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        yf = log.require_lineage("provider", "yf")
+        published: list[int] = []
+
+        def block(interrupted: bool) -> list[int]:
+            with port.admitting():
+                with stage(root, "raw_bar", yf, bars(1)) as staged:
+                    port.commit(staged)
+                count = "SELECT count(*) FROM admission"
+                port.after_commit(lambda: published.append(log.read(count)[0][0]))
+                inside = list(published)
+                if interrupted:
+                    raise KeyboardInterrupt
+            return inside
+
+        port.lake.execute("BEGIN")  # an open transaction refuses the next block's
+        with pytest.raises(duckdb.TransactionException), port.admitting():
+            pass
+        port.lake.execute("ROLLBACK")
+        with pytest.raises(KeyboardInterrupt):
+            block(interrupted=True)
+        rolled_back = list(published)
+        inside = block(interrupted=False)
+        port.close()
+    assert (rolled_back, inside, published) == ([], [], [1])
+
+
+@pytest.mark.proves("data_layer.one_block_of_admissions_is_one_snapshot")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(partial(_one_snapshot, refused=False), id="whole"),
+        pytest.param(partial(_one_snapshot, refused=True), id="a-refusal-inside"),
+        pytest.param(_published_once_they_commit, id="a-record-naming-its-rows"),
+    ],
+)
+def test_a_block_of_admissions_is_one_snapshot_each_keeping_its_own_admission(root, scenario):
+    """A block's admissions commit as one snapshot, each keeping its own admission and event, and
+    what names their rows is published only once it commits."""
+    scenario(root)
 
 
 FEATURES = storeport.feature_table(str(uuid.UUID(int=8)))

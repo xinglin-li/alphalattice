@@ -547,6 +547,7 @@
   ],
   "deferred_imports": {
     "alphalattice.control.workspace_runtime.artifacts": "Resolve the workspace artifact store in the Sector publication command.",
+    "alphalattice.control.workspace_runtime.database": "Hand a held market database off to a child process only when a call goes to one; task control imports no DuckDB otherwise.",
     "alphalattice.investment.sector_research.experiments.service": "Load the Sector experiment and its numerical adapters only for the publication command.",
     "alphalattice.kernel.shared_kernel.spawn": "Load process supervision only when locating a CLI executable outside PATH.",
     "alphalattice.kernel.data_layer.upgrade": "Load migration composition only when a verified first-start family is requested; ordinary Portfolio reads do not run an upgrade.",

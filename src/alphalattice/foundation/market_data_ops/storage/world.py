@@ -32,7 +32,7 @@ import json
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
@@ -41,7 +41,10 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any, Final
 
-from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.control.workspace_runtime.database import (
+    open_workspace_database,
+    release_workspace_database,
+)
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
     MarketProfile,
@@ -428,8 +431,33 @@ def _member_ids(connection: Any, set_id: str, cutoff_us: int) -> tuple[str, ...]
     return tuple(sorted(row[1] for row in rows))
 
 
+def _after_commit(publish: Callable[[], None]) -> None:
+    """Run `publish`, a record naming rows admitted so far, once they are committed
+    (`StorePort.after_commit`)."""
+    port = history.store()
+    if port is None:
+        raise DataError(
+            "the Host's universe store is not open", code="data_layer.history_unavailable"
+        )
+    port.after_commit(publish)
+
+
+def _admitted_together(admissions: Sequence[Callable[[], None]]) -> None:
+    """Make `admissions` in one catalog snapshot of their own (`StorePort.admitting`)."""
+    port = history.store()
+    if port is None:
+        raise DataError(
+            "the Host's universe store is not open", code="data_layer.history_unavailable"
+        )
+    with port.admitting():
+        for admission in admissions:
+            admission()
+
+
 def admit_universe_bootstrap(record: Any, provider: str, workspace_id: str) -> None:
-    """Record one frozen bootstrap, with its cohort held as a world member set."""
+    """Record one frozen bootstrap, with its cohort held as a world member set: the record, which
+    names the set and its universe's lineage, once the set is committed (`StorePort.after_commit`),
+    after the version that mints that lineage. One recorded with other content is refused now."""
     cohort = admit_member_set(record.cohort_listing_ids, record.history_start, provider)
     history.define(
         "event_type",
@@ -455,25 +483,36 @@ def admit_universe_bootstrap(record: Any, provider: str, workspace_id: str) -> N
         )
     log = opened[0]
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
-    with log.unit() as con:
-        identity = require_lineage(
-            con, "universe", universe_name(workspace_id, record.market_profile_id)
-        )
+    name = universe_name(workspace_id, record.market_profile_id)
+
+    def unrecorded(con: sqlite3.Connection) -> str | None:
+        """The universe's lineage while the bootstrap is unrecorded, else None."""
+        identity = require_lineage(con, "universe", name)
         held = con.execute(
             "SELECT attrs FROM event WHERE type = 'universe.bootstrapped' AND subject_id = ?",
             (identity,),
         ).fetchall()
-        if held:
-            if len(held) != 1 or json.loads(held[0][0]) != attrs:
-                raise ValueError("universe bootstrap is already recorded with different content")
+        if held and (len(held) != 1 or json.loads(held[0][0]) != attrs):
+            raise ValueError("universe bootstrap is already recorded with different content")
+        return None if held else identity
+
+    with log.unit() as con:  # a universe with no lineage yet holds no record to disagree with
+        if lineage(con, "universe", name) is not None and unrecorded(con) is None:
             return
-        log.record(
-            "universe.bootstrapped",
-            ("universe", identity),
-            attrs,
-            occurred_us=(record.admitted_at - epoch) // timedelta(microseconds=1),
-            node="market_data_ops",
-        )
+
+    def publish() -> None:
+        with log.unit() as con:
+            identity = unrecorded(con)
+            if identity is not None:
+                log.record(
+                    "universe.bootstrapped",
+                    ("universe", identity),
+                    attrs,
+                    occurred_us=(record.admitted_at - epoch) // timedelta(microseconds=1),
+                    node="market_data_ops",
+                )
+
+    _after_commit(publish)
 
 
 def universe_bootstrap(
@@ -501,7 +540,9 @@ def universe_bootstrap(
 
 
 def admit_universe_manifest(manifest: Any, workspace_id: str) -> str:
-    """Register an immutable manifest version and its content-keyed world member set."""
+    """Register an immutable manifest version and its content-keyed world member set: the
+    version, which names the set, once the set is committed. A revision registered with other
+    content is refused now."""
     listing_ids = [item.listing_id for item in manifest.listings]
     set_id = admit_member_set(
         listing_ids, manifest.profile.manifest_as_of, manifest.profile.provider
@@ -517,7 +558,9 @@ def admit_universe_manifest(manifest: Any, workspace_id: str) -> str:
         )
     log = opened[0]
     name = universe_name(workspace_id, manifest.profile.market_profile_id)
-    with log.unit() as con:
+
+    def unregistered(con: sqlite3.Connection) -> int | None:
+        """The version the revision would take, or None when it is registered."""
         versions = con.execute(
             "SELECT version, spec FROM definition WHERE family = 'universe'"
             " AND name = ? ORDER BY version",
@@ -530,24 +573,36 @@ def admit_universe_manifest(manifest: Any, workspace_id: str) -> str:
                     raise ValueError(
                         "universe manifest revision disagrees with its registered content"
                     )
-                return set_id
-        version = len(versions) + 1
-        key = {"family": "universe", "name": name, "version": version}
-        body = key | {
-            "status": "standard",
-            "spec": spec,
-            "owner": "market_data_ops",
-            "text": "A frozen market universe manifest.",
-        }
-        if version > 1:
-            body["relation"] = "not_comparable"
-        log.record(
-            "definition.registered",
-            ("definition", f"universe/{name}"),
-            key,
-            text=canonical(body).decode(),
-            node="market_data_ops",
-        )
+                return None
+        return len(versions) + 1
+
+    with log.unit() as con:
+        if unregistered(con) is None:
+            return set_id
+
+    def publish() -> None:
+        with log.unit() as con:
+            version = unregistered(con)
+            if version is None:
+                return
+            key = {"family": "universe", "name": name, "version": version}
+            body = key | {
+                "status": "standard",
+                "spec": spec,
+                "owner": "market_data_ops",
+                "text": "A frozen market universe manifest.",
+            }
+            if version > 1:
+                body["relation"] = "not_comparable"
+            log.record(
+                "definition.registered",
+                ("definition", f"universe/{name}"),
+                key,
+                text=canonical(body).decode(),
+                node="market_data_ops",
+            )
+
+    _after_commit(publish)
     return set_id
 
 
@@ -798,14 +853,29 @@ def _admit_universe_contents(database: Path, workspace_id: str, attached: Any) -
             manifest = market._workspace_load_universe_manifest(name)
             admit_universe_manifest(manifest, workspace_id)
             providers[manifest.profile.market_profile_id] = manifest.profile.provider
+        minted: list[Callable[[], None]] = []
         for profile in profiles:
             bootstrap = market._workspace_universe_bootstrap(profile)
             if bootstrap is None:
                 continue
             events = market._workspace_membership_events(profile)
-            _universe_journal(events, workspace_id)
-            admit_universe_bootstrap(bootstrap, providers[profile], workspace_id)
-            _admit_universe_intervals(bootstrap, events, providers[profile], workspace_id)
+            provider = providers[profile]
+            admit_universe_bootstrap(bootstrap, provider, workspace_id)
+
+            def intervals(
+                bootstrap: Any = bootstrap, events: Sequence[Any] = events, provider: str = provider
+            ) -> None:
+                _admit_universe_intervals(bootstrap, events, provider, workspace_id)
+                _after_commit(lambda: _universe_journal(events, workspace_id))
+
+            if universe_lineage(workspace_id, profile) is None:
+                minted.append(intervals)
+            else:
+                intervals()
+        if minted:
+            # the lineage these intervals name is minted by the manifest's version, published at
+            # this block's commit: they take a snapshot of their own after it
+            _after_commit(lambda: _admitted_together(minted))
     finally:
         connection.close()
 
@@ -842,6 +912,7 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
     if port is None or not database.is_file():
         return None
     run = port.lake.execute
+    release_workspace_database(database)  # an instance of the file this process keeps open
     run(f"ATTACH '{sql_path(database)}' AS {WORKSPACE} (READ_ONLY)").complete()
     try:
         held = run(
@@ -862,11 +933,12 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         changed = _changed(port, workspace_id, last[0] if last else None, marks)
         started = port.log.clock()
         providers = _register(run)
-        admitted = _admit(port, providers) if changed & SOURCES["market"] else {"rows": {}}
-        if changed & SOURCES["universe"]:
-            _admit_universe_contents(database, workspace_id, port.lake)
-        if changed & SOURCES["revisions"]:
-            _revisions(port, workspace_id)
+        with port.admitting():  # one catalog snapshot holds every admission this admit makes
+            admitted = _admit(port, providers) if changed & SOURCES["market"] else {"rows": {}}
+            if changed & SOURCES["universe"]:
+                _admit_universe_contents(database, workspace_id, port.lake)
+            if changed & SOURCES["revisions"]:
+                _revisions(port, workspace_id)
         _record_admission_summary(
             workspace_id,
             sorted(providers),
@@ -962,6 +1034,7 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
     if port is None or not database.is_file():
         return None
     run = port.lake.execute
+    release_workspace_database(database)  # an instance of the file this process keeps open
     run(f"ATTACH '{sql_path(database)}' AS {WORKSPACE} (READ_ONLY)").complete()
     try:
         tables = {

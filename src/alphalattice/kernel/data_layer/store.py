@@ -15,9 +15,11 @@ process that fetched the rows, and hands the writer only a commit request (`Stag
 Host's process the rows' Python and Arrow work would hold the interpreter while an append waits.
 `StorePort.commit` is the writer: one catalog snapshot conforms the rows to their table's types,
 names each new version by an id the engine mints, inserts the rows, writes the supersession of
-every world version they replace and carries in its commit
-info the whole envelope of the `admission.committed` it owes; then `repair`
-appends that event, durably, and the staging folder is deleted. `start` runs the same `repair`
+every world version they replace and carries in its commit info the whole envelope of the
+`admission.committed` it owes, in a versioned list (`owed_events`): one envelope for a lone commit,
+each admission's for a block of them (`StorePort.admitting`), which share one snapshot while each
+keeps its own id, provider and lag rule. Then `repair` appends each event, durably, and the staging
+folders are deleted. `start` runs the same `repair`
 when the Host opens, so the normal path and crash recovery are one path, and collects what no
 snapshot or write owns. Every file leaves through `delete`: one another process holds open waits
 in deletion_queue and is retried at each start, and nothing a live_ref holds is ever deleted.
@@ -29,7 +31,7 @@ import json
 import shutil
 import sqlite3
 import threading
-from collections.abc import Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -223,7 +225,8 @@ class Derivation(NamedTuple):
 
 
 class Committed(NamedTuple):
-    """What one commit did: its snapshot, None when it wrote nothing; the rows it admitted; the
+    """What one commit did: its snapshot, None when it wrote nothing or joined a block of
+    admissions (`StorePort.admitting`), whose end commits it; the rows it admitted; the
     changed rows of held keys it dropped, by DROPPED's reasons; and the later writes of held values
     it recorded (REWRITTEN)."""
 
@@ -233,19 +236,55 @@ class Committed(NamedTuple):
     rewritten: int
 
 
+OWED_EVENTS_VERSION: Final = 2
+"""The version of an admission commit's info: the list of events it owes, one per admission. An
+info written before it is one envelope, which reads as a list of one (`owed_events`)."""
+
+
+def owed_events(info: str) -> list[dict[str, Any]]:
+    """The `admission.committed` envelopes an admission snapshot's commit info carries, in their
+    admissions' order. Refused by name: a version this Host does not read."""
+    carried = json.loads(info)
+    if "event_id" in carried:  # one envelope, as a commit before OWED_EVENTS_VERSION wrote it
+        return [carried]
+    if carried.get("version") != OWED_EVENTS_VERSION:
+        raise DataError(
+            f"an admission snapshot's commit info has version {carried.get('version')}, which"
+            " this Host does not read; open the data root with the release that wrote it",
+            code="data_layer.owed_events_version",
+        )
+    return list(carried["events"])
+
+
 def expirable(
     snapshots: list[tuple[int, datetime, str | None]], held: set[str], now: datetime
 ) -> list[int]:
-    """The snapshots maintenance may expire, of (id, time, its admission's event id or None):
-    those older than KEEP_SNAPSHOTS, never the newest, and none from the oldest admission whose
-    event the log does not hold (`held`) on, since the next start's repair reads its commit."""
+    """The snapshots maintenance may expire, of (id, time, an event its admissions owe or None),
+    a snapshot listed once per event: those older than KEEP_SNAPSHOTS, never the newest, and none
+    from the oldest snapshot owing an event the log does not hold (`held`) on, since the next
+    start's repair reads its commit."""
     owed = min((s for s, _, event in snapshots if event and event not in held), default=None)
     newest = max((s for s, _, _ in snapshots), default=None)
     return sorted(
-        s
-        for s, at, _ in snapshots
-        if at < now - KEEP_SNAPSHOTS and s != newest and (owed is None or s < owed)
+        {
+            s
+            for s, at, _ in snapshots
+            if at < now - KEEP_SNAPSHOTS and s != newest and (owed is None or s < owed)
+        }
     )
+
+
+class _Block:
+    """The admissions one `StorePort.admitting` block has made: the events its snapshot owes, the
+    staging folders its commit settles, the records naming its rows that its commit publishes
+    (`StorePort.after_commit`), and whether an admission's writes are under way, which a failure
+    then rolls back with the whole block."""
+
+    def __init__(self) -> None:
+        self.owed: list[dict[str, Any]] = []
+        self.staging: list[str] = []
+        self.published: list[Callable[[], None]] = []
+        self.writing = False
 
 
 class StorePort:
@@ -259,6 +298,16 @@ class StorePort:
         self._writer = threading.RLock()
         self.started: dict[str, list[str]] = {}
         self._repaired = 0  # every admission snapshot up to this one has its event in the log
+        # What this session read of the catalog's world tables, read once: a table's columns
+        # (`_declared`) and whether it holds a row (`commit_unheld`). This session is the
+        # catalog's one writer (a second Host is refused), so they change only by its own work:
+        # its DDL clears the columns (`_feature_set`), and no write removes a world row.
+        self._columns: dict[str, dict[str, str]] = {}
+        self._holding: set[str] = set()
+        # Each batch `commit_unheld` judged to admit nothing, by its table, provider and lag rule:
+        # its rows, while no write to that table follows (`_write` forgets it).
+        self._settled: dict[tuple[str, str, tuple[str, int] | None], Any] = {}
+        self._block: _Block | None = None  # the open `admitting` block, on the writer's thread
 
     @classmethod
     def open(cls, root: Path, log: HostLog) -> StorePort:
@@ -411,6 +460,86 @@ class StorePort:
             },
         }
 
+    @contextmanager
+    def admitting(self) -> Iterator[None]:
+        """Commit every admission the block makes in one catalog snapshot. Each keeps its own
+        admission id, provider and lag rule, and is judged against the world the block's earlier
+        admissions wrote; the snapshot's commit info carries their events in order, which
+        `repair` appends. A commit inside the block returns no snapshot. The writer is held for
+        the whole block, which a block inside it joins.
+
+        An exception outside an admission's writes, a refusal by name included, commits the
+        admissions made before it, as committing each alone would have, then is raised. One
+        inside an admission's writes, which only the engine raises, or an interruption rolls the
+        block back whole: none of its admissions is recorded, and its producer makes them again.
+        """
+        with self._writer:
+            if self._block is not None:
+                yield
+                return
+            block = _Block()
+            self.lake.execute("BEGIN").complete()
+            self._block = block  # published once its transaction is open
+            try:
+                yield
+            except Exception:
+                self._block = None
+                if block.writing:
+                    self._rolled_back()
+                else:
+                    self._close_block(block)
+                raise
+            except BaseException:
+                self._block = None
+                self._rolled_back()
+                raise
+            self._block = None
+            self._close_block(block)
+
+    def _close_block(self, block: _Block) -> None:
+        """Commit a block's admissions as one snapshot carrying their events, its all-dropped
+        judgments made after its first write among them; then append them, delete its staging
+        and publish, in order, the records naming its rows."""
+        run = self.lake.execute
+        try:
+            if block.owed:
+                info = {"version": OWED_EVENTS_VERSION, "events": block.owed}
+                run(
+                    "CALL lake.set_commit_message('host', 'admission', extra_info => ?)",
+                    (canonical(info).decode(),),
+                ).complete()
+            run("COMMIT").complete()
+        except BaseException:
+            self._rolled_back()
+            raise
+        repair(self.log, self.lake, self._repaired)
+        for admission in block.staging:
+            delete(self.root, self.log, f"staging/{admission}")
+        if block.owed:
+            found = self.log.read(
+                "SELECT catalog_snapshot FROM admission WHERE admission_id = ?",
+                (block.owed[-1]["subject_id"],),
+            )
+            self._repaired = int(found[0][0])  # the repair closed every gap up to this commit
+        for publish in block.published:
+            publish()
+
+    def after_commit(self, publish: Callable[[], None]) -> None:
+        """Run `publish`, which records what names rows admitted so far, once they are committed:
+        now, or when the block admitting them commits, in the order given. A block rolled back
+        publishes none; its producer admits the rows again, and publishes then."""
+        with self._writer:
+            if self._block is None:
+                publish()
+            else:
+                self._block.published.append(publish)
+
+    def _rolled_back(self) -> None:
+        """Roll back an open block; what this session cached of the tables it wrote goes too."""
+        self.lake.execute("ROLLBACK").complete()
+        self._holding.clear()
+        self._settled.clear()
+
     def market_id(self, mic: str, provider_id: str) -> str:
         """Resolve a recorded MIC binding, or register a new market under the Host's writer.
 
@@ -467,6 +596,9 @@ class StorePort:
             else:
                 lag = None if staged.lag is None else self._lag(*staged.lag)
                 count, dropped, rewritten = self._catalog_commit(staged, self.log.clock(), lag)
+            if self._block is not None:  # the block's one commit repairs and collects
+                self._block.staging.append(staged.admission_id)
+                return Committed(None, count, dropped, rewritten)
             repair(self.log, self.lake, self._repaired)
             delete(self.root, self.log, f"staging/{staged.admission_id}")
             if not count and not rewritten:
@@ -485,16 +617,25 @@ class StorePort:
         the writer. The batch is judged unstaged by `commit`'s own rules (`_known`'s fates and
         `_in_order`'s refusals); a row every version of which is `same` or `held_opening` would be
         admitted as nothing, so it takes no staging, and a batch of such rows no catalog commit.
-        A table world holds no row of has nothing to judge: its batch is staged whole. Not for a
-        TIMED table, where a held value written later is a rewrite."""
+        A table world holds no row of has nothing to judge: its batch is staged whole. A batch
+        equal to one judged to admit nothing, while its table has taken no write since, is judged
+        the same without reading the catalog: its fates and refusals read only the batch and the
+        table's rows. Not for a TIMED table, where a held value written later is a rewrite."""
         if table in TIMED:
             raise ValueError(f"{table} is TIMED: a held value written later is a rewrite to record")
         import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
         with self._writer:
-            if not self.lake.execute(f"SELECT EXISTS (FROM lake.world.{table})").fetchall()[0][0]:
-                with stage(self.root, table, provider_id, rows, lag=lag) as staged:
-                    return self.commit(staged)
+            if table not in self._holding:
+                exists = f"SELECT EXISTS (FROM lake.world.{table})"
+                if not self.lake.execute(exists).fetchall()[0][0]:
+                    with stage(self.root, table, provider_id, rows, lag=lag) as staged:
+                        return self.commit(staged)
+                self._holding.add(table)
+            settled = (table, provider_id, lag)
+            held = self._settled.get(settled)
+            if held is not None and held.equals(rows):  # value by value, however it is chunked
+                return Committed(None, 0, {}, 0)
             data = admissible(table, provider_id, rows, legacy=lag is not None)
             numbered = data.append_column("_row", pa.array(range(data.num_rows), pa.int64()))
             rule = None if lag is None else (*lag, *self._lag(*lag))
@@ -519,6 +660,7 @@ class StorePort:
                 run("DROP TABLE IF EXISTS temp.admitting").complete()
                 self.lake.unregister("unheld_batch")
             if not kept:
+                self._settled[settled] = rows
                 return Committed(None, 0, {}, 0)
             with stage(self.root, table, provider_id, rows.take(kept), lag=lag) as staged:
                 return self.commit(staged)
@@ -750,6 +892,7 @@ class StorePort:
         ]
         if made and not added:
             return
+        self._columns.clear()  # this session's DDL
         run("BEGIN").complete()
         try:
             if not made:
@@ -786,11 +929,14 @@ class StorePort:
             ).fetchall()
             for step in ("flush_inlined_data", "rewrite_data_files", "merge_adjacent_files"):
                 run(f"CALL ducklake_{step}('lake')").fetchall()
-            snapshots = run(
-                "SELECT snapshot_id, snapshot_time, CASE WHEN commit_message = 'admission'"
-                " THEN json_extract_string(commit_extra_info, '$.event_id') END"
-                " FROM lake.snapshots()"
-            ).fetchall()
+            snapshots = [
+                (snapshot, at, event["event_id"] if event else None)
+                for snapshot, at, message, info in run(
+                    "SELECT snapshot_id, snapshot_time, commit_message, commit_extra_info"
+                    " FROM lake.snapshots()"
+                ).fetchall()
+                for event in (owed_events(info) if message == "admission" and info else [None])
+            ]
             try:
                 held = {
                     row[0]
@@ -918,35 +1064,51 @@ class StorePort:
     ) -> None:
         """Put the owed event and every table's writes in the same catalog transaction. A results
         table's keys are checked inside it, so the checks and the writes read one catalog state."""
+        written = {table for table, _ in writes}
+        self._settled = {
+            key: value for key, value in self._settled.items() if key[0] not in written
+        }
+        block = self._block
+        if block is not None:  # the block's transaction, which its end commits or rolls back
+            block.writing = True
+            self._statements(admission, writes)
+            block.writing = False
+            block.owed.append(owed)
+            return
         run = self.lake.execute
         run("BEGIN").complete()
         try:
+            info = {"version": OWED_EVENTS_VERSION, "events": [owed]}
             run(
                 "CALL lake.set_commit_message('host', 'admission', extra_info => ?)",
-                (canonical(owed).decode(),),
+                (canonical(info).decode(),),
             ).complete()
-            for table, rows in writes:
-                if table in WORLD_KEYS:
-                    target = f"lake.world.{table}"
-                    self._supersede(table, target, rows, admission)
-                    rows = (
-                        f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
-                    )
-                else:
-                    target = f"lake.results.{table}"
-                    same = " AND ".join(f"t.{k} = n.{k}" for k in RESULTS_KEYS[table])
-                    if run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same}").fetchone():
-                        raise DataError(
-                            f"{table} already holds rows of these keys; an artifact's rows are"
-                            " admitted once",
-                            code="data_layer.result_key_present",
-                        )
-                order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
-                run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
+            self._statements(admission, writes)
             run("COMMIT").complete()
         except BaseException:
             run("ROLLBACK").complete()
             raise
+
+    def _statements(self, admission: str, writes: Collection[tuple[str, str]]) -> None:
+        """One admission's supersessions and inserts, in its writes' order, in the open
+        transaction."""
+        run = self.lake.execute
+        for table, rows in writes:
+            if table in WORLD_KEYS:
+                target = f"lake.world.{table}"
+                self._supersede(table, target, rows, admission)
+                rows = f"SELECT * EXCLUDE (_opening), '{admission}' AS admission_id FROM ({rows})"
+            else:
+                target = f"lake.results.{table}"
+                same = " AND ".join(f"t.{k} = n.{k}" for k in RESULTS_KEYS[table])
+                if run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same}").fetchone():
+                    raise DataError(
+                        f"{table} already holds rows of these keys; an artifact's rows are"
+                        " admitted once",
+                        code="data_layer.result_key_present",
+                    )
+            order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
+            run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
 
     def _supersede(self, table: str, target: str, rows: str, admission: str) -> None:
         """Record the world versions this batch replaces and later writes of held values."""
@@ -1004,14 +1166,19 @@ class StorePort:
 
     def _judged(self, staged: Staged, known: int, dropped: dict[str, int]) -> None:
         """Record an admission whose every changed row was dropped, with each drop's count, once:
-        a retried commit of it finds its event. No catalog commit carries the event, which names
-        the snapshot it was judged against, so it commits durably before its staging goes."""
+        a retried commit of it finds its event. Its event names the snapshot it was judged against:
+        the newest committed one, recorded now and durably, before its staging goes, or, judged
+        against a block's own writes, the block's, whose commit carries the event in its order
+        (`admitting`)."""
         if self.log.read(
             "SELECT 1 FROM event WHERE type = 'admission.committed' AND subject_id = ?",
             (staged.admission_id,),
         ):
             return
         owed = self._owed(staged, known, [], 0, dropped, 0)
+        if self._block is not None and self._block.owed:
+            self._block.owed.append(owed)
+            return
         snapshot = self.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
         row = {column: owed[column] for column in ENVELOPE if column in owed and column != "seq"}
         attrs = json.loads(owed["attrs"]) | {"catalog_snapshot": snapshot[0]}
@@ -1159,11 +1326,16 @@ class StorePort:
 
     def _declared(self, table: str, columns: set[str]) -> dict[str, str]:
         """A world table's content and SOURCE columns with their catalog types, as the engine
-        holds them; refused by name when the rows carry a column the table does not hold."""
-        (described,) = self.lake.execute(
-            f"SELECT map(list(column_name), list(column_type)) FROM (DESCRIBE lake.world.{table})"
-        ).fetchone()
-        declared = {name: kind for name, kind in described.items() if name not in ADMITTED}
+        holds them, described once a session; refused by name when the rows carry a column the
+        table does not hold."""
+        declared = self._columns.get(table)
+        if declared is None:
+            (described,) = self.lake.execute(
+                "SELECT map(list(column_name), list(column_type))"
+                f" FROM (DESCRIBE lake.world.{table})"
+            ).fetchone()
+            declared = {name: kind for name, kind in described.items() if name not in ADMITTED}
+            self._columns[table] = declared
         foreign = sorted(columns - set(declared))
         if foreign:
             raise DataError(
@@ -1452,15 +1624,15 @@ def repair(log: HostLog, lake: Any, after: int = 0) -> list[str]:
     ).fetchall()
     added = []
     for snapshot, info in carried:
-        owed = json.loads(info)
-        if log.read("SELECT 1 FROM event WHERE event_id = ?", (owed["event_id"],)):
-            continue
-        attrs = json.loads(owed["attrs"])
-        row = {column: owed[column] for column in ENVELOPE if column in owed and column != "seq"}
-        row["attrs"] = canonical(attrs | {"catalog_snapshot": snapshot}).decode()
-        log.clock(at_least=attrs.get("known_us", 0))
-        log.append(row)
-        added.append(owed["event_id"])
+        for owed in owed_events(info):
+            if log.read("SELECT 1 FROM event WHERE event_id = ?", (owed["event_id"],)):
+                continue
+            attrs = json.loads(owed["attrs"])
+            row = {c: owed[c] for c in ENVELOPE if c in owed and c != "seq"}
+            row["attrs"] = canonical(attrs | {"catalog_snapshot": snapshot}).decode()
+            log.clock(at_least=attrs.get("known_us", 0))
+            log.append(row)
+            added.append(owed["event_id"])
     return added
 
 

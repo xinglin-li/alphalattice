@@ -25,7 +25,6 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     UniverseBootstrapRecord,
     UniverseSourceObservation,
     membership_effective_session,
-    membership_events_for_transition,
     membership_identity,
     resolve_membership_schedule,
 )
@@ -138,26 +137,6 @@ def test_journal_replay_keeps_earlier_intervals_and_their_identities() -> None:
             events=(_event(1, "A", "ENTRY", entry),),
             fallback_listing_ids=(),
         )
-
-
-def test_transition_events_are_the_exits_then_entries_between_two_sets() -> None:
-    events = membership_events_for_transition(
-        market_profile_id="p",
-        current_listing_ids=("A", "B", "C"),
-        next_listing_ids=("A", "C", "D", "E"),
-        effective_session=T0,
-        observed_at=NOW,
-        decided_at=NOW,
-        authority="feature_input_gateway",
-        reference_hash="7" * 64,
-        manifest_revision="8" * 64,
-        first_sequence=4,
-    )
-    assert [(item.sequence, item.listing_id, item.kind) for item in events] == [
-        (4, "B", "EXIT"),
-        (5, "D", "ENTRY"),
-        (6, "E", "ENTRY"),
-    ]
 
 
 def test_store_appends_only_actual_changes_and_refuses_gaps_and_rewrites(

@@ -4,10 +4,13 @@
 --   USE lake;
 --
 -- The write order, and the one repair (trade-off 8). An admission mints its admission_id (a UUIDv7) first; rows
--- carry it. Then: (1) Parquet files, (2) one catalog commit that carries the event it owes in its commit info
---   CALL lake.set_commit_message('host', 'admission', extra_info => '<the owed event's whole envelope, as JSON>');
--- The envelope keeps its type version, workspace, actor, trace and occurrence time; repair appends it unchanged except
--- for its recording time and the snapshot it names.
+-- carry it. Then: (1) Parquet files, (2) one catalog commit that carries the events it owes in its commit info
+--   CALL lake.set_commit_message('host', 'admission', extra_info => '{"version": 2, "events": [<envelope>, ...]}');
+-- one envelope per admission: a lone commit carries one, a block of admissions (StorePort.admitting) carries each of
+-- its admissions' in one snapshot, each keeping its own admission id, provider and lag rule. A snapshot written before
+-- version 2 carries one envelope as the whole info and reads as a list of one. Each envelope keeps its type version,
+-- workspace, actor, trace and occurrence time; repair appends it unchanged except for its recording time and the
+-- snapshot it names.
 -- (3) the log event `admission.committed`, naming the snapshot. A crash leaves at most one gap, and start-up closes
 -- it from the catalog alone: a snapshot whose commit info names an event the log lacks gets that event; files no
 -- snapshot names are collected. Each snapshot's commit_extra_info is in the catalog's ducklake_snapshot_changes.

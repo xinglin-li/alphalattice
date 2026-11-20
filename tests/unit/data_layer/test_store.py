@@ -3,6 +3,7 @@ cannot admit; and the collector's order against a backup and the catalog."""
 
 from __future__ import annotations
 
+import json
 import threading
 import uuid
 from contextlib import contextmanager
@@ -16,11 +17,13 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import governance
 from alphalattice.kernel.data_layer.store import (
+    OWED_EVENTS_VERSION,
     admissible,
     as_columns,
     collect_unheld,
     delete,
     expirable,
+    owed_events,
     remove_bodies,
 )
 
@@ -270,3 +273,27 @@ def test_collected_rows_leave_every_results_table_in_one_commit_then_the_queue(t
     ]
     assert log.done == [("dequeued", "results/x"), ("dequeued", "results/y")]
     assert removed == {"collected": ["results/x", "results/y"], "waiting": []}
+
+
+@pytest.mark.proves("data_layer.an_owed_list_is_read_whatever_its_version")
+@pytest.mark.parametrize(
+    ("info", "read"),
+    [
+        pytest.param({"event_id": "e1", "attrs": "{}"}, ["e1"], id="one-envelope-written-before"),
+        pytest.param(
+            {"version": OWED_EVENTS_VERSION, "events": [{"event_id": "e1"}, {"event_id": "e2"}]},
+            ["e1", "e2"],
+            id="a-block-s-list",
+        ),
+        pytest.param({"version": 99, "events": []}, None, id="a-later-version-is-refused"),
+    ],
+)
+def test_an_admission_snapshot_owes_each_event_its_info_lists(info, read):
+    """A snapshot's commit info is read as the events it owes, in order: a list of them, or one
+    envelope as a commit before the list wrote it; a version this Host does not know is refused
+    by name."""
+    if read is None:
+        with pytest.raises(DataError, match=r"does not read"):
+            owed_events(json.dumps(info))
+    else:
+        assert [event["event_id"] for event in owed_events(json.dumps(info))] == read

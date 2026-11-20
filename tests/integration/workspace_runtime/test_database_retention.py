@@ -30,8 +30,10 @@ from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
     WorkspaceDatabase,
     checkpoint_workspace_database,
+    hand_off,
     live_workspace_connections,
     open_workspace_database,
+    release_workspace_database,
     retain_workspace_database,
     retained_workspace_database,
 )
@@ -559,6 +561,158 @@ def test_guard_holds_through_keyword_and_statement_doors(tmp_path: Path) -> None
     # of the writable unit has closed: still the one seed row.
     assert live_workspace_connections(database.path) is None
     assert _rows(database) == [(1, "seed")]
+
+
+def _attachable(database: WorkspaceDatabase) -> bool:
+    """Whether another DuckDB instance of this process may attach the file: never while this
+    process keeps an instance of it open."""
+    other = duckdb.connect(":memory:")
+    try:
+        other.execute(f"ATTACH '{database.path.as_posix()}' AS other (READ_ONLY)").fetchall()
+    except duckdb.ResourceInUseException:
+        return False
+    finally:
+        other.close()
+    return True
+
+
+@pytest.mark.proves("workspace_runtime.a_held_file_is_released_where_another_reader_needs_it")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "between-connections",
+        "call-in-another-process",
+        "close-cannot-keep",
+        "release-meets-a-close",
+        "hand-off-meets-a-close",
+    ],
+)
+def test_a_held_file_is_released_where_another_reader_needs_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
+    """A held file keeps one instance between its connections and lets it go wherever another
+    reader needs the file: another instance's attach, a writer, a call in another process, the
+    hold's end, a close that cannot keep it, and a release or hand-off meeting a close in flight."""
+    database = _prepared(tmp_path)
+    if scenario == "between-connections":
+        _kept_between_connections(database)
+    elif scenario == "call-in-another-process":
+        _released_for_a_call_in_another_process(database)
+    elif scenario == "close-cannot-keep":
+        _closed_when_it_cannot_keep_its_instance(database, monkeypatch)
+    else:
+        _letting_go_waits_for_a_last_close(
+            database, monkeypatch, "release" if scenario == "release-meets-a-close" else "hand_off"
+        )
+
+
+def _kept_between_connections(database: WorkspaceDatabase) -> None:
+    """Inside a hold, a closed connection leaves the instance open for the next, which reads what
+    the last wrote; another instance's attach, a writer meeting a kept read-only instance, and the
+    hold's end each close it."""
+    with database.hold():
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (2, 'held')")
+        assert live_workspace_connections(database.path) is None
+        assert not _attachable(database)
+        assert _rows(database) == [(1, "seed"), (2, "held")]
+        release_workspace_database(database.path)
+        assert _attachable(database)
+        assert _rows(database) == [(1, "seed"), (2, "held")]  # kept read-only now
+        with database.transaction() as connection:  # a writer reopens the file writable
+            connection.execute("INSERT INTO unit VALUES (3, 'writer')")
+        assert not _attachable(database)
+    assert _attachable(database)
+    assert _rows(database) == [(1, "seed"), (2, "held"), (3, "writer")]
+
+
+def _released_for_a_call_in_another_process(database: WorkspaceDatabase) -> None:
+    """A call another process runs closes the kept instance and keeps none until it ends."""
+
+    def write(row: int) -> None:
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (?, 'written')", [row])
+
+    with database.hold():
+        write(2)
+        assert not _attachable(database)
+        end = hand_off()
+        assert _attachable(database)
+        write(3)
+        assert _attachable(database)
+        end()
+        end()  # a second end does nothing
+        write(4)
+        assert not _attachable(database)
+    assert _attachable(database)
+    assert [row[0] for row in _rows(database)] == [1, 2, 3, 4]
+
+
+def _closed_when_it_cannot_keep_its_instance(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A held file's last close whose kept connection cannot open still closes its own: the
+    instance goes, and the next opener opens the file again."""
+    from alphalattice.control.workspace_runtime import database as owner
+
+    refused = duckdb.IOException("no connection to keep")
+    with database.hold():
+        connection = database.connect(read_only=False)
+        monkeypatch.setattr(
+            owner, "connect_duckdb", lambda path, *, read_only: (_ for _ in ()).throw(refused)
+        )
+        with pytest.raises(duckdb.IOException, match="no connection to keep"):
+            connection.close()
+        monkeypatch.undo()
+        assert _attachable(database)
+        assert _rows(database) == [(1, "seed")]
+    with pytest.raises(duckdb.ConnectionException):
+        connection.execute("SELECT 1")
+
+
+def _letting_go_waits_for_a_last_close(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch, letting_go: str
+) -> None:
+    """A release, or a call handed to another process, that meets a held file's last close in
+    flight waits for it: no instance is kept once it returns, so another instance may attach the
+    file."""
+    from alphalattice.control.workspace_runtime import database as owner
+
+    entered, gate = threading.Event(), threading.Event()
+    real = owner.connect_duckdb
+
+    def held_open(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+        if not entered.is_set():  # the closing handle's kept connection: held at the gate
+            entered.set()
+            gate.wait(timeout=30.0)
+        return real(path, read_only=read_only)
+
+    with database.hold():
+        connection = database.connect(read_only=False)
+        monkeypatch.setattr(owner, "connect_duckdb", held_open)
+        closer = threading.Thread(target=connection.close, daemon=True)
+        closer.start()
+        assert entered.wait(timeout=30.0)
+        ended: list[Callable[[], None]] = []
+
+        def let_go() -> None:
+            if letting_go == "release":
+                release_workspace_database(database.path)
+            else:
+                ended.append(hand_off())
+
+        releaser = threading.Thread(target=let_go, daemon=True)
+        releaser.start()
+        releaser.join(timeout=0.5)
+        waited = releaser.is_alive()
+        gate.set()
+        closer.join(timeout=30.0)
+        releaser.join(timeout=30.0)
+        monkeypatch.undo()
+        attachable = _attachable(database)
+        for end in ended:
+            end()
+    assert (waited, attachable) == (True, True)
 
 
 def test_child_handles_end_with_their_parent_and_the_instance_is_released(

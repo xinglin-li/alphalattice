@@ -33,6 +33,7 @@ import pyarrow as pa
 
 from alphalattice.control.workspace_runtime.database import (
     live_workspace_connections,
+    release_workspace_database,
     store_fingerprint,
 )
 from alphalattice.kernel.data_layer import history
@@ -258,6 +259,7 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
             return False
         _log_tables(cursor)
         alias = f"bound_{binding(database) or 'database'}"
+        release_workspace_database(database)  # an instance of the file this process keeps open
         cursor.execute(f"ATTACH '{sql_path(database)}' AS {alias} (READ_ONLY)").fetchall()
         try:
             for name, (table, rows, columns) in COMPARED.items():

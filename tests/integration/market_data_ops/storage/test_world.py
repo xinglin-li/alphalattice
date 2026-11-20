@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from importlib.metadata import version
@@ -143,6 +143,165 @@ def _provider_summary(dataset: str, providers: list[str]) -> dict[str, Any]:
     return summary
 
 
+def _universe_records_follow_their_rows(
+    store: MarketDataRepository,
+    manifest: UniverseManifest,
+    database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A universe's records never run ahead of the rows they name: an admission interrupted
+    inside its snapshot leaves no manifest version, bootstrap or journal event; a universe's first
+    admission takes two snapshots, its intervals after the version that mints its lineage, and a
+    later one holds its market batches and intervals in one."""
+    from contextlib import contextmanager
+
+    from alphalattice.foundation.market_data_ops.sources.membership import (
+        MembershipEvent,
+        UniverseBootstrapRecord,
+    )
+
+    profile = manifest.profile.market_profile_id
+    store.record_universe_bootstrap(
+        UniverseBootstrapRecord(
+            market_profile_id=profile,
+            t0_session=DAYS[1],
+            history_start=DAYS[0],
+            cohort_listing_ids=("listing-aapl", "listing-msft"),
+            cohort_hash="",
+            manifest_revision=manifest.revision_sha256,
+            candidate_manifest_hash="1" * 64,
+            qualification_policy_hash="2" * 64,
+            feature_input_policy_hash="3" * 64,
+            source_observed_at=NOW - timedelta(days=1),
+            admitted_at=NOW,
+            panel_snapshot_hash="4" * 64,
+            derivation="FIRST_QUALIFIED_PUBLICATION",
+        )
+    )
+    port = history.store()
+    commit = port.commit
+    journal = (
+        "SELECT count(*) FROM event WHERE type IN"
+        " ('universe.bootstrapped', 'universe.member_added', 'universe.member_removed')"
+    )
+
+    def interrupted_at(member_sets: int) -> None:
+        """Admit, interrupted at the `member_sets`-th universe member batch."""
+        seen = []
+
+        def counted(staged: Any) -> Any:
+            if staged.table == "universe_member":
+                seen.append(staged)
+                if len(seen) == member_sets:
+                    raise KeyboardInterrupt
+            return commit(staged)
+
+        monkeypatch.setattr(port, "commit", counted)
+        with pytest.raises(KeyboardInterrupt):
+            world.admit(database, "w1")
+        monkeypatch.setattr(port, "commit", commit)
+
+    def interrupted_at_its_end(update: Callable[[], None]) -> None:
+        """Run `update`, the admission it ends with interrupted once its snapshot's writes are
+        all made, before the snapshot commits."""
+        admitting, depth = port.admitting, [0]
+
+        @contextmanager
+        def ending() -> Iterator[None]:
+            depth[0] += 1
+            try:
+                with admitting():
+                    yield
+                    if depth[0] == 1:
+                        raise KeyboardInterrupt
+            finally:
+                depth[0] -= 1
+
+        monkeypatch.setattr(port, "admitting", ending)
+        with pytest.raises(KeyboardInterrupt):
+            update()
+        monkeypatch.setattr(port, "admitting", admitting)
+
+    def snapshots(admit: bool) -> int:
+        """The catalog snapshots one whole admission takes."""
+        (before,) = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
+        assert world.admit(database, "w1") is not None if admit else True
+        (count,) = port.lake.execute(
+            "SELECT count(*) FROM lake.snapshots() WHERE snapshot_id > ?", [before]
+        ).fetchone()
+        return count
+
+    interrupted_at(2)  # the manifest's member set is staged, the cohort's is not yet committed
+    held = (world.universe_lineage("w1", profile), port.log.read(journal)[0][0])
+    first = snapshots(admit=True)
+    cutoff = int(datetime(2026, 8, 4, tzinfo=UTC).timestamp() * 1_000_000)
+    manifest_read = world.load_universe_manifest(manifest.manifest_id, cutoff, workspace_id="w1")
+    bootstrap_read = world.universe_bootstrap(profile, cutoff, workspace_id="w1")
+    recorded = port.log.read(journal)[0][0]
+    event = (
+        MembershipEvent(
+            market_profile_id=profile,
+            sequence=1,
+            listing_id="listing-msft",
+            kind="EXIT",
+            effective_session=DAYS[2],
+            observed_at=datetime(2026, 7, 28, 15, tzinfo=UTC),
+            decided_at=datetime(2026, 7, 28, 16, tzinfo=UTC),
+            authority="fixture",
+            reference_hash="5" * 64,
+            manifest_revision=manifest.revision_sha256,
+        ),
+    )
+    writer = MarketDataRepository(store.workspace)
+
+    def update() -> None:  # new bars and a member's exit, admitted together at the update's end
+        with writer.writing():
+            bars(writer, manifest, (NEW,), 102.0, 1)
+            writer.append_membership_events(event)
+
+    # the universe is known: its intervals are written inside the update's one snapshot
+    interrupted_at_its_end(update)
+    after_interruption = port.log.read(journal)[0][0]
+    later = snapshots(admit=True)
+    assert held == (None, 0)
+    assert (first, later) == (2, 1)
+    assert manifest_read == store.load_universe_manifest(manifest.manifest_id)
+    assert bootstrap_read == store.universe_bootstrap(profile)
+    assert after_interruption == recorded
+    assert port.log.read(journal)[0][0] == recorded + 1
+
+
+@pytest.mark.proves("market_data_ops.a_reverted_mapping_is_admitted_again")
+def test_a_mapping_reverted_after_an_admission_that_took_none_of_it_is_admitted_again(
+    workspace: tuple[MarketDataRepository, UniverseManifest, Path],
+) -> None:
+    """An admission whose rebuilt mappings are unchanged takes none of them; a mapping's change and
+    its reversal after it are each admitted, so world's newest version is the reverted one."""
+    store, manifest, database = workspace
+    world.admit(database, "w1")
+    bars(store, manifest, (NEW,), 102.0, 1)  # the bars move, the mappings do not
+    world.admit(database, "w1")
+    port = history.store()
+    fixture = port.log.require_lineage("provider", "fixture")
+    states = []
+    for state in ("DELISTED", "ACTIVE"):
+        with store._connect() as connection:
+            connection.execute(
+                "UPDATE provider_symbol_mapping SET lifecycle_state = ?"
+                " WHERE provider = 'fixture' AND listing_id = 'listing-aapl'",
+                [state],
+            )
+        world.admit(database, "w1")
+        states.append(
+            port.lake.execute(
+                f"SELECT p.lifecycle_state FROM {CURRENT.format('provider_symbol')} p"
+                " WHERE p.provider_id = ? AND p.listing_id = ?",
+                [fixture, world.world_listing("listing-aapl")],
+            ).fetchall()
+        )
+    assert states == [[("DELISTED",)], [("ACTIVE",)]]
+
+
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
 @pytest.mark.parametrize(
     "focus",
@@ -155,6 +314,7 @@ def _provider_summary(dataset: str, providers: list[str]) -> dict[str, Any]:
         "workspace",
         "lineage",
         "providers",
+        "publication",
     ),
 )
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
@@ -190,6 +350,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         results = {key: summary[key] for key in ("rows", "dropped", "rewritten") if key in summary}
         assert results == admitted
         assert world.admit(database, "w1") is None
+        return
+    if focus == "publication":
+        _universe_records_follow_their_rows(store, manifest, database, monkeypatch)
         return
     if focus == "identity":
         from functools import partial

@@ -753,6 +753,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "data_layer.an_owed_list_is_read_whatever_its_version": {
+      "description": "An admission snapshot's commit info is read as the events it owes, one envelope written before the list as a list of one, and an unknown version refused.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.analytics_views_preserve_values": {
       "description": "Each analytics view returns every pinned column and row of the fixed Host-written research log.",
       "lower_layer": "The views execute DuckDB SQL over the attached SQLite log; a unit test cannot prove both engines' result values.",
@@ -1082,6 +1088,13 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.one_block_of_admissions_is_one_snapshot": {
+      "description": "Admissions made in one block share one catalog snapshot, each keeping its own admission and event, and a refusal commits the admissions made before it.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 3,
+      "lower_layer": "A snapshot and its repaired events exist only in a real DuckLake catalog and Host log on a data root."
     },
     "data_layer.one_host_writes_the_data_root": {
       "description": "A second Host is refused the data root's lock by name with its holder, and other processes read the log through a read-only attach that refuses a write.",
@@ -1825,6 +1838,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
+      "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.a_rate_limited_retry_backs_off": {
       "description": "If a rate-limited provider call were retried at once, the retry would hit the same limit and hammer the provider.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -1850,6 +1869,13 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 10
+    },
+    "market_data_ops.a_reverted_mapping_is_admitted_again": {
+      "description": "A mapping changed and then reverted after an admission that took none of it is admitted each time, so world's newest version is the reverted one.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 3,
+      "lower_layer": "Admission reads a real workspace database into a real catalog, which only an opened data root holds."
     },
     "market_data_ops.a_standard_names_its_history_floor": {
       "description": "If onboarding floored history at a fixed ten years, or a manifest named the original standard whatever floor was applied, a shorter standard would be refused or admitted under a false identity.",
@@ -2866,6 +2892,20 @@
       "seconds": 1,
       "retired": "2026-11-20: the opt-in derived Feature view is retired"
     },
+    "workspace_runtime.a_failed_build_is_never_kept": {
+      "description": "If a request value whose builder failed were kept, every later read would answer from that refusal instead of building again.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "It reads through the process-wide request cache every test in the process shares, which a unit test may not reach."
+    },
+    "workspace_runtime.a_held_file_is_released_where_another_reader_needs_it": {
+      "description": "A held workspace database keeps one instance between its connections and closes it before another instance attaches the file, during another process's call, for a writer, and at the hold's end.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The proof is the engine's own refusal to attach a file another instance of the process holds, which only a real database file shows."
+    },
     "workspace_runtime.a_kept_value_follows_its_file": {
       "description": "If a value kept for a sealed file answered after that file was gone or replaced at its path, a replay would prove an artifact the workspace no longer holds.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -2892,6 +2932,13 @@
         "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
         "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
+    },
+    "workspace_runtime.an_unvouched_mutable_value_is_never_kept": {
+      "description": "If the process cache kept a mutable value no caller vouched for, one reader could change what the next reader is given.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "It reads through the process-wide request cache every test in the process shares, which a unit test may not reach."
     },
     "workspace_runtime.background_task_gate_wait_and_cancel": {
       "description": "A background Task waits for a workspace mutation holder, names the holder and preserves its deferred cancellation without duplicating execution.",

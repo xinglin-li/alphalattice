@@ -300,10 +300,13 @@ def _submitted(
     answer: Path | None = None,
     preload_models: bool = True,
 ) -> _Submitted:
-    """Hand one call to a kept worker; one that has ended answers as an interruption."""
+    """Hand one call to a kept worker; one that has ended answers as an interruption. The worker
+    may open the files this process holds, so none is kept open until the call ends."""
+    from alphalattice.control.workspace_runtime.database import hand_off  # lazy: DuckDB
     from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
 
     pool = None
+    ended = hand_off()
     try:
         pool = _worker(worker)
         future = pool.submit(
@@ -318,12 +321,18 @@ def _submitted(
             preload_models,
         )
     except BrokenProcessPool:
+        ended()
         assert pool is not None
         raise _ended(worker, pool) from None
     except (OSError, MemoryError) as error:
+        ended()
         if pool is not None:
             _retire_worker(worker, pool)
         raise ChildStartFailed(error) from error
+    except BaseException:
+        ended()
+        raise
+    future.add_done_callback(lambda _done: ended())
     _hold(worker, pool, future)
     return _Submitted(worker, pool, future, answer)
 

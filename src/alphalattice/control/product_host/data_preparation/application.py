@@ -104,6 +104,7 @@ from alphalattice.control.task_control.runner import (
     StageExecutionResult,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputPolicy
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
@@ -1708,7 +1709,9 @@ class WorkspacePreparationApplication:
             stage = work_item.stage_id
             existing = self._load(task.task_id, stage, optional=True)
             if existing is None:
-                result = self._perform(task, plan, stage, execution)
+                # The stage opens the market database call by call: one instance serves them.
+                with WorkspaceDatabase(self.session.workspace).hold():
+                    result = self._perform(task, plan, stage, execution)
                 if isinstance(result, StageExecutionResult):
                     return result
                 existing = self._save(task, stage, result)
