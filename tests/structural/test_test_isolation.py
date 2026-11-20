@@ -3,6 +3,7 @@ person's: each fails the offending test by name, in memory, through the hooks py
 
 from __future__ import annotations
 
+import importlib
 import os
 import site
 import sys
@@ -45,6 +46,25 @@ ENTRIES = {  # a helper a plain script can run, and whether its run names roots 
     "warm-unnamed": ("warm_real_risk_golden", False),
     "warm-named": ("warm_real_risk_golden", True),
 }
+PACKAGES = (
+    "_support",
+    "agent_eval",
+    "alternative_evidence_desk",
+    "feature_engine",
+    "feature_input_gateway",
+    "portfolio_strategy_lab",
+    "researcher_methodology_surface",
+    "structural",
+    "workspace_maintenance",
+    "workspace_readiness",
+    "workspace_task_runner",
+)
+SUPPORT_ROOTS = {
+    f"support-{package}-{root}-{mode}": (package, root, mode)
+    for package in PACKAGES
+    for root in ("DATA", "BACKUP")
+    for mode in ("unset", "default", "owned")
+}
 
 
 def _hooks(body):
@@ -72,13 +92,37 @@ def _hooks(body):
 
 
 @pytest.mark.proves("testing.a_test_leaking_its_interpreter_or_a_person_root_fails_by_name")
-@pytest.mark.parametrize("case", [*LEAKS, *ROOTS, *STORES, *ENTRIES], ids=str)
+@pytest.mark.parametrize("case", [*LEAKS, *ROOTS, *STORES, *ENTRIES, *SUPPORT_ROOTS], ids=str)
 def test_a_test_that_leaks_its_interpreter_or_reaches_a_person_root_fails_by_name(
     case, tmp_path, monkeypatch
 ):
     """A leaking body fails at its own teardown, by name, with the state put back; a resolver's
     default outside the run's roots fails before it reads, its resolved result after; a helper a
     script can run refuses, by name, before anything, unless roots of its own are named."""
+    if case in SUPPORT_ROOTS:
+        from tests import _support
+
+        package, root, named = SUPPORT_ROOTS[case]
+        module = _support if package == "_support" else importlib.import_module(f"tests.{package}")
+        base = tmp_path / "person"
+        monkeypatch.setenv("LOCALAPPDATA", str(base))
+        monkeypatch.setenv("XDG_DATA_HOME", str(base))
+        default = base / ("AlphaLattice" if os.name == "nt" else "alphalattice")
+        variable = f"ALPHALATTICE_{root}_ROOT"
+        monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "data"))
+        monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
+        if named == "unset":
+            monkeypatch.delenv(variable, raising=False)
+        else:
+            monkeypatch.setenv(variable, str(default if named == "default" else tmp_path / "own"))
+        if named == "owned":
+            importlib.reload(module)
+        else:
+            with pytest.raises(
+                RuntimeError, match=rf"tests\.support_{root.lower()}_root_unisolated"
+            ):
+                importlib.reload(module)
+        return
     if case in ENTRIES:
         from tests.researcher_methodology_surface import real_workspace
 

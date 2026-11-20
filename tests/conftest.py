@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import warnings
 from collections.abc import Iterator
 from contextlib import ExitStack, nullcontext, suppress
@@ -44,6 +45,11 @@ from devtools.evaluation.round_trip import (
 from devtools.testing import isolation
 from devtools.testing.collection import CONTRACT as LAYER_CONTRACT
 from tests import pytest_environment as environment
+
+# Initial conftests import shared fixtures before pytest_configure supplies session roots.
+_bootstrap_data = tempfile.TemporaryDirectory(prefix="alphalattice-test-bootstrap-")
+os.environ["ALPHALATTICE_DATA_ROOT"] = _bootstrap_data.name
+os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(Path(_bootstrap_data.name) / "backups")
 
 pytest_plugins = [
     "devtools.testing.collection",

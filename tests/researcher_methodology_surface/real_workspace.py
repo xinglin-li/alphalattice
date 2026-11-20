@@ -31,7 +31,7 @@ import time
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import cache, partial
 from hashlib import sha256
 from pathlib import Path
@@ -1317,64 +1317,6 @@ def _prune_goldens(*, keep: Path) -> None:
                 lease.close()
 
 
-GOLDEN_KEEP_KEYS = 3
-"""Golden workspaces the cache keeps by last use: every identity move made a key, and 78
-of them held 35 GB before the rule was kept by hand."""
-
-
-def retain_golden_workspaces(
-    *, keep: int = GOLDEN_KEEP_KEYS, apply: bool = False, root: Path | None = None
-) -> list[dict[str, object]]:
-    """The golden workspaces by last use, newest first, each kept or dropped.
-
-    The newest ``keep`` stay. With ``apply`` every other one is deleted under its own lease, and
-    one a builder holds is left ``BUSY``; without it nothing is deleted (``TO_DROP``).
-
-    Args:
-        keep: How many of the most recently used goldens stay.
-        apply: Whether to delete the others.
-        root: The cache's root; the checkout's own when None.
-
-    Returns:
-        One row per golden: its key, last use, bytes and disposition.
-    """
-
-    base = _golden_root() if root is None else root
-    found: list[tuple[float, Path]] = []
-    for candidate in sorted(base.iterdir()) if base.is_dir() else ():
-        sidecar = candidate / "golden.json"
-        if (
-            len(candidate.name) == 24
-            and all(c in "0123456789abcdef" for c in candidate.name)
-            and sidecar.exists()
-        ):
-            found.append((sidecar.stat().st_mtime, candidate))
-    rows: list[dict[str, object]] = []
-    for index, (used, candidate) in enumerate(sorted(found, reverse=True)):
-        size = sum(path.stat().st_size for path in candidate.rglob("*") if path.is_file())
-        disposition = "KEPT" if index < keep else "TO_DROP"
-        if disposition == "TO_DROP" and apply:
-            try:
-                lease = WorkspaceWriterLease.acquire(base / ".locks" / candidate.name)
-            except RuntimeError:
-                disposition = "BUSY"
-            else:
-                try:
-                    shutil.rmtree(candidate, ignore_errors=True)
-                    disposition = "TO_DROP" if candidate.exists() else "DROPPED"
-                finally:
-                    lease.close()
-        rows.append(
-            {
-                "key": candidate.name,
-                "last_used": datetime.fromtimestamp(used, UTC).isoformat(),
-                "bytes": size,
-                "disposition": disposition,
-            }
-        )
-    return rows
-
-
 def _build_workspace(
     workspace: Path,
     installed_catalog: FeatureCatalog,
@@ -1571,7 +1513,6 @@ def _build_workspace(
 __all__ = [
     "AS_OF",
     "FACTOR_SCALE",
-    "GOLDEN_KEEP_KEYS",
     "HISTORY_START",
     "MARKET_PROFILE_ID",
     "OBSERVED_AT",
@@ -1584,5 +1525,4 @@ __all__ = [
     "build_real_risk_workspace",
     "development_feature_catalog",
     "publish_causal_outcomes",
-    "retain_golden_workspaces",
 ]

@@ -288,6 +288,9 @@ def serve_apart(workspace: Path) -> Path:
     """Make `workspace` ready for a Host served in another process, and that Host's data root:
     the Tasks this process's log holds for the workspace are carried into it, so that Host finds
     them."""
+    from tests._support import require_isolated_roots
+
+    require_isolated_roots()
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a served Host's only
     from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
 
@@ -433,6 +436,9 @@ def served_here(copy: Path) -> Path:
     carried from the copy's own served root to this process's data root, the root that Host
     opens. Called where the Host is composed, before it opens: there the root is known to serve
     the copy, which the shared copy path cannot know."""
+    from tests._support import require_isolated_roots
+
+    require_isolated_roots()
     from alphalattice.kernel.data_layer import history
 
     return with_its_outcomes(copy, served_root(copy), history.data_root())
@@ -443,6 +449,9 @@ def upgraded(workspace: Path) -> Path:
     test's data root: every family run on it (its Strategy Lab lanes moved through the array
     door among them) in its own Host's history, its backups the copy's source, so a Host serves
     it at once. The history closes after, as that Host's does when it stops."""
+    from tests._support import require_isolated_roots
+
+    require_isolated_roots()
     from alphalattice.control.product_host.composition.first_start import FAMILIES
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,

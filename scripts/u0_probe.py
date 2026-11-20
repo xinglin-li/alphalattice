@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,8 @@ from alphalattice.control.product_host.composition.saved_object_readback import 
 
 
 def probe(harvest: Path, work: Path, out: Path, *, keep: bool = False) -> None:
+    os.environ.setdefault("ALPHALATTICE_DATA_ROOT", str(work / "data-root"))
+    os.environ.setdefault("ALPHALATTICE_BACKUP_ROOT", str(work / "backups"))
     from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
     from alphalattice.control.product_host.composition.local_web_session import (
