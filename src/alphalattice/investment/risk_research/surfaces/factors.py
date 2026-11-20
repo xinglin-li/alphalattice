@@ -212,7 +212,9 @@ def admit_factor_surface(surface: FactorIdiosyncraticRiskSurface) -> FactorIdios
             "content_digest": surface.producer_identity,
             "valid_from": surface.formation_session.isoformat(),
             "valid_to": surface.formation_session.isoformat(),
-            "shape": {
+        },
+        text=json.dumps(
+            {
                 "recipe_hash": surface.recipe_hash,
                 "session": surface.formation_session.isoformat(),
                 "surface_hash": surface.surface_hash,
@@ -222,7 +224,9 @@ def admit_factor_surface(surface: FactorIdiosyncraticRiskSurface) -> FactorIdios
                 "conditional_volatility": surface.conditional_volatility.tolist(),
                 "rescaling": surface.rescaling.tolist(),
             },
-        },
+            separators=(",", ":"),
+        ),
+        version=project.ARTIFACT_PROFILE_TEXT_VERSION,
         node="host",
     )
     history.flush()

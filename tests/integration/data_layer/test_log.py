@@ -145,38 +145,26 @@ def test_an_inline_artifact_writes_its_profile_and_body_together(root):
     assert len(text) > host.ATTRS_CHARACTERS
     expected = {}
     with HostLog.open(root, now_us=T0) as log:
-        prior = log.read(
-            "SELECT spec FROM definition WHERE family = 'event_type'"
-            " AND name = 'artifact.produced' AND version = 1"
-        )[0][0]
-        key = {"family": "event_type", "name": "artifact.produced", "version": 2}
-        log.record(
-            "definition.registered",
-            ("definition", "event_type/artifact.produced"),
-            key,
-            text=json.dumps(
-                key
-                | {
-                    "relation": "equal",
-                    "text": "An artifact profile may carry its shape as machine text.",
-                    "spec": json.loads(prior) | {"text": "optional"},
-                }
-            ),
-        )
         for name, version, attrs, shape, profile in (
             ("legacy", 1, report | {"shape": small}, small, None),
-            ("attrs", 2, report | {"shape": small}, small, None),
             ("text", 2, report, large, text),
+            ("attrs", None, report | {"shape": small}, small, None),
         ):
-            seq = log.record(
-                "artifact.produced",
-                ("artifact", name),
-                attrs,
-                text=profile,
-                body=b"# Report\n",
-                version=version,
-            )
+            try:
+                seq = log.record(
+                    "artifact.produced",
+                    ("artifact", name),
+                    attrs,
+                    text=profile,
+                    body=b"# Report\n",
+                    version=version,
+                )
+            except DataError as error:
+                if name != "text" or error.failure.code != "data_layer.event_type_unregistered":
+                    raise
+                pytest.fail("the first profile text write must register its event version")
             expected[name] = (seq, "present", shape, b"# Report\n")
+        seq = expected["text"][0]
         projected = log.read("SELECT shape FROM artifact WHERE artifact_id = 'text'")[0][0]
         assert json.loads(projected or "null") == large
         log.record("record.forgotten", attrs={"seq": expected["legacy"][0]})

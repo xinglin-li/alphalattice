@@ -336,7 +336,39 @@ class HostLog:
     ) -> int:
         """Append a new event of `type_`, its envelope made by `envelope`."""
         row = envelope(type_, subject, attrs, text=text, **more)
+        if type_ == "artifact.produced" and row["type_version"] == ARTIFACT_PROFILE_TEXT_VERSION:
+            with self.unit() as con:
+                self._register_artifact_profile_text(con)
+                return self.append(row, text, body, committed=committed)
         return self.append(row, text, body, committed=committed)
+
+    def _register_artifact_profile_text(self, con: sqlite3.Connection) -> None:
+        """Install the compatible profile-text version through the log at first use."""
+        key = {
+            "family": "event_type",
+            "name": "artifact.produced",
+            "version": ARTIFACT_PROFILE_TEXT_VERSION,
+        }
+        if con.execute(
+            "SELECT 1 FROM definition WHERE family = ? AND name = ? AND version = ?",
+            (key["family"], key["name"], key["version"]),
+        ).fetchone():
+            return
+        spec = _spec(con, {"type": key["name"], "type_version": 1}) | {"text": "optional"}
+        self.record(
+            "definition.registered",
+            ("definition", "event_type/artifact.produced"),
+            key,
+            text=canonical(
+                key
+                | {
+                    "spec": spec,
+                    "status": "standard",
+                    "relation": "equal",
+                    "text": "An artifact profile may carry its shape as machine text.",
+                }
+            ).decode(),
+        )
 
     def flush(self) -> None:
         """Commit the open batch, if any; the Host's reply waits for it."""
