@@ -141,15 +141,14 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
         alias_snapshot = {"snapshot_id": "alias-snapshot", "revisions": [alias]}
         store.publish_snapshot(workspace_id="w2", metadata=alias_snapshot)
         assert store.read_snapshot("w2", "alias-snapshot") == alias_snapshot
-        recipe = store.recipe(
-            {
-                "splitter": "semantic-text-splitter",
-                "version": "0.33.3",
-                "capacity": 80,
-                "overlap": 0,
-                "trim": True,
-            }
+        spec = {**recall._recipe(), "capacity": 80}
+        recipe = store.recipe(spec)
+        legacy_recipe = store.recipe(
+            {**spec, "splitter": "semantic-text-splitter", "version": "0.33.3"}
         )
+        assert recipe != legacy_recipe
+        with pytest.raises(DataError, match="index under a new recipe"):
+            store.index_chunks(version_id=first, recipe_id=legacy_recipe, content=body)
         chunks = store.index_chunks(version_id=first, recipe_id=recipe, content=body)
         with log.reading() as con:
             assert (
@@ -334,15 +333,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
                 newest.version: "市场风险再次增加。",
                 sealed.version: sealed_body,
             }
-            other_recipe = store.recipe(
-                {
-                    "splitter": "semantic-text-splitter",
-                    "version": "0.33.3",
-                    "capacity": 24,
-                    "overlap": 0,
-                    "trim": True,
-                }
-            )
+            other_recipe = store.recipe({**recall._recipe(), "capacity": 24})
             other_chunks = store.index_chunks(
                 version_id=first, recipe_id=other_recipe, content=body
             )

@@ -29,7 +29,6 @@ from alphalattice.kernel.data_layer.knowledge import (
     SearchHit,
 )
 from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.shared_kernel.environment import package_versions
 
 PRECISION: Final = "int8"
 """The cache's storage precision: the retrieval measurement admits int8 (61/96 and 91/100
@@ -75,9 +74,10 @@ _held: dict[str, Any] = {}
 
 
 def _recipe() -> dict[str, Any]:
+    splitter, version = knowledge.CHUNK_SPLITTER
     return {
-        "splitter": "semantic-text-splitter",
-        "version": dict(package_versions(("semantic-text-splitter",)))["semantic-text-splitter"],
+        "splitter": splitter,
+        "version": version,
         "capacity": CAPACITY,
         "overlap": 0,
         "trim": True,

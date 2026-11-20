@@ -10,6 +10,35 @@ from alphalattice.kernel.data_layer.knowledge import Chunk, SearchHit, WordCount
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/knowledge.py"
 
 
+@pytest.mark.proves("data_layer.knowledge_chunks_preserve_character_offsets")
+@pytest.mark.parametrize(
+    ("body", "capacity", "overlap", "trim", "chunks"),
+    [
+        ("One.\n\nTwo. three four", 12, 0, True, [(0, "One."), (6, "Two."), (11, "three four")]),
+        ("One.\n\n\nTwo.\n\nThree end", 16, 0, True, [(0, "One."), (7, "Two.\n\nThree end")]),
+        ("甲乙。丙丁戊己庚", 5, 0, True, [(0, "甲乙。"), (3, "丙丁戊己庚")]),
+        (" alpha beta gamma", 9, 0, True, [(1, "alpha"), (7, "beta"), (12, "gamma")]),
+        ("   alpha beta", 10, 0, True, [(3, "alpha beta")]),
+        ("abcdefgh", 4, 2, False, [(0, "abcd"), (2, "cdef"), (4, "efgh")]),
+        (" A.\n\n BCDEF", 6, 0, False, [(0, " A.\n\n"), (5, " BCDEF")]),
+        (" \t\n", 2, 0, True, []),
+    ],
+    ids=(
+        "paragraph-before-sentence",
+        "paragraph-levels",
+        "unicode-sentence",
+        "word",
+        "leading-trim",
+        "overlap",
+        "untrimmed",
+        "blank",
+    ),
+)
+def test_chunk_slices_preserve_boundary_offsets(body, capacity, overlap, trim, chunks) -> None:
+    """The preferred boundaries, overlap and trimming preserve positions in the original text."""
+    assert list(knowledge._chunk_slices(body, capacity, overlap, trim=trim)) == chunks
+
+
 def _hit(chunk_id: str, score: float, rowid: int) -> SearchHit:
     return SearchHit("s", "1", rowid, Chunk(chunk_id, 0, 1, "d" + chunk_id), score, rowid)
 

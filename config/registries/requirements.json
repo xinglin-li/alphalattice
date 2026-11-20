@@ -897,6 +897,12 @@
       "layer": "integration",
       "seconds": 15
     },
+    "data_layer.knowledge_chunks_preserve_character_offsets": {
+      "description": "The chunker honors character capacity, overlap and trimming while preserving offsets into the original text and preferring paragraph, sentence and word boundaries in that order.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.knowledge_embedding_cache_survives_its_readers": {
       "description": "A chunk's recipe-and-model embedding is encoded once in the Host's shared cache and reused by another reader or a rebuild at its calibrated storage precision.",
       "lower_layer": "Reuse crosses store instances through real SQLite rows and their vector blobs, which a unit double cannot prove.",

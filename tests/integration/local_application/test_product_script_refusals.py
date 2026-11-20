@@ -270,11 +270,11 @@ def test_retrieval_setup_uses_checkout_scratch(
         local.setattr(native_setup, "ROOT", checkout)
         local.setattr(native_setup.spawn, "run", checked)
         assert native_setup._install_tool()["status"] == "TOOL_INSTALLED"
-        assert len(seen) == 7 and len(set(seen[3:])) == 1 and not seen[3].exists()
+        assert len(seen) == 8 and len(set(seen[3:])) == 1 and not seen[3].exists()
         local.setattr(native_setup.spawn, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             native_setup._install_tool()
-    assert len(seen) == 8 and not seen[-1].exists()
+    assert len(seen) == 9 and not seen[-1].exists()
 
 
 @pytest.mark.parametrize("case", ["unwritable", "check-child"])

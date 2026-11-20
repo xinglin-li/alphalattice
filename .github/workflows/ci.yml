@@ -90,8 +90,9 @@ jobs:
         run: |
           $wheel = (Get-ChildItem "${{ runner.temp }}/dist/alphalattice-*-py3-none-any.whl").FullName
           $requirements = "${{ runner.temp }}/alphalattice-runtime-requirements.txt"
-          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" $wheel $requirements
-          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements
+          $overrides = "${{ runner.temp }}/alphalattice-runtime-overrides.txt"
+          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" $wheel $requirements $overrides
+          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements --overrides $overrides
           "ALPHALATTICE_TEST_WHEEL=$wheel" >> $env:GITHUB_ENV
       - name: Smoke the installed command in fresh PowerShell and Git Bash
         shell: bash
@@ -174,8 +175,9 @@ jobs:
           test "${#wheels[@]}" -eq 1
           wheel="${wheels[0]}"
           requirements="$RUNNER_TEMP/alphalattice-runtime-requirements.txt"
-          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" "$wheel" "$requirements"
-          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements"
+          overrides="$RUNNER_TEMP/alphalattice-runtime-overrides.txt"
+          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" "$wheel" "$requirements" "$overrides"
+          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements" --overrides "$overrides"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
 
   public-tests-plan:

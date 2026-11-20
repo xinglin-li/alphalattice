@@ -1313,19 +1313,26 @@ TOOL_INSTALL: Final = (
     WORKBENCH_BUILD,
     "uv export --locked --all-extras --no-dev --no-emit-project --no-hashes "
     "--output-file .venv/alphalattice-runtime-requirements.txt",
+    'uv run python -c "from pathlib import Path; '
+    "from scripts.release.wheel_build import runtime_overrides; "
+    "Path('.venv/alphalattice-runtime-overrides.txt').write_bytes(runtime_overrides().encode())\"",
     "uv tool install --python 3.12 --editable . --with-requirements "
     ".venv/alphalattice-runtime-requirements.txt --constraints "
-    ".venv/alphalattice-runtime-requirements.txt",
+    ".venv/alphalattice-runtime-requirements.txt "
+    "--overrides .venv/alphalattice-runtime-overrides.txt",
 )
 """The documented tool install (operating.md), run from the checkout root."""
 WHEEL_INSTALL: Final = (
     'python -c "from zipfile import ZipFile; from pathlib import Path; '
-    "Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile("
-    "'alphalattice-{version}-py3-none-any.whl').read("
-    "'alphalattice/_runtime/config/release/runtime-requirements.txt'))\"",
+    "wheel = ZipFile('alphalattice-{version}-py3-none-any.whl'); "
+    "Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read("
+    "'alphalattice/_runtime/config/release/runtime-requirements.txt')); "
+    "Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read("
+    "'alphalattice/_runtime/config/release/runtime-overrides.txt'))\"",
     "uv tool install --python 3.12 ./alphalattice-{version}-py3-none-any.whl "
     "--with-requirements alphalattice-runtime-requirements.txt "
-    "--constraints alphalattice-runtime-requirements.txt",
+    "--constraints alphalattice-runtime-requirements.txt "
+    "--overrides alphalattice-runtime-overrides.txt",
 )
 """The documented wheel install (operating.md), run where the release wheel is."""
 OFF_PATH: Final = "setup.tool.command"

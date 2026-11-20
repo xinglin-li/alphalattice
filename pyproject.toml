@@ -113,7 +113,6 @@ quant = [
 semantic = [
     "numpy>=2.5,<3",
     "onnxruntime==1.27.0",
-    "semantic-text-splitter==0.33.3",
     "sentencepiece==0.2.1",
     "sqlite-vec==0.1.9",
     "tokenizers==0.23.2",
@@ -194,6 +193,7 @@ conflicts = [[{ group = "docs" }, { group = "dev" }]]
 # override lifts one pin to its lowest fixed release; drop it once a semgrep release pins a fixed version itself.
 # The opentelemetry family moves together: its other members follow these through their own exact pins.
 override-dependencies = [
+    "hf-xet; python_version < '0'",  # the product's pack fetcher uses direct HTTPS
     "mcp>=1.30.0,<2",  # CVE-2026-59951, CVE-2026-116684, CVE-2026-116685, CVE-2026-116686
     "opentelemetry-api>=1.45.2,<2",  # CVE-2026-114603, CVE-2026-126360
     "opentelemetry-sdk>=1.45.2,<2",  # moves with opentelemetry-api, which it pins exactly

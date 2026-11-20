@@ -232,6 +232,7 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
     expected.update("alphalattice/_runtime/" + name for name in inputs)
     expected.add("alphalattice/_runtime/config/release/source-hashes.json")
     expected.add("alphalattice/_runtime/config/release/runtime-requirements.txt")
+    expected.add("alphalattice/_runtime/config/release/runtime-overrides.txt")
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
         assert {name for name in names if ".dist-info/" not in name} == expected
@@ -248,6 +249,8 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
         }
         requirements = archive.read("alphalattice/_runtime/config/release/runtime-requirements.txt")
         assert requirements.decode() == runtime_requirements()
+        overrides = archive.read("alphalattice/_runtime/config/release/runtime-overrides.txt")
+        assert overrides.decode().splitlines() == project["tool"]["uv"]["override-dependencies"]
         assert "-e ." not in requirements.decode()
         assert not any(
             name.startswith(("scripts/", "tests/", "devtools/", "workspaces/")) for name in names

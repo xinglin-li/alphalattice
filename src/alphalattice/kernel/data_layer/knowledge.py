@@ -23,7 +23,6 @@ from numpy.typing import NDArray
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.shared_kernel.environment import package_versions
 
 type Precision = Literal["float16", "int8"]
 type Matrix = NDArray[np.float32]
@@ -31,6 +30,10 @@ type EvidenceVersions = frozenset[tuple[str, str]]
 
 _HAN = re.compile(r"([\u4e00-\u9fff])")
 _TERMS = re.compile(r"[\u4e00-\u9fff]+|[A-Za-z0-9_]+")
+CHUNK_SPLITTER: Final = ("paragraph-sentence-word", "1")
+_PARAGRAPH = re.compile(r"\r?\n(?:[^\S\r\n]*\r?\n)*")
+_SENTENCE = re.compile(r"(?<=[.!?])(?=\s|$)|(?<=[\u3002\uff01\uff1f])")
+_SPACE = re.compile(r"\s+")
 # From this many indexed chunks the lexical query leaves out the words at least half of them
 # hold. Matching costs about 1 microsecond a chunk (98,000 matched rows took 72-105 ms), so a
 # smaller index scores them all in under 10 ms and keeps every word.
@@ -73,9 +76,56 @@ class SourceOrigin:
     known_us: int
 
 
-def _splitter_version(name: str) -> str:
-    """The installed splitter's version, read through the environment helper."""
-    return dict(package_versions((name,)))[name]
+def _chunk_slices(
+    content: str, capacity: int, overlap: int, *, trim: bool
+) -> Iterator[tuple[int, str]]:
+    """Cut bounded character windows and return each slice's original start offset."""
+    if (
+        type(capacity) is not int
+        or type(overlap) is not int
+        or not 0 <= overlap < capacity
+        or type(trim) is not bool
+    ):
+        raise DataError(
+            "the chunk recipe needs a positive character capacity, smaller nonnegative overlap"
+            " and a boolean trim setting",
+            code="data_layer.knowledge_recipe_invalid",
+        )
+    start = 0
+    while start < len(content):
+        if trim and (leading := _SPACE.match(content, start)):
+            start = leading.end()
+        end = min(len(content), start + capacity)
+        if end < len(content):
+            # A longer run of newlines separates larger units. Fill the window through
+            # the last separator at the highest level that fits and advances the slice.
+            paragraph = max(
+                (
+                    match
+                    for match in _PARAGRAPH.finditer(content, start, end)
+                    if match.end() > start + overlap
+                ),
+                key=lambda match: (match[0].count("\n"), match.end()),
+                default=None,
+            )
+            if paragraph is not None:
+                end = paragraph.end()
+            else:
+                for boundary in (_SENTENCE, _SPACE):
+                    cut = max(
+                        (match.end() for match in boundary.finditer(content, start, end)), default=0
+                    )
+                    if cut > start + overlap:
+                        end = cut
+                        break
+        text = content[start:end]
+        if trim:
+            text = text.rstrip()
+        if text:
+            yield start, text
+        if end == len(content):
+            break
+        start = end - overlap
 
 
 @dataclass(frozen=True)
@@ -569,8 +619,6 @@ class KnowledgeStore:
 
     def index_chunks(self, *, version_id: str, recipe_id: str, content: str) -> tuple[Chunk, ...]:
         """Index a verified source version once, with the recipe's original character offsets."""
-        from semantic_text_splitter import TextSplitter  # lazy: the optional semantic extra
-
         with self.log.reading() as con:
             source = con.execute(
                 "SELECT body_digest FROM knowledge_source_version WHERE version_id = ?",
@@ -594,17 +642,16 @@ class KnowledgeStore:
                     "the chunk recipe is missing", code="data_layer.knowledge_recipe_missing"
                 )
             spec = json.loads(recipe[0])
-            if spec.get("splitter") != "semantic-text-splitter" or spec.get(
-                "version"
-            ) != _splitter_version("semantic-text-splitter"):
+            if (spec.get("splitter"), spec.get("version")) != CHUNK_SPLITTER:
                 raise DataError(
-                    "the chunk recipe differs from the installed splitter",
+                    "the chunk recipe differs from the current splitter; index under a new recipe",
                     code="data_layer.knowledge_recipe_invalid",
                 )
         # Splitting and hashing may be large; the Host's one SQLite writer stays free while
         # immutable source and recipe inputs are transformed.
-        splitter = TextSplitter(spec["capacity"], overlap=spec["overlap"], trim=spec["trim"])
-        slices = splitter.chunk_indices(content)
+        slices = list(
+            _chunk_slices(content, spec.get("capacity"), spec.get("overlap"), trim=spec.get("trim"))
+        )
         expected = [(start, start + len(text), digest(text.encode())) for start, text in slices]
         tokens = [_spaced(text) for _, text in slices]
         with self.log.unit() as con:

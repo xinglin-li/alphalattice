@@ -34,7 +34,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import plan_sec_filing_selection
 from alphalattice.evidence.alternative_evidence.storage import world, world_reads
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer import history, recall
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alternative_evidence_desk.document_intelligence_support import _registry, _request
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _recorded_document, _runtime
@@ -401,15 +401,7 @@ def test_knowledge_retrieves_the_world_body_by_document_version_and_cutoff(
         origin=origin,
     )
     assert store.read_revision("w1", "filing", 1).content is None
-    recipe = store.recipe(
-        {
-            "splitter": "semantic-text-splitter",
-            "version": "0.33.3",
-            "capacity": 512,
-            "overlap": 0,
-            "trim": True,
-        }
-    )
+    recipe = store.recipe(recall._recipe())
     model = store.model({"model": "test"}, dimension=2)
     chunks = store.index_chunks(version_id=source, recipe_id=recipe, content=original.decode())
     with pytest.raises(DataError, match="world is unavailable"):  # no world reader, no scope

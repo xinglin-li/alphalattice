@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, experiences
+from alphalattice.kernel.data_layer import create_data_root, experiences, recall
 from alphalattice.kernel.data_layer.chain import digest
 from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7
 from alphalattice.kernel.data_layer.project import differences, recipe_key
@@ -340,15 +340,7 @@ def test_the_host_renders_a_note_into_an_experience_it_versions_and_replaces(
         from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore
 
         store = KnowledgeStore(log)
-        recipe = store.recipe(
-            {
-                "splitter": "semantic-text-splitter",
-                "version": "0.33.3",
-                "capacity": 512,
-                "overlap": 0,
-                "trim": True,
-            }
-        )
+        recipe = store.recipe(recall._recipe())
         model = store.model({"model": "test"}, dimension=2)
         for source in ids:
             version_id = store.publish_experience(
@@ -468,7 +460,7 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
 
     import numpy as np
 
-    from alphalattice.kernel.data_layer import encoders, recall
+    from alphalattice.kernel.data_layer import encoders
     from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
     from alphalattice.kernel.knowledge import model_store
 
