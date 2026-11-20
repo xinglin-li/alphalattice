@@ -49,7 +49,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
-from alphalattice.kernel.data_layer.telemetry import usage
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
@@ -1185,6 +1184,7 @@ def read_session_usage(
     The serving Host supplies its catalog workspace id explicitly on every read.
     """
     from alphalattice.kernel.data_layer.history import agent_telemetry  # lazy: Host log only
+    from alphalattice.kernel.data_layer.telemetry import usage  # lazy: Host log only
 
     if binding.usage == "OFF" or not usage_reading(binding.workspace):
         return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}

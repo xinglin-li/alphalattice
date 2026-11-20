@@ -650,6 +650,13 @@ class FilteredOperationListAnswer(_Answer):
         return self
 
 
+class _DeclaredAnswer(_Answer):
+    # A declared answer's meanings are its row's (Field descriptions). Built by create_model, it
+    # has no class source, so the docstring search would only walk every frame's module, once per
+    # model, for no docstring.
+    model_config = ConfigDict(use_attribute_docstrings=False)
+
+
 def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseModel]:
     """One operation's answer model from its row: each field's kind (`string|null`),
     whether every answer carries it, and its meaning, which `schema show` prints."""
@@ -670,7 +677,7 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
         )
     model: type[BaseModel] = create_model(
         "".join(part.capitalize() for part in operation.split("_")) + "Answer",
-        __base__=_Answer,
+        __base__=_DeclaredAnswer,
         __doc__=purpose,
         **fields,
     )

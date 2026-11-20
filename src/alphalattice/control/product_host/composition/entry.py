@@ -19,7 +19,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
-from .model_sandbox import run_sandbox
 from .web_launcher import attached_child
 from .web_launcher import main as start
 
@@ -127,6 +126,8 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
 
     Its saved-object readback is shared with the checkout verification probe.
     """
+    from .model_sandbox import run_sandbox  # lazy: a CLI call that sends no trial loads no store
+
     answer: dict[str, object] = run_sandbox(workspace, model_id, study=study, keep=keep)
     return answer
 
