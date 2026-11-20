@@ -37,6 +37,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
+    named_workspace_id,
 )
 from alphalattice.control.product_host.composition.web_launcher import main
 from alphalattice.interface.local_application.portfolio_research import (
@@ -640,14 +641,15 @@ def _harness(tmp_path: Path) -> Iterator[_Harness]:
     resolver = _Resolver(_resolved())
     from alphalattice.kernel.data_layer import history
 
-    history.open_history("synthetic", "portfolio", workspace)
+    workspace_id = named_workspace_id(workspace) or "synthetic"
+    history.open_history(workspace_id, "portfolio", workspace)
     try:
         with WorkspaceApplicationSession.acquire(workspace) as session:
             yield _Harness(
                 workspace=workspace,
                 session=session,
                 application=PortfolioResearchApplication(
-                    workspace_id="synthetic",
+                    workspace_id=workspace_id,
                     workspace=workspace,
                     manifest_binding=lambda: _HASH,
                     session=session,

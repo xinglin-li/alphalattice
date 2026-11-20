@@ -44,6 +44,7 @@ from tests.alternative_evidence_desk.portfolio_coverage_support import (
     start_coverage_service,
 )
 from tests.alternative_evidence_desk.review_dossiers import ControlledRisk, controlled_answer
+from tests.pytest_environment import upgraded
 
 pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
@@ -63,7 +64,7 @@ def book(built_book: Any, tmp_path: Path) -> Any:
     workspace, report = built_book
     copy = tmp_path / "workspace"
     shutil.copytree(workspace, copy)
-    return copy, report
+    return upgraded(copy), report
 
 
 def _prepared_and_analysed(service: Any) -> dict[str, Any]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -89,11 +89,14 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         **fields,
         surface_hash=canonical_hash(draft.model_dump(mode="json", exclude={"surface_hash"})),
     )
-    from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
-        portfolio_results_upgrade_family,
+
+    from alphalattice.control.product_host.composition.research_workspace import (
+        initialize_research_workspace,
+        named_workspace_id,
     )
 
     workspace, root = tmp_path / "workspace", tmp_path / "machine-root"
+    initialize_research_workspace(workspace)
     artifacts = workspace / "artifacts"
     old = artifacts / "portfolio-benchmark" / "surfaces" / f"{surface.surface_hash}.json"
     old.parent.mkdir(parents=True)
@@ -186,19 +189,64 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         assert refusal.value.failure.code == "data_layer.history_unavailable"
     assert not list(unavailable.rglob("*.json"))
 
+    from alphalattice.control.product_host.composition import first_start
+
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
-    history.open_history("portfolio-benchmark-test", "portfolio", workspace, root)
+    workspace_id = named_workspace_id(workspace)
+    assert workspace_id is not None
+    history.open_history(workspace_id, "portfolio", workspace, root)
     try:
-        family = portfolio_results_upgrade_family()
-        benchmark_family = benchmark_owner.portfolio_benchmark_upgrade_family()
+        names = ["portfolio-benchmark", "portfolio-results"]
+        registered = (make() for make in first_start.FAMILIES)
+        families = tuple(family for family in registered if family.name in names)
+        assert [family.name for family in families] == names
+        family = families[-1]
+        empty = tmp_path / "no-portfolio-results"
+        empty.mkdir()
+        assert all(
+            candidate.holds(workspace) and not candidate.holds(empty) for candidate in families
+        )
         upgrade = UpgradeRunner(
             root,
             history.holding(),
             (workspace,),
-            (benchmark_family, family),
+            families,
             lambda *_: {"fixture": "verified"},
         )
         assert upgrade.run() is True
+        monkeypatch.delenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE")
+        first_start._restore_portfolio_reader(upgrade, (workspace,))
+        assert history.portfolio_results_mode(artifacts) == "catalog"
+        assert history.portfolio_results_mode(empty / "artifacts") == "legacy"
+        assert all(not candidate.holds(workspace) for candidate in families)
+        copy = tmp_path / "portfolio-copy"
+        initialize_research_workspace(copy)
+        copy_id = named_workspace_id(copy)
+        assert copy_id is not None and copy_id != workspace_id
+        copy_benchmark = copy / old.relative_to(workspace)
+        copy_benchmark.parent.mkdir(parents=True)
+        copy_benchmark.write_bytes(old.read_bytes())
+        copy_ledger = PortfolioLedgerStore(copy / "artifacts")
+        copy_ledger.content.publish_model(
+            category="execution-ledgers", value=ledger, identity_field="ledger_hash"
+        )
+        assert family.holds(copy)  # rows present, local descriptor absent
+        assert families[0].holds(copy)  # rows present, workspace reference absent
+        assert UpgradeRunner(
+            root,
+            history.holding(),
+            (copy,),
+            families,
+            lambda *_: {"fixture": "verified"},
+            subject=f"0.2.8/{copy_id}",
+        ).run()
+        assert all(not candidate.holds(copy) for candidate in families)
+        log, port = history.holding(), history.store()
+        horizon = log.clock() + timedelta(days=8) // timedelta(microseconds=1)
+        with monkeypatch.context() as clock:
+            clock.setattr(log, "clock", lambda: horizon)
+            assert port.collect_unheld() == []
+        assert copy_ledger.load_execution(ledger.ledger_hash) == ledger
         assert [(name, read()) for name, read in cases] == before
         assert store.load(surface.surface_hash).simple_returns[-1].hex() == (-0.0).hex()
         assert store.load(surface.surface_hash).log_returns[-1].hex() == (-0.0).hex()
@@ -221,7 +269,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
                 read()
         store.publish(surface)
         assert old.is_file()
-        family.switch("old")
+        monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
         assert [(name, read()) for name, read in cases] == before
     finally:
         history.close_history()

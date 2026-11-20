@@ -14,6 +14,7 @@ from alphalattice.kernel.data_layer.history import carry_arrays
 from tests._support.project_discovery import project_discovery as project_discovery
 from tests.alternative_evidence_desk.planted_corpus import review_store
 from tests.alternative_evidence_desk.review_http_support import build_workspace
+from tests.pytest_environment import upgraded
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +31,7 @@ def http_book(built_http_book, tmp_path: Path) -> tuple[Path, Any]:
     source, report = built_http_book
     workspace = tmp_path / "portfolio" / "workspace"
     shutil.copytree(source, workspace)
+    upgraded(workspace)
     return workspace, report
 
 

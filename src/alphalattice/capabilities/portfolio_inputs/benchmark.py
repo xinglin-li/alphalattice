@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date
 from math import log
 from pathlib import Path
@@ -396,7 +396,7 @@ class PortfolioBenchmarkStore:
         try:
             # contract: row U retires the legacy Portfolio artifact readers.
             # First-start upgrade switches to the catalog after migration verifies.
-            mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+            mode = history.portfolio_results_mode(self.root.parent)
             if mode == "catalog":
                 return _catalog_benchmark(surface_hash)
             if mode != "legacy":
@@ -461,16 +461,17 @@ def _catalog_benchmark(digest: str) -> PortfolioBenchmarkSurface:
     return surface
 
 
-def portfolio_benchmark_upgrade_family() -> Family:
+def portfolio_benchmark_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """Move retained benchmark surfaces after the runner verifies its workspace backups."""
     from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
         Family,
         workspace_files,
     )
 
-    def legacy(runner: UpgradeRunner) -> Iterator[PortfolioBenchmarkSurface]:
+    def legacy(runner: UpgradeRunner) -> Iterator[tuple[str | None, PortfolioBenchmarkSurface]]:
         for workspace in runner.workspaces:
             workspace = workspace.resolve()
+            held = holder(workspace)
             for path in workspace_files(workspace):
                 if (
                     path.suffix != ".json"
@@ -483,10 +484,10 @@ def portfolio_benchmark_upgrade_family() -> Family:
                 surface = PortfolioBenchmarkSurface.model_validate_json(path.read_bytes())
                 if surface.surface_hash != path.stem:
                     raise ValueError("portfolio_benchmark.lineage_invalid")
-                yield surface
+                yield held, surface
 
     def step(runner: UpgradeRunner) -> None:
-        for surface in legacy(runner):
+        for workspace, surface in legacy(runner):
             metadata, table = _benchmark_body(surface)
             artifact = history.write_portfolio_result(
                 "portfolio_benchmark",
@@ -495,12 +496,17 @@ def portfolio_benchmark_upgrade_family() -> Family:
                 table,
                 result_table="series",
                 upgrade_owner=(runner.log, runner.root),
+                upgrade_workspace=workspace,
             )
             if runner.map_id("portfolio-benchmark", surface.surface_hash, artifact) != artifact:
                 raise ValueError("portfolio_benchmark.lineage_invalid")
 
     def verify(runner: UpgradeRunner) -> bool:
-        return all(_catalog_benchmark(old.surface_hash) == old for old in legacy(runner))
+        return all(
+            _catalog_benchmark(old.surface_hash) == old
+            and history.portfolio_result_held("portfolio_benchmark", old.surface_hash, workspace)
+            for workspace, old in legacy(runner)
+        )
 
     def switch(mode: Literal["old", "new"]) -> None:
         os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (

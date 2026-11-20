@@ -365,6 +365,7 @@ def start_coverage_service(
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,
     )
+    from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
     from tests.alternative_evidence_desk.review_http_support import (
         _Service,
         _workspace_manifest,
@@ -372,7 +373,9 @@ def start_coverage_service(
 
     session = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_workspace_manifest("qa-portfolio-coverage"),
+        workspace_manifest=_workspace_manifest(
+            named_workspace_id(workspace) or "qa-portfolio-coverage"
+        ),
         resolver=_Resolver(
             _resolved(
                 top_k=top_k,

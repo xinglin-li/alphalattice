@@ -80,6 +80,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     _service,
     build_workspace,
 )
+from tests.pytest_environment import upgraded
 
 _http = http_body
 SMALL = 18  # the smallest tranche book (top_k 17 or more): units of 8, 8 and 2
@@ -101,6 +102,7 @@ def book(built_book: Any, tmp_path: Path) -> Any:
     workspace, report = built_book
     copy = tmp_path / "workspace"
     shutil.copytree(workspace, copy)
+    upgraded(copy)
     return copy, report
 
 
@@ -1153,7 +1155,8 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
     task_id = UUID(prepared["task_id"])
     try:
         assert first.registry.task(task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-        assert _embedding_passes(first) == 3
+        passes_before_restart = _embedding_passes(first)
+        assert passes_before_restart == 3
         section = first.evidence_cro()
         assert section["state"] == "EVIDENCE_REFRESH_IN_PROGRESS"
         progress = section["coverage_progress"]
@@ -1162,14 +1165,16 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
     finally:
         first.session.stop()
 
-    second = start_coverage_service(workspace, authority, tmp_path)
+    second = start_coverage_service(workspace, coverage_authority(workspace, report), tmp_path)
     _one_core(second)
     try:
         assert second.session.resumed_task_ids == (task_id,)
         second.drain()
         assert second.registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
-        assert _embedding_passes(second) == UNIT_COUNT, "the three committed units were not redone"
         states = second.review.evidence_task_adapter.unit_states(second.registry.task(task_id))
+        assert passes_before_restart + _embedding_passes(second) == UNIT_COUNT, (
+            "the three committed units were not redone"
+        )
         assert {value["state"] for value in states.values()} == {"PREPARED"}
         section = second.evidence_cro()
         assert section["state"] == "ANALYST_PACKET_PREPARED"

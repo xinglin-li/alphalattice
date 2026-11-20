@@ -25,6 +25,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Final, Literal
 
+from alphalattice.capabilities.portfolio_inputs.benchmark import (
+    portfolio_benchmark_upgrade_family,
+)
 from alphalattice.control.product_host.composition.application_session import (
     verify_upgrade_backups,
 )
@@ -37,6 +40,7 @@ from alphalattice.control.product_host.storage.backup import (
     WorkspaceBackups,
     default_backup_root,
 )
+from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
 from alphalattice.control.workspace_runtime.storage.capacity import FREE_FLOOR_BYTES
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.causal_outcomes.execution.readers import (
@@ -49,6 +53,9 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     lane_upgrade_family,
 )
+from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+    portfolio_results_upgrade_family,
+)
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     risk_covariance_upgrade_family,
 )
@@ -56,6 +63,7 @@ from alphalattice.investment.sector_research.experiments.development_artifacts i
     sector_results_upgrade_family,
 )
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
@@ -95,6 +103,35 @@ def alpha_arrays() -> Family:
     return alpha_array_upgrade_family(named_workspace_id)
 
 
+def _portfolio_holds(family: Family, workspace: Path) -> bool:
+    """Ask the family's catalog comparison about one workspace."""
+    try:
+        return family.verify(SimpleNamespace(workspaces=(workspace,))) is not True
+    except (DataError, ContentAddressedStoreError) as error:
+        missing = error.__cause__ if isinstance(error, ContentAddressedStoreError) else error
+        if (
+            not isinstance(missing, DataError)
+            or missing.failure.code != "data_layer.benchmark_missing"
+        ):
+            raise
+        return True
+
+
+def _host_portfolio_family(family: Family) -> Family:
+    """First Start selects the verified reader once both Portfolio families finish."""
+    return replace(family, switch=lambda _mode: None, holds=partial(_portfolio_holds, family))
+
+
+def portfolio_benchmarks() -> Family:
+    """Migrate benchmarks first, before Portfolio's results."""
+    return _host_portfolio_family(portfolio_benchmark_upgrade_family(named_workspace_id))
+
+
+def portfolio_results() -> Family:
+    """Hold a workspace's dated series and holdings until the catalog matches."""
+    return _host_portfolio_family(portfolio_results_upgrade_family(named_workspace_id))
+
+
 def protected_validation() -> Family:
     """The protected gate's receipts and permit claims, held by their original workspace."""
     return validation_upgrade_family(named_workspace_id)
@@ -113,6 +150,8 @@ FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     protected_validation,
     risk_covariance,
     sector_results_upgrade_family,
+    portfolio_benchmarks,
+    portfolio_results,
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""
@@ -269,6 +308,17 @@ def recorded(subject: str, started: dict[str, Any]) -> Plan:
     return Plan(subject, workspaces, tuple(started["families"]), backups, recorded=True)
 
 
+def _restore_portfolio_reader(run: UpgradeRunner, workspaces: tuple[Path, ...]) -> None:
+    """Select the verified reader for the workspaces covered by the completed plan."""
+    started = run.started
+    if (
+        run.complete
+        and started is not None
+        and {"portfolio-benchmark", "portfolio-results"}.issubset(started["families"])
+    ):
+        history.select_portfolio_catalog(workspaces)
+
+
 class FirstStart:
     """The upgrade this Host start owes before it composes, if any: its plan, run and progress."""
 
@@ -335,11 +385,13 @@ class FirstStart:
         if started is not None and any(
             self.workspace == Path(row["workspace"]) for row in started["backups"]["workspaces"]
         ):
+            _restore_portfolio_reader(machine, (self.workspace,))
             return self._deferred_plan(subject, started)
         alone = self._runner(subject, (self.workspace,))
         started = alone.started
         if started is not None:
             if alone.complete:
+                _restore_portfolio_reader(alone, (self.workspace,))
                 return self._deferred_plan(subject, started)
             return recorded(subject, started)
         if not any(f.holds(self.workspace) for f in self.families):
@@ -374,9 +426,11 @@ class FirstStart:
                 families = tuple(
                     family for family in self.families if family.name in self.plan.families
                 )
-                self._runner(
+                runner = self._runner(
                     self.plan.subject, self.plan.workspaces, self._backups(), families=families
-                ).run()
+                )
+                runner.run()
+                _restore_portfolio_reader(runner, self.plan.workspaces)
         except Exception as error:
             self.state, self.failure = "FAILED", refusal_reason(error)
             raise

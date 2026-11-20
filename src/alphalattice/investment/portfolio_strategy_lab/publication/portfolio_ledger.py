@@ -735,7 +735,11 @@ class PortfolioLedgerStore(ObservationStore):
         return uri
 
     def _publish_execution_body(
-        self, value: PortfolioExecutionLedger, *, upgrade_owner: tuple[Any, Path] | None = None
+        self,
+        value: PortfolioExecutionLedger,
+        *,
+        upgrade_owner: tuple[Any, Path] | None = None,
+        upgrade_workspace: str | None = None,
     ) -> str:
         """Keep non-series ledger evidence in its owner and admit its dated values once."""
         import pyarrow as pa  # lazy: only catalog result admission needs the data extra
@@ -764,6 +768,7 @@ class PortfolioLedgerStore(ObservationStore):
             table,
             result_table="series",
             upgrade_owner=upgrade_owner,
+            upgrade_workspace=upgrade_workspace,
         )
         return cast(str, artifact)
 
@@ -828,7 +833,11 @@ class PortfolioLedgerStore(ObservationStore):
         return uri
 
     def _publish_report_body(
-        self, value: PortfolioDeclaredPathReport, *, upgrade_owner: tuple[Any, Path] | None = None
+        self,
+        value: PortfolioDeclaredPathReport,
+        *,
+        upgrade_owner: tuple[Any, Path] | None = None,
+        upgrade_workspace: str | None = None,
     ) -> str:
         """Admit the report's dated holdings and retain its other evidence as a descriptor."""
         import pyarrow as pa  # lazy: only catalog result admission needs the data extra
@@ -870,6 +879,7 @@ class PortfolioLedgerStore(ObservationStore):
                 table,
                 result_table="holding",
                 upgrade_owner=upgrade_owner,
+                upgrade_workspace=upgrade_workspace,
             ),
         )
 
@@ -1094,7 +1104,7 @@ class PortfolioLedgerStore(ObservationStore):
         """
         # contract: row U retires the legacy Portfolio artifact readers.
         # First-start upgrade switches to the catalog after migration verifies.
-        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        mode = history.portfolio_results_mode(self.artifact_root)
         if mode == "catalog":
             return self._load_execution_catalog(ledger_hash)
         if mode != "legacy":
@@ -1195,7 +1205,7 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Validated concrete artifact reopened through content-addressed storage.
         """
-        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        mode = history.portfolio_results_mode(self.artifact_root)
         if mode == "catalog":
             return self._load_report_catalog(report_hash)
         if mode != "legacy":
@@ -1252,7 +1262,7 @@ class PortfolioLedgerStore(ObservationStore):
         self, ledger_hash: str, report_hash: str
     ) -> tuple[PortfolioExecutionLedger, PortfolioDeclaredPathReport]:
         """Reopen the two related catalog bodies in one query for a reader needing both."""
-        mode = os.environ.get("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+        mode = history.portfolio_results_mode(self.artifact_root)
         if mode == "legacy":
             return self.load_execution(ledger_hash), self.load_report(report_hash)
         if mode != "catalog":
@@ -1383,7 +1393,7 @@ class PortfolioLedgerStore(ObservationStore):
         return result.result_hash
 
 
-def portfolio_results_upgrade_family() -> Family:
+def portfolio_results_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """Migrate dated Portfolio ledger series and report holdings under one switch."""
     from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
         Family,
@@ -1393,10 +1403,16 @@ def portfolio_results_upgrade_family() -> Family:
     def legacy(
         runner: UpgradeRunner,
     ) -> Iterator[
-        tuple[str, PortfolioLedgerStore, PortfolioExecutionLedger | PortfolioDeclaredPathReport]
+        tuple[
+            str | None,
+            str,
+            PortfolioLedgerStore,
+            PortfolioExecutionLedger | PortfolioDeclaredPathReport,
+        ]
     ]:
         for workspace in runner.workspaces:
             workspace = workspace.resolve()
+            held = holder(workspace)
             for category, model, identity in (
                 ("execution-ledgers", PortfolioExecutionLedger, "ledger_hash"),
                 ("reports", PortfolioDeclaredPathReport, "report_hash"),
@@ -1420,33 +1436,41 @@ def portfolio_results_upgrade_family() -> Family:
                         model=model,
                         identity_field=identity,
                     )
-                    yield category, store, value
+                    yield held, category, store, value
 
     def step(runner: UpgradeRunner) -> None:
-        for category, store, value in legacy(runner):
+        for workspace, category, store, value in legacy(runner):
             if isinstance(value, PortfolioExecutionLedger):
                 artifact = store._publish_execution_body(
-                    value, upgrade_owner=(runner.log, runner.root)
+                    value, upgrade_owner=(runner.log, runner.root), upgrade_workspace=workspace
                 )
                 old_id = value.ledger_hash
             else:
                 artifact = store._publish_report_body(
-                    value, upgrade_owner=(runner.log, runner.root)
+                    value, upgrade_owner=(runner.log, runner.root), upgrade_workspace=workspace
                 )
                 old_id = value.report_hash
             if runner.map_id("portfolio-" + category, old_id, artifact) != artifact:
                 raise ValueError("portfolio_application.upgrade_identity_invalid")
 
     def verify(runner: UpgradeRunner) -> bool:
-        return all(
-            (
-                store._load_execution_catalog(value.ledger_hash)
-                if isinstance(value, PortfolioExecutionLedger)
-                else store._load_report_catalog(value.report_hash)
-            )
-            == value
-            for category, store, value in legacy(runner)
-        )
+        for workspace, _, store, value in legacy(runner):
+            try:
+                if isinstance(value, PortfolioExecutionLedger):
+                    kind, digest = "portfolio_execution_series", value.ledger_hash
+                    stored = store._load_execution_catalog(digest)
+                else:
+                    kind, digest = "portfolio_report_holding", value.report_hash
+                    stored = store._load_report_catalog(digest)
+            except ContentAddressedStoreError as error:
+                # This lookup follows verification of the retained body. A workspace copy may
+                # need its own descriptor even when this data root already has the catalog rows.
+                if not isinstance(error.__cause__, FileNotFoundError):
+                    raise
+                return False
+            if stored != value or not history.portfolio_result_held(kind, digest, workspace):
+                return False
+        return True
 
     def switch(mode: Literal["old", "new"]) -> None:
         os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (

@@ -524,6 +524,7 @@ def close_history() -> None:
         reading = _open.pop("reading", None)
         log = _open.pop("log", None)
         _open.pop("workspace", None)
+        _open.pop("portfolio_catalog_workspaces", None)
         _open.pop("root", None)
         provider = _open.pop("tracer", None)
         logger = _open.pop("logger", None)
@@ -1271,6 +1272,7 @@ def _produce_result_artifact(
     row_count: int,
     meaning: str,
     *,
+    workspace: str | None,
     held: bool | None = None,
 ) -> None:
     current = log.read(
@@ -1292,7 +1294,7 @@ def _produce_result_artifact(
         "artifact.produced",
         ("artifact", artifact),
         attrs,
-        workspace=_open["workspace"],
+        workspace=workspace,
         node="host",
     )
     log.flush()
@@ -1409,6 +1411,7 @@ def write_sector_results(
                     descriptor,
                     rows.num_rows,
                     "The values of a Sector development result.",
+                    workspace=_open["workspace"],
                     held=_open["workspace"] is not None,
                 )
             else:
@@ -1756,10 +1759,12 @@ def write_portfolio_result(
     *,
     result_table: str,
     upgrade_owner: tuple[Any, Path] | None = None,
+    upgrade_workspace: str | None = None,
 ) -> str:
     """Admit one Portfolio artifact's rows and retain its lineage in its profile."""
     import pyarrow as pa  # lazy: only catalog result admission needs the data extra
 
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numeric extras
     from alphalattice.kernel.data_layer.store import stage  # lazy: the data extra is optional
 
     if result_table not in {"series", "holding"}:
@@ -1772,6 +1777,7 @@ def write_portfolio_result(
 
     with _once:
         log, root, port = _result_writer(upgrade_owner)
+        workspace = upgrade_workspace if upgrade_owner is not None else _open["workspace"]
         if not log.read(
             "SELECT 1 FROM definition WHERE family = 'artifact_type' AND name = ?",
             (kind,),
@@ -1808,6 +1814,7 @@ def write_portfolio_result(
                 metadata,
                 table.num_rows,
                 "The sealed series of a Portfolio artifact.",
+                workspace=workspace,
             )
         count = port.lake.execute(
             f"SELECT count(*) FROM lake.results.{result_table} WHERE artifact_id = ?", (artifact,)
@@ -1836,8 +1843,48 @@ def write_portfolio_result(
                 raise DataError(
                     "benchmark identity has different values", code="data_layer.benchmark_invalid"
                 )
+        arrays._hold(log, str(artifact), workspace)
         _record_result_count(log, artifact, table.num_rows)
         return str(artifact)
+
+
+PORTFOLIO_RESULTS_STORE_ENV: Final = "ALPHALATTICE_PORTFOLIO_RESULTS_STORE"
+
+
+def select_portfolio_catalog(workspaces: tuple[Path, ...]) -> None:
+    """Record which workspaces the open Host's verified Portfolio migration covers."""
+    with _lock:
+        _open.setdefault("portfolio_catalog_workspaces", set()).update(
+            workspace.resolve() for workspace in workspaces
+        )
+
+
+def portfolio_results_mode(artifact_root: Path) -> str:
+    """Use the caller's rollback choice or this workspace's verified reader."""
+    override = os.environ.get(PORTFOLIO_RESULTS_STORE_ENV)
+    if override is not None:
+        return override
+    workspace = artifact_root.parent
+    if workspace.name == "runtime":
+        workspace = workspace.parent
+    return "catalog" if workspace in _open.get("portfolio_catalog_workspaces", ()) else "legacy"
+
+
+def portfolio_result_held(kind: str, digest: str, workspace: str | None) -> bool:
+    """Whether this workspace keeps the catalog artifact with this type and content."""
+    if workspace is None:
+        return True
+    with _array_reader() as (_, read):
+        profile = _portfolio_result_profile(read, kind, digest)
+        return bool(
+            profile
+            and profile[1] == "present"
+            and read(
+                "SELECT 1 FROM live_ref WHERE artifact_id = ? AND root_kind = 'workspace'"
+                " AND root_id = ?",
+                (profile[0], workspace),
+            )
+        )
 
 
 def read_portfolio_result(

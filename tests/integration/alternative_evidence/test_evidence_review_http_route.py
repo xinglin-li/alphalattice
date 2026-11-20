@@ -539,20 +539,23 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert closed["disposition"] == "REFUSED_ACQUISITION_WINDOW_CLOSED"
         assert closed["failure_code"] == "alternative_evidence.acquisition_deadline_exceeded"
         assert len(service.registry.tasks()) == count + 3
+        assert _builds(adapter) == 1
         service.session.stop()
 
         # A new process over the same workspace, still the same day: the
         # captured intent reads back the same Task; a day later it is expired.
         now[0] = _NOW + timedelta(hours=6)
+        authority = build_authority(
+            tmp_path=tmp_path, report=report, model_authority_admitted=False
+        )
         service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
         client = LocalResearchClient(service.session.workspace)
         reopened = client.request(captured)
         assert reopened["disposition"] == "REUSED_EXACT" and reopened["task_id"] == task_id
         assert reopened["evidence_as_of"] == _NOW.isoformat()
-        # The authority (and its runtime counters) outlives the service: the
-        # reopen added no corpus pass to the one the first service made.
+        # The reopened Host has a fresh runtime and builds no new generation.
         reopened_adapter = service.review.evidence_task_adapter
-        assert _builds(reopened_adapter) == 1
+        assert _builds(reopened_adapter) == 0
         now[0] = _NOW + timedelta(days=1, minutes=1)
         expired = client.request(captured)
         assert expired["disposition"] == "REFUSED_PREPARATION_EXPIRED"
@@ -1740,9 +1743,10 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
 
 
 def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content(
-    tmp_path: Path, http_book
+    tmp_path: Path, http_book, monkeypatch: pytest.MonkeyPatch
 ):
     """CONTRACT: an unknown request offers kept results; lost sealed work keeps recovery."""
+    monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
     workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:

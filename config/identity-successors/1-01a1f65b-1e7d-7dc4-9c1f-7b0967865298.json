@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "ddbdbeb2ef57fa2f999b5627e0f860ce4122892cc45619f00cdc86dcc75cb6be",
+   "successor": "18ff27cf5b554c05bb75413ff57045a4b6502d09155938f61ce400371d89ffa6",
+   "change": "Migrate Portfolio benchmarks and results on the first start",
+   "reason": "Lawful change: the first start migrates Portfolio benchmarks and results into the shared catalog as registered upgrade families, repairing discovery for a second workspace and keeping each verified catalog body; sealed values are unchanged, and the three roles share that read path. Controls: the families' ALL EQUAL replay with its rollback and the existing Portfolio holders. (carried across composition on 8d1981af7e64acfe238e0249e4378e52c1a6049a)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "ec9cb5802b935a2c8a9fc48aef83b0db9331718a866a8d59bd49758b4ec4431a",
+   "successor": "5872f2d311f387b23e7e91bc63a22103df5f692d8ef82f1ab6136fedb3e62204",
+   "change": "Migrate Portfolio benchmarks and results on the first start",
+   "reason": "Lawful change: the first start migrates Portfolio benchmarks and results into the shared catalog as registered upgrade families, repairing discovery for a second workspace and keeping each verified catalog body; sealed values are unchanged, and the three roles share that read path. Controls: the families' ALL EQUAL replay with its rollback and the existing Portfolio holders. (carried across composition on 8d1981af7e64acfe238e0249e4378e52c1a6049a)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "31636f5a5feaa4c2fe60a23d0338990f6f7e94cf7c08085aa9e2b165459f5c5a",
+   "successor": "f1613cac396e1e291780eb0c33da0b4d8b2a0775259c349ea0eaea1f0c04cd08",
+   "change": "Migrate Portfolio benchmarks and results on the first start",
+   "reason": "Lawful change: the first start migrates Portfolio benchmarks and results into the shared catalog as registered upgrade families, repairing discovery for a second workspace and keeping each verified catalog body; sealed values are unchanged, and the three roles share that read path. Controls: the families' ALL EQUAL replay with its rollback and the existing Portfolio holders. (carried across composition on 8d1981af7e64acfe238e0249e4378e52c1a6049a)"
+  }
+ ]
+}
