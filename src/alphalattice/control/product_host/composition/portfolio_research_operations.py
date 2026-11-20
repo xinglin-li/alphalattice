@@ -4043,13 +4043,21 @@ class PortfolioResearchOperations:
         submission = self.dispatcher.submit(
             PortfolioRunCommand(application=self.application, spec=spec, planned=planned)
         )
-        return {
+        answer: dict[str, object] = {
             "disposition": submission.disposition,
             "command_kind": submission.command_kind,
             "task_id": None if submission.task_id is None else str(submission.task_id),
             "refusal_detail": submission.refusal_detail,
             "lifecycle": submission.lifecycle,
         }
+        if (
+            submission.task_id is not None
+            and submission.lifecycle == TaskLifecycle.RECOVERY_REQUIRED.value
+        ):
+            projection = self.dispatcher.status(submission.task_id)
+            answer["lifecycle"] = projection.lifecycle.value
+            answer.update(self._stopped_answer(projection))
+        return answer
 
     def status(self, task_id: UUID, *, wait_seconds: float | None = None) -> dict[str, object]:
         """Read one task and optionally wait for a bounded state transition.

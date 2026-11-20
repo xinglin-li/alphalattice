@@ -2083,20 +2083,6 @@
       "admitted": "2026-11-16: 16 passes at most 48.3 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     },
     {
-      "pattern": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Failed its teardown check (an answer does not hold its published model) under a loaded reached leg on 11-16, as the large web-factor tests did that passed in a quiet rerun of their file; a test that goes red under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 4.6 s and 1 red at 2 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]False-True[]]",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Failed its teardown check (a RECOVERY_REQUIRED Task's answer offers no way on) in a loaded reached leg on 11-18 and passed alone at the same head and host, as its [True-True] case did on 11-16, so it runs only in the nightly as a test red under load does (the person, 11-16); its cause, a process-wide Path.open patch beside the live Host, is a recorded test fault.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: red once at 3.6 s in a reached leg (OBSERVATION-9e1616885ba3bede) and green alone; this row classes it Large, so its hang guard is Large's 900 s (the budget row below), not a speed limit on its measured 3.6 s"
-    },
-    {
       "pattern": "tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "Could not open its DuckDB store from a second connection under a loaded reached leg on 11-16; a test that goes red under load runs only in the nightly (the person, 11-16).",
@@ -2231,16 +2217,6 @@
       "budget": "large:tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
       "value": 900,
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]False-True[]]",
-      "value": 900,
-      "admitted": "2026-11-19: as its [True-True] case: a Large test is killed only as hung, at Bazel's large timeout of 900 s"
     },
     {
       "budget": "large:tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
@@ -2789,28 +2765,6 @@
       "until": "2026-11-21",
       "class": "unstable",
       "since": "2026-11-19",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[True-False]",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "A parallel test worker can retain a task requiring recovery, which makes the unrelated binding test fail at teardown.",
-      "until": "2026-11-20",
-      "class": "unstable",
-      "since": "2026-11-18",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
-      "node": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[False-False]",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "A parallel test worker can retain a task requiring recovery, which makes the unrelated binding test fail at teardown.",
-      "until": "2026-11-20",
-      "class": "unstable",
-      "since": "2026-11-18",
       "seen_on": [
         "mac1"
       ]

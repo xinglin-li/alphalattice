@@ -273,23 +273,37 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
         bind_session(project, host="codex", session_id="holder", workspace=live.workspace)
     _session(monkeypatch, "codex", "sandboxed")
     binding_path = project / ".codex" / BINDING_NAME
-    opening, denied = Path.open, [project / ".codex"]
-    read_blocked = False
+    root = native_setup.autobind_root(live.workspace)
+    read_blocked = block_workspace_read = False
+    project_sessions = {"sandboxed", "memo-other", "explicit", "nowhere"}
 
-    def unavailable(path, mode="r", *args, **kwargs):
-        if any(path.is_relative_to(place) for place in denied) and (
-            "x" in mode
-            or (read_blocked and (path == binding_path or len(denied) > 1) and "r" in mode)
-        ):
-            raise PermissionError(13, "secret fixture exception text", str(path))
-        return opening(path, mode, *args, **kwargs)
+    def deny_binding(candidate, *, host, session_id, workspace, **kwargs):
+        if host == "codex" and workspace == live.workspace:
+            if candidate == project and session_id in project_sessions:
+                path = (
+                    NativeResearchBinding.slot_path(project, (host, session_id))
+                    if held
+                    else binding_path
+                )
+                raise PermissionError(13, "secret fixture exception text", str(path))
+            if candidate == root and session_id == "nowhere":
+                path = NativeResearchBinding.slot_path(root, (host, session_id))
+                raise PermissionError(13, "secret fixture exception text", str(path))
+        return bind_session(
+            candidate, host=host, session_id=session_id, workspace=workspace, **kwargs
+        )
 
-    monkeypatch.setattr(Path, "open", unavailable)
+    monkeypatch.setattr(native_setup, "bind_session", deny_binding)
     read_binding, reads = native_setup.session_binding, []
 
-    def rehydrate(*arguments):
-        reads.append(arguments)
-        return read_binding(*arguments)
+    def rehydrate(candidate, workspace, session):
+        reads.append((candidate, workspace, session))
+        if read_blocked and session == ("codex", "sandboxed"):
+            if (candidate, workspace) == (project, None) and held:
+                raise NativeBridgeError("native_bridge.binding_unreadable")
+            if (candidate, workspace) == (None, live.workspace) and block_workspace_read:
+                raise NativeBridgeError("native_bridge.binding_unreadable")
+        return read_binding(candidate, workspace, session)
 
     monkeypatch.setattr(native_setup, "session_binding", rehydrate)
     native_setup.configure_binding_memo(capacity=1)
@@ -307,17 +321,14 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
         key = ("codex", "sandboxed")
         assert reads == [(project, None, key), (None, live.workspace, key)]
         native_setup.configure_binding_memo(capacity=1)
-        denied.append(native_setup.autobind_root(live.workspace) / ".codex")
+        block_workspace_read = True
         for block_read in (True, False):
             read_blocked = block_read
             cli.main(_research(live, tmp_path), serve=lambda _: 99)
             recovered = json.loads(capsys.readouterr().out)["data"]
-        denied.pop()
         assert recovered.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
     finally:
         native_setup.configure_binding_memo()
-    read_blocked = False
-    root = native_setup.autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
     # Compare an identified caller with a sessionless caller of the same bound workspace.
     client = LocalResearchClient(live.workspace)
@@ -387,7 +398,6 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     assert "secret fixture exception text" not in json.dumps(answer)
     assert binding_path.exists() == held
     _session(monkeypatch, "codex", "nowhere")  # neither folder writable: said, never silent
-    denied.append(root / ".codex")
     cli.main(_research(live, tmp_path), serve=lambda _: 99)  # its exit follows the first Task
     notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
     assert (notice["status"], notice["next_action"]) == (
