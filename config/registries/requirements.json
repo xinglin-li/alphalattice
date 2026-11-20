@@ -2180,6 +2180,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "task_control.alpha_child_returns_parts_to_host": {
+      "description": "A real Alpha child returns each part to the Host, which keeps and reads it under its own log lock.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "A real child and a held Host log are required to expose the cross-process writer conflict."
+    },
     "task_control.an_older_spelling_is_the_same_sealed_state": {
       "description": "If the import compared a 0.2.7 store's documents as text, a store spelled before a field was added would refuse to move onto the log, though its sealed states are equal.",
       "owner": "alphalattice.control.task_control",

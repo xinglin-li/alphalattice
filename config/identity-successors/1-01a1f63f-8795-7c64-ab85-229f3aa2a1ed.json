@@ -1,0 +1,83 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "8aad92d3ffbb644b0bedd4d059325a9f331652b2ac46fadd6f4bfe0e760bd33c",
+   "successor": "9e8984099709a664b59692c8090b5af30bd87446a64812f68479cf2298401a5f",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "a436028221b0dff03559ad13cf0272d60f39f2ba2522a357a61cb0ba28c514cc",
+   "successor": "ec9cb5802b935a2c8a9fc48aef83b0db9331718a866a8d59bd49758b4ec4431a",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "cddb244a202c8d6892784cfa86b59036e660402f24143fc0688bddc6aa9a02b7",
+   "successor": "e5358bbbfa2a964bacb6e671f803aeb22deaab3906a595336e980436066d223d",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "5c6b165f4c7b85ec1e9303d020afedd91da4f8e66621bb215789916972e87977",
+   "successor": "9fdcfedb875df654facc0cc999f3f57b0d33163de56da28fa363fb14a550530d",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "daef56aa4aefb08c736c6497d8e4c5c8c52687c844d7f195f57f456f27fcdc50",
+   "successor": "4f7528f9b43099367debf2c2327051ddd27ff5338739d37c6cf9a4a2f4a347b1",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "23d3155a904e229bb6b26dbb3cd489b00031a75703c3f56715f97b87a8affd9e",
+   "successor": "347bd5178cb227c8613ffe3efe02c750ca5b2de75d9f145c17f9dcc7c2eafa75",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "16e0a352aeab8eccb261cd40cea7c85992777021f0265ecf290eb42a624b3638",
+   "successor": "6c72fbc5719442b5b7f365214c8139e0546c0e6803c05002f218a4edd87c738e",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "efeddf21ffdb8b5525b2b2b0872f2075157ac455a7b6f310d2feeb5b369873ba",
+   "successor": "894284dd9f303959ecaf822f96780328544ca9a2dbf70a4c488e50db310cc3ea",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "efeddf21ffdb8b5525b2b2b0872f2075157ac455a7b6f310d2feeb5b369873ba",
+   "successor": "894284dd9f303959ecaf822f96780328544ca9a2dbf70a4c488e50db310cc3ea",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "51208904b81a7130ee1703f97980a245d688f718882936628375e1c19f29f8fb",
+   "successor": "ee16cb792567542e40f1f63f484fd183b5a9c5d6beb66a86d3dc795f942e4876",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "1026f757b4850ff33be978a8376de530fcf1108eb548b7a78251a9d455fab4da",
+   "successor": "86d243aa7ff38d717dde4eafa564875e4dde3a87baadfb3835db7a2ab95cdf40",
+   "change": "Restore Alpha fits and reuse completed folds on recovery",
+   "reason": "Lawful change: a recovered or cancelled Alpha fold is exposed only after its verified arrays and catalog rows are durable, and a completed fold is reused on recovery instead of refit; the eleven roles share that fit and handoff code, and an uninterrupted fit computes as before. Controls: the reviewed recovery cases (task child, development artifacts) at the reviewed head, and the composed head adds only develop's merge."
+  }
+ ]
+}

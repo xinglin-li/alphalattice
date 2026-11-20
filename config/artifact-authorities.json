@@ -270,6 +270,20 @@
     },
     {
       "path_prefixes": [
+        ".alpha-child"
+      ],
+      "roots": [
+        "workspace"
+      ],
+      "semantic_role": "Staged Alpha fold parts, documents, catalog chunks and completion checkpoints used by the Host on recovery",
+      "authority_owner": "product_host.research_authoring.factor_handoff.execute_alpha_in_child",
+      "retention_owner": "product_host",
+      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "artifact_relationship": "STAGED_OUTPUT_PENDING_HOST_ADMISSION",
+      "eviction_authority": "NONE"
+    },
+    {
+      "path_prefixes": [
         "alpha-research/current",
         "alpha-research/current/candidate-numerical-fold-by-binding",
         "alpha-research/current/model-fit-sidecar-by-operation",

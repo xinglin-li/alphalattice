@@ -36,6 +36,7 @@ import time
 import uuid
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -1998,6 +1999,76 @@ def _alpha_part_body(read: Callable[..., Any], content_hash: str, layout: str) -
     return None if link is None else str(link[2])
 
 
+type AlphaParts = dict[tuple[str, str], tuple[str, Path]]
+_ALPHA_PARTS: ContextVar[tuple[Path, AlphaParts] | None] = ContextVar("alpha_parts", default=None)
+
+
+@contextmanager
+def collect_alpha_parts(folder: Path) -> Iterator[AlphaParts]:
+    """Stage one child's parts in its call folder, with no writable log."""
+    parts: AlphaParts = {}
+    token = _ALPHA_PARTS.set((folder, parts))
+    try:
+        yield parts
+    finally:
+        _ALPHA_PARTS.reset(token)
+
+
+def _collected_alpha_part(content_hash: str, layout: str) -> tuple[str, Path] | None:
+    collected = _ALPHA_PARTS.get()
+    return None if collected is None else collected[1].get((content_hash, layout))
+
+
+def keep_collected_alpha_parts(parts: AlphaParts) -> None:
+    """The Host keeps a successful child's parts through the ordinary array door."""
+    for (content_hash, layout), (digest, path) in parts.items():
+        kept = keep_alpha_part(
+            content_hash, layout, _read_collected_alpha_part(digest, path), durable=False
+        )
+        if kept != digest:
+            raise DataError(
+                "the Alpha part changed during the child call", code="data_layer.part_invalid"
+            )
+    if parts:
+        flush()
+
+
+def _read_collected_alpha_part(digest: str, path: Path) -> bytes:
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    payload = path.read_bytes()
+    if arrays.packed_digest(payload) != digest:
+        raise DataError("the staged Alpha part body changed", code="data_layer.part_invalid")
+    return payload
+
+
+def _collect_alpha_part(
+    folder: Path,
+    parts: AlphaParts,
+    content_hash: str,
+    layout: str,
+    payload: bytes,
+    capacity: Callable[[int], None] | None,
+) -> str:
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+
+    key = (content_hash, layout)
+    if key in parts:
+        return parts[key][0]
+    digest = alpha_part_body_digest(content_hash, layout)
+    if digest is not None:
+        # Preserve the first body even when a later fit serialized it differently.
+        payload = read_alpha_part(content_hash, layout)
+    else:
+        digest = arrays.packed_digest(payload)
+        if capacity is not None:
+            capacity(len(payload))
+    path = folder / f"alpha-part-{len(parts)}"
+    path.write_bytes(payload)
+    parts[key] = (digest, path)
+    return digest
+
+
 def keep_alpha_part(
     content_hash: str,
     layout: str,
@@ -2008,6 +2079,10 @@ def keep_alpha_part(
     upgrade_owner: tuple[HostLog, Path, str | None] | None = None,
 ) -> str:
     """Keep a legacy-format body and relate it to its unchanged content and layout identities."""
+    collected = _ALPHA_PARTS.get()
+    if collected is not None and upgrade_owner is None:
+        return _collect_alpha_part(*collected, content_hash, layout, payload, capacity)
+
     import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _once:
@@ -2082,6 +2157,10 @@ def keep_alpha_part(
 
 def read_alpha_part(content_hash: str, layout: str) -> bytes:
     """Resolve the typed Alpha part relation and read its verified packed body."""
+    staged = _collected_alpha_part(content_hash, layout)
+    if staged is not None:
+        return _read_collected_alpha_part(*staged)
+
     import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     with _array_reader() as (root, read):
@@ -2100,12 +2179,18 @@ def read_alpha_part(content_hash: str, layout: str) -> bytes:
 
 def alpha_part_body_digest(content_hash: str, layout: str) -> str | None:
     """The packed-body digest linked to a content and layout pair, if upgraded."""
+    staged = _collected_alpha_part(content_hash, layout)
+    if staged is not None:
+        return staged[0]
     with _array_reader() as (_root, read):
         return _alpha_part_body(read, content_hash, layout)
 
 
 def alpha_part_body_path(content_hash: str, layout: str) -> Path:
     """The linked array's source path for the existing sealed-source verifier."""
+    staged = _collected_alpha_part(content_hash, layout)
+    if staged is not None:
+        return staged[1]
     with _array_reader() as (root, read):
         link = _alpha_part_link(read, content_hash, layout)
         if link is None:

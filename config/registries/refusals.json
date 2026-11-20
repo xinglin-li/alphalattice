@@ -1229,6 +1229,16 @@
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
 },
+"alpha_research.child_staging_invalid": {
+"owner": "alphalattice.control.product_host",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The retained fold handoff is inconsistent. Restore its parts and documents before retrying the Alpha Task."
+},
+"alpha_research.child_staging_linked": {
+"owner": "alphalattice.control.product_host",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The retained fold handoff is linked. Restore it as ordinary files inside the Alpha Task's workspace before retrying."
+},
 "alpha_research.corrected_target_common_axis_mismatch": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"

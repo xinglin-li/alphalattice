@@ -10,6 +10,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +26,186 @@ from alphalattice.control.task_control.child import (
 from alphalattice.kernel.shared_kernel import spawn
 
 HERE = __spec__.name if __spec__ else __name__
+
+
+class _AlphaPartExecutor:
+    kind = "alpha.model-development"
+
+    def __init__(self, plan, arrays, program, batch, *, stop_after_fold=None):
+        self.plan, self.arrays, self.program, self.batch = plan, arrays, program, batch
+        self.stop_after_fold = stop_after_fold
+
+    def set_cancellation_check(self, cancelled):
+        self.cancelled = cancelled
+
+    def execute(self, *, output_workspace, **_arguments):
+        from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+            AlphaDevelopmentArtifactStore,
+        )
+        from alphalattice.investment.alpha_research.experiments.development_execution import (
+            AlphaDevelopmentCancelled,
+        )
+        from alphalattice.investment.alpha_research.experiments.execution import (
+            execute_alpha_model_batch,
+        )
+        from alphalattice.investment.alpha_research.experiments.mandate import (
+            build_current_alpha_research_model_mandate,
+        )
+
+        def stop_at_fold_boundary(**_facts):
+            if self.stop_after_fold == "recover_fold":
+                os._exit(73)
+            if self.stop_after_fold == "cancel_fold" or self.cancelled():
+                raise AlphaDevelopmentCancelled("alpha_research.cancelled_at_fold_boundary")
+
+        store = AlphaDevelopmentArtifactStore(output_workspace / "alpha-development")
+        with store.admit_development_chunks():
+            result = execute_alpha_model_batch(
+                program=self.program,
+                batch=self.batch,
+                fold_plan=self.plan,
+                store=store,
+                array_workspace=self.arrays,
+                model_mandate=build_current_alpha_research_model_mandate(),
+                operational_progress=SimpleNamespace(record_candidate_fold=stop_at_fold_boundary),
+            )
+        return {"pid": os.getpid(), "batch": result}
+
+
+class _AlphaPartRecipe:
+    def __init__(self, executor):
+        self.executor = executor
+
+    def prepare(self):
+        return SimpleNamespace(executor=self.executor)
+
+
+def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> None:
+    """Fit the installed ridge model in a separate worker, then reopen its scores in the Host."""
+    from alphalattice.control.product_host.research_authoring.factor_handoff import (
+        ChildAlphaExecutor,
+    )
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.control.task_control.registry import (
+        DuckDbTaskControlRegistry,
+        resolve_task_control_database,
+    )
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+    from alphalattice.investment.alpha_research.candidates.contracts import (
+        AlphaExperimentBatch,
+        seal_contract,
+    )
+    from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+        AlphaDevelopmentArtifactStore,
+    )
+    from alphalattice.investment.alpha_research.experiments.development_execution import (
+        AlphaDevelopmentCancelled,
+    )
+    from alphalattice.kernel.data_layer import history
+    from tests.alpha_research.fixtures import _plan_and_workspace
+    from tests.integration.alpha_research.test_model_adapter_boundary import _batch, _program
+    from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
+
+    plan, arrays = _plan_and_workspace()
+    program = _program(plan.foundation, plan)
+    all_candidates = _batch(program)
+    batch = seal_contract(
+        AlphaExperimentBatch,
+        all_candidates.model_dump(exclude={"batch_hash"}) | {"specs": all_candidates.specs[:1]},
+        "batch_hash",
+    )
+    executor = _AlphaPartExecutor(plan, arrays, program, batch)
+    history.open_history("child-parts", "child parts", tmp_path)
+    try:
+        store = AlphaDevelopmentArtifactStore(tmp_path / "alpha-development")
+        if interruption is not None:
+            stopped = _AlphaPartExecutor(plan, arrays, program, batch, stop_after_fold=interruption)
+            child_executor = ChildAlphaExecutor(recipe=_AlphaPartRecipe(stopped), kind=stopped.kind)
+
+            def stopped_call():
+                return child_executor.execute(
+                    program=program, document={}, authority=None, output_workspace=tmp_path
+                )
+
+            if interruption == "recover_fold":
+                # A second worker also ends before finishing. The Host has already recovered
+                # the first fold, so its pointer must be readable before any successful reply.
+                for _ in range(2):
+                    with pytest.raises(
+                        ChildInterrupted, match=r"task_control\.child_process_ended"
+                    ):
+                        stopped_call()
+            else:
+                with pytest.raises(AlphaDevelopmentCancelled):
+                    stopped_call()
+            pointers = list(
+                (store.root / "current/candidate-numerical-fold-by-binding").glob("*.json")
+            )
+            assert len(pointers) == 1
+            try:
+                recovered = store.find_candidate_numerical_fold_result(pointers[0].stem)
+            except FileNotFoundError as error:
+                pytest.fail(f"the visible fold has no catalog score: {error}", pytrace=False)
+            assert recovered is not None and recovered.score_chunk is not None
+            assert history.read_alpha_development_chunks((recovered.score_chunk.content_hash,))
+        result = None
+
+        class FitStage(FixtureTaskAdapter):
+            def execute_stage(self, *, task, execution, work_item):
+                nonlocal result
+                if work_item.stage_id == "publish_result":
+                    result = ChildAlphaExecutor(
+                        recipe=_AlphaPartRecipe(executor), kind=executor.kind
+                    ).execute(
+                        program=program, document={}, authority=None, output_workspace=tmp_path
+                    )
+                return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+        registry = DuckDbTaskControlRegistry(
+            resolve_task_control_database(tmp_path),
+            gate=WorkspaceMutationGate(),
+            workspace_id="child-parts",
+        )
+        envelope, goal, task_plan = task_contract(salt="alpha-child")
+        now = datetime.now(UTC)
+        admitted = registry.admit(
+            input_envelope=envelope, goal=goal, plan=task_plan, observed_at=now
+        ).record
+        adapter = FitStage()
+        runner = TaskControlRunner(
+            registry=registry,
+            adapters={adapter.task_kind: adapter},
+            runtime_path=str(tmp_path / "task-runtime.sqlite"),
+            clock=lambda: now,
+        )
+        stopped = None
+        try:
+            runner.run_next()
+        except (ChildInterrupted, ChildRefused) as error:
+            stopped = str(error)
+        finally:
+            runner.close()
+        terminal = registry.task(admitted.task_id)
+        assert terminal.lifecycle is TaskLifecycle.SUCCEEDED, (terminal.lifecycle, stopped)
+        assert result is not None and result["pid"] != os.getpid()
+        fitted = result["batch"]
+        assert fitted.fit_call_count == plan.fold_count - int(interruption is not None)
+        for result_hash in fitted.candidates[0].numerical_result_hashes:
+            numerical, scores = store.read_candidate_numerical_fold_result(result_hash)
+            assert scores is not None and scores.num_rows > 0
+            chunk = numerical.score_chunk
+            assert chunk is not None
+            catalog = history.read_alpha_development_chunks((chunk.content_hash,))[
+                chunk.content_hash
+            ]
+            assert catalog.replace_schema_metadata(None).equals(scores)
+            assert (
+                store.find_candidate_numerical_fold_result(numerical.execution_binding_hash)
+                == numerical
+            )
+    finally:
+        history.close_history()
 
 
 @pytest.fixture(autouse=True)
@@ -147,10 +328,16 @@ def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_ans
     assert answers[4]["payload"] == b"x" * 12_000_000
 
 
-def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind() -> None:
-    """requirement (W10, LAWS OW2): the fit's Python work leaves the Host's process; the worker
-    answers a result, a refusal as a refusal and anything else as an interruption with its
-    declared class, and a second call finds the same warm worker."""
+@pytest.mark.proves("task_control.alpha_child_returns_parts_to_host")
+@pytest.mark.parametrize("case", ["plain", "complete", "recover_fold", "cancel_fold"])
+def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
+    tmp_path: Path, case: str
+) -> None:
+    """The child answers by kind and carries real fitted parts through the Host's held log."""
+
+    if case != "plain":
+        _check_alpha_child_parts(tmp_path, interruption=None if case == "complete" else case)
+        return
 
     first = run_in_child(f"{HERE}:doubled", {"value": 21})
     second = run_in_child(f"{HERE}:doubled", {"value": 1})

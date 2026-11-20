@@ -1360,13 +1360,17 @@
       "location": "workspace-artifacts",
       "bytes": 2891462788,
       "covers": [
-        "artifacts:alpha-research/current"
+        "artifacts:alpha-research/current",
+        "artifacts:.alpha-child"
       ],
       "authority_owners": [
-        "alpha_research.experiments.AlphaDevelopmentArtifactStore"
+        "alpha_research.experiments.AlphaDevelopmentArtifactStore",
+        "product_host.research_authoring.factor_handoff.execute_alpha_in_child"
       ],
       "writers": [
-        "alpha_research.experiments.development_artifacts:AlphaDevelopmentArtifactStore"
+        "alpha_research.experiments.development_artifacts:AlphaDevelopmentArtifactStore",
+        "data_layer.history:_collect_alpha_part",
+        "product_host.research_authoring.factor_handoff:execute_alpha_in_child"
       ],
       "readers": [
         "alpha_research.candidates.qualification_task",

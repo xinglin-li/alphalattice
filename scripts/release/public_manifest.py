@@ -21,8 +21,6 @@ from collections import Counter
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
-from alphalattice.kernel.shared_kernel import spawn
-
 if TYPE_CHECKING:
     from devtools.architecture.structural import FileFacts
 
@@ -908,6 +906,8 @@ class _GitObjects:
     ROUND = 32
 
     def __init__(self, repo: Path, *, safe_directory: bool = False):
+        from alphalattice.kernel.shared_kernel import spawn
+
         self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
         git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
         self.process = self.session.start(
@@ -999,6 +999,8 @@ def validate_internal_id_history(
 def _validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
 ) -> None:
+    from alphalattice.kernel.shared_kernel import spawn
+
     found = spawn.run(  # one start: the history's depth, then the source's commit
         ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
         cwd=repo,
@@ -1250,6 +1252,8 @@ def validate_path(path: str) -> None:
 
 def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     """Read each immutable blob once and refuse truncated or mismatched batch output."""
+    from alphalattice.kernel.shared_kernel import spawn
+
     if not objects:
         return {}
     ordered = sorted(objects)
@@ -1277,6 +1281,8 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
+    from alphalattice.kernel.shared_kernel import spawn
+
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")
     sha = spawn.check_output(
