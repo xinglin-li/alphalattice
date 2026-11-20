@@ -1,4 +1,4 @@
-"""A 0.2.7 corporate action as its world row."""
+"""A 0.2.7 corporate action as its world row, and the lag rules world counts knowledge by."""
 
 from __future__ import annotations
 
@@ -6,12 +6,14 @@ from typing import Any
 
 import pytest
 
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.foundation.market_data_ops.storage.world import (
     admissions,
     world_action,
     world_listing,
 )
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.store import lag_rule
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world.py"
 AAPL = "listing-aapl"
@@ -79,3 +81,11 @@ def test_bars_are_admitted_in_whole_years_while_they_fit_the_bound(years, expect
     """A provider's consecutive years go in one admission while their bars fit the bound; a year
     over it goes alone, and each provider's bars are their own admissions."""
     assert admissions(years, bound=10) == expected
+
+
+@pytest.mark.proves("market_data_ops.reference_rows_are_known_from_their_valid_date")
+def test_reference_rows_are_known_from_their_valid_date_and_bars_from_their_close():
+    """StorePort reads world's reference rule as counted from the valid date, the bars' from the
+    close."""
+    read = {rule: lag_rule(spec, *rule) for rule, (_text, spec) in world.LAG_RULES.items()}
+    assert read == {world.MARKET_CLOSE: (0, "close"), world.MARKET_OBSERVED: (0, "valid")}

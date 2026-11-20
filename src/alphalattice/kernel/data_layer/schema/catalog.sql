@@ -37,7 +37,8 @@ CALL lake.set_option('data_inlining_row_limit', 0, schema => 'derived');
 --                  equals known_at where that is known. For a legacy row it is derived: the provider's publication
 --                  time, or the valid date plus the source's registered lag rule, counted from the close_utc in
 --                  world.session of its market's first session on or after that date, so half days, time zones and
---                  a date between sessions hold. The row names the rule and its version (lag_rule, lag_rule_version,
+--                  a date between sessions hold, or, under a rule that counts from the valid date, from that date's
+--                  start in UTC, the date its source recorded it observed as of. The row names the rule and its version (lag_rule, lag_rule_version,
 --                  on the tables a legacy batch fills). Being derived, a legacy row's value depends on that version:
 --                  an admission under another version than its key's held rows is refused by name until an upgrade
 --                  step re-derives them, so an earlier, wrong value cannot stay readable; an observed row's never

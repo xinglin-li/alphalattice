@@ -54,16 +54,15 @@ def test_each_workspace_table_has_a_world_relation_read_as_of_the_cutoff():
     held = world_reads.relations(1_700_000_000_000_000, 1_600_000_000_000_000, workspace_id="w1")
     assert set(named) == set(world_reads.WORKSPACE)
     for name, relation in named.items():
-        if name == "current_mappings":  # a receipt's mapping, current whatever the cutoff
-            continue
         if name in {"bar_revisions", "action_revisions"}:
             assert "occurred_us <= 1700000000000000" in relation
             assert "recorded_us <= 1600000000000000" in held[name]
             assert "workspace_id = 'w1'" in relation
             assert "workspace_id = NULL" in world_reads.relations()[name]
             continue
-        cutoffs = {part.split(")")[0] for part in relation.split("_asof(")[1:]}
-        assert cutoffs == {"1700000000000000"}
+        alias = f"provider_symbol_asof({world_reads.LATEST}) WHERE provider_id"
+        cutoffs = {part.split(")")[0] for part in relation.replace(alias, "").split("_asof(")[1:]}
+        assert cutoffs == (set() if name == "action_evidence" else {"1700000000000000"})
         assert "known_us <= 1600000000000000" in held[name]
         if name in {"bars", "adjusted", "actions", "action_evidence"}:
             assert "workspace_id = 'w1'" in relation
@@ -72,15 +71,12 @@ def test_each_workspace_table_has_a_world_relation_read_as_of_the_cutoff():
 
 
 @pytest.mark.proves("market_data_ops.world_relations_read_as_of_their_cutoff")
-def test_a_receipts_mapping_relation_reads_world_current_whatever_the_cutoff():
-    """An action-audit receipt binds the current-only manifest's mapping as it was written, so its
-    relation reads all world knows, still only the admissions a selection held; `mappings`, which
-    every other read takes, stays as of the cutoff."""
-    named = world_reads.relations(1_700_000_000_000_000, 1_600_000_000_000_000, workspace_id="w1")
-    assert named["current_mappings"] == world_reads.mappings(
-        world_reads.LATEST, 1_600_000_000_000_000
-    )
-    assert named["mappings"] == world_reads.mappings(1_700_000_000_000_000, 1_600_000_000_000_000)
+def test_a_relation_names_its_listings_by_their_0_2_7_alias_whatever_the_cutoff():
+    """A relation reads its rows at the cutoff and names their listings by the 0.2.7 alias at
+    LATEST, an identity of a key world already holds."""
+    relation = world_reads.relations(1_700_000_000_000_000, workspace_id="w1")["bars"]
+    assert "raw_bar_asof(1700000000000000)" in relation
+    assert f"provider_symbol_asof({world_reads.LATEST}) WHERE provider_id" in relation
 
 
 BINDING = "0123456789abcdef" * 4

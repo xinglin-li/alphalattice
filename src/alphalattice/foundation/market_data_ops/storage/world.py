@@ -16,7 +16,8 @@ tables, in order:
 4. each workspace's original bar/action revision as its registered log fact, retaining its
    original key, fields and observation time for that workspace's audit cutoff read;
 
-all but the sessions as legacy batches under the market lag rule (MARKET_CLOSE). Only the bars and
+all but the sessions as legacy batches: the listings, provider symbols and universe members under
+MARKET_OBSERVED, the bars and actions under MARKET_CLOSE. Only the bars and
 actions whose values differ from world's newest version of their key become rows; StorePort admits
 a changed row of a held key only when its source wrote it later, known from its admission.
 
@@ -74,9 +75,32 @@ DATASET: Final = "market"
 WORKSPACE_MARKET_FORMAT: Final = "alphalattice.world-market.v1"
 """A market profile created by a writer that already admits its observations to world."""
 MARKET_CLOSE: Final = ("market-close", 1)
-"""The lag rule of 0.2.7's market rows, which carry no knowledge time: known at their session's
-close (lag_seconds 0)."""
+"""The lag rule of the bars and corporate actions, which carry no knowledge time: known at their
+session's close (lag_seconds 0)."""
+MARKET_OBSERVED: Final = ("market-observed", 1)
+"""The lag rule of the listings, provider symbols and universe members: known from the start of
+their valid date (UTC), the date their workspace records each observed as of, so a first use reads
+at its own moment the reference rows it wrote. Every writer's alike: world keys are shared across
+workspaces."""
+LAG_RULES: Final = {
+    MARKET_CLOSE: (
+        "A 0.2.7 market row with no knowledge time of its own was known at its session's close.",
+        {"lag_seconds": 0},
+    ),
+    MARKET_OBSERVED: (
+        "A listing, provider symbol or universe member is known from the start of its valid date,"
+        " the date its workspace records it observed as of.",
+        {"lag_seconds": 0, "from": "valid"},
+    ),
+}
+"""Each lag rule world registers, by name and version, with its text and its StorePort spec."""
 LISTING_ALIAS: Final = "alphalattice-0.2.7-listing"
+"""A listing's 0.2.7 id, its alias: an identity, a name for a key world already holds
+(`world_listing` is its uuid5), so a read translating ids reads it at LATEST, whatever the
+cutoff."""
+LATEST: Final = 253_402_300_799_999_999
+"""A read's own moment as a cutoff, the end of year 9999: all that is known when it runs, since
+no knowledge time is later than the read."""
 DISPLAY_ALIAS: Final = "display"
 CALENDARS: Final = "exchange-calendars"
 """The provider of the sessions: the exchange_calendars package the market profile names."""
@@ -288,7 +312,7 @@ def universe_set_id(listing_ids: Iterable[str]) -> str | None:
 
 
 def admit_member_set(listing_ids: Iterable[str], valid_from: date, provider: str) -> str:
-    """Admit a frozen set through StorePort, with the source's registered legacy lag."""
+    """Admit a frozen set through StorePort, under MARKET_OBSERVED."""
     listings = sorted(set(listing_ids))
     content = universe_set_digest(listings)
     identity = history.define(
@@ -305,7 +329,8 @@ def admit_member_set(listing_ids: Iterable[str], valid_from: date, provider: str
 def _commit_universe_members(
     identity: str, intervals: Iterable[tuple[str, date, date | None]], provider: str
 ) -> None:
-    """Admit one universe's legacy intervals through its registered StorePort."""
+    """Admit one universe's legacy intervals through its registered StorePort, under
+    MARKET_OBSERVED."""
     port = history.store()
     if port is None:
         raise DataError(
@@ -326,7 +351,7 @@ def _commit_universe_members(
             "universe_member",
             port.log.require_lineage("provider", provider),
             _arrow(rows),
-            lag=MARKET_CLOSE,
+            lag=MARKET_OBSERVED,
         ) as staged:
             port.commit(staged)
 
@@ -372,7 +397,8 @@ def _universe_surface(connection: Any = None) -> Any:
 
 
 def _member_ids(connection: Any, set_id: str, cutoff_us: int) -> tuple[str, ...]:
-    """Read a content-keyed set's 0.2.7 listing aliases and verify its world content."""
+    """Read a content-keyed set's members known at the cutoff, named by their 0.2.7 aliases (read
+    at LATEST), and verify its world content."""
     rows = connection.execute(
         "SELECT DISTINCT CAST(m.listing_id AS VARCHAR), p.symbol FROM universe_member_asof(?) m"
         " JOIN lake.world.provider_symbol p USING (listing_id) WHERE m.universe_id = ?"
@@ -384,9 +410,9 @@ def _member_ids(connection: Any, set_id: str, cutoff_us: int) -> tuple[str, ...]
             cutoff_us,
             set_id,
             _lineage("provider", LISTING_ALIAS),
-            cutoff_us,
+            LATEST,
             _lineage("world_table", "provider_symbol"),
-            cutoff_us,
+            LATEST,
         ],
     ).fetchall()
     definition = _log_rows(
@@ -625,7 +651,7 @@ def membership_schedule(
         " GROUP BY days.day ORDER BY days.day",
         [
             days,
-            cutoff_us,
+            LATEST,
             _lineage("provider", LISTING_ALIAS),
             roster,
             profile_market,
@@ -636,9 +662,9 @@ def membership_schedule(
             _lineage("world_table", "session"),
             cutoff_us,
             _lineage("provider", LISTING_ALIAS),
-            cutoff_us,
+            LATEST,
             _lineage("world_table", "provider_symbol"),
-            cutoff_us,
+            LATEST,
             universe_lineage(workspace_id, market_profile_id),
             cutoff_us,
             cutoff_us,
@@ -1091,7 +1117,7 @@ def sector_map(
         " HAVING count(*) = 1 ORDER BY symbol",
         [
             cutoff_us,
-            cutoff_us,
+            LATEST,
             _lineage("provider", LISTING_ALIAS),
             list(listings),
             session,
@@ -1151,7 +1177,7 @@ def sector_transitions(listings: Sequence[str], *, cutoff_us: int, cursor: Any) 
         " lag(sector_code) OVER (PARTITION BY symbol, scheme_id ORDER BY valid_from) AS prior"
         " FROM facts) SELECT symbol, valid_from, prior, sector_code FROM changes"
         " WHERE prior IS NOT NULL AND prior <> sector_code ORDER BY valid_from, symbol",
-        [cutoff_us, cutoff_us, _lineage("provider", LISTING_ALIAS), list(listings)],
+        [cutoff_us, LATEST, _lineage("provider", LISTING_ALIAS), list(listings)],
     ).fetchall()
     return tuple(SectorReclassification(*row) for row in rows)
 
@@ -1216,8 +1242,8 @@ def _register(run: Any) -> set[str]:
         history.define("provider", name, f"The {name} market data provider, as 0.2.7 named it.")
     for name, text in PROVIDERS.items():
         history.define("provider", name, text)
-    text = "A 0.2.7 market row with no knowledge time of its own was known at its session's close."
-    history.define("lag_rule", MARKET_CLOSE[0], text, {"lag_seconds": 0})
+    for (rule, _version), (text, spec) in LAG_RULES.items():
+        history.define("lag_rule", rule, text, spec)
     return named
 
 
@@ -1289,9 +1315,9 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         )
         for row in dated
     ).items():
-        commit("listing", provider, _arrow(batch), MARKET_CLOSE)
+        commit("listing", provider, _arrow(batch), MARKET_OBSERVED)
     for provider, batch in _symbols(run, dated, ids, provider_ids).items():
-        commit("provider_symbol", provider, _arrow(batch), MARKET_CLOSE)
+        commit("provider_symbol", provider, _arrow(batch), MARKET_OBSERVED)
     for provider, batch in _bars(port.lake):
         commit("raw_bar", provider, batch, MARKET_CLOSE)
     for provider, batch in _grouped(_actions(run, dated)).items():

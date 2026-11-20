@@ -342,13 +342,13 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         return
     set_id = world.admit_member_set(("listing-aapl", "listing-msft"), DAYS[1], "fixture")
     assert world.admit_member_set(("listing-msft", "listing-aapl"), DAYS[1], "fixture") == set_id
-    close = int(datetime(2026, 7, 28, 20, tzinfo=UTC).timestamp() * 1_000_000)
+    start = int(datetime(2026, 7, 28, tzinfo=UTC).timestamp() * 1_000_000)  # its valid date
     members = (
         "SELECT listing_id::VARCHAR, known_at FROM universe_member_asof(?)"
         " WHERE universe_id = ? ORDER BY 1"
     )
-    assert lake.execute(members, (close - 1, set_id)).fetchall() == []
-    assert lake.execute(members, (close, set_id)).fetchall() == [
+    assert lake.execute(members, (start - 1, set_id)).fetchall() == []
+    assert lake.execute(members, (start, set_id)).fetchall() == [
         (item, None)
         for item in sorted(world.world_listing(old) for old in ("listing-aapl", "listing-msft"))
     ]
@@ -398,15 +398,15 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         manifest.profile.market_profile_id, workspace_id="w1"
     ) == store.membership_events(manifest.profile.market_profile_id)
     live = world.universe_lineage("w1", manifest.profile.market_profile_id)
-    exit_close = int(datetime(2026, 7, 29, 20, tzinfo=UTC).timestamp() * 1_000_000)
+    exit_start = int(datetime(2026, 7, 29, tzinfo=UTC).timestamp() * 1_000_000)
     interval = (
         "SELECT valid_to FROM universe_member_asof(?) WHERE universe_id = ? AND listing_id = ?"
     )
     assert lake.execute(
-        interval, (exit_close - 1, live, world.world_listing("listing-msft"))
+        interval, (exit_start - 1, live, world.world_listing("listing-msft"))
     ).fetchone() == (None,)
     assert lake.execute(
-        interval, (exit_close, live, world.world_listing("listing-msft"))
+        interval, (exit_start, live, world.world_listing("listing-msft"))
     ).fetchone() == (DAYS[2],)
     old_schedule = store.membership_schedule(
         manifest.profile.market_profile_id, sessions=DAYS, fallback_listing_ids=()
@@ -1014,14 +1014,30 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
                 ("listing-aapl", "NEW", DAYS[3], None, "ACTIVE"),
             ],
         )
+        # A recorded future end is known from its admission, never at that future date.
+        connection.execute(
+            "INSERT INTO provider_symbol_mapping VALUES"
+            " ('listing-msft', 'scheduled-fixture', 'LATER', ?, '2099-12-31', 'DELISTED')",
+            [DAYS[0]],
+        )
     world.admit(database, "w1")
-    delisting_close = datetime(2026, 7, 29, 20, tzinfo=UTC)
+    scheduled = (
+        history.store()
+        .lake.execute(
+            "SELECT valid_to, epoch_us(known_asof) FROM lake.world.provider_symbol"
+            " WHERE symbol = 'LATER' ORDER BY ALL"
+        )
+        .fetchall()
+    )
+    assert [end for end, _known in scheduled] == [date(2099, 12, 31), None]
+    assert max(known for _end, known in scheduled) <= history.store().log.clock()
+    delisting = datetime.combine(DAYS[2], datetime.min.time(), UTC)  # its valid date's start
     for instant, expected in (
         (
-            delisting_close - timedelta(microseconds=1),
+            delisting - timedelta(microseconds=1),
             [("LIVE", None, "ACTIVE"), ("OLD", None, "ACTIVE")],
         ),
-        (delisting_close, [("LIVE", None, "ACTIVE"), ("OLD", DAYS[2], "DELISTED")]),
+        (delisting, [("LIVE", None, "ACTIVE"), ("OLD", DAYS[2], "DELISTED")]),
         (
             datetime.combine(DAYS[3], datetime.max.time(), UTC),
             [("LIVE", None, "ACTIVE"), ("NEW", None, "ACTIVE"), ("OLD", DAYS[2], "DELISTED")],
@@ -1062,12 +1078,11 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
-def test_a_receipt_verifies_at_once_though_world_knows_its_mapping_at_a_later_close(
+def test_a_first_use_reads_at_its_own_moment_the_mappings_and_members_it_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A first use on a Sunday writes its mapping from that day, which world knows at Monday's
-    close; the receipt written then binds the current mapping, as written, so it verifies at
-    once, though a read as of that moment sees no mapping."""
+    """A Sunday first use reads as of its own moment every mapping and member it wrote that day,
+    and its receipt verifies at once."""
     now = datetime(2026, 8, 2, tzinfo=UTC)
     fixture = acquisition_manifest()
     manifest = replace(fixture, profile=replace(fixture.profile, manifest_as_of=now.date()))
@@ -1095,6 +1110,8 @@ def test_a_receipt_verifies_at_once_though_world_knows_its_mapping_at_a_later_cl
         with store.market_reads(cutoff_us=world_reads.cutoff(now)) as (cursor, tables):
             assert tables != world_reads.WORKSPACE
             known = cursor.execute(f"SELECT count(*) FROM {tables['mappings']}").fetchone()[0]
+        with store.market_reads(cutoff_us=world_reads.LATEST) as (cursor, tables):
+            held = cursor.execute(f"SELECT count(*) FROM {tables['mappings']}").fetchone()[0]
         verified = store.verified_action_audit_receipt(
             manifest,
             receipt_hash=receipt.receipt_hash,
@@ -1103,9 +1120,12 @@ def test_a_receipt_verifies_at_once_though_world_knows_its_mapping_at_a_later_cl
             requested_as_of=DAYS[-1],
             now=now,
         )
+        selected = MarketDataRepository(store.workspace, cutoff_us=world_reads.cutoff(now))
+        members = selected.load_universe_manifest_revision(manifest.revision_sha256).listings
     finally:
         history.release_history()
-    assert (known, verified) == (0, receipt)
+    assert (known, verified, members) == (held, receipt, manifest.listings)
+    assert known > 0
 
 
 @pytest.mark.proves("market_data_ops.a_research_copy_reads_world_at_its_selection")
@@ -1171,3 +1191,48 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
     assert (made, selected[1], unselected[1], own[1]) == (1, 3, 0, 0)
     assert selected[0] == own[0] == unselected[0]
     assert [bar.close for bar in selected[0][0]["listing-aapl"]] == [101.0] * 4
+
+
+@pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
+def test_a_selection_before_a_first_use_reads_its_members_though_world_saw_them_before_bars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A selection of the session before a first use reads its manifest's members, though the
+    first use's listings reached world before their bars."""
+    from alphalattice.foundation.market_data_ops.sources.membership import UniverseBootstrapRecord
+
+    now = datetime(2026, 8, 2, tzinfo=UTC)
+    fixture = acquisition_manifest()
+    manifest = replace(fixture, profile=replace(fixture.profile, manifest_as_of=now.date()))
+    store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
+    store.bootstrap(manifest)
+    monkeypatch.setenv(world_reads.SETTING, "world")
+    history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
+    try:
+        world.admit(store.workspace / "market-data.duckdb", "w1")
+        bars(store, manifest, (*DAYS, NEW), 101.0, 0)
+        listings = tuple(item.listing_id for item in manifest.listings)
+        store.record_universe_bootstrap(
+            UniverseBootstrapRecord(
+                market_profile_id=manifest.profile.market_profile_id,
+                t0_session=NEW,
+                history_start=DAYS[0],
+                cohort_listing_ids=listings,
+                cohort_hash="",
+                manifest_revision=manifest.revision_sha256,
+                candidate_manifest_hash="1" * 64,
+                qualification_policy_hash="2" * 64,
+                feature_input_policy_hash="3" * 64,
+                source_observed_at=now,
+                admitted_at=now,
+                panel_snapshot_hash="4" * 64,
+                derivation="FIRST_QUALIFIED_PUBLICATION",
+            )
+        )
+        world.admit(store.workspace / "market-data.duckdb", "w1")
+        selection = datetime.combine(NEW + timedelta(days=1), datetime.min.time(), UTC)
+        selected = MarketDataRepository(store.workspace, cutoff_us=world_reads.cutoff(selection))
+        members = selected.load_universe_manifest_revision(manifest.revision_sha256).listings
+    finally:
+        history.release_history()
+    assert members == manifest.listings

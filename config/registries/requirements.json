@@ -1718,6 +1718,12 @@
       "layer": "integration",
       "seconds": 25
     },
+    "market_data_ops.reference_rows_are_known_from_their_valid_date": {
+      "description": "StorePort reads the lag rule world admits listings, provider symbols and universe members under as counted from their valid date, and the bars' and corporate actions' from their session's close.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.sector_provider_conformance": {
       "description": "Every current-sector provider names itself and the symbol asked, gives a stripped sector and a 64-hex payload hash, answers alike twice, and refuses an unknown symbol with a typed provider failure.",
       "owner": "alphalattice.foundation.market_data_ops",

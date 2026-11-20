@@ -35,9 +35,10 @@ from alphalattice.kernel.shared_kernel.environment import (
     thread_share,
 )
 
-SCHEMA_VERSION: Final = 15
+SCHEMA_VERSION: Final = 16
 """`PRAGMA user_version` of the databases this code creates; it refuses any other. A change to
-any schema file takes the next number, so a root an earlier build made is refused by name."""
+any schema file, or to how world derives the rows a root holds, takes the next number, so a root
+an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
 DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"

@@ -42,21 +42,17 @@ from alphalattice.kernel.data_layer.history import catalog_session as session
 from alphalattice.kernel.data_layer.root import sql_path
 
 from . import world
-from .world import DATASET, DISPLAY_ALIAS, LISTING_ALIAS, _log_rows
+from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
 
 SETTING: Final = "ALPHALATTICE_MARKET_READS"
 CHOICES: Final = ("world", "workspace")
 """Where market value reads come from: world's as-of reads, or the workspace's own tables."""
-LATEST: Final = 253_402_300_799_999_999
-"""A read's own moment as a cutoff, the end of year 9999: all that is known when it runs, since
-no knowledge time is later than the read."""
 WORKSPACE: Final = {
     "bars": "raw_daily_bar_current",
     "adjusted": "provider_adjusted_close_current",
     "actions": "corporate_action_current",
     "action_evidence": "corporate_action_current",
     "mappings": "provider_symbol_mapping",
-    "current_mappings": "provider_symbol_mapping",
     "bar_revisions": "bar_revision",
     "action_revisions": "corporate_action_revision",
 }
@@ -402,10 +398,7 @@ def relations(
     time is derived from its valid date, so a row admitted later can be known earlier. Of
     `listings` only when the read names them (`scope`), else of every listing world holds.
     Revision observations and payload references belong to `workspace_id`; no identity gives
-    no journal observations. `current_mappings` is `mappings` as world knows them now, whatever
-    the cutoff, for an action-audit receipt alone: the receipt binds the current-only
-    manifest's mapping as it was written (`mapping_in_force`), so a mapping first written today,
-    known at a later close, binds it before then. Every other read takes `mappings`."""
+    no journal observations."""
     named = scope(listings)
     return {
         "bars": bars(cutoff_us, held_us, named, workspace_id=workspace_id),
@@ -415,7 +408,6 @@ def relations(
             cutoff_us, held_us, named, evidence=True, workspace_id=workspace_id
         ),
         "mappings": mappings(cutoff_us, held_us, named),
-        "current_mappings": mappings(LATEST, held_us, named),
         "bar_revisions": revisions("bar_revision", cutoff_us, held_us, workspace_id=workspace_id),
         "action_revisions": revisions(
             "corporate_action_revision", cutoff_us, held_us, workspace_id=workspace_id
@@ -456,13 +448,13 @@ def _held_by(row: str, held_us: int | None) -> str:
 def _named(row: str, cutoff_us: int, held_us: int | None, named: tuple[str, str] | None) -> str:
     """The joins that name a world row's listing by its 0.2.7 id and its provider by name, and the
     filter on the row: its admission held by `held_us`, and its listing, the read's own ids when it
-    names its listings, else world's alias of every listing."""
+    names its listings, else world's alias of every listing, read at LATEST (an identity)."""
     provider = f" JOIN definition_lineage named ON named.definition_id = {row}.provider_id"
     where = f" WHERE {_held_by(row, held_us)}"
     if named is None:
         return (
             f" JOIN (SELECT listing_id AS world, symbol AS listing_id FROM"
-            f" provider_symbol_asof({cutoff_us}) WHERE provider_id = "
+            f" provider_symbol_asof({LATEST}) WHERE provider_id = "
             f"(SELECT definition_id FROM market_aliases WHERE name = '{LISTING_ALIAS}')) alias"
             f" ON alias.world = {row}.listing_id{provider}{where}"
         )

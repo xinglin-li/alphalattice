@@ -423,7 +423,7 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
     with pytest.raises(DataError, match=r"world.superseded differ") as moved:
         reading_session(tmp_path)
     assert moved.value.failure.code == "data_layer.schema_mismatch"
-    for foreign_version in (8, 11, 12, 13, 14, SCHEMA_VERSION + 1):
+    for foreign_version in (8, 11, 12, 13, 14, 15, SCHEMA_VERSION + 1):
         con = sqlite3.connect(tmp_path / "machine" / "log.sqlite")
         con.execute(f"PRAGMA user_version = {foreign_version}")
         con.close()

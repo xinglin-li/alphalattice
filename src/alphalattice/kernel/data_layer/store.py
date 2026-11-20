@@ -471,7 +471,7 @@ class StorePort:
                 count = self._catalog_results(staged, tables, self.log.clock())
                 dropped, rewritten = {}, 0
             else:
-                lag = None if staged.lag is None else self._lag_seconds(*staged.lag)
+                lag = None if staged.lag is None else self._lag(*staged.lag)
                 count, dropped, rewritten = self._catalog_commit(staged, self.log.clock(), lag)
             repair(self.log, self.lake, self._repaired)
             delete(self.root, self.log, f"staging/{staged.admission_id}")
@@ -503,7 +503,7 @@ class StorePort:
                     return self.commit(staged)
             data = admissible(table, provider_id, rows, legacy=lag is not None)
             numbered = data.append_column("_row", pa.array(range(data.num_rows), pa.int64()))
-            rule = None if lag is None else (*lag, self._lag_seconds(*lag))
+            rule = None if lag is None else (*lag, *self._lag(*lag))
             run = self.lake.execute
             self.lake.register("unheld_batch", numbered)
             try:
@@ -954,23 +954,16 @@ class StorePort:
                     code="data_layer.market_unregistered",
                 )
 
-    def _lag_seconds(self, name: str, version: int) -> int:
-        """The lag a registered lag_rule version adds to a session's close, in seconds."""
+    def _lag(self, name: str, version: int) -> tuple[int, str]:
+        """The registered lag_rule version's lag and what it counts from (`lag_rule`)."""
         found = self.log.read(
             "SELECT spec FROM definition WHERE family = 'lag_rule' AND name = ? AND version = ?",
             (name, version),
         )
-        seconds = json.loads(found[0][0]).get("lag_seconds") if found else None
-        if type(seconds) is not int or seconds < 0:
-            raise DataError(
-                f"lag_rule {name} v{version} is not registered with whole lag_seconds of 0 or"
-                " more; register the rule, then commit the batch",
-                code="data_layer.lag_rule_unknown",
-            )
-        return seconds
+        return lag_rule(json.loads(found[0][0]) if found else {}, name, version)
 
     def _catalog_commit(
-        self, staged: Staged, known: int, lag: int | None
+        self, staged: Staged, known: int, lag: tuple[int, str] | None
     ) -> tuple[int, dict[str, int], int]:
         """One snapshot: the supersession of each world version the rows replace, then the rows and
         the later writes of held values, carrying the event it owes; the rows admitted, those
@@ -985,7 +978,7 @@ class StorePort:
         columns = {row[0] for row in described}
         target = f"lake.world.{table}"
         run = self.lake.execute
-        rule = None if staged.lag is None or lag is None else (*staged.lag, lag)
+        rule = None if staged.lag is None or lag is None else (*staged.lag, *lag)
         known_rows = self._known(table, source, columns, known, rule)
         run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
         try:
@@ -1135,7 +1128,7 @@ class StorePort:
         source: str,
         columns: set[str],
         known: int,
-        rule: tuple[str, int, int] | None,
+        rule: tuple[str, int, int, str] | None,
         carry: str = "",
     ) -> str:
         """Every staged row (with its `carry` column, if named), conformed to its table's catalog
@@ -1151,10 +1144,13 @@ class StorePort:
         data known before every cutoff, with no invented observation time. A later correction
         has its recorded observation time or this admission's clock.
         A legacy row, staged under a lag `rule` (its
-        name, version and seconds), names the rule and version; its known_at is empty and its
-        known_asof is its publication time, or its lag after the close of its market's first
-        session on or after its valid date; the market is the row's own listing's, known only while
-        that listing has had one market. An UNMARKETED row (a document) is known its lag after its
+        name, version, seconds and what they count from), names the rule and version; its known_at
+        is empty and its known_asof is its publication time, or its lag after the close of its
+        market's first session on or after its valid date, or after its valid date's start (UTC)
+        under a rule that counts from it, the date its source recorded it observed as of, and no
+        later than this admission; the market is the row's own listing's, known only while that
+        listing has had one market.
+        An UNMARKETED row (a document) is known its lag after its
         own valid time, its availability. A legacy row of a key world already holds is a change
         observed now: known no earlier than its admission or the version it replaces, so no read
         before then sees it; but a legacy document over a legacy version (its known_at empty) is
@@ -1224,7 +1220,7 @@ class StorePort:
                 )
             return f"SELECT n.*, {at} AS known_at, {at} AS known_asof, {fate} FROM ({rows}) n{held}"
         valid = ", ".join(f"n.{c}" for c in LEGACY_VALID[table] if c in columns)
-        name, version, lag = rule
+        name, version, lag, start = rule
         quoted = name.replace("'", "''")
         named = f"'{quoted}' AS lag_rule, {version}::INTEGER AS lag_rule_version"
         if table in UNMARKETED:
@@ -1239,6 +1235,11 @@ class StorePort:
                 f" {named} FROM ({rows}) n{held}"
             )
         derived = f"a.close_utc + to_seconds({lag})"
+        if start == "valid":  # observed by its admission at the latest, never at a future date
+            derived = (
+                f"least(make_timestamptz(epoch_us(CAST(coalesce({valid}) AS TIMESTAMP)))"
+                f" + to_seconds({lag}), {at})"
+            )
         if "published_at" in columns:
             derived = f"coalesce(n.published_at, {derived})"
         market, joined = "n.market_id", ""
@@ -1417,6 +1418,20 @@ def stage(
         yield tables[0] if len(tables) == 1 else StagedSet(admission, tuple(tables))
     finally:
         drop(held, lock)
+
+
+def lag_rule(spec: Mapping[str, Any], name: str, version: int) -> tuple[int, str]:
+    """A lag_rule version's spec read: the lag it adds, in seconds, and what it counts from: a
+    session's `close` (the default), or the start of the row's `valid` date (UTC); refused by name
+    when it names neither or no whole lag of 0 or more."""
+    seconds, start = spec.get("lag_seconds"), spec.get("from", "close")
+    if type(seconds) is not int or seconds < 0 or start not in ("close", "valid"):
+        raise DataError(
+            f"lag_rule {name} v{version} is not registered with whole lag_seconds of 0 or"
+            " more from a close or a valid date; register the rule, then commit the batch",
+            code="data_layer.lag_rule_unknown",
+        )
+    return seconds, start
 
 
 def newest(table: str) -> str:
