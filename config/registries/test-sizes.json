@@ -1827,8 +1827,7 @@
     {
       "pattern": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation.",
-      "size_contract": "nightly_only"
+      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation."
     },
     {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_initialization_creates_real_factor_inputs_and_reopens_without_strategies*",

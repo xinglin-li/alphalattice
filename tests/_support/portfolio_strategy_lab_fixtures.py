@@ -64,9 +64,9 @@ def fake_host(monkeypatch: pytest.MonkeyPatch) -> Any:
     return state
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPortfolioWebSession]:
-    """Share one synthetic Host for envelope, refusal and timeout reads that admit no Task."""
+    """Keep the synthetic Host open only while its test owns the data root."""
     workspace = tmp_path_factory.mktemp("cli-read")
     host = LocalPortfolioWebSession(
         workspace=workspace,
@@ -81,10 +81,9 @@ def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPo
         host.stop()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def completed_host(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPortfolioWebSession]:
-    """Share one synthetic Host with one completed default Portfolio run. Its workspace has an id
-    of its own: a folder made again under the same name is another workspace."""
+    """Keep one completed default Portfolio run in this test's own Host."""
     from tests.portfolio_strategy_lab.local_web_support import _run_to_completion
 
     workspace = tmp_path_factory.mktemp("local-web-completed")
