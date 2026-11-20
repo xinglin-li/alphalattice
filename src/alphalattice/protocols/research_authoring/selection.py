@@ -34,7 +34,7 @@ import re
 from collections.abc import Mapping
 from typing import Any, cast
 
-import yaml  # type: ignore[import-untyped]
+import yaml as yaml  # type: ignore[import-untyped]
 
 from .contracts import AuthoringError
 

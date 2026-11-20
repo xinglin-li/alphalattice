@@ -23,7 +23,6 @@
     "src/alphalattice/control/product_host/composition/committee_materials.py::holdings::from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import PortfolioUpdatePublication as Publication": 1,
     "src/alphalattice/control/product_host/composition/committee_materials.py::holdings::from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import portfolio_update_positions": 1,
     "src/alphalattice/control/product_host/composition/decision_advancement.py::DecisionAdvancementApplication._execute::from alphalattice.control.product_host.composition.rolling_portfolio_report import publish_rolling_report_heads": 1,
-    "src/alphalattice/control/product_host/composition/entry.py::main::from alphalattice.interface.local_application.cli import main as root": 1,
     "src/alphalattice/control/product_host/composition/entry.py::restore::from alphalattice.control.product_host.storage.backup import restore_from_root": 1,
     "src/alphalattice/control/product_host/composition/entry.py::serve::from .first_use_road import serve_road": 1,
     "src/alphalattice/control/product_host/composition/entry.py::serve::from alphalattice.control.product_host.composition.research_workspace import RESEARCH_WORKSPACE_MANIFEST_NAME, read_research_workspace_manifest": 1,

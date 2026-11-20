@@ -23,16 +23,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from typing import Any, Final, Literal, Protocol, Self, get_args
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, get_args
 from uuid import UUID
 
-import numpy as np
-import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.portfolio_backtesting.metrics import (
-    evaluate_net_simple_return_path,
-)
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     EvidenceTopic,
@@ -41,10 +36,6 @@ from alphalattice.interface.local_application.portfolio_export import PortfolioE
 from alphalattice.interface.local_application.portfolio_research_fields import field_contract
 from alphalattice.interface.local_application.questions import (
     PersonConfirmation as PersonConfirmation,
-)
-from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
-    WatermarkAdvancementProgram,
-    WatermarkAdvancementReceipt,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     WORKSPACE_DEFAULT_STRATEGY_PACKAGE_ID,
@@ -61,20 +52,24 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioSupportCoverage,
     ScoreSourceMode,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.controls import (
-    FULL_SUPPORT_SELECTION,
-    INSTALLED_PUBLIC_CONTROL_CATALOG,
-    PublicControlCatalog,
-    PublicControlDescriptor,
-)
-from alphalattice.investment.portfolio_strategy_lab.application.report_projection import (
-    project_dated_position,
-)
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewAnswer,
 )
 from alphalattice.protocols.actor_execution.bundles import AgentRole
+
+if TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
+
+    from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
+        WatermarkAdvancementProgram,
+        WatermarkAdvancementReceipt,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.controls import (
+        PublicControlCatalog,
+        PublicControlDescriptor,
+    )
 
 
 class LocalApplicationError(ValueError):
@@ -1570,7 +1565,11 @@ class LocalPortfolioResearchService:
     @property
     def controls(self) -> PublicControlCatalog:
         """The surface a UI renders. It is not built here, only handed on."""
-        return INSTALLED_PUBLIC_CONTROL_CATALOG
+        from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: catalog
+            controls,
+        )
+
+        return controls.INSTALLED_PUBLIC_CONTROL_CATALOG
 
     def plan(self, spec: PortfolioResearchSpec) -> PortfolioPlanPreview:
         """Return a portfolio study preview without running it."""
@@ -1660,6 +1659,12 @@ class LocalPortfolioResearchService:
         economics: PortfolioEconomicLedger | None = None,
     ) -> dict[str, object]:
         """A dated view of this saved report, never a new window or numerical RUN."""
+        import numpy as np  # lazy: only position readback constructs this array
+
+        from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: readback
+            report_projection,
+        )
+
         store = self.application.ledger
         ledger = execution or store.load_execution(report.execution_ledger_hash)
         day = portfolio_session or report.window_guard.selected_end
@@ -1677,7 +1682,7 @@ class LocalPortfolioResearchService:
         if economics.economic_ledger_hash != report.economic_ledger_hash:
             raise LocalApplicationError("portfolio_application.report_economic_binding_mismatch")
         row = ledger.formation_sessions.index(day)
-        position = project_dated_position(
+        position = report_projection.project_dated_position(
             ledger=ledger,
             economics=economics,
             formation_row=row,
@@ -1724,6 +1729,12 @@ class LocalPortfolioResearchService:
         The selected window is descriptive. This read changes no report, model,
         cost or benchmark and delegates all return arithmetic to Backtesting.
         """
+        import numpy as np  # lazy: only this performance read evaluates the selected return window
+
+        from alphalattice.capabilities.portfolio_backtesting import (  # lazy: performance metrics
+            metrics as backtest_metrics,
+        )
+
         if (
             execution.ledger_hash != report.execution_ledger_hash
             or execution.program_hash != report.program_hash
@@ -1763,7 +1774,9 @@ class LocalPortfolioResearchService:
                 for name in names
             }
         else:
-            values = evaluate_net_simple_return_path(net_simple_returns=net).model_dump()
+            values = backtest_metrics.evaluate_net_simple_return_path(
+                net_simple_returns=net
+            ).model_dump()
             for name in names:
                 value = float(values[name])
                 if np.isfinite(value):
@@ -2170,9 +2183,13 @@ def spec_from_document(
     every control. Reading it here is what lets a document rebuilt from a
     published result land on the same spec as the one that produced it.
     """
+    from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: spec controls
+        controls,
+    )
+
     catalog_defaults = {
         control.control_id: control.default_display
-        for control in INSTALLED_PUBLIC_CONTROL_CATALOG.controls
+        for control in controls.INSTALLED_PUBLIC_CONTROL_CATALOG.controls
     }
 
     def _given(key: str) -> str | None:
@@ -2186,7 +2203,7 @@ def spec_from_document(
 
     def _date(key: str) -> date | None:
         value = _given(key)
-        if value is None or value == FULL_SUPPORT_SELECTION:
+        if value is None or value == controls.FULL_SUPPORT_SELECTION:
             return None
         return date.fromisoformat(value)
 

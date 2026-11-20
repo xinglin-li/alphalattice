@@ -21,8 +21,6 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-import yaml  # type: ignore[import-untyped]
-
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -69,12 +67,6 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.failure_codes import (
     LocalResearchClientError as LocalResearchClientError,
 )
-from alphalattice.interface.local_application.goals import (
-    NEW_RESEARCH_SCOPE,
-    delegated_network,
-    first_use_asks,
-    target_sessions,
-)
 from alphalattice.interface.local_application.host_lookup import failure_with_hosts
 from alphalattice.interface.local_application.review_evidence import (
     read_resumed,
@@ -85,11 +77,6 @@ from alphalattice.interface.local_application.wire import _json_value as _json_v
 from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
 from alphalattice.kernel.shared_kernel.waits import pause, spaced
-from alphalattice.protocols.research_authoring.selection import (
-    allowed_value_notes,
-    dump_declaration,
-    load_safe_yaml_document,
-)
 
 CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
@@ -726,6 +713,10 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
 
 def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
     """A file read by the one declaration loader, its syntax errors located."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read declarations
+        load_safe_yaml_document,
+        yaml,
+    )
 
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
@@ -770,6 +761,10 @@ def _listed(path: Path) -> list[Any]:
 
 def _response_document(path: Path) -> dict[str, Any]:
     """Read saved JSON/YAML; continuation parts must be whole, with refusal offers retained."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML responses
+        load_safe_yaml_document,
+        yaml,
+    )
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -1319,6 +1314,10 @@ def _save_output(
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
     elif format == "yaml":
+        from alphalattice.protocols.research_authoring.selection import (  # lazy: write YAML
+            dump_declaration,
+        )
+
         # The answer JSON saves: an export's inner answer where it carries one as text, so
         # `--from` reads the same Task and next requests from either file.
         whole = (
@@ -1340,6 +1339,11 @@ def _save_declaration(path: Path, body: dict[str, Any]) -> None:
     its ``template`` in the declaration loader's dialect, as `feature controls` answers.
     When the answer carries the declaration's schema, its allowed values head the file as
     comments, which the loader ignores."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: write declarations
+        allowed_value_notes,
+        dump_declaration,
+    )
+
     value = body.get("yaml")
     if not isinstance(value, str) and isinstance(body.get("template"), dict):
         value = dump_declaration(json.loads(json.dumps(body["template"], default=_json_value)))
@@ -1904,6 +1908,11 @@ def saved_answer(
     Raises:
         LocalResearchClientError: Invalid file, representation or path.
     """
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML answers
+        load_safe_yaml_document,
+        yaml,
+    )
+
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
         raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")
@@ -2898,6 +2907,12 @@ _NOT_RECORDED: Final = (
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """Run first use."""
+    from alphalattice.interface.local_application.goals import (  # lazy: first-use orchestration
+        delegated_network,
+        first_use_asks,
+        target_sessions,
+    )
+
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2959,6 +2974,8 @@ def _prepared(
 ) -> tuple[dict[str, Any], str | None]:
     """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
     sentence's note when it was not recorded."""
+    from alphalattice.interface.local_application.goals import NEW_RESEARCH_SCOPE  # lazy: first use
+
     criterion = (
         f"The positions for {named['entry_session']}, with their review, stand for the person."
     )

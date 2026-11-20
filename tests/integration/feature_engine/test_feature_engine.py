@@ -44,6 +44,10 @@ from alphalattice.foundation.feature_engine.producers.base_materializer import (
 from alphalattice.foundation.feature_engine.producers.cross_section import (
     SectorNeutralPanelMaterializer,
 )
+from alphalattice.foundation.feature_engine.producers.factors.catalog import (
+    installed_feature_kernels,
+)
+from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.foundation.feature_engine.producers.reference_data import (
     MarketReference,
     MarketReferenceMaintainer,
@@ -1552,7 +1556,14 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
     assert rematerializer.rematerialize(recipe.recipe_hash).physical_parity
 
 
-def test_feature_materialization_failure_keeps_bounded_diagnostics(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "injected_registry",
+    [pytest.param(False, id="shipped"), pytest.param(True, id="injected")],
+)
+def test_feature_materialization_failure_keeps_bounded_diagnostics(
+    tmp_path, monkeypatch, injected_registry: bool
+) -> None:
+    """Keep listing-worker diagnostics and preload models for an injected registry."""
     manifest = fixture_manifest()
     provider = FixtureProvider(tuple(item.symbol for item in manifest.listings))
     market_data = MarketDataRepository(tmp_path / "workspace")
@@ -1581,11 +1592,17 @@ def test_feature_materialization_failure_keeps_bounded_diagnostics(tmp_path, mon
             store=feature_state, mutation_gate=gate, ledger=ledger
         ),
         session_authority_resolver=fixture_session_authority,
+        kernel_registry=(
+            FeatureKernelRegistry(installed_feature_kernels()[:1]) if injected_registry else None
+        ),
     )
 
     # A listing computes in a Host worker (W10), whose ValueError answers as a refusal
     # carrying the name of what it raised.
-    def fail_materialization(_calls):
+    preloads: list[bool] = []
+
+    def fail_materialization(calls):
+        preloads.append(calls._preload_models)
         raise ChildRefused("fixture materialization detail", type_name="ValueError")
 
     monkeypatch.setattr(ChildCalls, "answer", fail_materialization)
@@ -1597,6 +1614,7 @@ def test_feature_materialization_failure_keeps_bounded_diagnostics(tmp_path, mon
         as_of_session=SESSIONS[-1],
     )
     outcome = service.build(request, observed_at=NOW, refresh_sector=False)
+    assert preloads == [injected_registry]
     assert outcome.status is FeatureBuildStatus.BLOCKED
     assert outcome.failure_code == "feature.materialization_failed"
     failure = outcome.coverage_summary["materialization_failure"]

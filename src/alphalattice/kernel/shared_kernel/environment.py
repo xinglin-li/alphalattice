@@ -242,10 +242,13 @@ _UNLIMITED: list[Any] = []
 _LIMITS_LOCK = threading.Lock()
 
 
-def _load_limited_libraries() -> None:
+def _load_limited_libraries(*, preload_models: bool) -> None:
     """Load the numerical libraries a limit holds before it is set: one first loaded inside a
     limited block would start at its own default threads, which the limit never reaches."""
     import scipy.linalg  # type: ignore[import-untyped]  # noqa: F401  # lazy: SciPy's BLAS
+
+    if not preload_models:
+        return
     import sklearn  # noqa: F401  # lazy: the OpenMP runtime scikit-learn's estimators use
 
     with suppress(ImportError, OSError):  # LightGBM needs its OpenMP runtime to load at all
@@ -253,7 +256,7 @@ def _load_limited_libraries() -> None:
 
 
 @contextmanager
-def numerical_thread_limit(limits: int) -> Iterator[None]:
+def numerical_thread_limit(limits: int, *, preload_models: bool = True) -> Iterator[None]:
     """Limit the numerical libraries' threads in the block, as ``threadpool_limits`` does.
 
     The libraries it holds are loaded first, so one an adapter imports at its first fit runs
@@ -262,7 +265,7 @@ def numerical_thread_limit(limits: int) -> Iterator[None]:
     scope to close restores the counts from before the first, so a scope closing early leaves
     no other unlimited.
     """
-    _load_limited_libraries()
+    _load_limited_libraries(preload_models=preload_models)
     with _LIMITS_LOCK:
         if not _LIMITS:
             _UNLIMITED.append(_thread_pool_controller().limit(limits=limits))

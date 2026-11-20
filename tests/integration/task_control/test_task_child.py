@@ -480,7 +480,7 @@ threadpoolctl.ThreadpoolController = original
 
 # A changing module set must be rebuilt for this call, never applied or recorded.
 importlib.reload(environment)
-environment._load_limited_libraries = lambda: None
+environment._load_limited_libraries = lambda *, preload_models: None
 built, limited = [], []
 class Controller:
     def __init__(self):
@@ -501,7 +501,7 @@ assert limited == [(2, 1)] and len(built) == 2
 # Sustained churn refuses both callers before applying or recording a partial view.
 for caller in ("limit", "counts"):
     importlib.reload(environment)
-    environment._load_limited_libraries = lambda: None
+    environment._load_limited_libraries = lambda *, preload_models: None
     built.clear(); limited.clear()
     snapshots = iter([(101,), (101, 202)] * 16)
     environment._loaded_module_handles = lambda: next(snapshots)

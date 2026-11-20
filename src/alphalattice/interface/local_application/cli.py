@@ -46,15 +46,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal
 
-import yaml  # type: ignore[import-untyped]
-from pydantic import ValidationError
-
-from alphalattice.foundation.factor_research.experiments.authoring import (
-    FACTOR_EXPERIMENT_KIND,
-    FactorSection,
-)
 from alphalattice.interface.local_application import call_span, client
-from alphalattice.interface.local_application.answers import ANSWERS, outline
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
@@ -90,13 +82,7 @@ from alphalattice.interface.local_application.failure_codes import (
     safe_failure_code,
 )
 from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
-from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument,
-    decision_hash,
-)
-from alphalattice.interface.local_application.questions import relayed_question
 from alphalattice.interface.local_application.read_views import summary_display
-from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
@@ -320,6 +306,10 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 raise ValueError("cli.not_an_operation_command")
             else:
                 request = _line_document(repaired, args)()
+
+            from .portfolio_research import (  # lazy: validate the repaired declaration
+                PortfolioResearchRequestDocument,
+            )
 
             PortfolioResearchRequestDocument.model_validate(request)
             return {
@@ -948,6 +938,11 @@ def schema(operation: str) -> dict[str, Any]:
     It is read from the registry and the request document's own schema, and nothing here is a
     second copy of either.
     """
+    from alphalattice.interface.local_application.answers import ANSWERS  # lazy: schema read
+    from alphalattice.interface.local_application.portfolio_research import (  # lazy: schema read
+        PortfolioResearchRequestDocument,
+    )
+
     required, allowed = _fields(operation)
     noun, verb = next(name for name, ops in _commands().items() if operation in ops)
     request = operation_schema(
@@ -1009,12 +1004,16 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
     """
     if operation != "EXPERIMENT_READBACK":
         return None
+    from alphalattice.foundation.factor_research.experiments.authoring import (  # lazy: readback
+        FACTOR_EXPERIMENT_KIND,
+    )
     from alphalattice.foundation.factor_research.experiments.development_evidence import (
         FactorDevelopmentReceipt,
     )
     from alphalattice.foundation.factor_research.programs.program import (
         FactorResearchDeterministicEvidence,
     )
+    from alphalattice.interface.local_application.answers import outline  # lazy: readback schema
 
     return {
         FACTOR_EXPERIMENT_KIND: {
@@ -1026,11 +1025,17 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
 
 def _declaration_sections() -> dict[str, Any]:
     """Each Desk's section of an experiment declaration, by its contract (SC3)."""
+    from alphalattice.foundation.factor_research.experiments.authoring import (  # lazy: schema read
+        FactorSection,
+    )
     from alphalattice.investment.alpha_research.experiments.authoring import (
         AlphaDevelopmentSection,
     )
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         AlphaLifecycleSection,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: schema
+        availability,
     )
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
         PortfolioExperimentSpec,
@@ -1045,7 +1050,7 @@ def _declaration_sections() -> dict[str, Any]:
         # yet, with why.
         "portfolio": {
             **PortfolioExperimentSpec.model_json_schema(),
-            "not_available": list(NOT_AVAILABLE),
+            "not_available": list(availability.NOT_AVAILABLE),
         },
         "risk": RiskSection.model_json_schema(),
     }
@@ -1327,6 +1332,9 @@ def _declaration_fields(path: Path) -> str:
     Read here, in the CLI, so the declaration's module, which number-deciding closures hold,
     keeps its bytes.
     """
+
+    import yaml  # type: ignore[import-untyped]  # lazy: only model declarations read this YAML
+    from pydantic import ValidationError  # lazy: only model declarations raise it here
 
     from alphalattice.capabilities.alpha_modeling.declaration import AlphaModelDeclaration
 
@@ -2249,6 +2257,9 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         )
         if said is None:
             return line
+        from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
+            decision_hash,
+        )
 
         return {
             **line,
@@ -2279,6 +2290,10 @@ def _relayed_asked(
         parser.error("--person-said needs its question: --question-code, or --asked as asked")
     if said is None or question_code is None:
         return asked
+    from alphalattice.interface.local_application.questions import (  # lazy: relay question codes
+        relayed_question,
+    )
+
     try:
         return relayed_question(operation, question_code, asked)[0]
     except ValueError as error:  # relayed_question raises only its owner's codes

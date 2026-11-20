@@ -33,7 +33,6 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from importlib import resources
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -60,9 +59,6 @@ from alphalattice.kernel.data_layer.root import (
 )
 from alphalattice.kernel.data_layer.telemetry import usage
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
-
-if find_spec("pyarrow") is not None:
-    import pyarrow.acero  # noqa: F401  (load the admission grouping engine at process start)
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -1396,6 +1392,8 @@ def admissible(table: str, provider_id: str | None, rows: Any, *, legacy: bool =
 
 def _repeated(data: Any, key: tuple[str, ...]) -> tuple[Any, ...] | None:
     """The first key a later row repeats, in row order; None when every key is once."""
+    import pyarrow.acero  # noqa: F401  # lazy: only the admission key check groups Arrow rows
+
     keys = data.select(list(key))
     if keys.group_by(list(key)).aggregate([]).num_rows == keys.num_rows:
         return None

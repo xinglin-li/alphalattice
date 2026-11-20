@@ -627,7 +627,9 @@ class FeatureFoundationService:
             with (
                 self.mutation_gate.hold(),
                 self.feature_state.feature_build_connection() as base_connection,
-                child_calls(_LISTING_ROWS, workers=workers) as calls,
+                child_calls(
+                    _LISTING_ROWS, workers=workers, preload_models=shipped_kernels is not None
+                ) as calls,
             ):
                 self.feature_persistence.reconcile_pending(
                     self.catalog.binding.catalog_hash,
@@ -1357,7 +1359,7 @@ class FeatureFoundationService:
         # records them in chunk order, as it did one by one (W10). A chunk a Sector
         # reclassification falls inside is one call per run of sessions that read one
         # map.
-        with child_calls(_PANEL_CHUNK, workers=workers) as panel_calls:
+        with child_calls(_PANEL_CHUNK, workers=workers, preload_models=False) as panel_calls:
             for factor_ids, grouped_sessions in panel_groups:
                 for connection_start in range(
                     0, len(grouped_sessions), _PANEL_CONNECTION_SESSION_BUDGET

@@ -168,7 +168,12 @@ class ChildCalls:
     """
 
     def __init__(
-        self, target: str, *, workers: int, cancelled: Callable[[], bool] | None = None
+        self,
+        target: str,
+        *,
+        workers: int,
+        cancelled: Callable[[], bool] | None = None,
+        preload_models: bool = True,
     ) -> None:
         """Bind the function and how many kept workers its calls spread over."""
         if workers < 1:
@@ -176,6 +181,7 @@ class ChildCalls:
         self._target = target
         self._workers = workers
         self._cancelled = cancelled
+        self._preload_models = preload_models
         self._made = 0
         self._pending: deque[_Submitted] = deque()
         self._folder = tempfile.TemporaryDirectory(prefix="alphalattice-calls-")
@@ -209,7 +215,15 @@ class ChildCalls:
         answer = Path(self._folder.name) / f"{self._made}.answer"
         self._made += 1
         self._pending.append(
-            _submitted(worker, self._target, arguments, self._flag, threads=1, answer=answer)
+            _submitted(
+                worker,
+                self._target,
+                arguments,
+                self._flag,
+                threads=1,
+                answer=answer,
+                preload_models=self._preload_models,
+            )
         )
 
     def answer(self) -> Any:
@@ -244,16 +258,21 @@ class ChildCalls:
                         {"call_set": self._folder.name},
                         self._flag,
                         threads=1,
+                        preload_models=self._preload_models,
                     )
         self._folder.cleanup()
 
 
 @contextmanager
 def child_calls(
-    target: str, *, workers: int, cancelled: Callable[[], bool] | None = None
+    target: str,
+    *,
+    workers: int,
+    cancelled: Callable[[], bool] | None = None,
+    preload_models: bool = True,
 ) -> Iterator[ChildCalls]:
     """`ChildCalls` of ``module:function`` over `workers` kept workers, closed on leaving."""
-    calls = ChildCalls(target, workers=workers, cancelled=cancelled)
+    calls = ChildCalls(target, workers=workers, cancelled=cancelled, preload_models=preload_models)
     try:
         yield calls
     finally:
@@ -279,6 +298,7 @@ def _submitted(
     *,
     threads: int | None,
     answer: Path | None = None,
+    preload_models: bool = True,
 ) -> _Submitted:
     """Hand one call to a kept worker; one that has ended answers as an interruption."""
     from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
@@ -295,6 +315,7 @@ def _submitted(
             None if answer is None else str(answer),
             _carrier(),
             os.environ.get(DATA_ROOT_ENV),
+            preload_models,
         )
     except BrokenProcessPool:
         assert pool is not None
@@ -456,6 +477,7 @@ def _call(
     answer: str | None = None,
     trace: Mapping[str, str] | None = None,
     root: str | None = None,
+    preload_models: bool = True,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -478,7 +500,7 @@ def _call(
         function = getattr(importlib.import_module(module_name), name)
         with (
             held_offline(),
-            _numerical_threads(threads),
+            _numerical_threads(threads, preload_models=preload_models),
             collect() as ledger,
             _worker_span(target, trace, rows),
         ):
@@ -572,12 +594,12 @@ def _forget(call_set: str, cancelled: Callable[[], bool]) -> None:
 
 
 @contextmanager
-def _numerical_threads(threads: int | None) -> Iterator[None]:
+def _numerical_threads(threads: int | None, *, preload_models: bool) -> Iterator[None]:
     """The numerical libraries held to `threads` threads for a block; unchanged without one."""
     if threads is None:
         yield
         return
-    with numerical_thread_limit(threads):
+    with numerical_thread_limit(threads, preload_models=preload_models):
         yield
 
 

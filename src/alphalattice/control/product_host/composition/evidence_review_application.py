@@ -164,7 +164,6 @@ from alphalattice.interface.local_application.evidence_cro import (
     book_projection,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.interface.local_application.labels import title
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
 )
@@ -935,6 +934,10 @@ class EvidenceReviewApplication:
 
     def book_context(self, book: SealedBook) -> EvidenceTaskContext:
         """Name the already verified book without opening it again on a progress read."""
+        from alphalattice.interface.local_application.labels import (  # lazy: installed names
+            title,
+        )
+
         package_id: str | None
         shown: str | None
         if book.update_subject is not None:
@@ -1016,6 +1019,10 @@ class EvidenceReviewApplication:
                 )
                 context["evidence_as_of"] = dossier.evidence_as_of.isoformat()
                 if dossier.update_subject is not None:
+                    from alphalattice.interface.local_application.labels import (  # lazy: title
+                        title,
+                    )
+
                     package_id = dossier.update_subject.strategy_package_id
                     context.update(
                         name=title(package_id),

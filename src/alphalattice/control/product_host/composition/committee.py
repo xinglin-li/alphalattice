@@ -86,7 +86,6 @@ from alphalattice.interface.local_application.cli_contract import (
     schema_request,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.interface.local_application.labels import label as installed_label
 from alphalattice.interface.local_application.native_bridge import SUBJECT_VALUE_CHARACTERS
 from alphalattice.interface.local_application.portfolio_research import (
     CommitteeMessage,
@@ -643,6 +642,10 @@ def open_floor(
     The floor is built before the store keeps its seed, so a floor that cannot be built leaves
     nothing behind.
     """
+    from alphalattice.interface.local_application.labels import (  # lazy: installed names
+        label as installed_label,
+    )
+
     task, held = str(readback["task_id"]), holdings(readback)
     label = installed_label(str(readback.get("strategy_package_id") or ""))
     proposal = readback["publication"].get("pending_proposal") or {}

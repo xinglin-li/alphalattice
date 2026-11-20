@@ -11,13 +11,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, runtime_checkable
-
-import duckdb
-import numpy as np
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
@@ -109,6 +103,12 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
+if TYPE_CHECKING:
+    import duckdb
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
+
 
 class _FeatureInputAdmissionLike(Protocol):
     """Storage-facing shape of one Gateway admission."""
@@ -176,6 +176,8 @@ def _staged_rows(columns: Sequence[str], rows: Sequence[Sequence[object]]) -> pa
     gathers each column's values and converts them with `pa.array` -- without the
     mappings (1.19M rows over a first build's Feature rows).
     """
+    import pyarrow as pa  # lazy: only builders of staged rows use Arrow
+
     by_column = zip(*rows, strict=True)
     return pa.table(
         {name: pa.array(values) for name, values in zip(columns, by_column, strict=True)}
@@ -199,6 +201,8 @@ def _canonical_stage(
     timestamp and doubles, NaN kept. ``verification`` holds, when given, the
     ``source_verification_receipt_hash`` every row carries.
     """
+    import pyarrow as pa  # lazy: only feature row staging builds these columns
+
     count = len(cells)
     sessions, cutoffs, row_hashes = (list(values) for values in zip(*cells, strict=True))
     by_cell = {
@@ -240,6 +244,8 @@ def _ineligibility_facts(
     of mappings, go through the checks fact by fact, so the first failing fact raises what
     it always raised.
     """
+    import pandas as pd  # lazy: only this adapter reads DataFrame input
+
     required = ("session_date", "factor_id", "reason", "observation_count")
     if isinstance(ineligibility, pd.DataFrame):
         if not set(required).issubset(ineligibility.columns):
@@ -500,6 +506,8 @@ class FeatureStateRepository(WorkspaceRepository):
 
     def feature_input_candidate(self, market_profile_id: str) -> UniverseManifest | None:
         """Load the Feature-owned candidate through the Market manifest reader."""
+        import duckdb  # lazy: recognize a missing catalog only when reading a candidate
+
         if not self.path.exists():
             return None
         connection = self._connect(read_only=True)
@@ -581,6 +589,8 @@ class FeatureStateRepository(WorkspaceRepository):
         about a million facts, and the mappings, their sort and their lookups
         cost its single writer about 4 s.
         """
+        import numpy as np  # lazy: only this compression sorts NumPy arrays
+
         sessions = facts["session_date"]
         factors = facts["factor_id"]
         reasons = facts["reason"]
@@ -833,6 +843,8 @@ class FeatureStateRepository(WorkspaceRepository):
         come from the market's reads (``MarketDataRepository.market_reads``); the raw-evidence
         hash, a receipt of the workspace's rows, from the workspace.
         """
+        import pyarrow as pa  # lazy: this query converts the source projection to Arrow
+
         market = self._market_data
         market._assert_manifest_scope(manifest, (listing_id,))
         with market.market_reads(_connection, listings=(listing_id,)) as (reading, tables):
@@ -894,6 +906,8 @@ class FeatureStateRepository(WorkspaceRepository):
         ``starts`` maps a listing to its manifest and first session. A listing with no bars from
         its start, or no provider mapping, is left out: its own read refuses it by name.
         """
+        import pyarrow as pa  # lazy: this query reads and selects Arrow source rows
+
         market = self._market_data
         for listing_id, (manifest, _start) in starts.items():
             market._assert_manifest_scope(manifest, (listing_id,))
@@ -1027,6 +1041,8 @@ class FeatureStateRepository(WorkspaceRepository):
         nothing written in between; given, they are consumed instead of read
         again here, per listing. Without them they are read.
         """
+        import pandas as pd  # lazy: only materialization writes accept a DataFrame
+        import pyarrow as pa  # lazy: materialization writes build Arrow rows
 
         def record(stage: str, started: float) -> None:
             if timing_sink is not None:
@@ -2176,6 +2192,8 @@ class FeatureStateRepository(WorkspaceRepository):
         retaining only the full table and one earlier prefix. Arrow and IPC buffers are not
         automatically bounded by DuckDB's memory limit.
         """
+        import numpy as np  # lazy: only the prefix reader searches the NumPy session axis
+
         latest = max(ends)
         rows = connection.execute(statement, [*leading, start, latest]).to_arrow_table()
         multiple_chunks = any(column.num_chunks > 1 for column in rows.columns)
@@ -2807,6 +2825,8 @@ class FeatureStateRepository(WorkspaceRepository):
         observed_at: datetime,
     ) -> None:
         """Persist a validated sector fan-in without one connection per listing."""
+        import pyarrow as pa  # lazy: only a sector write builds these Arrow columns
+
         prepared = tuple(
             (
                 manifest_revision,
@@ -4386,6 +4406,9 @@ class PanelStateRepository(WorkspaceRepository):
         DuckDB, and blocks all listed inputs on known ambiguity or a same-source
         adjusted-close mismatch greater than five basis points.
         """
+        import pyarrow as pa  # lazy: only freezing a snapshot builds its Arrow table
+        import pyarrow.parquet as pq  # lazy: only freezing a snapshot writes Parquet
+
         observed_at = _utc_naive(observed_at)
         selected = tuple(manifest.listings)
         if requested_listing_ids is not None:

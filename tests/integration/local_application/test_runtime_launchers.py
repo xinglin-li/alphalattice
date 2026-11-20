@@ -226,7 +226,8 @@ importlib.util.find_spec = lambda name, *a, **k: (
 )
 from pathlib import Path
 from alphalattice.control.product_host.composition import entry
-entry.interpreter_path = lambda: Path(sys.executable)
+from alphalattice.interface.local_application import retrieval_environment
+retrieval_environment.interpreter_path = lambda: Path(sys.executable)
 raise SystemExit(entry.main(sys.argv[1:]))
 """.replace("__SELF_TEST_MODULE__", __spec__.name if __spec__ else __name__)
     sources = (str(root), str(root / "src"), str(Path(sys.prefix) / "Lib/site-packages"))

@@ -23,8 +23,6 @@ from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
-from pydantic import ValidationError
-
 from alphalattice.interface.local_application.cli_contract import schema_request
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
@@ -168,8 +166,6 @@ def public_failure(error: BaseException, fallback: str) -> str:
     the value. Anything else is `fallback:<exception class>:<incident>`, the incident a digest
     of the failure, with the detail logged under it.
     """
-    # The owners' models' failure; imported here, so the client's transport never loads them.
-
     code = owner_failure_code(error)
     if code is not None:
         return code
@@ -185,6 +181,8 @@ def public_failure(error: BaseException, fallback: str) -> str:
         code = safe_failure_code(str(error))
         if code is not None:
             return code
+    from pydantic import ValidationError  # lazy: only uncoded failures need model inspection.
+
     if isinstance(error, ValidationError):
         fields = []
         for item in error.errors():
@@ -241,6 +239,8 @@ def within(error: BaseException, *place: str) -> BaseException:
     Returns:
         The same refusal with each item's location prefixed by `place`.
     """
+    from pydantic import ValidationError  # lazy: only nested refusals need model inspection.
+
     if not isinstance(error, ValidationError):
         return error
     lines: list[Any] = [{**item, "loc": (*place, *item["loc"])} for item in error.errors()]
@@ -263,6 +263,8 @@ def located_failure(
     contract's error type) and the contract's words (`message`), never a value. Any other
     failure answers the code `public_failure` gives.
     """
+    from pydantic import ValidationError  # lazy: only document refusals need model inspection.
+
     if not isinstance(error, ValidationError):
         failure = {"failure_code": public_failure(error, fallback)}
         return {**failure, **error_projection(failure)}

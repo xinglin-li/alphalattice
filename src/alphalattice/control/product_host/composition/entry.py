@@ -11,18 +11,7 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
-from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_DISCLOSURE,
-    LOCKED_SETUP_WORDS,
-    fill_command,
-    interpreter_path,
-)
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-
-from .web_launcher import attached_child
-from .web_launcher import main as start
-
-ROOT: Path = resolve_playpen_root(Path(__file__))
 
 
 def serve(arguments: list[str]) -> int:
@@ -31,8 +20,16 @@ def serve(arguments: list[str]) -> int:
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,
     )
+    from alphalattice.interface.local_application.retrieval_environment import (  # lazy: serve
+        LOCKED_SETUP_DISCLOSURE,
+        LOCKED_SETUP_WORDS,
+        fill_command,
+        interpreter_path,
+    )
 
     from .first_use_road import serve_road
+    from .web_launcher import attached_child  # lazy: only serve launches a Host
+    from .web_launcher import main as start  # lazy: only serve starts a Host
 
     entry = argparse.ArgumentParser(add_help=False)
     entry.add_argument("--workspace", type=Path, required=True)
@@ -50,7 +47,8 @@ def serve(arguments: list[str]) -> int:
         else None
     )
     interpreter = interpreter_path()
-    checkout = (ROOT / "pyproject.toml").is_file()
+    root = resolve_playpen_root(Path(__file__))
+    checkout = (root / "pyproject.toml").is_file()
     packaged = manifest is not None and manifest.evidence_review is not None
     # The Host runs in the declared retrieval environment whenever it exists, so an Evidence
     # package installed while it runs is served by it; a package with none to run in refuses.
@@ -84,7 +82,7 @@ def serve(arguments: list[str]) -> int:
         # Give that child the same checkout source, even when its environment has
         # dependencies installed without an editable package installation.
         environment = dict(os.environ)
-        source = str(ROOT / "src")
+        source = str(root / "src")
         inherited_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = (
             source + os.pathsep + inherited_path if inherited_path else source
@@ -154,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     arguments = sys.argv[1:] if argv is None else argv
     try:
-        from alphalattice.interface.local_application.cli import main as root
+        from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
         result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
         sys.stdout.flush()  # noqa: TID251  # detect a closed CLI output pipe
@@ -177,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         # provides it; a missing product module is a broken tree and is raised as one.
         if error.name is None or error.name.split(".")[0] in {"alphalattice", "scripts"}:
             raise
+        checkout_root = resolve_playpen_root(Path(__file__))
         print(
             json.dumps(
                 {
@@ -189,11 +188,11 @@ def main(argv: list[str] | None = None) -> int:
                             "uv",
                             "sync",
                             "--project",
-                            str(ROOT),
+                            str(checkout_root),
                             "--locked",
                             "--all-extras",
                         ]
-                        if (ROOT / "pyproject.toml").is_file()
+                        if (checkout_root / "pyproject.toml").is_file()
                         else [
                             "uv",
                             "pip",
@@ -204,9 +203,9 @@ def main(argv: list[str] | None = None) -> int:
                         ]
                     ),
                     "interpreter": sys.executable
-                    if not (ROOT / "pyproject.toml").is_file()
+                    if not (checkout_root / "pyproject.toml").is_file()
                     else str(
-                        ROOT
+                        checkout_root
                         / ".venv"
                         / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
                     ),

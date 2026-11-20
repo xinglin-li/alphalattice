@@ -31,7 +31,6 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
 )
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
-from alphalattice.interface.local_application.labels import label
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -399,7 +398,13 @@ class EvidenceReviewBundles:
                     },
                 )
             subject = dossier.update_subject
-            installed = label(subject.strategy_package_id) if subject else None
+            installed = None
+            if subject:
+                from alphalattice.interface.local_application.labels import (  # lazy: title
+                    label,
+                )
+
+                installed = label(subject.strategy_package_id)
             bundle = render_review_bundle(
                 dossier,
                 task_procedure=procedure,

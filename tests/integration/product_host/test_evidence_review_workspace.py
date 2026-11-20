@@ -1173,9 +1173,12 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
 
 def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, monkeypatch, capsys):
     from alphalattice.control.product_host.composition import entry as run_alphalattice
+    from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
+    from alphalattice.interface.local_application import retrieval_environment
+    from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
     binding, _registry = _package(tmp_path)
     publish_research_workspace_manifest(
@@ -1184,8 +1187,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     interpreter = tmp_path / "declared-python.exe"
     interpreter.write_bytes(b"selector-test-only")
-    monkeypatch.setattr(run_alphalattice, "interpreter_path", lambda: interpreter)
-    # Patch imported functions at the consumer, and module attributes at their module.
+    monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: interpreter)
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
     spawned = []
@@ -1197,7 +1199,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     monkeypatch.setenv("PYTHONPATH", str(foreign_source))
     monkeypatch.setattr(
-        run_alphalattice,
+        web_launcher,
         "attached_child",
         lambda args, **kwargs: spawned.append((args, kwargs)) or 0,
     )
@@ -1208,12 +1210,12 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert command[1:3] == ["-m", "alphalattice.control.product_host.composition.web_launcher"]
     assert command[3:] == args
     assert options["env"]["PYTHONPATH"].split(os.pathsep) == [
-        str(run_alphalattice.ROOT / "src"),
+        str(resolve_playpen_root(Path(__file__)) / "src"),
         str(foreign_source),
     ]
     assert os.environ["PYTHONPATH"] == str(foreign_source)
     detached = []
-    monkeypatch.setattr(run_alphalattice, "start", lambda a, **kw: detached.append(kw) or 0)
+    monkeypatch.setattr(web_launcher, "main", lambda a, **kw: detached.append(kw) or 0)
     assert run_alphalattice.serve([*args[:-1], "--detach"]) == 0
     assert detached == [{"host_interpreter": interpreter, "new_research": False}]
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
@@ -1242,7 +1244,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []
-    monkeypatch.setattr(run_alphalattice, "start", lambda args: started.append(args) or 0)
+    monkeypatch.setattr(web_launcher, "main", lambda args: started.append(args) or 0)
     empty_args = ["--workspace", str(tmp_path / "empty"), "--no-browser"]
     assert run_alphalattice.serve(empty_args) == 0 and started == [empty_args]
 

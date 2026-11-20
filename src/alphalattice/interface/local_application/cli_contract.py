@@ -30,9 +30,7 @@ from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
 from alphalattice.interface.local_application.cli_refused import refused as refused
-from alphalattice.interface.local_application.labels import titles_in
 from alphalattice.interface.local_application.message_catalog import catalog_words
-from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.request_offers import (
     _powershell,
 )
@@ -533,6 +531,10 @@ def refusal_words(
                 next_action=decision["next_action"],
             )
         elif workspace is not None:
+            from alphalattice.interface.local_application.questions import (  # lazy: consent
+                person_question,
+            )
+
             words["person_questions"] = [person_question("network.workspace_access")]
         if workspace is not None or access.decided_by != "DEFAULT":
             words["network_access"] = decision
@@ -1942,6 +1944,10 @@ def envelope(
     refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
+        from alphalattice.interface.local_application.labels import (  # lazy: installed names
+            titles_in,
+        )
+
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
     return {
