@@ -24,6 +24,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 from alphalattice.kernel.data_layer.history import (
     carry_arrays,
     carry_research_inputs,
+    carry_results,
     data_root,
     own_root,
 )
@@ -159,6 +160,18 @@ def _copy(source: Path, target: Path) -> None:
     shutil.copytree(source, target, symlinks=True, copy_function=copy_one)
 
 
+def carry_copy(workspace: Path, copy: Path, *, root: Path | None = None) -> None:
+    """Carry into `copy`, a copy of `workspace`, what the catalog of `root` (this process's data
+    root unless named) alone keeps for it: its Tasks, lanes, bound inputs, execution outcomes and
+    Portfolio results, and Risk's covariance history. The Host that opens the copy admits them."""
+    carry_tasks(workspace, copy, root=root)
+    carry_arrays(workspace, copy, root=root)
+    carry_research_inputs(workspace, copy, root=root)
+    carry_results(workspace, copy, root=root)
+    for _ in carry_risk_covariance(workspace, copy, source_root=root):
+        pass
+
+
 def probe(
     harvest: Path,
     work: Path,
@@ -208,11 +221,7 @@ def _read_saved(
         if index and not keep:  # the last workspace's sessions have stopped
             shutil.rmtree(work / f"w{index - 1:03d}", ignore_errors=True)
         _copy(root, copy)
-        carry_tasks(root, copy, root=source)
-        carry_arrays(root, copy, root=source)
-        carry_research_inputs(root, copy, root=source)
-        for _ in carry_risk_covariance(root, copy, source_root=source):
-            pass
+        carry_copy(root, copy, root=source)
         opened = _open_copy(copy, name, rows, fallback, opener)
         if opened is None:
             continue

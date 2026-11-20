@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, cast
 
 import numpy.typing as npt
 from pydantic import BaseModel
@@ -87,11 +87,6 @@ from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.data_layer.arrays import CARRIED
 from alphalattice.kernel.data_layer.upgrade import Family
 
-ARRAY_STORE_ENV = "ALPHALATTICE_ARRAY_STORE"
-"""The lanes' reader: `door` (the default) reads the data root's array door; `legacy` reads the
-lane files this store wrote before it, for rollback. Lanes are written through the door alone."""
-
-
 LAB: Final = "portfolio-strategy-lab"
 _NOT_LANES: Final = frozenset({"public", "pending-finalization", "carried", "current"})
 """A Strategy Lab folder's children whose files are no lane of this store: the ledger's
@@ -114,21 +109,12 @@ _AUTHORITY: dict[Path, bool] = {}
 def _files(root: Path) -> Path | None:
     """The folder whose own lane files a store at `root` reads, or None when it reads the door.
 
-    `ALPHALATTICE_ARRAY_STORE=door` reads the door and `legacy` the files, for rollback; any
-    other value is refused. Unset, a workspace that still holds lane files the door lacks keeps
-    them as its lanes' authority until the upgrade's family moves them, as a 0.2.7 Task store
-    stays its Tasks' until moved: decided once per process per workspace, from its own state.
-    contract: the unset rule retires when the upgrade has moved every workspace's lanes, and
-    `legacy` with it at row U.
+    Unset, a workspace that still holds lane files the door lacks keeps them as its lanes'
+    authority until the upgrade's family moves them, as a 0.2.7 Task store stays its Tasks'
+    until moved: decided once per process per workspace, from its own state.
+    contract: the unset rule retires when the upgrade has moved every workspace's lanes.
     """
-    mode = os.environ.get(ARRAY_STORE_ENV)
-    if mode not in {None, "door", "legacy"}:
-        raise PortfolioPublicationError("portfolio_strategy_lab.array_store_invalid")
-    if mode == "door":
-        return None
     workspace = next((f for f in (root, *root.parents) if (f / MANIFEST).is_file()), None)
-    if mode == "legacy":
-        return workspace or root.parent
     if workspace is None:
         return None
     if workspace not in _AUTHORITY:
@@ -1414,8 +1400,7 @@ def lane_files(workspace: Path) -> list[Path]:
 def lane_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """The upgrade's move of the Strategy Lab's lane files into the array door: each kept with
     the hold of the workspace it lies in (`holder` names its id), the files left as they are; its
-    ALL EQUAL reads every lane back through the door against its file's bytes; its switch picks
-    the lanes' reader (`ALPHALATTICE_ARRAY_STORE`)."""
+    ALL EQUAL reads every lane back through the door against its file's bytes."""
 
     def step(runner: Any) -> None:
         for workspace in runner.workspaces:
@@ -1423,6 +1408,7 @@ def lane_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
             for path in lane_files(workspace):
                 arrays.keep_file(runner.root, runner.log, path, workspace=held, durable=False)
             runner.log.flush()
+        _AUTHORITY.clear()  # each workspace is decided again from its state after the move
 
     def verify(runner: Any) -> bool:
         for workspace in runner.workspaces:
@@ -1434,18 +1420,10 @@ def lane_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
                     return False
         return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        # contract: remove the legacy choice when row U retires the Strategy Lab's lane files.
-        _AUTHORITY.clear()  # each workspace is decided again from its state after the move
-        if mode == "old":
-            os.environ[ARRAY_STORE_ENV] = "legacy"
-        else:  # unset: a workspace whose lanes the door now holds reads the door
-            os.environ.pop(ARRAY_STORE_ENV, None)
-
     def holds(workspace: Path) -> bool:
         return _unmoved(workspace)
 
-    return Family("strategy-lab-lanes", step, verify, switch, holds)
+    return Family("strategy-lab-lanes", step, verify, holds)
 
 
 __all__ = [

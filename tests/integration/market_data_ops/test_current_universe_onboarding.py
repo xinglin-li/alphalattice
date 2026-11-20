@@ -313,9 +313,8 @@ def _bootstrap(
     )
 
 
-@pytest.mark.parametrize("read_mode", ("workspace", "world"))
 def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest(
-    tmp_path, monkeypatch, request, read_mode
+    tmp_path, monkeypatch, request
 ) -> None:
     from alphalattice.kernel.data_layer.store import StorePort
 
@@ -335,7 +334,6 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         provider=provider,
         as_of_session=AS_OF,
     )
-    monkeypatch.setenv(world_reads.SETTING, read_mode)
     world_calls = []
     quality_reads = []
     original_relations = world_reads.relations
@@ -345,23 +343,22 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         return original_relations(*args, **kwargs)
 
     monkeypatch.setattr(world_reads, "relations", counted)
-    if read_mode == "world":
-        store.bootstrap(onboarding.acquisition_manifest)
-        history.open_history(
-            "onboarding-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
-        )
-        request.addfinalizer(history.release_history)
-        commit = StorePort.commit
+    store.bootstrap(onboarding.acquisition_manifest)
+    history.open_history(
+        "onboarding-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
+    )
+    request.addfinalizer(history.release_history)
+    commit = StorePort.commit
 
-        def completed(port, staged):
-            result = commit(port, staged)
-            if staged.table == "raw_bar":
-                assert port.lake.execute(
-                    "SELECT count(*) FROM lake.world.raw_bar WHERE adjusted_close IS NULL"
-                ).fetchall() == [(0,)], "world published an unaudited onboarding bar"
-            return result
+    def completed(port, staged):
+        result = commit(port, staged)
+        if staged.table == "raw_bar":
+            assert port.lake.execute(
+                "SELECT count(*) FROM lake.world.raw_bar WHERE adjusted_close IS NULL"
+            ).fetchall() == [(0,)], "world published an unaudited onboarding bar"
+        return result
 
-        monkeypatch.setattr(StorePort, "commit", completed)
+    monkeypatch.setattr(StorePort, "commit", completed)
     # The optional observer is told each unit transition after the store recorded it:
     # one announcement per transition, in order, never for a unit that was not advanced.
     announced: list[ListingUnitObservation] = []
@@ -376,8 +373,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
     first = onboarding.run(observed_at=OBSERVED_AT, work_budget=1)
 
     assert first.status is CurrentUniverseOnboardingStatus.RUNNING
-    if read_mode == "world":
-        assert quality_reads[1][1] > quality_reads[0][1]
+    assert quality_reads[1][1] > quality_reads[0][1]
     assert provider.daily_calls == {"AAPL": 1}
     assert [(v.symbol, v.state, v.origin) for v in announced] == [
         ("AAPL", "RAW_READY", "ACQUIRED"),
@@ -487,7 +483,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             provider="yfinance",
             requested_as_of=AS_OF,
             now=OBSERVED_AT,
-            cutoff_us=history.store().log.clock() if read_mode == "world" else None,
+            cutoff_us=history.store().log.clock(),
         )
         is not None
     )
@@ -592,7 +588,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
         gateway_manifest,
         requested_as_of=AS_OF,
         now=OBSERVED_AT,
-        cutoff_us=history.store().log.clock() if read_mode == "world" else None,
+        cutoff_us=history.store().log.clock(),
     )
     assert rebound == (aapl.listing_id,)
     assert (
@@ -602,7 +598,7 @@ def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest
             provider="yfinance",
             requested_as_of=AS_OF,
             now=OBSERVED_AT,
-            cutoff_us=history.store().log.clock() if read_mode == "world" else None,
+            cutoff_us=history.store().log.clock(),
         )
         is not None
     )
@@ -1338,7 +1334,6 @@ def test_resumed_quality_audit_holds_no_writable_connection(
 
     first = runner()
     store.bootstrap(first.acquisition_manifest)
-    monkeypatch.setenv(world_reads.SETTING, "world")
     history.open_history(
         "audit-resume-fixture", "onboarding", store.path.parent, root=tmp_path / "data"
     )

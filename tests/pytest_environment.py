@@ -452,6 +452,9 @@ def upgraded(workspace: Path) -> Path:
     from tests._support import require_isolated_roots
 
     require_isolated_roots()
+    from alphalattice.control.product_host.composition.application_session import (
+        carried_result_checks,
+    )
     from alphalattice.control.product_host.composition.first_start import FAMILIES
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
@@ -460,7 +463,8 @@ def upgraded(workspace: Path) -> Path:
     from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 
     copy = workspace.resolve()
-    history.open_history(str(named_workspace_id(copy)), copy.name, copy)
+    checks = carried_result_checks()  # the results it carries, as its Host admits them
+    history.open_history(str(named_workspace_id(copy)), copy.name, copy, carried_checks=checks)
     try:
         backups = {"workspaces": [{"workspace": str(copy)}]}
         families = tuple(make() for make in FAMILIES)

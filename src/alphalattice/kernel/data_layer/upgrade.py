@@ -1,9 +1,10 @@
 """The data layer's ordered, verified family migration at the first 0.2.8 Host start.
 
 The Host holds its ordinary writer fences throughout. A family owns its restart-safe step,
-ALL EQUAL comparison and single-store reader switch; this module owns only their order and
-durable progress through HostLog. A crash before family_done resumes that family, restoring
-its old reader first. Nothing serves until every registered family is done. Old data stays.
+which reads the old data itself, and its ALL EQUAL comparison; each family has one reader, the
+new store's. This module owns only their order and durable progress through HostLog. A crash
+before family_done resumes that family. Nothing serves until every registered family is done.
+Old data stays, and the pre-upgrade backup is the way back.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical
@@ -51,7 +52,7 @@ def workspace_files(workspace: Path) -> Iterator[Path]:
 
 @dataclass(frozen=True)
 class Family:
-    """One declared family: its step is restart-safe and its switch selects exactly one store.
+    """One declared family: its step is restart-safe and reads the old data itself.
 
     A verify returns True only after comparing all of this family's old and new reads. The
     tuple's order is the declared migration order. A step writes IDs with runner.map_id; its
@@ -61,7 +62,6 @@ class Family:
     name: str
     step: Callable[[UpgradeRunner], None]
     verify: Callable[[UpgradeRunner], bool]
-    switch: Callable[[Literal["old", "new"]], None]
     holds: Callable[[Path], bool] = lambda _workspace: False
     """Whether a workspace holds old data this family's new store lacks: only such a workspace is
     upgraded, so a copy of an upgraded one is not."""
@@ -119,8 +119,8 @@ class UpgradeRunner:
         """Verify backups, migrate and verify in order, then permit the Host to serve.
 
         False means the recorded run was already complete: its steps and comparisons are
-        not rerun, and its reader bindings are restored to new. A failed verification ends
-        this start; a later explicit start resumes its first not-done family.
+        not rerun. A failed verification ends this start; a later explicit start resumes its
+        first not-done family.
         """
         names = [family.name for family in self.families]
         if len(set(names)) != len(names) or (self._plan is not None and self._plan != names):
@@ -130,8 +130,6 @@ class UpgradeRunner:
                 code="upgrade.refused",
             )
         if self._complete:
-            for family in self.families:
-                family.switch("new")
             return False
         if self._plan is not None and self._backups is None:
             raise DataError(
@@ -163,11 +161,9 @@ class UpgradeRunner:
             self._backups = verified
         for family in self.families:
             if family.name in self._done:
-                family.switch("new")
                 continue
-            point = "old reader"
+            point = "start record"
             try:
-                family.switch("old")
                 self._record("family_started", family=family.name)
                 point = "step"
                 family.step(self)
@@ -176,14 +172,11 @@ class UpgradeRunner:
                     raise DataError(
                         "Family verification did not return ALL EQUAL.", code="upgrade.refused"
                     )
-                point = "new reader"
-                family.switch("new")
                 point = "completion record"
                 self._record("family_done", family=family.name, verdict="ALL EQUAL")
                 self._done.add(family.name)
             except Exception:
                 try:
-                    family.switch("old")
                     self._record("family_failed", family=family.name, point=point)
                 finally:
                     # Only the declared family and stage cross this diagnostic boundary;

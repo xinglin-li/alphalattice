@@ -849,7 +849,6 @@ def test_prediction_surface_is_durable_and_identity_bound(tmp_path: Path) -> Non
     resolved = project_alpha_selected_rows(
         dossier=dossier,
         decision=decision,
-        prediction_surface_root=store.root / "development/campaign/prediction-surfaces",
         horizon_sessions=1,
     )
     assert tuple(resolved.predicted_z) == pytest.approx(values)

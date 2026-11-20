@@ -14,7 +14,6 @@ from uuid import uuid4
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from alphalattice.control.workspace_runtime import panel_reads
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
@@ -851,56 +850,7 @@ class ArtifactResolver:
         staged.write_bytes(serialized)
         os.replace(staged, target)
         self._load_feature_panel_lifecycle_projection()
-        self._root_feature_panel_bodies(normalized)
         return projection_hash
-
-    @classmethod
-    def _refill_source(cls, stored: Path, chunk_hash: str) -> Mapping[bytes, bytes]:
-        """The stored chunk's verified metadata, the source a missing body is filled from;
-        refused by name when it is gone too."""
-        try:
-            return cls._validate_feature_panel_chunk(stored, chunk_hash)
-        except FileNotFoundError as missing:
-            raise FileNotFoundError(
-                f"feature_panel.chunk_unserved: the Panel chunk {chunk_hash} has neither a kept"
-                " body nor its stored chunk; rebuild this Panel, or restore the workspace from"
-                " its last backup"
-            ) from missing
-
-    def _root_feature_panel_bodies(self, snapshots: Sequence[Mapping[str, object]]) -> None:
-        """Under derived, root the Host's Panel bodies at the chunks of every snapshot still
-        physically available, evicting and collecting (panel_reads.root). A body is evicted only
-        where its stored chunk passes the Panel reader's proof against the entry a manifest
-        records for it (panel_reads.proven). A manifest that cannot be read, or whose chunk list
-        is not a list of entries with a chunk hash, leaves the roots as they were, so no retained
-        chunk loses its body."""
-        if panel_reads.chosen() != "derived":
-            return
-        owners: dict[str, tuple[dict, dict]] = {}
-        for item in snapshots:
-            if item["physical_availability"] != "AVAILABLE":
-                continue
-            snapshot_hash = str(item["snapshot_hash"])
-            try:
-                manifest = self._load_feature_panel_manifest(
-                    self._feature_panel_manifest_path(snapshot_hash), snapshot_hash
-                )
-            except (FileNotFoundError, ValueError):
-                return
-            listed = manifest.get("chunks")
-            if not isinstance(listed, list) or not all(
-                isinstance(chunk, dict) and _HASH.fullmatch(str(chunk.get("chunk_hash", "")))
-                for chunk in listed
-            ):
-                return
-            for chunk in listed:
-                owners.setdefault(str(chunk["chunk_hash"]), (manifest, chunk))
-        panel_reads.root(
-            owners,
-            lambda chunk_hash: panel_reads.proven(
-                self._feature_panel_chunk_path(chunk_hash), *owners[chunk_hash]
-            ),
-        )
 
     def feature_panel_snapshot_lifecycle(self, manifest_uri: str) -> dict[str, object]:
         """Return the verified lifecycle entry for one snapshot URI."""
@@ -931,22 +881,10 @@ class ArtifactResolver:
         if descriptor.uri != self.feature_panel_chunk_uri(descriptor.content_hash):
             raise ValueError("feature panel chunk URI does not match its content hash")
         stored = self._feature_panel_chunk_path(descriptor.content_hash)
-        if panel_reads.chosen() == "stored":  # the read before derived, the rollback, unchanged
-            self._validate_feature_panel_chunk(stored, descriptor.content_hash)
-            if _metadata_hash(stored) != descriptor.metadata_hash:
-                raise ValueError("feature panel chunk metadata hash does not match descriptor")
-            return stored
-        held = panel_reads.body(descriptor.content_hash)  # its kept body, found by hash
-        try:  # one footer read checks kind, chunk hash and metadata hash
-            metadata = self._validate_feature_panel_chunk(held or stored, descriptor.content_hash)
-        except FileNotFoundError:
-            held = None  # no body, or one evicted or gone: refilled from the stored chunk
-            metadata = self._refill_source(stored, descriptor.content_hash)
-        if _metadata_hash(metadata) != descriptor.metadata_hash:
+        self._validate_feature_panel_chunk(stored, descriptor.content_hash)
+        if _metadata_hash(stored) != descriptor.metadata_hash:
             raise ValueError("feature panel chunk metadata hash does not match descriptor")
-        if held is None:  # a chunk read first is kept, once verified, off this read
-            panel_reads.keep(stored, descriptor.content_hash, metadata)
-        return held or stored
+        return stored
 
     def inspect_feature_panel_snapshot(self, manifest_uri: str) -> dict[str, object]:
         """Return only the safe summary; no path or matrix crosses the boundary."""

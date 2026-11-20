@@ -694,17 +694,12 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
     create_data_root(root)
     checks = {"backup": failure != "upgrade-backup", "verify": failure != "upgrade-verify"}
     steps: list[str] = []
-    modes: list[str] = []
     log = HostLog.open(root)
     upgrade = UpgradeRunner(
         root,
         log,
         (workspace,),
-        (
-            Family(
-                "fixture", lambda _: steps.append("step"), lambda _: checks["verify"], modes.append
-            ),
-        ),
+        (Family("fixture", lambda _: steps.append("step"), lambda _: checks["verify"]),),
         lambda root, workspaces, recorded: (
             {"fixture": "verified backup"} if checks["backup"] else {}
         ),
@@ -729,13 +724,6 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
         # A Host a wider fixture serves may share this process's log, whose batch timer is its own.
         assert {thread.name for thread in threading.enumerate()} - before <= {COMMIT_TIMER}
         assert steps == ([] if failure == "upgrade-backup" else ["step"])
-        assert modes == (
-            []
-            if failure == "upgrade-backup"
-            else ["old", "new"]
-            if failure == "socket"
-            else ["old", "old"]
-        )
         checks.update(backup=True, verify=True)
         second = LocalPortfolioWebSession(
             workspace=workspace,
@@ -746,7 +734,6 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
         second.start()
         try:
             assert _json(second, "/api/session")["workspace_id"] == "qa-failed-start"
-            assert modes[-1] == "new"
             assert steps == (["step", "step"] if failure == "upgrade-verify" else ["step"])
         finally:
             second.stop()

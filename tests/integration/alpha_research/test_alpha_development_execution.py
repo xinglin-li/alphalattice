@@ -404,8 +404,7 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         )
         assert entry.fold_commitment_hash in {value.fold_commitment_hash for value in records}
 
-    # The rollback path reads each verified score once and checks its file on each call.
-    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
+    # The file reader reads each verified score once and checks its file on each call.
     score_reads: list[str] = []
     resolve = AlphaDevelopmentArtifactStore.resolve_numerical_score_chunk
 
@@ -446,11 +445,8 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         return real_read(digests)
 
     monkeypatch.setattr(history, "read_alpha_development_chunks", counted_catalog)
-    monkeypatch.delenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", raising=False)
     assert reader.projection(receipt.receipt_hash) == projection
     assert len(reads) == 1
-    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
-    assert reader.projection(receipt.receipt_hash) == projection
 
 
 def _lightgbm_parameters(seed: int = 1729) -> dict[str, Any]:
@@ -810,8 +806,12 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
 
     request.addfinalizer(proof.configure_chunk_proof_memo)
     proof.configure_chunk_proof_memo(capacity=1)
+    # The file reader, as a staged worker or a standalone workspace reads; the catalog below.
+    rule = AlphaDevelopmentArtifactStore.__dict__["catalog_development_reads"]
+    monkeypatch.setattr(
+        AlphaDevelopmentArtifactStore, "catalog_development_reads", staticmethod(lambda: False)
+    )
 
-    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     store = AlphaDevelopmentArtifactStore(tmp_path)
     table = pa.table(
         {
@@ -855,6 +855,7 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     finally:
         path.write_bytes(original)
     assert store.resolve_numerical_score_chunk(reference).equals(table)
+    monkeypatch.setattr(AlphaDevelopmentArtifactStore, "catalog_development_reads", rule)
     with store.admit_development_chunks():
         assert store.publish_numerical_score_chunk(table, **identity) == reference
         assert (
@@ -867,11 +868,9 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     moved = path.with_suffix(".legacy")
     path.rename(moved)
     try:
-        monkeypatch.delenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", raising=False)
         assert store.resolve_numerical_score_chunk(reference).equals(table)
     finally:
         moved.rename(path)
-    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     assert store.resolve_numerical_score_chunk(reference).equals(table)
 
 
@@ -1566,13 +1565,8 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
     try:
         target.write_bytes(original[: len(original) // 2] + original[len(original) // 2 :][::-1])
         assert reader.projection(receipt_hash) == expected
-        with monkeypatch.context() as rollback:
-            rollback.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
-            with pytest.raises(AuthoringError):
-                reader.read(receipt_hash)
     finally:
         target.write_bytes(original)
-    monkeypatch.setenv("ALPHALATTICE_ALPHA_DEVELOPMENT_STORE", "legacy")
     assert reader.projection(receipt_hash) == expected
 
 

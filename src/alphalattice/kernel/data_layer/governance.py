@@ -10,8 +10,7 @@
 - **Pins**: a `pin` root, held by `artifact.pinned` and let go by `artifact.unpinned`, both
   durable and naming the pin (`pin_id`).
 - **Retention windows**: UNHELD here, the age after which a body no live reference holds is
-  collected (log.sql's rule); the catalog's KEEP_SNAPSHOTS and SETTLE_FILES (store.py); a derived
-  file body's UNREAD (workspace_runtime/panel_reads.py).
+  collected (log.sql's rule); the catalog's KEEP_SNAPSHOTS and SETTLE_FILES (store.py).
 - **Deletion and forgetting**: one collector, `StorePort.collect`, over every family in the data
   root: derived partitions no workspace roots, and artifact bodies no live reference holds past
   UNHELD (`unheld`). It records `artifact.collected` and queues the body in one log unit, and

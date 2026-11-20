@@ -54,6 +54,56 @@ DEVELOPMENT_ONLY_MARKER_CATEGORY = "development-only-markers"
 LOCAL_QA_PREPARATION_CATEGORY = "local-qa-preparation"
 
 
+def chunk_identity(ordered: pa.Table) -> str:
+    """A chunk's identity: the canonical JSON of (listing, formation, row hash) per row, its rows
+    ordered by formation session and listing. A formation session is encoded as ``str(value)`` by
+    the canonical encoder, so the columns are read once each and the session is given as that
+    string: the same bytes, without a dict per row."""
+    identity: str = canonical_hash(
+        {
+            "schema": _SCHEMA_ID,
+            "rows": tuple(
+                zip(
+                    ordered.column("listing_id").to_pylist(),
+                    (str(value) for value in ordered.column("formation_session").to_pylist()),
+                    ordered.column("row_hash").to_pylist(),
+                    strict=True,
+                )
+            ),
+        }
+    )
+    return identity
+
+
+def rows_intact(rows: list[dict[str, object]]) -> bool:
+    """Whether each row's hash is the canonical hash of its other values, as the compiler hashes
+    it (compile.derive_causal_execution_row)."""
+    return all(
+        row["row_hash"]
+        == canonical_hash({key: value for key, value in row.items() if key != "row_hash"})
+        for row in rows
+    )
+
+
+def carried_chunk_check(
+    _workspace: Path, content_hash: str, profile: object, table: pa.Table
+) -> None:
+    """Refuse a carried outcome chunk that carries a profile, as none is written for one, or whose
+    rows are not the ones `content_hash` names: each row's hash over its values, and the chunk's
+    over its rows' (listing, formation, row hash)."""
+    ordered = (
+        table.cast(_schema())
+        .combine_chunks()
+        .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
+    )
+    if (
+        profile is not None
+        or not rows_intact(ordered.to_pylist())
+        or chunk_identity(ordered) != content_hash
+    ):
+        raise ValueError("causal_outcomes.chunk_identity_invalid")
+
+
 def _local_qa_validity_buffer(array: pa.Array) -> pa.Buffer | None:
     """Rebase validity bits and zero their unused tail; omit all-valid bitmaps."""
     if not array.null_count:
@@ -395,24 +445,7 @@ class _ExecutionOutcomeArtifactStore:
         ordered = table.combine_chunks().sort_by(
             [("formation_session", "ascending"), ("listing_id", "ascending")]
         )
-        # The identity is the canonical JSON of (listing, formation, row hash)
-        # per row; a formation session is encoded as ``str(value)`` by the
-        # canonical encoder, so the columns are read once each and the
-        # session is given as that string -- the same bytes, without a dict
-        # per row.
-        content_hash = canonical_hash(
-            {
-                "schema": _SCHEMA_ID,
-                "rows": tuple(
-                    zip(
-                        ordered.column("listing_id").to_pylist(),
-                        (str(value) for value in ordered.column("formation_session").to_pylist()),
-                        ordered.column("row_hash").to_pylist(),
-                        strict=True,
-                    )
-                ),
-            }
-        )
+        content_hash = chunk_identity(ordered)
         history.write_execution_outcome(content_hash, ordered)
         metadata = {
             "alphalattice.snapshot_kind": "CausalExecutionOutcomeChunk",
@@ -445,12 +478,7 @@ class _ExecutionOutcomeArtifactStore:
     def read_chunk(
         self, chunk: CausalExecutionOutcomeChunk, *, columns: list[str] | None = None
     ) -> pa.Table:
-        """Read a catalog body, or the explicit legacy rollback until row U migrates it."""
-        mode = os.environ.get("ALPHALATTICE_EXECUTION_OUTCOME_STORE", "catalog")
-        if mode == "legacy":  # contract: remove when row U migrates existing file-bound outcomes
-            return pq.read_table(self.resolve_chunk(chunk), columns=columns)
-        if mode != "catalog":
-            raise ValueError("causal_outcomes.outcome_store_invalid")
+        """Read a chunk's body from the data root's catalog."""
         table = history.read_execution_outcome(chunk.content_hash, columns)
         if table.num_rows != chunk.row_count:
             raise ValueError("causal execution outcome catalog row count is invalid")

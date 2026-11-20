@@ -1,0 +1,167 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "5e9b41d3b61458f5aef831cf886bf6b09b04a9a704357393eeb2ddca19005c56",
+   "successor": "2e0419896db862c8f7ff92fd2d8cbce2fb8cbf7eed8e1d19492da23848e452c8",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "9e8984099709a664b59692c8090b5af30bd87446a64812f68479cf2298401a5f",
+   "successor": "71145274b2273fdfbbba41a23d3b609db855ca80f63a0defe47d2b4ce2c27d35",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "097ef5b8d19c5f2b23a94b81b6caece6d60ff310d60a669a131e29c33e8e5754",
+   "successor": "c4b8e9974cc4d58df567b6fdf5965ffaef57cde9dc6601d5185e888513a4d512",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "a9e7874412ee2e19aaf70a898602f9e845f6c563f712446d79502d7c19693545",
+   "successor": "d45da4341121f8471513b7167f045b135410f125d7de0b5e65e900b79fa52af1",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e37bf803977d3191a67f700526c4a1f6cd26e7e4ae1d91c44210df32d833da2f",
+   "successor": "091afebaf500239ef956d915adff3a4173d3d138ebe72ef701983d10faae06af",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5d5068af79aef892b1a24f75c4a79c566d119cdf39ad9ecd8004eaa3af0797cc",
+   "successor": "f84d161303953b7b1923b122804aba632e5c2ccf49305fe6b7a2bc27c5fc9885",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "f1613cac396e1e291780eb0c33da0b4d8b2a0775259c349ea0eaea1f0c04cd08",
+   "successor": "534a6e51cf1c4f1132b37cc9cc94eba36bff834940220feab0021188ca6e9a4a",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "e5358bbbfa2a964bacb6e671f803aeb22deaab3906a595336e980436066d223d",
+   "successor": "e2bae8eb22e141123e36ee0559a5a792ae18ad4295fd6123bf36ca4d5c4da371",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "fa56ca8628c8bcec72340d3a245e3cfffddba9b7c67756435d79c606fe392906",
+   "successor": "9b49ab03f0c24fdae6e640d2bc3d3261d6c2c30580baf63bd4212e258e11e0af",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "f3d8f788c54cdac798f2888556cfb5de78542e7e958babfcfe8336d421174a5d",
+   "successor": "62facbed36b071f5cd9084017c3d6d7916a9251140d99f58a40d6041fb245a14",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d79cf43b23583763e0f53952126d93e2fb6599bbacd9aad61e8e3d4140168390",
+   "successor": "f7f29ed275c9e819b6e7080599a521cd4695dfc4893618b6a0765dd599525155",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "439f1b3b74c53676a43c5e7e6057144db7c6ac0ab77635bf1f4f9fdc70bb888e",
+   "successor": "e4690a7f295d4819833638c39428722211ab6a709474a6f22e360559f6eb9280",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "e85fac4a972a4c49eea77a34cb2ef11faf134d5aa988f7f41e0136fb4b411246",
+   "successor": "1d412528fd9a95641f3e7a13037056ab7a95d7f7ce9915dd93b37b3397ec6e39",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "347bd5178cb227c8613ffe3efe02c750ca5b2de75d9f145c17f9dcc7c2eafa75",
+   "successor": "2212cfbd5a24c39a484dfad1b3e1d007e2a2ce07129ef76adc96ff984a328bc4",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "edeb9379f7c7b1695aea72b015460e79a92cd9394f1fa6487b40ba5a9482832c",
+   "successor": "d37eed5af4363e9a77667c09f51bf4315d4a9cbc4d9080ca437e6288dca24200",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "dc117e9b92ca3c9468a688ecc5403cda352709766800e03478787fcbffaaa24b",
+   "successor": "d6244111634e64f166a8c9f1cc55af1ed8adbb3131f07e77af39de19b6f5caa2",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a743d23366352c0a9b1a7e474aad4327762b0386aa98c5f475431221f286984c",
+   "successor": "09287595d6bca0dbaac434413c8d40508adc92b94b02d669b4c9c5a3bc78e344",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a743d23366352c0a9b1a7e474aad4327762b0386aa98c5f475431221f286984c",
+   "successor": "09287595d6bca0dbaac434413c8d40508adc92b94b02d669b4c9c5a3bc78e344",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "ee16cb792567542e40f1f63f484fd183b5a9c5d6beb66a86d3dc795f942e4876",
+   "successor": "e6410ac99d3e7ad1efca98d1d302bbc274dc59b205d63987c8f4bc4604b6cc52",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "e2b76905696e52c7e40afe5c9f221ed3a11db3fbbd1d42594fc3a713c0abb18b",
+   "successor": "13ac32c34365e61c722a2d1a809a6c3e02eabab390b3be9547597b3a68c64f10",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "86d243aa7ff38d717dde4eafa564875e4dde3a87baadfb3835db7a2ab95cdf40",
+   "successor": "a85621b7be67fa63cbb8bc89a4cf5416635172a6d1d143273d24aaac70f4bb44",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "a99c4c9df12dcce148dfa43a2ee03dcd76554c4977003a42dc50299ac1763f6c",
+   "successor": "20e162bdad9422ec2c54019d842da9cde5b2a40ee6eb0b5965dc5e5d33857eda",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "9f5204413766329bfc8a9bd361cc97a3dbd07d8c00bca6888304ae9db1ba877d",
+   "successor": "18434c9922f1bb55749b9f4ce12762b3f3bd17469a006a0e7ccbff66d93da53e",
+   "change": "The storage layer drops its rollback switches",
+   "reason": "Retiring the rollback switches and following the successor moves in force when matching recipe hashes changes the source these research and Host roles are built from; their outputs are unchanged."
+  }
+ ]
+}

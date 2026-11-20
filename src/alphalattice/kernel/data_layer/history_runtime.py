@@ -166,12 +166,8 @@ _conversations: dict[str, str] = {}
 _once = threading.Lock()
 _read_lock = threading.Lock()
 _open: dict[str, Any] = {}
-_attached: dict[str, tuple[Path, Any]] = {}
-"""Outside a Host, the log attached read-only for derived file reads, with its root."""
 _catalog_surfaces: dict[Path, CatalogReader] = {}
 _catalog_lock = threading.Lock()
-_reads: dict[str, set[str]] = {}
-"""The file partitions (by table, their digests) the Host read since their last mark."""
 
 
 def held(root: Path | None = None) -> HostLog:
@@ -401,8 +397,10 @@ def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
 @contextmanager
 def own_root(folder: Path) -> Iterator[Path]:
     """Hold `folder` as this process's data root while a copy of a workspace opens, so the copy's
-    Tasks go to a log of its own and never the machine's; the root held before comes back after.
-    Refused by name (`data_layer.root_held`) while this process's Host records."""
+    Tasks go to a log of its own and never the machine's; the root held before comes back after,
+    and the catalog read on `folder` outside a Host closes with the hold, so a folder made again
+    at that path is read afresh. Refused by name (`data_layer.root_held`) while this process's
+    Host records."""
     with _lifecycle, _opening, _lock:
         if recording():
             raise DataError(
@@ -423,6 +421,10 @@ def own_root(folder: Path) -> Iterator[Path]:
                     os.environ.pop(DATA_ROOT_ENV, None)
                 else:
                     os.environ[DATA_ROOT_ENV] = before
+        with _catalog_lock:
+            surface = _catalog_surfaces.pop(folder.resolve(), None)
+        if surface is not None:
+            surface.close()
 
 
 def release_history() -> None:
@@ -479,17 +481,12 @@ def _close_history() -> None:
     if port is not None:
         port.close()
     recall.close()
-    if log is not None:
-        _mark_reads(log)
     with _read_lock:
         if reading is not None:
             reading.close()
         outcome_reading = _open.pop("outcome_reading", None)
         if outcome_reading is not None:
             outcome_reading.close()
-        attached = _attached.pop("log", None)
-        if attached is not None:
-            attached[1].close()
     if log is not None:
         log.close()
 
@@ -567,18 +564,6 @@ def _record_result_count(log: HostLog, artifact: str, count: int) -> None:
             node="host",
         )
         log.flush()
-
-
-def _mark_reads(log: HostLog) -> None:
-    """Mark the file partitions the Host read since the last call as read now, in its log."""
-    with _read_lock:
-        reads = dict(_reads)
-        _reads.clear()
-    for table, digests in reads.items():
-        log.read_cached(table, sorted(digests))
-
-
-"""`legacy` while the research-inputs upgrade family reads the old store (its `switch`)."""
 
 
 def kept_file_workspace(folder: Path) -> str | None:

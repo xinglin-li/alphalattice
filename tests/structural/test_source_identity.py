@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+    VALUE_ROLE_PREFIXES,
+    recipe_hashes_match,
+)
 from alphalattice.kernel.shared_kernel.identity_successors import (
     IdentitySuccessorError,
     is_current,
@@ -155,6 +159,18 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
         [_move("role", _A, _B), _move("role", _B, _A), _move("role", _A, _D)],
     )
     assert recorded_origin("role", _D, root=returned) == _A, "an origin bound before a revisit"
+    recipe = f"{VALUE_ROLE_PREFIXES[-1]}book"  # a recipe hash moved back and on matches from each
+    recipes = _successors(
+        tmp_path / "recipes",
+        [
+            _move(recipe, _A, _B),
+            _move(recipe, _B, _C),
+            _move(recipe, _C, _B),
+            _move(recipe, _B, _D),
+        ],
+    )
+    assert all(recipe_hashes_match(value, _D, root=recipes) for value in (_A, _B, _C))
+    assert not recipe_hashes_match(_A, _D, root=revisited), "only a value role's moves join"
 
 
 @pytest.mark.parametrize(

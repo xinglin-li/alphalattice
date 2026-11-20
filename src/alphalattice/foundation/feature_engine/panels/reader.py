@@ -13,7 +13,6 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
-from alphalattice.control.workspace_runtime import panel_reads
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.panels.identity import (
@@ -58,17 +57,6 @@ def _validate_manifest_chunk(path: object, manifest: dict[str, object], item: di
             tuple(sorted(str(value) for value in catalog)) if isinstance(catalog, dict) else None
         ),
     )
-
-
-def chunk_content_proven(path: Path, manifest: dict[str, object], item: dict) -> bool:
-    """Whether the chunk file `path` holds the content `manifest`'s entry `item` identifies, as a
-    read proves it (`_validate_manifest_chunk`); False for a file gone, unreadable or not that
-    content. The proof panel_reads asks for before a Panel body is evicted."""
-    try:
-        _validate_manifest_chunk(path, manifest, item)
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    return True
 
 
 @dataclass(frozen=True)
@@ -495,6 +483,3 @@ class FeaturePanelReader:
             ):
                 raise ValueError("feature panel chunk values do not match their row hashes")
             _VALUES_VERIFIED[digest] = True
-
-
-panel_reads.register_proof(chunk_content_proven)

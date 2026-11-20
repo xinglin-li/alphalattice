@@ -56,7 +56,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
             expected_source_authority=expected,
         )
 
-    # The upgrade replays the same reads before, after and with rollback selected.
+    # The upgrade moves the 0.2.7 files; after it the same reads come from the catalog.
     import json
 
     import numpy as np
@@ -152,28 +152,23 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     ledger_store.content.publish_model(
         category="execution-ledgers", value=ledger, identity_field="ledger_hash"
     )
-    monkeypatch.delenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", raising=False)
     store = benchmark_owner.PortfolioBenchmarkStore(artifacts)
     cases = [
         ("benchmark surface", lambda: store.load(surface.surface_hash)),
         ("execution ledger", lambda: ledger_store.load_execution(ledger.ledger_hash)),
     ]
-    try:
-        before = [(name, read()) for name, read in cases]
-    except benchmark_owner.PortfolioBenchmarkBoundaryError:
-        before = []
-    assert before == [("benchmark surface", surface), ("execution ledger", ledger)]
+    # A 0.2.7 workspace's files are read only by its upgrade, never before it.
+    with pytest.raises(benchmark_owner.PortfolioBenchmarkBoundaryError):
+        store.load(surface.surface_hash)
+    before = [("benchmark surface", surface), ("execution ledger", ledger)]
     probe_workspace = tmp_path / "catalog-publication"
     probe_workspace.mkdir()
     probe_root = tmp_path / "catalog-publication-root"
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(probe_root))
-    monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "catalog")
     history.open_history("portfolio-publication", "portfolio", probe_workspace, probe_root)
     try:
         probe = benchmark_owner.PortfolioBenchmarkStore(probe_workspace / "artifacts")
         probe.publish(surface)
-        assert probe.load(surface.surface_hash) == surface
-        monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
         assert probe.load(surface.surface_hash) == surface
     finally:
         history.close_history()
@@ -215,10 +210,6 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
             lambda *_: {"fixture": "verified"},
         )
         assert upgrade.run() is True
-        monkeypatch.delenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE")
-        first_start._restore_portfolio_reader(upgrade, (workspace,))
-        assert history.portfolio_results_mode(artifacts) == "catalog"
-        assert history.portfolio_results_mode(empty / "artifacts") == "legacy"
         assert all(not candidate.holds(workspace) for candidate in families)
         copy = tmp_path / "portfolio-copy"
         initialize_research_workspace(copy)
@@ -270,8 +261,6 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
                 read()
         store.publish(surface)
         assert old.is_file()
-        monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
-        assert [(name, read()) for name, read in cases] == before
     finally:
         history.close_history()
 

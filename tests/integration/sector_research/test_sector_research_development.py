@@ -167,6 +167,14 @@ def test_sector_numerical_thread_policy_refuses_a_pool_that_ignored_the_limit(
         pytest.fail("The Sector numerical body must not run after a pool ignored its limit")
 
 
+def _seed_legacy(store, category: str, value, identity_field: str) -> None:
+    """Write one result in the retired file layout, the layout the upgrade reads."""
+    content_hash = getattr(value, identity_field)
+    store._atomic_write(
+        store._path(category, content_hash), store._json_bytes(value.model_dump(mode="json"))
+    )
+
+
 def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome_catalog_root: Path
 ) -> None:
@@ -221,9 +229,8 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
 
     workspace = tmp_path / "workspace"
     store = SectorDevelopmentArtifactStore(workspace / "artifacts")
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
     # Keep the standalone target case and migrate the full experiment in one admission.
-    store.publish_target_evidence(partial_evidence)
+    _seed_legacy(store, SECTOR_TARGET_EVIDENCE_CATEGORY, partial_evidence, "evidence_hash")
     catalog = build_installed_sector_forecast_catalog()
     recipe = catalog.seal_recipe(method_id="ZERO_SECTOR_FORECAST")
     forecast_sessions = sessions[24:25]
@@ -273,7 +280,10 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
             sector_artifact_uri(SECTOR_FORECAST_EVALUATION_CATEGORY, evaluation.evaluation_hash),
         ),
     )
-    store.publish_experiment_results(evidence, forecast, evaluation, experiment)
+    _seed_legacy(store, SECTOR_TARGET_EVIDENCE_CATEGORY, evidence, "evidence_hash")
+    _seed_legacy(store, SECTOR_FORECAST_SURFACE_CATEGORY, forecast, "surface_hash")
+    _seed_legacy(store, SECTOR_FORECAST_EVALUATION_CATEGORY, evaluation, "evaluation_hash")
+    store.publish_experiment_evidence(experiment)
 
     def read():
         return (
@@ -285,7 +295,7 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
             store.load_experiment_evidence(experiment.experiment_hash),
         )
 
-    old = read()
+    old = (evidence, forecast, evaluation, experiment)
     family = sector_results_upgrade_family()
     runner = SimpleNamespace(
         workspaces=(workspace,),
@@ -306,7 +316,6 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
     attrs = json.loads(admissions[0][0])
     assert attrs["tables"] == {"series": 121, "sector_evaluation": 2}
     assert len(attrs["artifact_ids"]) == 3
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
     assert store.load_target_evidence(partial_evidence.evidence_hash) == partial_evidence
     _, partial_rows = history.read_sector_result(partial_evidence.evidence_hash)
     assert partial_rows.num_rows == len(sessions) * len(evidence.ordered_sectors) * 2 - 2
@@ -321,12 +330,6 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
         store.load_evaluation(evaluation.evaluation_hash, experiment="0" * 64)
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
         store.load_target_evidence("0" * 64)
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
-    assert read() == old
-    assert store.load_target_evidence(partial_evidence.evidence_hash) == partial_evidence
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "invalid")
-    with pytest.raises(SectorResearchError, match=r"sector_research\.results_store_invalid"):
-        store.load_target_evidence(partial_evidence.evidence_hash)
 
 
 def test_same_shaped_wrong_inputs_are_refused_before_any_model() -> None:
@@ -630,10 +633,10 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     family = sector_results_upgrade_family()
     legacy_workspace = tmp_path / "legacy-workspace"
     store = SectorDevelopmentArtifactStore(legacy_workspace / "artifacts")
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
-    store.publish_experiment_results(
-        ewma.target_evidence, ewma.surface, ewma.evaluation, ewma.experiment
-    )
+    _seed_legacy(store, SECTOR_TARGET_EVIDENCE_CATEGORY, ewma.target_evidence, "evidence_hash")
+    _seed_legacy(store, SECTOR_FORECAST_SURFACE_CATEGORY, ewma.surface, "surface_hash")
+    _seed_legacy(store, SECTOR_FORECAST_EVALUATION_CATEGORY, ewma.evaluation, "evaluation_hash")
+    store.publish_experiment_evidence(ewma.experiment)
     reads = (
         (
             ewma.target_evidence,
@@ -644,14 +647,14 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
         (ewma.evaluation, ewma.evaluation.evaluation_hash, store.load_evaluation),
         (ewma.experiment, ewma.experiment.experiment_hash, store.load_experiment_evidence),
     )
-    old = tuple(read(digest) for _, digest, read in reads)
+    old = tuple(value for value, _, _ in reads)
     categories = (
         "development/sector-target-evidence",
         "development/sector-forecast-surfaces",
         "development/sector-forecast-evaluations",
         "development/sector-experiment-evidence",
     )
-    old_lists = tuple(store.list_category(category) for category in categories)
+    old_lists = tuple((digest,) for _, digest, _ in reads)
     runner = SimpleNamespace(
         workspaces=(legacy_workspace,),
         log=history._open["log"],
@@ -661,7 +664,6 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     assert family.holds(legacy_workspace)
     family.step(runner)
     assert family.verify(runner)
-    monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
     assert tuple(read(digest) for _, digest, read in reads) == old
     assert tuple(store.list_category(category) for category in categories) == old_lists
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
@@ -671,9 +673,6 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
         assert profile == {"descriptor": digest}
         assert rows.num_rows > 0
         assert read(digest) == value
-        monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
-        assert read(digest) == value
-        monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
 
     # The explicit warmup is visible in the real run: the earliest refits have
     # fewer than twenty-one matured labels and refuse; later ones emit values.

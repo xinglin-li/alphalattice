@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from collections.abc import Callable, Mapping
 from contextlib import closing
@@ -13,7 +12,6 @@ from typing import Any, Final
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.history_runtime import (
     _array_reader,
-    _lock,
     _once,
     _open,
     _produce_result_artifact,
@@ -145,28 +143,6 @@ def write_portfolio_result(
         return str(artifact)
 
 
-PORTFOLIO_RESULTS_STORE_ENV: Final = "ALPHALATTICE_PORTFOLIO_RESULTS_STORE"
-
-
-def select_portfolio_catalog(workspaces: tuple[Path, ...]) -> None:
-    """Record which workspaces the open Host's verified Portfolio migration covers."""
-    with _lock:
-        _open.setdefault("portfolio_catalog_workspaces", set()).update(
-            workspace.resolve() for workspace in workspaces
-        )
-
-
-def portfolio_results_mode(artifact_root: Path) -> str:
-    """Use the caller's rollback choice or this workspace's verified reader."""
-    override = os.environ.get(PORTFOLIO_RESULTS_STORE_ENV)
-    if override is not None:
-        return override
-    workspace = artifact_root.parent
-    if workspace.name == "runtime":
-        workspace = workspace.parent
-    return "catalog" if workspace in _open.get("portfolio_catalog_workspaces", ()) else "legacy"
-
-
 def portfolio_result_held(kind: str, digest: str, workspace: str | None) -> bool:
     """Whether this workspace keeps the catalog artifact with this type and content."""
     if workspace is None:
@@ -203,10 +179,13 @@ def read_portfolio_result(
 
 def _portfolio_read_profile(kind: str, digest: str) -> Any:
     log = _open.get("log")
+    root = _open.get("root") or data_root()
     if log is not None:
         profile = _portfolio_result_profile(log.read, kind, digest)
+    elif not (root / "machine" / "log.sqlite").is_file():
+        profile = None  # a root whose log was never made holds no result
     else:
-        with closing(attach(_open.get("root") or data_root())) as reader:
+        with closing(attach(root)) as reader:
             profile = _portfolio_result_profile(
                 lambda sql, args: reader.execute(sql, args).fetchall(), kind, digest
             )

@@ -110,7 +110,8 @@
       "description": "The evidence reads setting reads world when unset, the workspace's own store when it says workspace, and refuses any other value by name.",
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: ALPHALATTICE_EVIDENCE_READS is retired; world is the evidence reader, with the workspace's store before admission"
     },
     "alternative_evidence.evidence_reads_through_world": {
       "description": "An evidence document's body is read through world at its selection's cutoff, admitted when its acquisition ends, and from the workspace under the rollback setting.",
@@ -133,6 +134,12 @@
     },
     "alternative_evidence.int8_generation_names_its_machine_class": {
       "description": "If an int8 generation did not name its machine class in its identity, or another generation's hash moved, numbers from different machines could be compared by bytes.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "alternative_evidence.missing_body_refused_by_name_with_its_restore": {
+      "description": "A body world holds but the disk lacks is refused by name with its restore recovery, so a missing evidence body never reads as absent without the backup it needs.",
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "unit",
       "seconds": 1
@@ -304,6 +311,12 @@
     "architecture.wait_rules_refuse_each_anti_pattern": {
       "description": "Each wait rule refuses its unbounded wait or loop by name with its repair, and passes that repair and the wait primitive itself.",
       "owner": "devtools.architecture",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "causal_outcomes.carried_chunk_is_proved_by_its_identity": {
+      "description": "A carried execution-outcome chunk is admitted only when each row's hash is over its values and the chunk's identity over its rows.",
+      "owner": "alphalattice.foundation.causal_outcomes",
       "layer": "unit",
       "seconds": 1
     },
@@ -632,14 +645,16 @@
       "description": "A workspace connection attaches the catalog read-only only when its instance lacks it, and makes each served view its own.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: the opt-in derived Feature view is retired; no workspace connection attaches the catalog for a view"
     },
     "data_layer.a_workspace_reads_derived_rows_under_its_names": {
       "description": "Under derived, a workspace reader reads the catalog's derived rows under the table's name while its writer keeps the table.",
       "lower_layer": "It attaches a real DuckLake catalog to a real workspace DuckDB file and reads through the workspace's own connections; only both files show it.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",
-      "seconds": 10
+      "seconds": 10,
+      "retired": "2026-11-20: the opt-in derived Feature view is retired; Feature values are read from the workspace's table"
     },
     "data_layer.a_world_row_carries_its_providers_lineage": {
       "description": "Staging gives a world row whose key names a provider the lineage it is admitted under, and stages other rows as they came.",
@@ -789,6 +804,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.copy_carries_its_catalog_results": {
+      "description": "A workspace copy carries its catalog's outcomes and Portfolio results, and the Host opening it admits each its owner proves, holds committed before the files go, refusals releasing only that opening.",
+      "lower_layer": "The carry reads one real catalog and admits onto another through the Host's log and DuckLake writers; no unit can hold two data roots.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.data_root_is_set_or_the_application_folder": {
       "description": "The data root is ALPHALATTICE_DATA_ROOT when set, else the platform's application data folder.",
       "owner": "alphalattice.kernel.data_layer",
@@ -844,6 +866,12 @@
     },
     "data_layer.expiry_keeps_what_repair_reads": {
       "description": "If expiry took the newest snapshot, a young one, or one from an admission whose event the log lacks on, a reader or the next start's repair would lose the commit it reads.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.family_declares_old_data_by_holds_alone": {
+      "description": "A declared upgrade family names its old data by its holds predicate alone, which defaults to holding nothing, so a family with a reader switch cannot return.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
@@ -1418,6 +1446,18 @@
       "layer": "integration",
       "seconds": 30
     },
+    "feature_engine.closure_folder_files_hold_their_bytes": {
+      "description": "A closure folder writes each file whole, lists its files sorted, reads them back and removes one without touching the rest, so a Panel closure outside a workspace keeps every byte it is given.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "feature_engine.closure_folder_lists_files_by_their_last_write": {
+      "description": "A closure folder lists its files by their last write, the newest last, and a staged file is none of them, so the move keeps each folder's write order.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.closure_history_folds_its_revisions": {
       "description": "If the closure ledger rebuilt a history from anything but its map and revisions, a Feature panel would mix sector facts from another time.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -1447,7 +1487,8 @@
       "description": "The closure store's switch accepts only the log and the legacy folder, and refuses any other value by name before any store is read.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: ALPHALATTICE_CLOSURE_STORE is retired; the unmoved-folder rule alone picks the closure's reader"
     },
     "feature_engine.closure_store_takes_only_derived_identities": {
       "description": "If the coordinator handed the store identities it never derived, a Feature store could hold its data under another closure's name.",
@@ -1456,7 +1497,7 @@
       "seconds": 5
     },
     "feature_engine.closure_writes_go_to_the_log_and_rollback_reads_the_folder": {
-      "description": "After the move the closure store writes only to the log, and the legacy switch reads the unchanged folder again.",
+      "description": "After the move the closure store writes only to the log, across a restart, and leaves the folder unchanged.",
       "lower_layer": "The closure store writes a real log and reads a real folder.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
@@ -1473,7 +1514,8 @@
       "lower_layer": "It writes through a real workspace DuckDB into a real DuckLake catalog in an open Host history and reads back through both; only all three show it.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
-      "seconds": 30
+      "seconds": 30,
+      "retired": "2026-11-20: the opt-in derived Feature reads are retired; the stored table is the one reader"
     },
     "feature_engine.factor_handoff_refuses_a_changed_input": {
       "description": "If a Factor handoff accepted a corrupt copy, a changed source or a tampered kept body, Alpha research would train on inputs its binding never named.",
@@ -1549,7 +1591,8 @@
       "description": "The Feature read setting is stored by default, derived when set so, and refused by name otherwise.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: ALPHALATTICE_FEATURE_READS is retired"
     },
     "feature_engine.workspace_before_0_2_7_refused_by_name": {
       "description": "A workspace an earlier release than 0.2.7 last opened is refused by name before its Feature schema is touched.",
@@ -1768,6 +1811,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.binding_names_a_copy_by_its_research_input_place": {
+      "description": "A research-input copy is named only by its place under research-inputs with a binding hash, so any other database reads its own tables, never another binding's selection.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.daily_provider_conformance": {
       "description": "Every daily market-data provider, the yfinance adapter and each shared fake, answers bars, actions and adjusted closes in the port's shape: exactly the requested symbols, every field finite, inside the window, ascending and split-sound.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -1784,7 +1833,8 @@
       "description": "The market reads setting is world when unset, names world or the workspace when set, and refuses any other value by name.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: ALPHALATTICE_MARKET_READS is retired; world is the market reader, with the workspace's tables before admission"
     },
     "market_data_ops.market_upgrade_is_all_equal": {
       "description": "An older workspace's market tables enter a new root through the acknowledged upgrade family and compare ALL EQUAL before world readers are selected.",
@@ -2231,7 +2281,8 @@
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
       "seconds": 5,
-      "lower_layer": "The legacy reader is the old content store reading real lane files, its own file facts included."
+      "lower_layer": "The legacy reader is the old content store reading real lane files, its own file facts included.",
+      "retired": "2026-11-20: ALPHALATTICE_ARRAY_STORE is retired; the door is the lanes' reader, with the unmoved-files rule before the upgrade"
     },
     "portfolio_strategy_lab.ledger_index_tells_lost_work_from_tampering": {
       "description": "If a persisted ledger index could not tell a lost child from a bad index, recovery would rerun tampered work or refuse honest loss.",
@@ -2246,7 +2297,7 @@
       "seconds": 5
     },
     "portfolio_strategy_lab.unmoved_workspace_reads_its_own_lane_files": {
-      "description": "With ALPHALATTICE_ARRAY_STORE unset, a workspace that holds lane files the door lacks reads them, the lanes a copy carries in place among them, until the upgrade moves them; the rule is decided once per process per workspace.",
+      "description": "A workspace that holds lane files the door lacks reads them, the lanes a copy carries in place among them, until the upgrade moves them; the rule is decided once per process per workspace.",
       "lower_layer": "The rule reads the workspace's real lane files and asks the data root's log which lanes the door lacks.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",
       "layer": "integration",
@@ -2265,6 +2316,20 @@
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "The Storage route must read the same generations on its second call."
+    },
+    "product_host.carried_result_with_changed_rows_is_refused": {
+      "description": "A copy's carried Portfolio result whose rows or profile differ from the result its digest names is refused by name when the Host opens the copy, before the catalog admits it.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The owner's rebuild reads the copy's real descriptors and the Host's opener holds a real data root; the unit layer cannot hold them."
+    },
+    "product_host.copies_read_back_every_carried_result": {
+      "description": "A published Portfolio path's copy, carried as the sandbox and saved-object readback carry it, and its restored backup read back every carried result ALL EQUAL on a new data root.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The proof is a real Portfolio publication's catalog, its backup and the Host's opener on a second data root; the unit layer cannot hold them."
     },
     "product_host.first_start_asks_nothing_of_catalog_held_outcomes": {
       "description": "A fileless outcome chunk asks no upgrade only when the catalog holds its rows; one it lacks is refused by name; other faults stop the start.",
@@ -2327,6 +2392,13 @@
       "owner": "alphalattice.control.product_host",
       "layer": "integration",
       "seconds": 10
+    },
+    "product_host.saved_object_probe_reads_carried_results_equal": {
+      "description": "The saved-object probe, through its own entry, opens a published Portfolio path's copy by the product's opener and reads every carried result back ALL EQUAL to the publishing root.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The proof is the probe's own entry over a real Portfolio publication and two real data roots; the unit layer cannot hold them."
     },
     "product_host.storage_cleanup_takes_only_confirmed_eligible_targets": {
       "description": "A storage cleanup takes only a person's confirmation of its eligible targets, never a research input, a forged target or a redirected path.",
@@ -2733,7 +2805,8 @@
       "description": "A declared derived view answers in its workspace table's place only under its setting, and is refused by name without a setup.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: the opt-in derived Feature view is retired"
     },
     "workspace_runtime.a_kept_value_follows_its_file": {
       "description": "If a value kept for a sealed file answered after that file was gone or replaced at its path, a replay would prove an artifact the workspace no longer holds.",
@@ -2775,6 +2848,24 @@
       "seconds": 2,
       "lower_layer": "The fact journal is keyed by the file's bytes and stamps on disk, which only a filesystem test can change."
     },
+    "workspace_runtime.feature_panel_chunk_refuses_a_foreign_uri": {
+      "description": "A Panel chunk address that names another content hash is refused, so a descriptor can never resolve another chunk's bytes under its own identity.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "workspace_runtime.feature_panel_chunk_refuses_another_kind": {
+      "description": "A descriptor of another artifact kind resolves as no feature panel chunk, so a feature input's file is never served as a Panel chunk.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "workspace_runtime.feature_panel_chunk_resolves_to_its_stored_file": {
+      "description": "A published Panel chunk resolves by its descriptor to the Parquet file stored under its content hash, so the Panel reader finds the bytes it was written with.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
     "workspace_runtime.full_proof_refuses_a_changed_sealed_file": {
       "description": "If full proof trusted a sealed file's name or stamps, an export or the scrub would pass bytes changed under that name.",
       "owner": "alphalattice.control.workspace_runtime",
@@ -2800,26 +2891,30 @@
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 3,
-      "lower_layer": "Roots, eviction and collection run through the Host's StorePort and its log, which the unit layer cannot open."
+      "lower_layer": "Roots, eviction and collection run through the Host's StorePort and its log, which the unit layer cannot open.",
+      "retired": "2026-11-20: the opt-in derived Panel bodies are retired; the stored chunk is the one reader"
     },
     "workspace_runtime.panel_chunks_read_from_their_derived_bodies": {
       "description": "Under derived reads the Host keeps each Panel chunk once, byte for byte, and reads take that body; stored reads the workspace's file.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 2,
-      "lower_layer": "The body is kept through the Host's StorePort and its log, which the unit layer cannot open."
+      "lower_layer": "The body is kept through the Host's StorePort and its log, which the unit layer cannot open.",
+      "retired": "2026-11-20: the opt-in derived Panel bodies are retired; the stored chunk is the one reader"
     },
     "workspace_runtime.panel_reads_key_a_chunk_by_its_binding_year_and_part": {
       "description": "A derived Panel keep is keyed by the chunk's recorded binding, year and part; stored keeps nothing; unknown or unserved settings are refused.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: the opt-in derived Panel bodies are retired"
     },
     "workspace_runtime.panel_roots_are_the_available_snapshots_chunks": {
       "description": "Under derived reads a Panel lifecycle publication hands the Host every available snapshot's chunks and the Panel reader's proof of each chunk's stored source.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: the opt-in derived Panel bodies are retired"
     },
     "workspace_runtime.parallel_source_checks_are_bounded_and_isolated": {
       "description": "If parallel source checks shared contexts, ran unbounded or lost a failure, a check could leak another's memory, starve the process or pass a refusal.",

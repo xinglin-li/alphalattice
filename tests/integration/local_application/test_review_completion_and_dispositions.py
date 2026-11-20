@@ -23,6 +23,7 @@ from alphalattice.interface.local_application.evidence_cro import (
     _ANSWERED_ROUTE_IN_WORDS,
     render_review_export,
 )
+from alphalattice.kernel.data_layer import history
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
@@ -54,7 +55,12 @@ MISSING = "QA17"
 
 @pytest.fixture(scope="module")
 def built_book(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    return build_coverage_workspace(tmp_path_factory.mktemp("completion-book"))
+    """The book, built once on a data root of its own, its Portfolio results carried in its folder
+    for each copy."""
+    with history.own_root(tmp_path_factory.mktemp("completion-root")):
+        workspace, report = build_coverage_workspace(tmp_path_factory.mktemp("completion-book"))
+        history.carry_results(workspace, workspace)
+    return workspace, report
 
 
 @pytest.fixture

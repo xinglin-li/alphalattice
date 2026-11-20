@@ -98,7 +98,6 @@ def _selections() -> list[tuple[str]]:
         "a world revision after its cutoff",
         "read first after a world revision",
         "outside the Host",
-        "the market reads' rollback",
     ],
 )
 def test_a_sector_map_reads_its_names_through_world_at_its_selection(
@@ -120,8 +119,6 @@ def test_a_sector_map_reads_its_names_through_world_at_its_selection(
     _classify(database, revised if case == "read first after a world revision" else NAMES)
     if case == "outside the Host":
         history.release_history()
-    if case == "the market reads' rollback":
-        monkeypatch.setenv(world_reads.SETTING, "workspace")
 
     assert classified(sector_map) == sector_map.entries
     if case != "world holds its names" and case != "a world revision after its cutoff":

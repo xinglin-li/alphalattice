@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -22,16 +21,6 @@ from alphalattice.kernel.data_layer.log import HostLog, uuid7
 from alphalattice.kernel.data_layer.root import (
     data_root,
 )
-
-
-def alpha_array_door() -> bool:
-    """Select Alpha's array reader; the old reader remains available until row U."""
-    mode = os.environ.get("ALPHALATTICE_ARRAY_STORE", "door")
-    if mode not in {"door", "legacy"}:
-        raise DataError(
-            "the Alpha array store is invalid", code="alpha_research.array_store_invalid"
-        )
-    return mode == "door"
 
 
 def _alpha_part_link(read: Callable[..., Any], content_hash: str, layout: str) -> Any:

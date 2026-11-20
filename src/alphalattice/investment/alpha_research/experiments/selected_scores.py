@@ -24,7 +24,6 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 from typing import Any, Literal, Self
 
 import numpy as np
@@ -168,7 +167,6 @@ def _resolve_selected_folds(
     *,
     dossier: object,
     decision: object,
-    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> tuple[
     dict[str, Any],
@@ -232,17 +230,13 @@ def _resolve_selected_folds(
             raise AlphaSelectedScoreError("alpha_research.selected_scores_trial_not_this_fold")
         content_hash = str(trial["prediction_artifact_hash"])
         try:
-            if history.alpha_array_door():
-                table = pq.read_table(
-                    pa.BufferReader(
-                        history.read_alpha_part(
-                            content_hash, "development/campaign/prediction-surfaces"
-                        )
+            table = pq.read_table(
+                pa.BufferReader(
+                    history.read_alpha_part(
+                        content_hash, "development/campaign/prediction-surfaces"
                     )
                 )
-            else:
-                path = prediction_surface_root / f"{content_hash}.parquet"
-                table = pq.read_table(path)
+            )
         except FileNotFoundError as error:
             raise AlphaSelectedScoreError(
                 "alpha_research.selected_scores_prediction_missing"
@@ -293,7 +287,6 @@ def project_alpha_selected_scores(
     *,
     dossier: object,
     decision: object,
-    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> tuple[AlphaSelectedScoreProjection, FloatArray]:
     """Assemble the fold-selected predictions of one Stage 3 decision.
@@ -308,7 +301,6 @@ def project_alpha_selected_scores(
     dossier_payload, decision_payload, admitted, horizon, folds, per_fold = _resolve_selected_folds(
         dossier=dossier,
         decision=decision,
-        prediction_surface_root=prediction_surface_root,
         horizon_sessions=horizon_sessions,
     )
     sessions = tuple(
@@ -350,7 +342,6 @@ def project_alpha_selected_rows(
     *,
     dossier: object,
     decision: object,
-    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> AlphaSelectedRowAxis:
     """Rebuild the exact ordered row axis Stage 3's calibration consumed.
@@ -367,7 +358,6 @@ def project_alpha_selected_rows(
         _resolve_selected_folds(
             dossier=dossier,
             decision=decision,
-            prediction_surface_root=prediction_surface_root,
             horizon_sessions=horizon_sessions,
         )
     )

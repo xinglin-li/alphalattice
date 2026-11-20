@@ -703,7 +703,7 @@ def _stored_heartbeats(path: Path) -> tuple[TaskHeartbeatSignal, ...]:
         raise ValueError("task_control.heartbeat_store_unreadable") from error
 
 
-def _heartbeat_step(path: Path, _runner: object = None) -> None:
+def _heartbeat_step(path: Path) -> None:
     """A live old lease is refused by execution id, before any signal is copied."""
     signals, log = _stored_heartbeats(path), held()
     with log.unit() as connection:
@@ -726,8 +726,8 @@ def _heartbeat_verify(path: Path, _runner: object = None) -> bool:
     )
 
 
-def _runtime_switch(paths: tuple[Path, ...], reader: str) -> None:
-    """Select one reader by setting verified old files aside; rollback restores their names.
+def _set_aside(paths: tuple[Path, ...]) -> None:
+    """Leave the log the one reader by setting the verified old files aside.
 
     No file is deleted. A kill between renames leaves each file at its old or retired name;
     the next step checks whichever old files remain and never replaces a retired generation:
@@ -745,39 +745,35 @@ def _runtime_switch(paths: tuple[Path, ...], reader: str) -> None:
             else (path,)
         )
     )
-    # New reader first, then its abandoned WAL side files; rollback restores the WAL before
-    # publishing the old main file, so neither direction selects an incomplete old store.
-    for path in files if reader == "new" else reversed(files):
-        retired = path.parent / RETIRED_DIRECTORY / path.name
-        source, target = (path, retired) if reader == "new" else (retired, path)
-        if not source.exists():
+    # The main file first, then its abandoned WAL side files.
+    for path in files:
+        if not path.exists():
             continue
-        if target.exists() and reader != "new":
-            raise ValueError(f"task_control.runtime_retirement_conflict:{path.name}")
+        target = path.parent / RETIRED_DIRECTORY / path.name
         if target.exists():
-            target = retired.parent / generation / path.name
+            target = target.parent / generation / path.name
         target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(source, target)
+        os.replace(path, target)
 
 
 def heartbeat_family(path: Path) -> Family:
-    """The task-heartbeats registration in the upgrade runner's step/verify/switch form."""
+    """The task-heartbeats registration in the upgrade runner's step/verify form: its step is the
+    import, which sets the old file aside once its copy is ALL EQUAL."""
     return Family(
         "task-heartbeats",
-        partial(_heartbeat_step, path),
+        lambda _runner: import_heartbeats(path),
         partial(_heartbeat_verify, path),
-        partial(_runtime_switch, (path,)),
     )
 
 
 def import_heartbeats(path: Path) -> None:
-    """The carrier's first-use import seam, using the family's same restart-safe operations."""
+    """The carrier's first-use import seam, and the family's restart-safe step."""
     if not path.is_file():
         return
     _heartbeat_step(path)
     if not _heartbeat_verify(path):
         raise ValueError("task_control.heartbeat_import_unequal")
-    _runtime_switch((path,), "new")
+    _set_aside((path,))
 
 
 def _stored_telemetry(path: Path) -> tuple[dict[str, Any], ...]:
@@ -915,7 +911,7 @@ def _logged(path: Path, task_id: object) -> tuple[dict[str, Any], ...]:
     return read_task_telemetry(path, task_id, latest=path.suffix != ".jsonl")
 
 
-def _telemetry_step(paths: tuple[Path, ...], _runner: object = None) -> None:
+def _telemetry_step(paths: tuple[Path, ...]) -> None:
     """Copy every old phase/snapshot once, retaining its exact readout and source clock."""
     # Parse all sources first: a bad source cannot retire another file or leave half a source.
     sources = [(path, _stored_telemetry(path)) for path in paths]
@@ -940,25 +936,25 @@ def _telemetry_verify(paths: tuple[Path, ...], _runner: object = None) -> bool:
 
 
 def telemetry_family(paths: tuple[Path, ...]) -> Family:
-    """The task-telemetry registration in the upgrade runner's step/verify/switch form.
+    """The task-telemetry registration in the upgrade runner's step/verify form: its step is the
+    import, which sets the old files aside once their copies are ALL EQUAL.
 
     Paths name only stage phase JSONL and work-progress/listing-activity snapshots. Durable
     preparation stage evidence sharing TaskTelemetry's JSON utility is outside this family.
     """
     return Family(
         "task-telemetry",
-        partial(_telemetry_step, paths),
+        lambda _runner: import_telemetry(paths),
         partial(_telemetry_verify, paths),
-        partial(_runtime_switch, paths),
     )
 
 
 def import_telemetry(paths: tuple[Path, ...]) -> None:
-    """First-use import through the carrier's seam, with the registered family's operations."""
+    """The carrier's first-use import seam, and the family's restart-safe step."""
     existing = tuple(path for path in paths if path.is_file())
     if not existing:
         return
     _telemetry_step(existing)
     if not _telemetry_verify(existing):
         raise ValueError("task_control.telemetry_import_unequal")
-    _runtime_switch(existing, "new")
+    _set_aside(existing)

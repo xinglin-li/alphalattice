@@ -10,6 +10,17 @@ Latest released version: [0.2.7](#027). Earlier measurements describe their own 
 - `answer:STORAGE_READBACK.inputs` and `answer:STORAGE_PLAN.bindings` are always empty, and `refusal:storage.input_binding_missing` is no longer raised; a version this machine does not hold is refused as `data_layer.input_missing`. Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them. Earliest removal is 0.3.0.
 - `operation:STORAGE_EVIDENCE_REBUILD` (`storage rebuild`) and `refusal:storage.evidence_generation_record_misfiled`: The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since. Read the evidence bytes with `operation:STORAGE_READBACK`. Earliest removal is 0.3.0.
 - `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
+- The data layer's rollback settings are retired: each family has one reader, the first 0.2.8 start upgrades a workspace's data, and its verified backup is the way back. The opt-in derived Feature and Panel reads went with them, so Feature values and Panel chunks are read from the workspace. Earliest removal of the refusals below is 0.3.0.
+- `refusal:causal_outcomes.outcome_store_invalid` is no longer raised; use `refusal:data_layer.outcome_missing`. The execution outcome rollback setting is retired; outcomes are read from the catalog.
+- `refusal:data_layer.derived_files_need_host` is no longer raised; use `refusal:data_layer.history_unavailable`. The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.
+- `refusal:feature_panel.chunk_unserved` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The opt-in derived Panel reads are retired; a missing chunk is refused as the stored reader refuses it.
+- `refusal:feature_panel.derived_reads_unserved` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.
+- `refusal:feature_panel.panel_reads_unknown` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The Panel read setting is retired; Panel chunks are read from the workspace.
+- `refusal:market_data.market_reads_unknown` is no longer raised; use `refusal:data_layer.world_table_not_admitted`. The market read setting is retired; world serves market reads, with the workspace's tables before admission.
+- `refusal:portfolio_strategy_lab.array_store_invalid` is no longer raised; use `refusal:data_layer.array_missing`. The array store setting is retired; the Strategy Lab's lanes are read from the data root.
+- `refusal:risk_research.risk_store_invalid` is no longer raised; use `refusal:risk_research.covariance_chunk_incomplete`. The Risk store setting is retired; covariance is read from the catalog, with the packed file before admission.
+- `refusal:task_control.runtime_retirement_conflict` is no longer raised; use `refusal:task_control.heartbeat_import_unequal`. The upgrade no longer restores old Task runtime files; the pre-upgrade backup is the way back.
+- `refusal:workspace_database.derived_setup_absent` is no longer raised; use `refusal:data_layer.history_unavailable`. The opt-in derived Feature view is retired; Feature values are read from the workspace's table.
 
 ## 0.2.7
 

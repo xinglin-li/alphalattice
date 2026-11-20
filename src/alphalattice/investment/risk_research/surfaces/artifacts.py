@@ -27,7 +27,6 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://risk-research/"
-RISK_STORE_ENV = "ALPHALATTICE_RISK_STORE"
 
 
 def _packed_digest(content: bytes | memoryview) -> str:
@@ -36,14 +35,6 @@ def _packed_digest(content: bytes | memoryview) -> str:
 
 class RiskArtifactError(ValueError):
     """Stable artifact, tamper, and lease boundary failure."""
-
-
-def risk_store_mode() -> str | None:
-    """The one rollback setting used by the native and historical Risk stores."""
-    mode = os.environ.get(RISK_STORE_ENV)
-    if mode not in {None, "catalog", "legacy"}:
-        raise RiskArtifactError("risk_research.risk_store_invalid")
-    return mode
 
 
 class RiskArtifactStore:
@@ -245,10 +236,9 @@ class RiskArtifactStore:
             content_hash=content_hash,
             uri=self.uri("covariance/chunks", content_hash),
         )
-        mode = risk_store_mode()
-        if mode == "catalog" or (mode is None and history.recording()):
+        if history.recording():
             self.admit_covariance(chunk, ordered_listing_ids, packed)
-        else:
+        else:  # a writer outside the Host keeps the packed file, admitted when it resumes there
             target = self._path("covariance/chunks", content_hash, "bin")
             if target.exists() and target.read_bytes() != content:
                 raise RiskArtifactError("risk_research.covariance_chunk_identity_reused")
@@ -302,11 +292,7 @@ class RiskArtifactStore:
         self, lease: CovarianceChunkLease, ordered_listing_ids: tuple[str, ...]
     ) -> None:
         """Move a validated legacy checkpoint chunk when its writer resumes on the Host."""
-        if (
-            isinstance(lease._mapping, np.memmap)
-            and history.recording()
-            and risk_store_mode() is None
-        ):
+        if isinstance(lease._mapping, np.memmap) and history.recording():
             self.admit_covariance(lease.chunk, ordered_listing_ids, lease._mapping)
 
     def catalog_covariance(
@@ -349,16 +335,17 @@ class RiskArtifactStore:
         *,
         resume: bool = False,
     ) -> FloatArray:
-        """Read the sealed floats from the catalog, or from retained legacy evidence."""
-        mode = risk_store_mode()
-        if mode != "legacy" and (mode == "catalog" or ordered_listing_ids is not None):
-            packed = self.catalog_covariance(
-                chunk, ordered_listing_ids, retry_unadmitted=resume and mode is None
-            )
+        """Read the sealed floats from the catalog, or from the packed file a writer outside the
+        Host kept, or a restored workspace keeps until its listings arrive, before admission."""
+        if ordered_listing_ids is not None:
+            packed = self.catalog_covariance(chunk, ordered_listing_ids, retry_unadmitted=resume)
             if packed is not None:
                 return packed
-            if mode == "catalog":
-                raise RiskArtifactError("risk_research.covariance_chunk_incomplete")
+        return self.legacy_covariance(chunk)
+
+    def legacy_covariance(self, chunk: HistoricalCovarianceChunk) -> FloatArray:
+        """Map the packed file of a chunk not yet admitted: the upgrade's input, and the read
+        before admission."""
         return np.memmap(
             self.chunk_path(chunk),
             dtype="<f8",

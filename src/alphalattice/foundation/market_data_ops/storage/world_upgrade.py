@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -15,7 +14,6 @@ from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 
 def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
     """Admit older workspace tables through the shared, backed-up first-start protocol."""
-    wanted = os.environ.get(world_reads.SETTING)
 
     def source(workspace: Path) -> tuple[MarketDataRepository, dict[str, list[int]]] | None:
         repository = MarketDataRepository(workspace, universe_reader="workspace")
@@ -85,12 +83,4 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
                 return False
         return True
 
-    def switch(mode: str) -> None:
-        if mode == "old":
-            os.environ[world_reads.SETTING] = "workspace"
-        elif wanted is None:
-            os.environ.pop(world_reads.SETTING, None)
-        else:
-            os.environ[world_reads.SETTING] = wanted
-
-    return Family("market-data", step, verify, switch, holds)
+    return Family("market-data", step, verify, holds)

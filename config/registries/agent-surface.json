@@ -64627,11 +64627,67 @@
       "replacement": "operation:STORAGE_READBACK",
       "status": "Deprecated"
     },
+    "refusal:causal_outcomes.outcome_store_invalid": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The execution outcome rollback setting is retired; outcomes are read from the catalog.",
+      "replacement": "refusal:data_layer.outcome_missing",
+      "status": "Deprecated"
+    },
+    "refusal:data_layer.derived_files_need_host": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.",
+      "replacement": "refusal:data_layer.history_unavailable",
+      "status": "Deprecated"
+    },
+    "refusal:feature_panel.chunk_unserved": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The opt-in derived Panel reads are retired; a missing chunk is refused as the stored reader refuses it.",
+      "replacement": "refusal:feature_panel.logical_content_mismatch",
+      "status": "Deprecated"
+    },
+    "refusal:feature_panel.derived_reads_unserved": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.",
+      "replacement": "refusal:feature_panel.logical_content_mismatch",
+      "status": "Deprecated"
+    },
+    "refusal:feature_panel.panel_reads_unknown": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The Panel read setting is retired; Panel chunks are read from the workspace.",
+      "replacement": "refusal:feature_panel.logical_content_mismatch",
+      "status": "Deprecated"
+    },
+    "refusal:market_data.market_reads_unknown": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The market read setting is retired; world serves market reads, with the workspace's tables before admission.",
+      "replacement": "refusal:data_layer.world_table_not_admitted",
+      "status": "Deprecated"
+    },
     "refusal:native_bridge.child_not_a_specialist": {
       "reason": "Usage is read independently of specialist-role verification; the separate verification fact remains.",
       "removed_in": "0.1.6",
       "replacement": "native usage delivery with binding verification",
       "status": "Removed"
+    },
+    "refusal:portfolio_strategy_lab.array_store_invalid": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The array store setting is retired; the Strategy Lab's lanes are read from the data root.",
+      "replacement": "refusal:data_layer.array_missing",
+      "status": "Deprecated"
+    },
+    "refusal:risk_research.risk_store_invalid": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The Risk store setting is retired; covariance is read from the catalog, with the packed file before admission.",
+      "replacement": "refusal:risk_research.covariance_chunk_incomplete",
+      "status": "Deprecated"
     },
     "refusal:storage.evidence_generation_record_misfiled": {
       "announced": "0.2.8",
@@ -64645,6 +64701,20 @@
       "earliest_removal": "0.3.0",
       "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
       "replacement": "refusal:data_layer.input_missing",
+      "status": "Deprecated"
+    },
+    "refusal:task_control.runtime_retirement_conflict": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The upgrade no longer restores old Task runtime files; the pre-upgrade backup is the way back.",
+      "replacement": "refusal:task_control.heartbeat_import_unequal",
+      "status": "Deprecated"
+    },
+    "refusal:workspace_database.derived_setup_absent": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "The opt-in derived Feature view is retired; Feature values are read from the workspace's table.",
+      "replacement": "refusal:data_layer.history_unavailable",
       "status": "Deprecated"
     },
     "view:full": {

@@ -33,7 +33,6 @@ from uuid import uuid4
 
 import duckdb
 
-from alphalattice.control.workspace_runtime import derived_views
 from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.persistence import (
@@ -216,8 +215,6 @@ class WorkspaceConnection:
         self._owner = threading.get_ident()
         self._pinned = False
         self._closed = False
-        if guarded or instance.read_only:  # a reader: the workspace's derived views answer it
-            derived_views.serve(self._raw)
         if guarded:
             self._raw.execute("BEGIN TRANSACTION READ ONLY")
 

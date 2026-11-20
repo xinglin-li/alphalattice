@@ -1,8 +1,7 @@
-"""Market value reads from world: the setting that chooses them, the session that serves them,
-and 0.2.7's market tables as world's as-of reads, in 0.2.7's names and columns.
+"""Market value reads from world: the session that serves them, and 0.2.7's market tables as
+world's as-of reads, in 0.2.7's names and columns.
 
-`ALPHALATTICE_MARKET_READS` is `world`, the default, or `workspace`, the rollback; a Task child
-inherits it. World serves a workspace's reads while it holds that workspace's market tables as
+World serves a workspace's reads while it holds that workspace's market tables as
 they are: their marks, the content fingerprint world.admit records, equal those of an admission
 that took every row they mark (`reading`). The Host admits its own workspace's tables first when
 they have changed; a Task child, which may not write the catalog, reads the workspace's own
@@ -36,7 +35,6 @@ from alphalattice.control.workspace_runtime.database import (
     live_workspace_connections,
     store_fingerprint,
 )
-from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.history import catalog_session as session
 from alphalattice.kernel.data_layer.root import sql_path
@@ -44,9 +42,6 @@ from alphalattice.kernel.data_layer.root import sql_path
 from . import world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
 
-SETTING: Final = "ALPHALATTICE_MARKET_READS"
-CHOICES: Final = ("world", "workspace")
-"""Where market value reads come from: world's as-of reads, or the workspace's own tables."""
 WORKSPACE: Final = {
     "bars": "raw_daily_bar_current",
     "adjusted": "provider_adjusted_close_current",
@@ -71,17 +66,6 @@ def cutoff(at: datetime) -> int:
     return (at.astimezone(UTC) - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
 
 
-def chosen() -> str:
-    """The setting's value; refused by name when it names neither choice."""
-    value = os.environ.get(SETTING, CHOICES[0])
-    if value not in CHOICES:
-        raise DataError(
-            f"{SETTING} is {value!r}; set it to world or workspace, or unset it for world",
-            code="market_data.market_reads_unknown",
-        )
-    return value
-
-
 @contextmanager
 def reading(
     database: Path,
@@ -91,7 +75,7 @@ def reading(
     admit: Callable[[Path, str], Any] = world.admit,
 ) -> Iterator[Any | None]:
     """A cursor on world while it serves the market reads of the workspace in `database`, else
-    None and its own tables answer. World serves when the setting is world and the tables'
+    None and its own tables answer. World serves when the tables'
     `marks` equal those of a market admission that took every row (`_admitted`). A verdict is
     kept for its catalog and the database's file and WAL as they stand (`store_fingerprint`); one
     that world does not serve is read again once the catalog has a newer snapshot, since an
@@ -100,7 +84,7 @@ def reading(
     instance, which an admission's attach would meet; that read takes the workspace, and the next
     admits. The cursor's statements share one transaction, so they see one catalog snapshot."""
     path = str(database.resolve())
-    if chosen() != "world" or path in _writing:
+    if path in _writing:
         yield None
         return
     with session() as cursor:

@@ -6,7 +6,7 @@ import json
 import math
 import re
 import time
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -61,7 +61,6 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
     runtime_view_hash,
 )
 from alphalattice.foundation.feature_engine.publication.persistence import admitted_writes
-from alphalattice.foundation.feature_engine.storage import derived_features
 from alphalattice.foundation.feature_engine.storage.contracts import (
     BindableSectorEvidence,
     FeatureIneligibilityRun,
@@ -672,15 +671,6 @@ class FeatureStateRepository(WorkspaceRepository):
         finally:
             connection.close()
 
-    def _mirror(self, listing_ids: Collection[str]) -> None:
-        """Under ALPHALATTICE_FEATURE_READS=derived, copy these listings' committed rows into the
-        catalog's feature set table (`derived_features.mirror`); nothing under stored."""
-        if derived_features.chosen() != "derived":
-            return
-        derived_features.mirror(
-            self.database, self._resolve_catalog_layer().catalog.binding.stable_id, listing_ids
-        )
-
     def retire_rows_outside_layer(self, *, _connection: duckdb.DuckDBPyConnection) -> int:
         """Delete the rows and runs no part of the installed catalog computed.
 
@@ -708,7 +698,6 @@ class FeatureStateRepository(WorkspaceRepository):
                     [admitted],
                 )
             self._clear_feature_year_seals(_connection)
-        self._mirror(())  # a build's start: reconcile what an earlier one left uncopied
         return retired
 
     def discard_part_rows(
@@ -737,7 +726,6 @@ class FeatureStateRepository(WorkspaceRepository):
         except BaseException:
             _connection.execute("ROLLBACK")
             raise
-        self._mirror(())
         return int(counted[0]) if counted is not None else 0
 
     @contextmanager
@@ -1758,8 +1746,6 @@ class FeatureStateRepository(WorkspaceRepository):
                 started = time.perf_counter()
                 connection.close()
                 record("close", started)
-        if _manage_transaction:
-            self._mirror((listing_id,))
         return receipt_hash
 
     def upsert_feature_materialization_batch(
@@ -1848,7 +1834,6 @@ class FeatureStateRepository(WorkspaceRepository):
                 started = time.perf_counter()
                 connection.close()
                 record("batch_close", started)
-        self._mirror(listing_ids)
         return receipts
 
     @staticmethod

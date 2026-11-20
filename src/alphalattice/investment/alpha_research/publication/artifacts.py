@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -369,11 +368,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         packed = _packed_block(payload)
         category = "current/frozen-observation-arrays"
         digest = sha256(packed).hexdigest()
-        if earlier is not None and (
-            history.alpha_part_body_digest(digest, category) is None
-            if self._array_door()
-            else not self._path(category, digest, "bin").exists()
-        ):
+        if earlier is not None and history.alpha_part_body_digest(digest, category) is None:
             block = earlier.block(index)
             if block is not None:
                 content = self._frozen_payload("frozen-observation-arrays", block)
@@ -874,20 +869,9 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             b"alphalattice.content_hash": content_hash.encode(),
             b"alphalattice.metadata_hash": metadata_hash.encode(),
         }
-        if self._array_door():
-            output = pa.BufferOutputStream()
-            pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
-            history.keep_alpha_part(
-                content_hash, "current/" + category, output.getvalue().to_pybytes()
-            )
-        else:
-            target = self._path(f"current/{category}", content_hash, "parquet")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-            if not target.exists():
-                pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-                os.replace(staged, target)
-            staged.unlink(missing_ok=True)
+        output = pa.BufferOutputStream()
+        pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
+        history.keep_alpha_part(content_hash, "current/" + category, output.getvalue().to_pybytes())
         self.resolve_current_candidate_score_chunk(reference)
         return reference
 
@@ -912,14 +896,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri(f"current/{category}", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("Alpha current candidate score URI changed")
-        source = (
-            pa.BufferReader(
-                self._score_body(
-                    value.content_hash, "current/" + category, "Alpha current candidate score"
-                )
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/" + category, "Alpha current candidate score"
             )
-            if self._array_door()
-            else self._path(f"current/{category}", value.content_hash, "parquet")
         )
         parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}
@@ -1010,14 +990,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri("current/current-score-chunks", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("current Alpha score URI is invalid")
-        source = (
-            pa.BufferReader(
-                self._score_body(
-                    value.content_hash, "current/current-score-chunks", "current Alpha score"
-                )
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/current-score-chunks", "current Alpha score"
             )
-            if self._array_door()
-            else self._path("current/current-score-chunks", value.content_hash, "parquet")
         )
         parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}

@@ -16,7 +16,6 @@ from alphalattice.kernel.data_layer import history, project, risk_history
 from alphalattice.kernel.data_layer.log import attach, uuid7
 from alphalattice.kernel.data_layer.root import data_root
 
-from .artifacts import risk_store_mode
 from .decomposition import FactorIdiosyncraticRiskSurface, RiskDecompositionError, _frozen
 
 _FACTOR_PROFILE = "risk_factor_surface"
@@ -241,9 +240,6 @@ class _CatalogFactorSurfaces:
 _CATALOG_FACTOR_SURFACES = _CatalogFactorSurfaces()
 
 
-def catalog_factor_surfaces() -> _CatalogFactorSurfaces | None:
-    """Bind production to the catalog while a Host records and rollback is off."""
-    mode = risk_store_mode()
-    if mode == "catalog" or (mode is None and history.recording()):
-        return _CATALOG_FACTOR_SURFACES
-    return None
+def catalog_factor_surfaces() -> _CatalogFactorSurfaces:
+    """Bind production to the catalog."""
+    return _CATALOG_FACTOR_SURFACES

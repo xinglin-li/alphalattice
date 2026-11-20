@@ -602,13 +602,9 @@ class SectorDevelopmentArtifactStore:
     def _results_mode() -> str:
         from alphalattice.kernel.data_layer import history  # lazy: Host telemetry
 
-        mode = os.environ.get("ALPHALATTICE_SECTOR_RESULTS_STORE")
-        if mode is None:
-            catalog = history.data_root() / "machine" / "catalog.sqlite"
-            return "catalog" if history.recording() or catalog.is_file() else "legacy"
-        if mode not in {"legacy", "catalog"}:
-            raise SectorResearchError("sector_research.results_store_invalid")
-        return mode  # contract: row U retires the retained files and their reader.
+        catalog = history.data_root() / "machine" / "catalog.sqlite"
+        # The catalog on a data root, the files on a standalone workspace.
+        return "catalog" if history.recording() or catalog.is_file() else "legacy"
 
     def _publish_results(
         self,
@@ -962,10 +958,7 @@ def sector_results_upgrade_family() -> Family:
                 raise
             return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        os.environ["ALPHALATTICE_SECTOR_RESULTS_STORE"] = "legacy" if mode == "old" else "catalog"
-
-    return Family("sector-results", step, verify, switch, holds)
+    return Family("sector-results", step, verify, holds)
 
 
 __all__ = [

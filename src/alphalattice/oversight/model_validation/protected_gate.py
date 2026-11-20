@@ -26,7 +26,6 @@ after a receipt has been sealed.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -151,54 +150,38 @@ class ProtectedValidationStore:
         return permit
 
     def publish_claim(self, value: PermitClaimRecord) -> str:
-        """Commit a permit-spending claim under the permit identity."""
-        identity = self.committed.commit(_CLAIMS, value.permit_hash, value)
-        if history.recording():
-            history.record_validation_claim(
-                value.model_dump(mode="json"), workspace=self._workspace()
-            )
-        return identity
+        """Spend the permit: on the Host's log while it records, else in the committed index."""
+        if not history.recording():  # outside the Host, the committed index
+            return str(self.committed.commit(_CLAIMS, value.permit_hash, value))
+        history.record_validation_claim(value.model_dump(mode="json"), workspace=self._workspace())
+        return str(value.claim_hash)
 
     def find_claim(self, permit_hash: str) -> PermitClaimRecord | None:
-        """Find a permit's claim and verify its index binding."""
+        """Find a permit's claim and verify its binding to the permit."""
         self.content.require_hash(permit_hash)
-        if self._read_catalog():
+        if history.recording():
             recorded = history.validation_claim(permit_hash, workspace=self._workspace())
             claim = None if recorded is None else PermitClaimRecord.model_validate(recorded)
-            if claim is None:  # complete a legacy-first claim interrupted before its log event
-                claim = self.committed.open(_CLAIMS, permit_hash)
-                if claim is not None:
-                    history.record_validation_claim(
-                        claim.model_dump(mode="json"), workspace=self._workspace()
-                    )
-        else:
+        else:  # outside the Host, the committed index
             claim = self.committed.open(_CLAIMS, permit_hash)
         if claim is not None and claim.permit_hash != permit_hash:
             raise ProtectedValidationGateError("protected_validation.claim_index_tampered")
         return claim
 
     def publish_receipt(self, value: PortfolioValidationReceipt) -> str:
-        """Seal the receipt under the permit it answers, before any claim.
+        """Seal the receipt under the permit it answers, before any claim: on the Host's catalog
+        while it records, else in the committed index.
 
-        Committed first so the claim can never point at a receipt that is not
+        Sealed first so the claim can never point at a receipt that is not
         there. A crash between the two leaves a receipt nobody has claimed --
         recoverable, and the closure simply completes.
         """
-        identity = self.committed.commit(_RECEIPTS, value.permit_hash, value)
-        if history.recording():
-            history.write_validation_receipts(
-                [value.model_dump(mode="python")], workspace=self._workspace()
-            )
-        return identity
-
-    def _read_catalog(self) -> bool:
-        # contract: retain the legacy receipt reader until the row U retirement.
-        mode = os.environ.get(
-            "ALPHALATTICE_VALIDATION_STORE", "catalog" if history.recording() else "legacy"
+        if not history.recording():  # outside the Host, the committed index
+            return str(self.committed.commit(_RECEIPTS, value.permit_hash, value))
+        history.write_validation_receipts(
+            [value.model_dump(mode="python")], workspace=self._workspace()
         )
-        if mode not in {"catalog", "legacy"}:
-            raise ProtectedValidationGateError("protected_validation.store_invalid")
-        return mode == "catalog"
+        return str(value.receipt_hash)
 
     def _catalog_receipt(
         self,
@@ -227,28 +210,18 @@ class ProtectedValidationStore:
     def find_receipt_for_permit(self, permit_hash: str) -> PortfolioValidationReceipt | None:
         """Find the receipt sealed for a permit before its claim was recorded."""
         self.content.require_hash(permit_hash)
-        if not self._read_catalog():
+        if not history.recording():  # outside the Host, the committed index
             return self.committed.open(_RECEIPTS, permit_hash)
-        value = self._catalog_receipt("permit_hash", permit_hash)
-        if value is None:  # heal a receipt sealed before its catalog admission completed
-            value = self.committed.open(_RECEIPTS, permit_hash)
-            if value is not None:
-                history.write_validation_receipts(
-                    [value.model_dump(mode="python")], workspace=self._workspace()
-                )
-        return value
+        return self._catalog_receipt("permit_hash", permit_hash)
 
     def load_receipt(self, receipt_hash: str) -> PortfolioValidationReceipt:
         """Load a sealed receipt and verify its content identity."""
         self.content.require_hash(receipt_hash)
-        if not self._read_catalog():
+        if not history.recording():  # outside the Host, the committed index
             return self.committed.load(_RECEIPTS, receipt_hash)
         value = self._catalog_receipt("receipt_hash", receipt_hash)
         if value is None:
-            value = self.committed.load(_RECEIPTS, receipt_hash)
-            history.write_validation_receipts(
-                [value.model_dump(mode="python")], workspace=self._workspace()
-            )
+            raise ContentAddressedStoreError(f"content_store.artifact_missing:{receipt_hash}")
         return value
 
 
@@ -358,14 +331,10 @@ def validation_upgrade_family(workspace_id: Callable[[Path], str | None]) -> Fam
     def verify(runner: UpgradeRunner) -> bool:
         return all(verify_workspace(workspace) for workspace in runner.workspaces)
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        os.environ["ALPHALATTICE_VALIDATION_STORE"] = "legacy" if mode == "old" else "catalog"
-
     return Family(
         "protected-validation",
         step,
         verify,
-        switch,
         lambda workspace: not verify_workspace(workspace),
     )
 

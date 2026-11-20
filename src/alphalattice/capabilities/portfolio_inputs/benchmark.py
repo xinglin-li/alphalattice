@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 from collections.abc import Callable, Iterator
 from datetime import date
 from math import log
@@ -362,19 +360,6 @@ class PortfolioBenchmarkStore:
             DataError: The Host cannot admit the series or its stored values differ.
         """
         history.require_portfolio_result_store()
-        # Keep the existing artifact readable until the row U rollback retires it.
-        content = json.dumps(
-            surface.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-        ).encode()
-        target = self.root / "surfaces" / f"{surface.surface_hash}.json"
-        if target.is_file() and target.read_bytes() != content:
-            raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.identity_reused")
-        if not target.is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-            staged.write_bytes(content)
-            os.replace(staged, target)
-            staged.unlink(missing_ok=True)
         metadata, table = _benchmark_body(surface)
         history.write_portfolio_result(
             "portfolio_benchmark", surface.surface_hash, metadata, table, result_table="series"
@@ -394,22 +379,7 @@ class PortfolioBenchmarkStore:
                 different lineage.
         """
         try:
-            # contract: row U retires the legacy Portfolio artifact readers.
-            # First-start upgrade switches to the catalog after migration verifies.
-            mode = history.portfolio_results_mode(self.root.parent)
-            if mode == "catalog":
-                return _catalog_benchmark(surface_hash)
-            if mode != "legacy":
-                raise ValueError("portfolio_benchmark.store_invalid")
-            surface = cast(
-                PortfolioBenchmarkSurface,
-                PortfolioBenchmarkSurface.model_validate_json(
-                    (self.root / "surfaces" / f"{surface_hash}.json").read_bytes()
-                ),
-            )
-            if surface.surface_hash != surface_hash:
-                raise ValueError("portfolio_benchmark.lineage_invalid")
-            return surface
+            return _catalog_benchmark(surface_hash)
         except Exception as error:
             raise PortfolioBenchmarkBoundaryError("portfolio_benchmark.readback_failed") from error
 
@@ -431,10 +401,12 @@ def _benchmark_body(surface: PortfolioBenchmarkSurface) -> tuple[dict[str, Any],
     return metadata, table
 
 
-def _catalog_benchmark(digest: str) -> PortfolioBenchmarkSurface:
+def _catalog_benchmark(
+    digest: str, data: tuple[dict[str, Any], Any] | None = None
+) -> PortfolioBenchmarkSurface:
     import pyarrow.compute as pc  # lazy: only catalog result reads need the data extra
 
-    metadata, table = history.read_portfolio_result(
+    metadata, table = data or history.read_portfolio_result(
         "portfolio_benchmark", digest, result_table="series"
     )
     simple = table.filter(pc.equal(table["name"], "simple_returns"))
@@ -459,6 +431,15 @@ def _catalog_benchmark(digest: str) -> PortfolioBenchmarkSurface:
     if surface.surface_hash != digest:
         raise ValueError("portfolio_benchmark.lineage_invalid")
     return surface
+
+
+def carried_benchmark_check(_workspace: Path, digest: str, profile: Any, table: Any) -> None:
+    """Refuse a carried benchmark whose surface, rebuilt from its profile and rows as the catalog
+    reader rebuilds it, is not the one `digest` names, or whose profile is not the one that
+    surface's publication writes."""
+    surface = _catalog_benchmark(digest, (profile, table))
+    if _benchmark_body(surface)[0] != profile:
+        raise ValueError("portfolio_benchmark.lineage_invalid")
 
 
 def portfolio_benchmark_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
@@ -508,12 +489,7 @@ def portfolio_benchmark_upgrade_family(holder: Callable[[Path], str | None]) -> 
             for workspace, old in legacy(runner)
         )
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (
-            "legacy" if mode == "old" else "catalog"
-        )
-
-    return Family("portfolio-benchmark", step, verify, switch)
+    return Family("portfolio-benchmark", step, verify)
 
 
 __all__ = [

@@ -1,10 +1,9 @@
 """The Strategy Lab's lanes and the array door: the upgrade moves a workspace's old lane files into
-the door all equal, and one switch reads the old files for rollback."""
+the door all equal; the old files stay as the upgrade's input."""
 
 from __future__ import annotations
 
 import hashlib
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,8 +12,6 @@ import pytest
 
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
-    ARRAY_STORE_ENV,
-    PortfolioPublicationError,
     PortfolioResearchArtifactStore,
     lane_upgrade_family,
 )
@@ -69,35 +66,12 @@ def test_the_upgrade_moves_a_workspaces_lane_files_into_the_door_all_equal(tmp_p
     assert store.load_packed_bytes(category="any", content_hash=files["bin"].stem) == PACKED
 
 
-@pytest.mark.proves("portfolio_strategy_lab.lane_reader_switch_reads_old_files_for_rollback")
-def test_the_legacy_switch_reads_the_old_lane_files(tmp_path: Path, monkeypatch) -> None:
-    """The family's old switch selects `legacy`, which reads the files the store wrote before the
-    door; any value but `door` and `legacy` is refused by name; its new switch leaves the unset
-    rule, which reads the door once the lanes are moved."""
-    files = _old_workspace(tmp_path)
-    store = PortfolioResearchArtifactStore(tmp_path / "research-experiments" / "portfolio-1")
-    digest = files["parquet"].stem
-    monkeypatch.setenv(ARRAY_STORE_ENV, "door")
-    lane_upgrade_family(lambda _workspace: None).switch("old")
-    category = "development/authored-lanes"
-    assert store.load_packed_bytes(category=category, content_hash=digest) == LANE.tobytes()
-    monkeypatch.setenv(ARRAY_STORE_ENV, "parquet")
-    refused = r"^portfolio_strategy_lab\.array_store_invalid$"
-    with pytest.raises(PortfolioPublicationError, match=refused):
-        store.load_packed_bytes(category=category, content_hash=digest)
-    lane_upgrade_family(lambda _workspace: None).switch("new")
-    assert ARRAY_STORE_ENV not in os.environ  # the new reader is the unset rule's
-
-
 @pytest.mark.proves("portfolio_strategy_lab.unmoved_workspace_reads_its_own_lane_files")
-def test_a_workspace_whose_lanes_the_door_lacks_reads_its_own_files(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_a_workspace_whose_lanes_the_door_lacks_reads_its_own_files(tmp_path: Path) -> None:
     """With the switch unset, a workspace holding lane files the door lacks reads them, a lane it
     carries in place among them, until the upgrade moves them; the door holds none of them yet."""
     from alphalattice.investment.portfolio_strategy_lab.publication import artifacts
 
-    monkeypatch.delenv(ARRAY_STORE_ENV, raising=False)
     files = _old_workspace(tmp_path)
     (tmp_path / artifacts.MANIFEST).write_text("{}", encoding="utf-8")
     carried = np.array([3.0, -0.0])

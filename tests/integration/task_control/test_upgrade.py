@@ -134,21 +134,18 @@ def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
     registry.mark_recovery_required(
         task_id=task.task_id, failure_code="fixture.stop", observed_at=now + timedelta(seconds=1)
     )
-    family.step(None)
-    assert family.verify(None) is True
-    with monkeypatch.context() as patch:
+    with monkeypatch.context() as patch:  # killed after the import, before its set-aside
 
         def killed(*_paths: object) -> None:
             raise _Killed
 
         patch.setattr(owner.os, "replace", killed)
         with pytest.raises(_Killed):
-            family.switch("new")
-    assert path.is_file()  # the selected old reader was never lost
+            family.step(None)
+    assert path.is_file()  # the old file is kept until its import is set aside
     history.close_history()
     family.step(None)
     assert family.verify(None) is True
-    family.switch("new")
     assert not path.exists() and (path.parent / RETIRED_DIRECTORY / path.name).is_file()
     if family_name == "task-heartbeats":
         assert TaskHeartbeatReader(runtime).read(execution.execution_id).signals == (expected,)

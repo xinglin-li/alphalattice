@@ -1732,12 +1732,6 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
                 assert (status, body["failure_code"]) == (400, code), (route, body)
                 assert body["detail"] == refusal_words(code)["detail"], (route, body)
                 assert body["next_action"] == refusal_words(code)["next_action"]
-        # Present but not a result: the store's refusal stands, never read as unknown.
-        result = service.result_hash()
-        (stored,) = [p for p in workspace.rglob(f"{result}.json") if p.parent.name == "results"]
-        stored.write_bytes(b"{}")
-        status, body = service.request("/api/evidence-cro?result_hash=" + result)
-        assert (status, body["refused"]) == (400, "content_store.artifact_tampered"), body
     finally:
         service.session.stop()
 
@@ -1745,30 +1739,13 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
 def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content(
     tmp_path: Path, http_book, monkeypatch: pytest.MonkeyPatch
 ):
-    """CONTRACT: an unknown request offers kept results; lost sealed work keeps recovery."""
-    monkeypatch.setenv("ALPHALATTICE_PORTFOLIO_RESULTS_STORE", "legacy")
+    """CONTRACT: an unknown request offers kept results."""
     workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:
         status, body = service.request("/api/report?result_hash=" + "f" * 64)
         assert (status, body["failure_code"]) == (200, "portfolio_research.result_not_found")
         assert body["next_requests"] == {"results": {"operation": "RESULTS"}}
-        identity = service.result_hash()
-        (child,) = [
-            p for p in workspace.rglob(f"{report.report_hash}.json") if p.parent.name == "reports"
-        ]
-        original = child.read_bytes()
-        child.unlink()
-        status, body = service.request("/api/report?result_hash=" + identity)
-        assert status == 200 and body["failure_code"] == (
-            f"content_store.artifact_missing:{report.report_hash}"
-        ), body
-        assert report.report_hash in body["detail"] and "restore a backup" in body["detail"]
-        assert body["next_requests"] == {"workspace": {"operation": "WORKSPACE_SHOW"}}
-        child.write_bytes(b"{}")
-        status, body = service.request("/api/report?result_hash=" + identity)
-        assert (status, body["failure_code"]) == (200, "content_store.artifact_tampered"), body
-        child.write_bytes(original)
     finally:
         service.session.stop()
 

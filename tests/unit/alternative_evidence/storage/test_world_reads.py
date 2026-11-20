@@ -1,4 +1,4 @@
-"""Which store answers the evidence readers, as the setting names it."""
+"""The evidence readers: a world body read is verified by digest and size; identity is unique."""
 
 from __future__ import annotations
 
@@ -11,20 +11,6 @@ from alphalattice.evidence.alternative_evidence.storage import world_reads
 from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py"
-
-
-@pytest.mark.proves("alternative_evidence.evidence_reads_setting_is_named")
-def test_the_reads_setting_defaults_to_world_and_refuses_another_name(monkeypatch):
-    """Unset, the setting reads world; it takes workspace; any other value is refused by name."""
-    monkeypatch.delenv(world_reads.SETTING, raising=False)
-    chosen = [world_reads.chosen()]
-    monkeypatch.setenv(world_reads.SETTING, "workspace")
-    chosen.append(world_reads.chosen())
-    monkeypatch.setenv(world_reads.SETTING, "both")
-    with pytest.raises(DataError) as unknown:
-        world_reads.chosen()
-    assert chosen == ["world", "workspace"]
-    assert unknown.value.failure.code == "alternative_evidence.evidence_reads_unknown"
 
 
 class _Lake:
@@ -76,3 +62,14 @@ def test_a_world_body_read_returns_its_verified_bytes_or_refuses_by_name(tmp_pat
         "alternative_evidence.source_object_tampered",
         "alternative_evidence.source_object_missing",
     ]
+
+
+@pytest.mark.proves("alternative_evidence.missing_body_refused_by_name_with_its_restore")
+def test_a_missing_body_blob_is_refused_by_name(tmp_path):
+    """World's blob for a body is not on disk: the read refuses by its code, and no longer offers
+    the removed rollback setting as a way on."""
+    missing = tmp_path / "blobs" / ("c" * 64)
+    with pytest.raises(DataError) as refused:
+        world_reads._blob(missing)
+    assert refused.value.failure.code == "alternative_evidence.world_body_missing"
+    assert "ALPHALATTICE_EVIDENCE_READS" not in str(refused.value)

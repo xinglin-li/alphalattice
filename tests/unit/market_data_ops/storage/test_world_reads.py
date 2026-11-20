@@ -1,4 +1,4 @@
-"""The market reads setting: world by default, the workspace as the rollback, and nothing else."""
+"""World's read relations, research-copy binding and admission marks."""
 
 from __future__ import annotations
 
@@ -8,34 +8,8 @@ from pathlib import Path
 import pytest
 
 from alphalattice.foundation.market_data_ops.storage import world_reads
-from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world_reads.py"
-
-
-@pytest.mark.proves("market_data_ops.market_reads_setting_is_world_or_workspace")
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        pytest.param(None, "world", id="unset"),
-        pytest.param("world", "world", id="world"),
-        pytest.param("workspace", "workspace", id="workspace"),
-        pytest.param("lake", None, id="anything else"),
-    ],
-)
-def test_the_setting_is_world_unless_it_names_the_workspace(monkeypatch, value, expected):
-    """Unset, the reads come from world; set, it names world or the workspace, and any other value
-    is refused by name before a read."""
-    if value is None:
-        monkeypatch.delenv(world_reads.SETTING, raising=False)
-    else:
-        monkeypatch.setenv(world_reads.SETTING, value)
-    if expected is None:
-        with pytest.raises(DataError) as refused:
-            world_reads.chosen()
-        assert refused.value.failure.code == "market_data.market_reads_unknown"
-    else:
-        assert world_reads.chosen() == expected
 
 
 @pytest.mark.proves("market_data_ops.world_relations_read_as_of_their_cutoff")
@@ -105,3 +79,15 @@ def test_an_admission_that_dropped_an_equal_time_row_does_not_hold_its_marks():
     as world's version of its key; an older row's drop leaves world the newer value."""
     admissions = [('{"bars": [2, 7]}', 1), ('{"bars": [3, 8]}', None), (None, None)]
     assert world_reads.taken(admissions) == [{"bars": [3, 8]}]
+
+
+@pytest.mark.proves("market_data_ops.binding_names_a_copy_by_its_research_input_place")
+def test_only_a_database_in_a_research_input_source_is_a_binding_copy(tmp_path):
+    """A copy's database sits at research-inputs/<64-hex binding>/source/market-data.duckdb; any
+    other place, or a name that is not a binding's hash, is no copy and reads its own tables."""
+    key = "a" * 64
+    copy = tmp_path / "ws" / "research-inputs" / key / "source" / "market-data.duckdb"
+    assert world_reads.binding(copy) == key
+    assert world_reads.binding(tmp_path / "ws" / "other" / key / "source" / "x.duckdb") is None
+    short = tmp_path / "ws" / "research-inputs" / "not-a-hash" / "source" / "market-data.duckdb"
+    assert world_reads.binding(short) is None

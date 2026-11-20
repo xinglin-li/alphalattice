@@ -14,7 +14,7 @@ import json
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Final, Literal, Protocol
+from typing import Any, Final, Protocol
 
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family, workspace_files
@@ -23,10 +23,6 @@ from alphalattice.kernel.shared_kernel.persistence import (
     replace_with_retry,
 )
 
-CLOSURE_STORE_ENV: Final = "ALPHALATTICE_CLOSURE_STORE"
-"""The workspace closure's reader: `log` reads its kept files; `legacy` reads its folder, for
-rollback; unset, a workspace reads its folder only while that holds a closure the upgrade has not
-moved (`MOVED`), and the log otherwise. Any other value is refused."""
 CLOSURE: Final = Path("artifacts", "feature-panel", "closure")
 """A workspace's own closure root, under its folder."""
 MANIFEST: Final = "research-workspace.json"
@@ -147,26 +143,17 @@ class KeptFiles:
         history.remove_workspace_file(self.workspace_id, f"{self.prefix}/{name}")
 
 
-def closure_store_mode() -> str | None:
-    """The switch's value (`CLOSURE_STORE_ENV`), None when it is unset; any other value refuses."""
-    mode = os.environ.get(CLOSURE_STORE_ENV)
-    if mode in {None, "log", "legacy"}:
-        return mode
-    raise ValueError("feature_closure.closure_store_invalid")
-
-
 def closure_files(root: Path) -> ClosureFiles:
     """The files of the closure root `root`: a workspace's own root reads its kept files, unless
-    its folder holds a closure the upgrade has not moved yet (`MOVED`, `CLOSURE_STORE_ENV`); every
-    other root reads its folder. A new workspace, its folder empty, starts on the log."""
-    mode = closure_store_mode()
+    its folder holds a closure the upgrade has not moved yet (`MOVED`); every other root reads its
+    folder. A new workspace, its folder empty, starts on the log."""
     workspace = _workspace_of(root)
-    if mode == "legacy" or workspace is None:
+    if workspace is None:
         return FolderFiles(root)
     held = history.kept_file_workspace(workspace)
     if held is None:
         return FolderFiles(root)
-    if mode is None and not _moved(held) and _unmoved(workspace):
+    if not _moved(held) and _unmoved(workspace):
         return FolderFiles(root)  # a 0.2.7 closure keeps its folder until the upgrade moves it
     return KeptFiles(held, CLOSURE.as_posix())
 
@@ -280,7 +267,7 @@ def closure_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     whose empty folder holds nothing to move, is not touched, so a later run that includes it
     keeps what was written since. Its ALL EQUAL reads every file this run moved (`_moved_by`)
     back from the log against its bytes, in the folder's write order, and the log holds no other;
-    a resumed run checks its own moves again. Its switch picks the closure's reader."""
+    a resumed run checks its own moves again."""
 
     def step(runner: Any) -> None:
         for workspace in runner.workspaces:
@@ -318,17 +305,10 @@ def closure_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
                     return False
         return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        # contract: remove the legacy choice when row U retires the workspace closure folders.
-        if mode == "old":
-            os.environ[CLOSURE_STORE_ENV] = "legacy"
-        else:  # unset: a workspace whose closure the upgrade moved reads the log
-            os.environ.pop(CLOSURE_STORE_ENV, None)
-
     def holds(workspace: Path) -> bool:
         if not _folder(workspace):  # every member, so a linked one is refused here
             return False
         held = history.kept_file_workspace(workspace)
         return held is None or not _moved(held)
 
-    return Family("panel-closure", step, verify, switch, holds)
+    return Family("panel-closure", step, verify, holds)

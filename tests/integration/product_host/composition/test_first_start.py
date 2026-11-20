@@ -53,7 +53,7 @@ def _held_family(stops: list[str]) -> Callable[[], Family]:
             old, new = workspace / "old-store.json", workspace / "new-store.json"
             return old.is_file() and (not new.is_file() or new.read_bytes() != old.read_bytes())
 
-        return Family("held", step, verify, lambda _mode: None, holds)
+        return Family("held", step, verify, holds)
 
     return make
 
@@ -179,10 +179,13 @@ def _upgrades_on_one_plan(
         assert log is not None
         events = log.read("SELECT count(*) FROM event")[0][0]
         code, shown = _cli(capsys, first, "upgrade", "show")
-        same = ("state", "workspaces", "families", "subject")
+        same = ("state", "workspaces", "subject")
         assert code == 0 and {k: shown["first_start"][k] for k in same} == {
             k: plan[k] for k in same
         }
+        # The compact answer pages a list over eight items; its section read is the whole list.
+        code, listed = _cli(capsys, first, "upgrade", "show", "--section", "first_start.families")
+        assert code == 0 and listed["value"] == plan["families"]
         assert [b["repository"] for b in shown["first_start"]["backups"]] == [
             b["repository"] for b in plan["backups"]
         ]

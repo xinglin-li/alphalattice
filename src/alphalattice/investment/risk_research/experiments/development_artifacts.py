@@ -40,7 +40,6 @@ from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import (
-    RISK_STORE_ENV,
     CovarianceChunkLease,
     RiskArtifactError,
     RiskArtifactStore,
@@ -406,7 +405,6 @@ def carry_risk_covariance(
 
 def risk_covariance_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """Move each sealed legacy chunk with its owning workspace and prove the original seals."""
-    setting = os.environ.get(RISK_STORE_ENV)
 
     def deferred(workspace: Path) -> bool:
         # A workspace backup restores market tables as exports, not as a live market database.
@@ -443,7 +441,7 @@ def risk_covariance_upgrade_family(holder: Callable[[Path], str | None]) -> Fami
                 if index == 0:
                     identity = history.workspace_on_log(workspace, workspace.name, identity)
                     world.admit_universe(workspace / "market-data.duckdb", identity)
-                packed = store.packed_covariance(chunk, axis)  # the runner selected the old store
+                packed = store.legacy_covariance(chunk)
                 store.admit_covariance(chunk, axis, packed, workspace_id=identity)
 
     def verify(runner: UpgradeRunner) -> bool:
@@ -462,15 +460,7 @@ def risk_covariance_upgrade_family(holder: Callable[[Path], str | None]) -> Fami
                     return False
         return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        if mode == "old":
-            os.environ[RISK_STORE_ENV] = "legacy"
-        elif setting is not None:
-            os.environ[RISK_STORE_ENV] = setting
-        else:
-            os.environ.pop(RISK_STORE_ENV, None)
-
-    return Family("risk-covariance", step, verify, switch, holds, deferred=deferred)
+    return Family("risk-covariance", step, verify, holds, deferred=deferred)
 
 
 __all__ = [

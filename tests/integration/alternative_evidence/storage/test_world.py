@@ -338,13 +338,11 @@ def test_an_acquisition_admits_its_documents_and_they_are_read_through_world(
     read = runtime.documents.resolve_source_object
     served = read(reference, as_of=request.evidence_as_of).content
     refused = [early_held]
-    for setting, cutoff in (("world", before), ("workspace", request.evidence_as_of)):
-        monkeypatch.setenv(world_reads.SETTING, setting)
-        with pytest.raises(ValueError, match="source_object_missing"):
-            read(reference, as_of=cutoff)
-        refused.append(runtime.documents.holds_source_object(reference, as_of=cutoff))
+    with pytest.raises(ValueError, match="source_object_missing"):
+        read(reference, as_of=before)
+    refused.append(runtime.documents.holds_source_object(reference, as_of=before))
     assert sha256(served).hexdigest() == reference.content_sha256
-    assert refused == [False, False, False]
+    assert refused == [False, False]
 
 
 @pytest.mark.proves("alternative_evidence.world_holds_each_document_once")

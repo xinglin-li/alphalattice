@@ -26,12 +26,10 @@ in deletion_queue and is retried at each start, and nothing a live_ref holds is 
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import sqlite3
 import threading
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -39,7 +37,6 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
-import alphalattice.kernel.data_layer.derived_files as derived_files
 import alphalattice.kernel.data_layer.governance as governance
 from alphalattice.control.workspace_runtime.storage.capacity import (
     FREE_FLOOR_BYTES,
@@ -234,25 +231,6 @@ def expirable(
     )
 
 
-def _file_table(table: str) -> None:
-    """Refuse a table StorePort does not keep as files (derived_files.TABLES)."""
-    if table not in derived_files.TABLES:
-        raise DataError(
-            f"{table} is not a table StorePort keeps as files; it keeps"
-            f" {', '.join(derived_files.TABLES)}",
-            code="data_layer.derived_table_not_admitted",
-        )
-
-
-def _kept(keep: Future[Path]) -> None:
-    """Log a keep on StorePort's worker that failed; its file stays read from its source."""
-    error = keep.exception()
-    if error is not None:
-        logging.getLogger(__name__).warning(
-            "a derived file was not kept (%s); a later read keeps it", error
-        )
-
-
 class StorePort:
     """The Host's one writer of the catalog; open it with `StorePort.open`."""
 
@@ -262,7 +240,6 @@ class StorePort:
         with log.reading() as con:
             self.table_ids = world_table_ids(con)
         self._writer = threading.RLock()
-        self._keeping = ThreadPoolExecutor(1, thread_name_prefix="derived-file-keep")
         self.started: dict[str, list[str]] = {}
         self._repaired = 0  # every admission snapshot up to this one has its event in the log
 
@@ -662,103 +639,11 @@ class StorePort:
         inserted = self.lake.execute(f"INSERT INTO {target} BY NAME {fresh} ORDER BY {order}")
         return int(inserted.fetchall()[0][0])
 
-    def keep_file(
-        self,
-        table: str,
-        *,
-        recipe_key: str,
-        part: str,
-        digest: str,
-        source: Path,
-        rooted_by: str | None,
-    ) -> Path:
-        """Hold the file `source` as the derived partition (`table`, `recipe_key`, `part`,
-        `digest`) of a table held as files (derived_files): its cache entry and `rooted_by`'s root
-        recorded with the log's batch, and its body placed once per digest, while the catalog's
-        writer is held; returns the body's path. A root a crash loses before its batch commits
-        costs only a keep at the next read, from the source that stays written. Refused by name:
-        a table StorePort does not keep as files."""
-        _file_table(table)
-        with self._writer:
-            import pyarrow.parquet as pq  # lazy: the data extra, as DuckDB
-
-            body = derived_files.keep(
-                self.root,
-                self.log,
-                table,
-                recipe_key=recipe_key,
-                part=part,
-                digest=digest,
-                source=source,
-                rows=pq.ParquetFile(source).metadata.num_rows,
-                workspace=rooted_by,
-            )
-        return body
-
-    def keep_file_later(
-        self,
-        table: str,
-        *,
-        recipe_key: str,
-        part: str,
-        digest: str,
-        source: Path,
-        rooted_by: str | None,
-    ) -> None:
-        """`keep_file` on StorePort's own worker, so the read that found the file unkept never
-        waits on its keep; `close` waits for every keep handed over. A keep that fails is logged
-        and costs only a keep at a later read. Refused by name here, not on the worker: a table
-        StorePort does not keep as files."""
-        _file_table(table)
-        self._keeping.submit(
-            self.keep_file,
-            table,
-            recipe_key=recipe_key,
-            part=part,
-            digest=digest,
-            source=source,
-            rooted_by=rooted_by,
-        ).add_done_callback(_kept)
-
-    def root_files(
-        self,
-        table: str,
-        workspace: str,
-        digests: Collection[str],
-        *,
-        unread_for: timedelta,
-        verified: Callable[[str], bool],
-    ) -> dict[str, int]:
-        """Make the kept partitions of the file table `table` with these digests `workspace`'s
-        only roots of it, evict those of them it alone roots and nobody has read for
-        `unread_for` whose source `verified` still proves, then
-        collect the table. A digest not kept yet is rooted by its keep. The caller marks the
-        reads it noted first. The roots dropped, the bodies evicted and collected."""
-        _file_table(table)
-        with governance.COPYING, self._writer:
-            kept = self.log.read(
-                "SELECT recipe_key, part, input_digest FROM cache_entry WHERE derived_table = ?"
-                " AND input_digest IN (SELECT value FROM json_each(?))",
-                (table, json.dumps(sorted(digests))),
-            )
-            dropped = self.log.rooted(workspace, table, [tuple(row) for row in kept], exactly=True)
-            before = self.log.clock() - unread_for // timedelta(microseconds=1)
-            stale = derived_files.unread(self.log.read, table, workspace, before)
-            evicted = derived_files.drop(
-                self.root,
-                self.log,
-                table,
-                [digest for digest in stale if verified(digest)],
-            )
-        collected = self.collect(table)
-        return {"unrooted": dropped, "evicted": len(evicted), "collected": collected}
-
     def collect(self, table: str | None = None) -> int:
         """Drop a derived table's partitions whose cache entries no workspace roots (the log's
         cache_root), as one catalog snapshot, and those entries: a cache holds no fact, so a
-        partition no workspace reads goes. A table held as files (derived_files) drops each such
-        partition's body, then its entry; nothing outside the data root is touched. The rows
-        dropped, or for a file table the bodies. With no table, every family: each derived
+        partition no workspace reads goes; nothing outside the data root is touched. The rows
+        dropped. With no table, every family: each derived
         table the log caches, then the artifact bodies no live reference holds (`collect_unheld`),
         each artifact counted once."""
         if table is None:
@@ -771,10 +656,6 @@ class StorePort:
     def _collect(self, table: str) -> int:
         import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
-        if table in derived_files.TABLES:
-            with self._writer:
-                found = derived_files.unrooted(self.log.read, table)
-                return len(derived_files.drop(self.root, self.log, table, found))
         family = "feature_set_" if table.startswith("feature_set_") else table
         target, run = f"lake.derived.{table}", self.lake.execute
         with self._writer:
@@ -913,11 +794,9 @@ class StorePort:
         return {"expired": len(expiring), "deleted": len(deleted)}
 
     def close(self) -> None:
-        """Finish the keeps handed over, then close the Host's DuckDB session once no call holds
-        it; the log is the caller's. A call borrows the session under the writer outside the
-        history's lock, so the close waits for it there: DuckDB refuses to close a session a
-        call is using."""
-        self._keeping.shutdown(wait=True)  # its keeps take the writer, so before it
+        """Close the Host's DuckDB session once no call holds it; the log is the caller's. A call
+        borrows the session under the writer outside the history's lock, so the close waits for
+        it there: DuckDB refuses to close a session a call is using."""
         with self._writer:
             self.lake.close()
 

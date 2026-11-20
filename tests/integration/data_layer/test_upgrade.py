@@ -50,9 +50,7 @@ def family(name):
             (workspace / (name + '.new')).read_bytes()
             == (workspace / (name + '.old')).read_bytes()
         )
-    def switch(mode):
-        (workspace / (name + '.mode')).write_text(mode)
-    return Family(name, step, verify, switch)
+    return Family(name, step, verify)
 try:
     with HostLog.open(root) as log:
         runner = UpgradeRunner(
@@ -78,7 +76,6 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
     workspace.mkdir()
     for name in ("one", "two"):
         (workspace / (name + ".old")).write_text(name + " unchanged old bytes")
-        (workspace / (name + ".mode")).write_text("old")
     (workspace / "research-workspace.json").write_text('{"workspace_id": "fixture"}')
     with HostLog.open(root):
         pass  # seed and flush before the online backup
@@ -182,8 +179,6 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
 
     first = upgrade(child)
     assert first.returncode == 9, first.stderr
-    assert (workspace / "one.mode").read_text() == "new"
-    assert (workspace / "two.mode").read_text() == "old"
     with HostLog.open(root) as log:
         authority = json.loads(
             log.read(
@@ -207,7 +202,6 @@ def test_upgrade_finishes_only_verified_families_and_resumes_the_first_undone(tm
     assert (workspace / "one.attempts").read_text() == "x"
     assert (workspace / "two.attempts").read_text() == "xx"
     for name in ("one", "two"):
-        assert (workspace / (name + ".mode")).read_text() == "new"
         assert (workspace / (name + ".new")).read_bytes() == (
             workspace / (name + ".old")
         ).read_bytes()

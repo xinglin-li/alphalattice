@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -55,6 +56,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.kernel.data_layer import history as data_history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
@@ -109,9 +111,34 @@ def readback() -> dict[str, Any]:
 EVIDENCE = {"state": "EVIDENCE_AUTHORITY_NOT_ADMITTED", "evidence_as_of": None}
 
 
+def _registered(listings: tuple[str, ...]) -> None:
+    """The fixture's listings registered in world, as a market admission registers them: the
+    catalog keeps Risk only over listings it holds."""
+    import pyarrow as pa
+
+    from alphalattice.foundation.market_data_ops.storage.world import world_listing
+    from alphalattice.kernel.data_layer.chain import canonical
+    from alphalattice.kernel.data_layer.store import stage
+
+    log, port = data_history.held(), data_history.store()
+    key = {"family": "provider", "name": "committee-fixture", "version": 1}
+    text = canonical(key | {"text": "The Committee fixture's listings."}).decode()
+    log.record("definition.registered", ("definition", "provider/committee"), key, text=text)
+    provider = log.require_lineage("provider", "committee-fixture")
+    rows = {
+        "listing_id": [world_listing(item) for item in listings],
+        "market_id": [port.market_id("XNYS", provider)] * len(listings),
+    }
+    with stage(data_history.data_root(), "listing", provider, pa.table(rows)) as staged:
+        port.commit(staged)
+
+
 @pytest.fixture
-def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    """The book's installed Risk surface over real sessions and the market data's later returns."""
+def risk_source(
+    readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Any]:
+    """The book's installed Risk surface over real sessions and the market data's later returns,
+    dated in a Host's history as the Committee dates it: its factor surfaces live in the catalog."""
     positions = portfolio_update_positions(
         PortfolioUpdatePublication.model_validate(readback["publication"])
     )
@@ -188,7 +215,12 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     state.producer = context.RiskSurfaceProducer()
     monkeypatch.setattr(context, "RiskSurfaceProducer", lambda: state.producer)
     state.risk = lambda body=readback, held=positions: date_risk(tmp_path, manifest, body, held)
-    return state
+    data_history.open_history("committee", "committee", tmp_path)
+    try:
+        _registered(listings)
+        yield state
+    finally:
+        data_history.close_history()
 
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):

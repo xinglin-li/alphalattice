@@ -78,10 +78,8 @@ def test_every_feature_row_write_ends_its_years_seals() -> None:
     every function writing ``feature_daily_current`` ends the seals of the years it touches, in
     its own transaction; only the schema functions, whose changes key the seals, are exempt."""
 
-    # A function that only reads its rows into another table writes none of them:
-    # derived_features.mirror copies them into the catalog's parts.
+    # A function that only reads its rows into another table writes none of them.
     writers = _row_writers("feature_daily_current", "_clear_feature_year_seals")
-    assert ("foundation/feature_engine/storage/derived_features.py", "mirror") not in writers
     assert {
         ("foundation/feature_engine/storage/repositories.py", name)
         for name in ("discard_part_rows", "retire_rows_outside_layer")

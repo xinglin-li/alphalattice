@@ -1,17 +1,15 @@
 """An evidence document's body read from world at its selection's cutoff, or from the workspace.
 
 The Host's evidence readers take a reference's original bytes through `body`: in a Host whose
-StorePort is open, and unless ALPHALATTICE_EVIDENCE_READS is `workspace` (the rollback), the
-version of its source document whose body is the reference's own and that world knew by the
-cutoff, its blob under the data root's blobs/; a body world knew only after the cutoff is refused
-as missing, whichever reference or set carries it (`known`, by the body's digest). A body world
-does not hold, never admitted, and every read outside such a Host, the workspace's own
-source-object store answers, as 0.2.7 did.
+StorePort is open, the version of its source document whose body is the reference's own and
+that world knew by the cutoff, its blob under the data root's blobs/; a body world knew only
+after the cutoff is refused as missing, whichever reference or set carries it (`known`, by the
+body's digest). A body world does not hold, never admitted, and every read outside such a Host,
+the workspace's own source-object store answers, as 0.2.7 did.
 """
 
 from __future__ import annotations
 
-import os
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -28,25 +26,11 @@ from ..sources.contracts import (
     AcquiredEvidenceDocumentReference,
 )
 
-SETTING: Final = "ALPHALATTICE_EVIDENCE_READS"
-CHOICES: Final = ("world", "workspace")
-
-
-def chosen() -> str:
-    """The setting's value; refused by name when it names neither choice."""
-    value = os.environ.get(SETTING, CHOICES[0])
-    if value not in CHOICES:
-        raise DataError(
-            f"{SETTING} is {value!r}; set it to world or workspace, or unset it for world",
-            code="alternative_evidence.evidence_reads_unknown",
-        )
-    return value
-
 
 def serving() -> Any | None:
-    """The Host's StorePort when world serves the evidence reads, else None: the setting chooses
-    the workspace, or this process holds no Host history."""
-    return history.store() if chosen() == "world" else None
+    """The Host's StorePort when world serves the evidence reads, else None: this process holds
+    no Host history."""
+    return history.store()
 
 
 class Served(NamedTuple):
@@ -169,8 +153,7 @@ def _blob(path: Path) -> bytes:
     except OSError as error:
         raise DataError(
             f"world holds the evidence body {path.name} but it is not under {path.parent} "
-            f"({error}); restore the data root from its last backup, or set {SETTING}=workspace "
-            "to read the workspace's own store",
+            f"({error}); restore the data root from its last backup",
             code="alternative_evidence.world_body_missing",
         ) from error
 

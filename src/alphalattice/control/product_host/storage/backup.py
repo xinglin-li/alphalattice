@@ -109,10 +109,12 @@ COPIED: Final[tuple[str, ...]] = (
     "runtime/artifacts/data-change-executions",
     "runtime/artifacts/data-valuation-receipts",
     "runtime/artifacts/index",
+    "runtime/artifacts/portfolio-strategy-lab",
 )
 """The records copied as they are: the manifest, the Evidence and CRO records, the research
 programs and evidence, the Host's records (goals, Portfolio research runs), the feature trials,
-and the data changes' plans, executions, valuation receipts and their committed index."""
+the data changes' plans, executions, valuation receipts and their committed index, and the
+Portfolio ledger's records, whose descriptors rebuild the Portfolio results the backup carries."""
 LISTED: Final[tuple[str, ...]] = (
     "research-inputs",
     "authority",
@@ -475,6 +477,14 @@ class WorkspaceBackups:
                     raise _Stopped
                 digest, size = read_file(path)
                 relative = (arrays.CARRIED / path.name).as_posix()
+                entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
+            # So do its execution outcomes and Portfolio results, which the catalog alone keeps.
+            history.carry_results(self.workspace, staging)
+            for path in history.carried_result_files(staging):
+                if stop():
+                    raise _Stopped
+                digest, size = read_file(path)
+                relative = path.relative_to(staging).as_posix()
                 entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
             for path in carry_risk_covariance(
                 self.workspace / "research-experiments", staging / "research-experiments"

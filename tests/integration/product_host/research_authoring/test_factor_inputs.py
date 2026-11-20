@@ -80,7 +80,7 @@ def test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_
 
 
 def _kept_read_back_and_removed(tmp_path: Path, original: Path) -> None:
-    """Upgrade a copy of `original`'s research inputs, roll back and forward, remove the copies
+    """Upgrade a copy of `original`'s research inputs, remove the copies
     after a replayed backup, and read every binding back equal."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -96,11 +96,10 @@ def _kept_read_back_and_removed(tmp_path: Path, original: Path) -> None:
     assert family.verify(runner) is True  # ALL EQUAL
     assert not family.holds(workspace)
     reads: dict[str, FactorInputBundle] = {}
-    for mode in ("old", "new", "old", "new"):  # the rollback, and forward again
-        family.switch(mode)
+    for _round in range(2):  # each round reads every binding equal to its first read
         for binding_hash in expected:
             source, _artifacts = factor_input_paths(workspace, binding_hash)
-            assert ("views" in source.parts) == (mode == "new")  # the data root's, or the copy
+            assert "views" in source.parts  # the data root's, never a copy
             bundle = read_factor_bundle(workspace, binding_hash)
             assert reads.setdefault(binding_hash, bundle) == bundle
     copies.step(runner)

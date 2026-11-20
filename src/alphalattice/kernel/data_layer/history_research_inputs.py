@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Iterable
 from contextlib import closing
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 from alphalattice.kernel.data_layer.history_runtime import (
     _array_reader,
@@ -22,16 +21,12 @@ from alphalattice.kernel.data_layer.root import (
     data_root,
 )
 
-INPUT_STORE_ENV: Final = "ALPHALATTICE_INPUT_STORE"
 
-
-def research_input_root(binding_hash: str, workspace: Path) -> Path | None:
+def research_input_root(binding_hash: str, workspace: Path) -> Path:
     """The `research-inputs/` folder the door reads a binding from for `workspace`: its kept view
-    on this data root (data_layer.inputs), or None while the upgrade reads the workspace's own
-    copies. A binding this root does not keep is refused by name: no read falls back to another
-    store. A workspace the log does not know shares the view `-`, as it has no selection."""
-    if os.environ.get(INPUT_STORE_ENV) == "legacy":
-        return None
+    on this data root (data_layer.inputs). A binding this root does not keep is refused by name:
+    no read falls back to another store. A workspace the log does not know shares the view `-`,
+    as it has no selection."""
     import alphalattice.kernel.data_layer.inputs as inputs  # lazy: BLAKE3
 
     with _array_reader() as (root, read):

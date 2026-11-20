@@ -203,7 +203,6 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 
         assert "market-data" in [make().name for make in first_start.FAMILIES]
-        monkeypatch.setenv(world_reads.SETTING, "world")
         family = market_upgrade_family(lambda _workspace: "w1")
         assert not family.holds(store.workspace)
         with store.database.transaction() as connection:
@@ -235,7 +234,6 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             )
             .fetchone()[0]
         )
-        assert world_reads.chosen() == "world"
         attrs = json.loads(
             log.read(
                 "SELECT attrs FROM event WHERE type = 'admission' AND subject_id = 'w1'"
@@ -687,7 +685,6 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 
     feature = FeatureStateRepository(store.database, market_data=store)
-    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
     assert [
         feature.sector_classifications(("listing-aapl",), cutoff_us=cutoff)
         for cutoff in (known - 1, known)
@@ -751,13 +748,8 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         return real_map(*args, **kwargs)
 
     monkeypatch.setattr(world, "sector_map", tracked)
-    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
     assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
     assert seen_world
-    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "workspace")
-    seen_world.clear()
-    assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
-    assert not seen_world
     connection = store._connect()
     try:
         connection.execute("CHECKPOINT")
@@ -784,7 +776,6 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     assert real_map(("listing-aapl",), session=date.max, cutoff_us=world_reads.LATEST) == {
         "listing-aapl": "Energy"
     }
-    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
     seen_world.clear()
     if focus == "workspace":
         assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
@@ -817,7 +808,6 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             port, "commit", lambda batch: commit(batch)._replace(dropped={"equal_time": 1})
         )
         world.admit_sectors(database, "w1")
-    monkeypatch.setenv("ALPHALATTICE_MARKET_READS", "world")
     seen_world.clear()
     assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Utilities"}
     assert not seen_world  # the marks of an equal-time drop cannot make world serve the workspace
@@ -948,8 +938,7 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         uses["world"] += 1
         return relations(cutoff_us, held_us, listings, workspace_id=workspace_id)
 
-    def read(setting: str) -> tuple[object, ...]:
-        monkeypatch.setenv(world_reads.SETTING, setting)
+    def read() -> tuple[object, ...]:
         before = uses["world"]
         values = (
             store.raw_bars_by_listing(ids),
@@ -966,12 +955,11 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         )[0][0]
 
     monkeypatch.setattr(world_reads, "relations", counted)
-    host = [read("workspace"), read("world")]  # the Host admits the unadmitted tables first
+    host = [read()]  # the Host admits the unadmitted tables first
     assert store.raw_bars("listing-aapl", cutoff_us=0) == ()
     receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
     checked = []
-    for setting in ("workspace", "world", "workspace"):
-        monkeypatch.setenv(world_reads.SETTING, setting)
+    for _ in range(3):
         before = uses["world"]
         checked.append(
             (
@@ -988,20 +976,19 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
             )
         )
     assert [value for value, _calls in checked] == [receipt] * 3
-    assert [calls for _value, calls in checked][::2] == [0, 0]
-    assert checked[1][1] > 0
+    assert all(calls > 0 for _value, calls in checked)
     bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)
-    written = [read("workspace"), read("world")]
+    written = [read()]
     before = admissions()
     # an update writing and reading listing by listing, its commits in a retained instance's
     # WAL; the held file defers the admission to the first read after it closes
     with store.database.retain(read_only=False):
         with store.writing():
             bars(store, manifest, (NEW,), 104.0, 2)
-            inside = read("world")
+            inside = read()
             bars(store, manifest, (NEW,), 105.0, 3)
-        held = (admissions() - before, read("world"))
-    after = read("world")  # the first read after the file closes admits
+        held = (admissions() - before, read())
+    after = read()  # the first read after the file closes admits
     updated = (admissions() - before, after)
     # Import one source's live, delisted and re-listed intervals together. The real
     # StorePort/catalog boundary must retain their values and historical opening state.
@@ -1064,22 +1051,20 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         assert world_reads.holds(database, world_reads.LATEST) == equal
     history.release_history()
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(database.parent.parent / "data"))
-    child = [read("workspace"), read("world")]
+    child = [read()]
     bars(store, manifest, (NEW,), 106.0, 4)  # a write no Host has admitted
-    unseen = [read("workspace"), read("world")]
-    assert [(own[0] == seen[0], own[1], seen[1]) for own, seen in (host, written, child)] == [
-        (True, 0, 4)
-    ] * 3
-    assert written[1][0][0]["listing-aapl"][-1].close == 103.0
+    unseen = [read()]
+    assert [read_[1] for read_ in (host[0], written[0], child[0])] == [4, 4, 4]
+    assert written[0][0][0]["listing-aapl"][-1].close == 103.0
     assert (inside[0][0]["listing-aapl"][-1].close, inside[1]) == (104.0, 0)
     assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (0, 105.0, 0)
     assert (updated[0], updated[1][0][0]["listing-aapl"][-1].close, updated[1][1]) == (1, 105.0, 4)
-    assert (unseen[0][0] == unseen[1][0], unseen[1][1]) == (True, 0)
+    assert unseen[0][1] == 0  # a write no Host admitted is not served by world
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
 def test_a_first_use_reads_at_its_own_moment_the_mappings_and_members_it_wrote(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """A Sunday first use reads as of its own moment every mapping and member it wrote that day,
     and its receipt verifies at once."""
@@ -1103,7 +1088,6 @@ def test_a_first_use_reads_at_its_own_moment_the_mappings_and_members_it_wrote(
         observed_at=now,
     )
     receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
-    monkeypatch.setenv(world_reads.SETTING, "world")
     history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
     try:
         world.admit(store.workspace / "market-data.duckdb", "w1")
@@ -1174,8 +1158,7 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
         uses["world"] += 1
         return relations(cutoff_us, held_us, listings, workspace_id=workspace_id)
 
-    def read(copy: MarketDataRepository, setting: str) -> tuple[object, ...]:
-        monkeypatch.setenv(world_reads.SETTING, setting)
+    def read(copy: MarketDataRepository) -> tuple[object, ...]:
         before = uses["world"]
         values = (
             copy.raw_bars_by_listing(["listing-aapl", "listing-msft"]),
@@ -1185,17 +1168,16 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
         return values, uses["world"] - before
 
     monkeypatch.setattr(world_reads, "relations", counted)
-    selected, unselected = (read(copy, "world") for copy in copies)
-    own = read(copies[0], "workspace")
+    selected, unselected = (read(copy) for copy in copies)
     made = history.store().log.read("SELECT count(*) FROM selection")[0][0]
-    assert (made, selected[1], unselected[1], own[1]) == (1, 3, 0, 0)
-    assert selected[0] == own[0] == unselected[0]
+    assert (made, selected[1], unselected[1]) == (1, 3, 0)
+    assert selected[0] == unselected[0]
     assert [bar.close for bar in selected[0][0]["listing-aapl"]] == [101.0] * 4
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
 def test_a_selection_before_a_first_use_reads_its_members_though_world_saw_them_before_bars(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """A selection of the session before a first use reads its manifest's members, though the
     first use's listings reached world before their bars."""
@@ -1206,7 +1188,6 @@ def test_a_selection_before_a_first_use_reads_its_members_though_world_saw_them_
     manifest = replace(fixture, profile=replace(fixture.profile, manifest_as_of=now.date()))
     store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
     store.bootstrap(manifest)
-    monkeypatch.setenv(world_reads.SETTING, "world")
     history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
     try:
         world.admit(store.workspace / "market-data.duckdb", "w1")

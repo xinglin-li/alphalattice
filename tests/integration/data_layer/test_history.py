@@ -384,6 +384,10 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             assert result is not None and result.fetchall() == []
         with history.catalog_projection("series", query, ([artifact],)) as result:
             assert result is not None and result.fetchall() == [(1.5,)]
+    # A copy's root goes back with its hold, and the catalog read on it outside a Host with it.
+    with history.own_root(results_root), history.catalog_session(results_root) as cursor:
+        assert cursor is not None
+    assert results_root.resolve() not in history._catalog_surfaces
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         assert con.execute(
             "SELECT count(*) FROM event WHERE type = 'experience.read'"
@@ -457,3 +461,154 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     assert views.value.failure.code == "data_layer.history_unavailable"
     assert not history.recording()
     HostLog.open(root).close()  # the refusal released the data root's lock
+
+
+def _carried_results(tmp_path: Path):
+    """A workspace whose catalog on its own root keeps an outcome and the three Portfolio kinds,
+    each read back there: (workspace, its root, the results, what its root reads)."""
+    from datetime import date
+    from uuid import NAMESPACE_URL, uuid5
+
+    import pyarrow as pa
+
+    at = datetime(2024, 1, 2, 21, tzinfo=UTC)
+    outcome = pa.table(
+        {
+            "listing_id": ["listing-aapl"],
+            "symbol": ["AAPL"],
+            "sequence": pa.array([0], pa.int32()),
+            "formation_session": [date(2024, 1, 2)],
+            "formation_close_at": [at],
+            "entry_session": [date(2024, 1, 3)],
+            "entry_open_at": [at],
+            "holding_end_session": [date(2024, 1, 4)],
+            "holding_end_open_at": [at],
+            "actual_session_span": pa.array([1], pa.int16()),
+            "entry_status": ["OPEN"],
+            "holding_end_status": ["OPEN"],
+            "entry_open_split_adjusted": [100.0],
+            "holding_end_open_split_adjusted": [101.0],
+            "period_dividend_split_adjusted": [0.0],
+            "simple_return": [0.01],
+            "entry_source_row_hash": ["1" * 64],
+            "holding_end_source_row_hash": ["2" * 64],
+            "row_hash": ["3" * 64],
+        }
+    )
+    series = pa.table({"name": ["value"], "session_date": [date(2024, 1, 2)], "value": [-0.0]})
+    holding = pa.table(
+        {
+            "as_of": [date(2024, 1, 2)],
+            "listing_id": [str(uuid5(NAMESPACE_URL, "listing-aapl"))],
+            "weight": [1.0],
+            "shares": [2.0],
+        }
+    )
+    results = (
+        ("portfolio_benchmark", "b" * 64, "series", series),
+        ("portfolio_execution_series", "c" * 64, "series", series),
+        ("portfolio_report_holding", "d" * 64, "holding", holding),
+    )
+    workspace, source = tmp_path / "workspace", tmp_path / "source-root"
+    workspace.mkdir()
+    history.open_history("source", "workspace", workspace, source)
+    try:
+        history.write_execution_outcome("a" * 64, outcome)
+        for kind, digest, table, values in results:
+            history.write_portfolio_result(kind, digest, {"kind": kind}, values, result_table=table)
+        expected = history.read_execution_outcome("a" * 64)
+        held = {
+            kind: history.read_portfolio_result(kind, digest, result_table=table)
+            for kind, digest, table, _ in results
+        }
+    finally:
+        history.close_history()
+    return workspace, source, results, (outcome, expected, held)
+
+
+def _proved(seen: list[tuple[Path, str]]):
+    """Checks that admit every carried result and note what each was asked about."""
+
+    def check(folder: Path, digest: str, _profile: object, _rows: object) -> None:
+        seen.append((folder, digest))
+
+    return dict.fromkeys(
+        (
+            "execution_outcome",
+            "portfolio_benchmark",
+            "portfolio_execution_series",
+            "portfolio_report_holding",
+        ),
+        check,
+    )
+
+
+@pytest.mark.proves("data_layer.copy_carries_its_catalog_results")
+def test_a_copy_carries_its_outcomes_and_portfolio_results_to_another_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A carried result is admitted once its owner proves it, held and committed before its file
+    goes, and a refusal releases only the refusing opening's history."""
+    workspace, source, results, (outcome, expected, held) = _carried_results(tmp_path)
+    copy, target = tmp_path / "copy", tmp_path / "copy-root"
+    copy.mkdir()
+    history.open_history("other", "other", tmp_path, target)  # the root keeps them already
+    try:
+        history.write_execution_outcome("a" * 64, outcome)
+        for kind, digest, table, _ in results:
+            history.write_portfolio_result(kind, digest, *held[kind], result_table=table)
+    finally:
+        history.close_history()
+
+    assert history.carry_results(workspace, copy, root=source) == 4
+    assert len(history.carried_result_files(copy)) == 4
+    seen: list[tuple[Path, str]] = []
+    durable: list[int] = []  # the copy's holds another process reads as the first file goes
+    unlink = Path.unlink
+
+    def observed(path: Path, missing_ok: bool = False) -> None:
+        if history.CARRIED_RESULTS.as_posix() in path.as_posix() and not durable:
+            log = target / "machine" / "log.sqlite"
+            with closing(sqlite3.connect(f"file:{log.as_posix()}?mode=ro", uri=True)) as other:
+                durable.append(
+                    other.execute(
+                        "SELECT count(*) FROM live_ref"
+                        " WHERE root_kind = 'workspace' AND root_id = 'copy'"
+                    ).fetchone()[0]
+                )
+        unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", observed)
+    history.open_history("copy", "copy", copy, target, carried_checks=_proved(seen))
+    monkeypatch.undo()
+    try:
+        assert sorted(seen) == [(copy, digit * 64) for digit in "abcd"]
+        assert not history.carried_result_files(copy)  # admitted, and gone
+        assert durable == [4]  # every hold committed before the first carried file went
+        assert history.read_execution_outcome("a" * 64).equals(expected)
+        for kind, digest, table, _ in results:
+            profile, rows = history.read_portfolio_result(kind, digest, result_table=table)
+            assert (profile, rows.cast(held[kind][1].schema)) == held[kind]
+            assert history.portfolio_result_held(kind, digest, "copy")
+    finally:
+        history.close_history()
+
+    stray = copy / history.CARRIED_RESULTS / "results" / f"{'e' * 64}.parquet"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"")
+    with history.own_root(target):
+        with pytest.raises(DataError) as refusal:
+            history.open_history("copy", "copy", copy, carried_checks=_proved([]))
+        assert refusal.value.failure.code == "data_layer.carried_result_invalid"
+        assert history.holding() is None  # the opening that refused released its history
+        history.open_history("other", "other", tmp_path)
+        bound = history.opened_log()
+        try:  # with another Host open, the refusing opening releases only its own reference
+            with pytest.raises(DataError):
+                history.open_history("copy", "copy", copy, carried_checks=_proved([]))
+            assert history.holding() is not None
+            assert history.opened_log() == bound  # and that Host keeps its own workspace
+            assert stray.is_file()
+        finally:
+            history.release_history()
+        assert history.holding() is None

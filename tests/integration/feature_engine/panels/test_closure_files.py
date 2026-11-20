@@ -17,7 +17,6 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
 )
 from alphalattice.foundation.feature_engine.panels.closure_files import (
     CLOSURE,
-    CLOSURE_STORE_ENV,
     FolderFiles,
     KeptFiles,
     closure_upgrade_family,
@@ -31,13 +30,6 @@ RUN = "0.2.8"
 PENDING = "feature-ledger/operational/pending/" + "b" * 64 + ".json"
 
 
-@pytest.fixture(autouse=True)
-def _reader(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The closure's reader starts unset, and is restored whatever a test leaves."""
-    monkeypatch.setenv(CLOSURE_STORE_ENV, "log")
-    monkeypatch.delenv(CLOSURE_STORE_ENV)
-
-
 def _old_workspace(workspace: Path) -> tuple[PanelClosureArtifactStore, str, object]:
     """A 0.2.7 workspace's closure folder, registered on the log: a JSON child, a Parquet child
     and a ledger head pointer, written by the store before the move."""
@@ -46,8 +38,8 @@ def _old_workspace(workspace: Path) -> tuple[PanelClosureArtifactStore, str, obj
     history.held().record(
         "workspace.created", ("workspace", "w1"), {"folder": str(workspace.resolve()), "name": "w"}
     )
-    os.environ[CLOSURE_STORE_ENV] = "legacy"
     store = PanelClosureArtifactStore(ArtifactResolver(workspace / "artifacts"))
+    store._files = FolderFiles(store.root)  # the 0.2.7 folder, written before the move
     content = hashlib.sha256(b"map").hexdigest()
     store.publish_json(category="sector-maps", content_hash=content, payload={"map": 1})
     table = pa.table({"value": [1.0, 2.0]})
@@ -55,7 +47,6 @@ def _old_workspace(workspace: Path) -> tuple[PanelClosureArtifactStore, str, obj
         category="feature-ledger/patch-rows", content_hash=content, kind="rows", table=table
     )
     store.files.write(HEAD, b'{"head_hash":"h1"}')
-    os.environ.pop(CLOSURE_STORE_ENV)
     return store, content, reference
 
 
@@ -79,7 +70,6 @@ def _moved(workspace: Path) -> SimpleNamespace:
     family = closure_upgrade_family(lambda _workspace: "w1")
     family.step(runner)
     assert family.verify(runner)
-    family.switch("new")
     return runner
 
 
@@ -130,16 +120,14 @@ def test_the_upgrade_moves_a_workspaces_closure_onto_the_log_all_equal(tmp_path:
 
 
 @pytest.mark.proves("feature_engine.closure_writes_go_to_the_log_and_rollback_reads_the_folder")
-def test_after_the_move_writes_go_to_the_log_and_the_legacy_switch_reads_the_folder(
+def test_after_the_move_writes_go_to_the_log_across_a_restart(
     tmp_path: Path,
 ) -> None:
     """After the move, writes and removals stay on the log across a restart and a later run that
-    includes the workspace, the folder unchanged; the old switch reads the folder as it was."""
+    includes the workspace, the folder unchanged."""
     workspace = tmp_path / "workspace"
     _old_workspace(workspace)
-    os.environ[CLOSURE_STORE_ENV] = "legacy"
     FolderFiles(workspace / "artifacts" / "feature-panel" / "closure").write(PENDING, b"{}")
-    os.environ.pop(CLOSURE_STORE_ENV)
     _moved(workspace)
     store = PanelClosureArtifactStore(ArtifactResolver(workspace / "artifacts"))
     store.files.write(HEAD, b'{"head_hash":"h2"}')
@@ -159,11 +147,6 @@ def test_after_the_move_writes_go_to_the_log_and_the_legacy_switch_reads_the_fol
     assert (folder / HEAD).read_bytes() == b'{"head_hash":"h1"}'
     assert not (folder / "sector-maps" / f"{added}.json").exists()
     assert store.holds("sector-maps", added) and store.files.read(HEAD) == b'{"head_hash":"h2"}'
-    closure_upgrade_family(lambda _workspace: None).switch("old")
-    rolled = PanelClosureArtifactStore(ArtifactResolver(workspace / "artifacts"))
-    assert isinstance(rolled.files, FolderFiles) and not rolled.holds("sector-maps", added)
-    closure_upgrade_family(lambda _workspace: None).switch("new")
-    assert CLOSURE_STORE_ENV not in os.environ
 
 
 @pytest.mark.proves("feature_engine.kept_closure_names_follow_their_writes")

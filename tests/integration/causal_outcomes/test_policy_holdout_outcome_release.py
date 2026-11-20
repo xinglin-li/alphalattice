@@ -465,7 +465,6 @@ def test_existing_release_index_requires_an_exact_schema(
     index.write_text(
         json.dumps({"claim_hash": release.claim_hash, "release_hash": release.release_hash})
     )
-    monkeypatch.setenv("ALPHALATTICE_EXECUTION_OUTCOME_STORE", "legacy")
     cases = _outcome_read_cases(old_workspace / "artifacts")
     before = [(name, read()) for name, read in cases]
     family = execution_outcome_upgrade_family()
@@ -494,16 +493,9 @@ def test_existing_release_index_requires_an_exact_schema(
     assert old.read_chunk(extension).equals(extension_values)
     assert uuid.UUID(upgrade.id_map[("execution-outcomes", extension_hash)]).version == 7
     after = [(name, read()) for name, read in cases]
-    family.switch("old")
-    rollback = [(name, read()) for name, read in cases]
-    for (name, first), (other, second), (last, third) in zip(before, after, rollback, strict=True):
-        assert name == other == last
-        assert (
-            (first.equals(second) and first.equals(third))
-            if isinstance(first, pa.Table)
-            else first == second == third
-        )
-    family.switch("new")
+    for (name, first), (other, second) in zip(before, after, strict=True):
+        assert name == other
+        assert first.equals(second) if isinstance(first, pa.Table) else first == second
 
 
 def test_policy_holdout_reader_rejects_value_tamper_with_preserved_metadata(

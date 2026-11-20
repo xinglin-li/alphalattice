@@ -51,6 +51,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 from alphalattice.interface.local_application.cli import main as cli_main
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
+from alphalattice.kernel.data_layer import history
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
@@ -90,8 +91,15 @@ SMALL_ISSUERS, SMALL_UNITS = COVERAGE_ENTITIES[:SMALL], -(-SMALL // UNIT_LIMIT)
 
 @pytest.fixture(scope="module")
 def built_book(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """One real Portfolio path over the wide universe, or a test's smaller book; built once."""
-    return build_coverage_workspace(tmp_path_factory.mktemp("b"), **getattr(request, "param", {}))
+    """One real Portfolio path over the wide universe, or a test's smaller book; built once on a
+    data root of its own, its Portfolio results carried in its folder so each test's copy admits
+    them on its own root."""
+    with history.own_root(tmp_path_factory.mktemp("b-root")):
+        workspace, report = build_coverage_workspace(
+            tmp_path_factory.mktemp("b"), **getattr(request, "param", {})
+        )
+        history.carry_results(workspace, workspace)
+    return workspace, report
 
 
 @pytest.fixture

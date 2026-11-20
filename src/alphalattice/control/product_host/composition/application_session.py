@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.portfolio_inputs.benchmark import carried_benchmark_check
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
@@ -42,11 +43,17 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     process_priority,
 )
 from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
+from alphalattice.foundation.causal_outcomes.execution.artifacts import carried_chunk_check
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
+from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
+    carried_holding_check,
+    carried_series_check,
+)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
 from alphalattice.kernel.data_layer.history import open_history
+from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -120,6 +127,17 @@ def verify_upgrade_backups(
     )
 
 
+def carried_result_checks() -> dict[str, CarriedCheck]:
+    """Each result type a copy carries, with its owner's proof that a carried body is the one its
+    digest names; a Host's history runs it before admitting the body (`open_history`)."""
+    return {
+        "execution_outcome": carried_chunk_check,
+        "portfolio_benchmark": carried_benchmark_check,
+        "portfolio_execution_series": carried_series_check,
+        "portfolio_report_holding": carried_holding_check,
+    }
+
+
 @dataclass
 class WorkspaceApplicationSession:
     """The one lease, gate, Task registry, and the runners' runtime file."""
@@ -139,6 +157,7 @@ class WorkspaceApplicationSession:
             workspace.name,
             workspace,
             can_export=lambda: network_access(workspace, now=clock()).allowed,
+            carried_checks=carried_result_checks(),
         )
 
     def execute_admitted(

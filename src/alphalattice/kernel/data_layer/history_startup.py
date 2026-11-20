@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +11,10 @@ import alphalattice.kernel.data_layer.return_series as return_series
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.history_alpha_arrays import (
     _import_alpha_parts,
+)
+from alphalattice.kernel.data_layer.history_carried_results import (
+    CarriedCheck,
+    _import_carried_results,
 )
 from alphalattice.kernel.data_layer.history_runtime import (
     _CONDITION_TEXT,
@@ -27,6 +31,7 @@ from alphalattice.kernel.data_layer.history_runtime import (
     close_history,
     define,
     held,
+    release_history,
     render_experiences,
     workspace_on_log,
 )
@@ -49,12 +54,14 @@ def open_history(
     root: Path | None = None,
     *,
     can_export: Callable[[], bool] | None = None,
+    carried_checks: Mapping[str, CarriedCheck] | None = None,
 ) -> None:
     """Open this Host's history: the held log, its reading views and its workspace's row.
 
     Refused by name when the log is held elsewhere or does not open, and
     `data_layer.history_unavailable` when the views do not; either way the data root is released.
-    Opening an open history again records the workspace only.
+    Opening an open history again records the workspace only. The results a copy carries are
+    admitted once their owners' `carried_checks` prove them; a refusal releases this opening.
     """
     with _lifecycle:
         log = held(root)
@@ -98,6 +105,7 @@ def open_history(
                     _open["remote"] = remote
         workspace = workspace_on_log(folder, name, workspace_id, root)
         with _lock:
+            bound = _open.get("workspace")  # an open Host's, kept if this opening is refused
             _open.update(workspace=workspace, hosts=_open.get("hosts", 0) + 1)
         import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
@@ -139,6 +147,14 @@ def open_history(
                 "durable": False,
             },
         )
+    try:  # outside the lock: its writers take the StorePort's guard
+        _import_carried_results(folder, carried_checks or {})
+    except BaseException:
+        with _lock:
+            if _open.get("hosts", 0) > 1:  # another open Host keeps the history and its workspace
+                _open["workspace"] = bound
+        release_history()  # this opening's reference alone
+        raise
     # a note a stopped Host left unrendered, or a renderer this release changed, is rendered now
     threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
 

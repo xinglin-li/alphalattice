@@ -5,11 +5,9 @@
 "portfolio_application.execution_series_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated series does not match its sealed ledger; restore the complete result before reading."},
 "portfolio_application.report_holdings_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated holdings do not match their sealed report; restore the complete result before reading."},
 "portfolio_application.result_identity_reused": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The retained result descriptor differs under the same sealed identity; preserve both and reconcile them."},
-"portfolio_application.results_store_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the legacy Portfolio reader."},
 "portfolio_application.upgrade_identity_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The verified upgrade mapping changed; restore its original mapping before resuming."},
 "portfolio_application.upgrade_path_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "A Portfolio artifact lies outside its backed-up workspace; repair its path before resuming."},
 "portfolio_benchmark.catalog_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark's named series have different dates or are incomplete; restore the complete result."},
-"portfolio_benchmark.store_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the legacy Portfolio reader."},
 "portfolio_benchmark.upgrade_path_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark path lies outside its backed-up workspace; repair the path before resuming."},
 "spawn.encoding_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Use UTF-8 for a text child."},
 "spawn.initial_thread_unavailable": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The suspended child could not be admitted and resumed; inspect process access and retry."},
@@ -40,6 +38,7 @@
 "explorer.wall_deadline": {"owner": "devtools.evaluation", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded explorer walk exceeded its wall deadline; inspect the trace before another walk."},
 "causal_outcomes.upgrade_path_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome path leaves its backed-up workspace."},
 "causal_outcomes.upgrade_chunk_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome chunk does not match its recorded identity."},
+"causal_outcomes.chunk_identity_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "A carried outcome chunk's rows do not rebuild the identity it is named by; carry it again from its workspace."},
 "research_experiment.outcome_body_incomplete": {"owner": "alphalattice.control.product_host", "category": "FAILED_PRECONDITION", "classification_note": "Restore the complete catalog outcome before binding the research input."},
 "data_layer.market_mic_ambiguous": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An outside MIC has named more than one market; bind the source to its market identity rather than guessing from the code."},
 "data_layer.market_unregistered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A listing or session names a market id with no admitted market record; admit that record first."},
@@ -416,11 +415,6 @@
 "owner": "portfolio_strategy_lab",
 "category": "INVALID_ARGUMENT",
 "classification_note": "ALPHALATTICE_ARRAY_STORE names the lanes' reader: door, the default, or legacy for rollback."
-},
-"alpha_research.array_store_invalid": {
-"owner": "alpha_research",
-"category": "INVALID_ARGUMENT",
-"classification_note": "ALPHALATTICE_ARRAY_STORE names the Alpha array reader: door, the default, or legacy for rollback."
 },
 "portfolio_strategy_lab.eligible_pool_short": {
 "owner": "portfolio_strategy_lab",
@@ -1478,11 +1472,6 @@
 "alpha_research.development_split_empty": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
-},
-"alpha_research.development_store_invalid": {
-"owner": "alpha_research",
-"category": "INVALID_ARGUMENT",
-"classification_note": "The Alpha development evidence reader setting allows catalog or legacy."
 },
 "alpha_research.development_surface_incomplete": {
 "owner": "alpha_research",
@@ -7948,11 +7937,6 @@
 "owner": "feature_closure",
 "category": "FAILED_PRECONDITION"
 },
-"feature_closure.closure_store_invalid": {
-"owner": "feature_closure",
-"category": "INVALID_ARGUMENT",
-"description": "The closure store switch holds a value other than log or legacy, so no closure store is read."
-},
 "feature_closure.closure_readback_failed": {
 "owner": "feature_closure",
 "category": "INTERNAL",
@@ -8016,7 +8000,7 @@
 "feature_closure.sector_map_unserved": {
 "owner": "feature_closure",
 "category": "FAILED_PRECONDITION",
-"classification_note": "A sector map selected at a cutoff whose listings world no longer classifies in full, or a process with no world catalog: the map's names are world's at that cutoff, so the read is refused rather than answered from the artifact. Restore the data root from its last backup, or read with ALPHALATTICE_MARKET_READS=workspace."
+"classification_note": "A sector map selected at a cutoff whose listings world no longer classifies in full, or a process with no world catalog: the map's names are world's at that cutoff, so the read is refused rather than answered from the artifact. Restore the data root from its last backup."
 },
 "feature_closure.store_readback_mismatch": {
 "owner": "feature_closure",
@@ -14491,10 +14475,6 @@
 "owner": "protected_validation",
 "category": "FAILED_PRECONDITION"
 },
-"protected_validation.store_invalid": {
-"owner": "protected_validation",
-"category": "INVALID_ARGUMENT"
-},
 "protected_validation.upgrade_identity_invalid": {
 "owner": "protected_validation",
 "category": "FAILED_PRECONDITION"
@@ -17527,11 +17507,6 @@
 "sector_research.recipe_schema_not_installed": {
 "owner": "sector_research",
 "category": "FAILED_PRECONDITION"
-},
-"sector_research.results_store_invalid": {
-"owner": "sector_research",
-"category": "INVALID_ARGUMENT",
-"classification_note": "The Sector results reader is catalog or legacy."
 },
 "sector_research.upgrade_identity_invalid": {
 "owner": "sector_research",

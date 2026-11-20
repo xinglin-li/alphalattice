@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from typing import Literal, Protocol, Self, cast
+from typing import Protocol, Self, cast
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -33,8 +32,10 @@ from .artifacts import (
     METHOD_BINDING_CATEGORY,
     _canonical_local_qa_table,
     _ExecutionOutcomeArtifactStore,
+    chunk_identity,
+    rows_intact,
 )
-from .compile import _SCHEMA_ID, _action_dividends, _schema, derive_causal_execution_row
+from .compile import _action_dividends, _schema, derive_causal_execution_row
 from .contracts import (
     CausalExecutionOutcomeChunk,
     CausalExecutionOutcomeManifest,
@@ -1345,21 +1346,8 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             or not rows
             or min(row["formation_session"] for row in rows) != chunk.first_formation_session
             or max(row["formation_session"] for row in rows) != chunk.last_formation_session
-            or any(
-                row["row_hash"]
-                != canonical_hash({key: value for key, value in row.items() if key != "row_hash"})
-                for row in rows
-            )
-            or canonical_hash(
-                {
-                    "schema": _SCHEMA_ID,
-                    "rows": tuple(
-                        (row["listing_id"], row["formation_session"], row["row_hash"])
-                        for row in rows
-                    ),
-                }
-            )
-            != chunk.content_hash
+            or not rows_intact(rows)
+            or chunk_identity(table) != chunk.content_hash
         ):
             raise ValueError("policy holdout execution outcome chunk is tampered")
         self._verified_tables[chunk.content_hash] = table
@@ -1547,13 +1535,7 @@ def execution_outcome_upgrade_family() -> Family:
                 return False
         return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        # contract: remove the legacy choice when row U retires file-bound outcome reads.
-        os.environ["ALPHALATTICE_EXECUTION_OUTCOME_STORE"] = (
-            "legacy" if mode == "old" else "catalog"
-        )
-
-    return Family("execution-outcomes", step, verify, switch)
+    return Family("execution-outcomes", step, verify)
 
 
 __all__ = [

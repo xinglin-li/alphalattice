@@ -5,7 +5,6 @@ New family callers import the defining family module directly.
 
 from alphalattice.kernel.data_layer.history_alpha_arrays import (
     AlphaParts,
-    alpha_array_door,
     alpha_part_body_digest,
     alpha_part_body_path,
     collect_alpha_parts,
@@ -33,10 +32,10 @@ from alphalattice.kernel.data_layer.history_arrays import (
     keep_array,
     read_array,
 )
-from alphalattice.kernel.data_layer.history_derived_files import (
-    derived_file_body,
-    keep_derived_file,
-    root_derived_files,
+from alphalattice.kernel.data_layer.history_carried_results import (
+    CARRIED_RESULTS,
+    carried_result_files,
+    carry_results,
 )
 from alphalattice.kernel.data_layer.history_execution_outcomes import (
     execution_outcome_artifact_id,
@@ -44,17 +43,13 @@ from alphalattice.kernel.data_layer.history_execution_outcomes import (
     write_execution_outcome,
 )
 from alphalattice.kernel.data_layer.history_portfolio_results import (
-    PORTFOLIO_RESULTS_STORE_ENV,
     portfolio_result_held,
-    portfolio_results_mode,
     read_portfolio_pair,
     read_portfolio_result,
     require_portfolio_result_store,
-    select_portfolio_catalog,
     write_portfolio_result,
 )
 from alphalattice.kernel.data_layer.history_research_inputs import (
-    INPUT_STORE_ENV,
     carry_research_inputs,
     hold_research_input,
     keep_research_input,
@@ -157,19 +152,17 @@ from alphalattice.kernel.data_layer.history_validation import (
 
 __all__ = [
     "CALLS_KEPT",
+    "CARRIED_RESULTS",
     "DATA_ROOT_ENV",
     "EVIDENCE_TYPE",
     "FACTS",
-    "INPUT_STORE_ENV",
     "OTLP_CONTENT_ENV",
     "OTLP_ENDPOINT_ENV",
     "OTLP_TRACES_ENDPOINT_ENV",
-    "PORTFOLIO_RESULTS_STORE_ENV",
     "STEPS",
     "AlphaDevelopmentMeasures",
     "AlphaParts",
     "agent_telemetry",
-    "alpha_array_door",
     "alpha_part_body_digest",
     "alpha_part_body_path",
     "array_body_path",
@@ -178,8 +171,10 @@ __all__ = [
     "arrays_lacking",
     "begin",
     "call",
+    "carried_result_files",
     "carry_arrays",
     "carry_research_inputs",
+    "carry_results",
     "catalog_projection",
     "catalog_session",
     "close_history",
@@ -188,7 +183,6 @@ __all__ = [
     "data_root",
     "define",
     "definition_lineage",
-    "derived_file_body",
     "execution_outcome_artifact_id",
     "fact",
     "finish",
@@ -202,7 +196,6 @@ __all__ = [
     "keep_alpha_part",
     "keep_array",
     "keep_collected_alpha_parts",
-    "keep_derived_file",
     "keep_research_input",
     "keep_workspace_file",
     "kept_file_digest",
@@ -214,7 +207,6 @@ __all__ = [
     "opened_log",
     "own_root",
     "portfolio_result_held",
-    "portfolio_results_mode",
     "read_alpha_development_chunks",
     "read_alpha_part",
     "read_array",
@@ -247,9 +239,7 @@ __all__ = [
     "research_input_kept",
     "research_input_root",
     "research_input_workspace",
-    "root_derived_files",
     "search_references",
-    "select_portfolio_catalog",
     "selection",
     "step",
     "store",

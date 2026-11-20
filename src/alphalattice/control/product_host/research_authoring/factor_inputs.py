@@ -266,7 +266,7 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
     database_snapshot_hash: str | None = Field(
         default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
     )
-    # contract: legacy file-bound bundles remain readable until row U migrates them.
+    # A 0.2.7 file-bound bundle's manifest carries no binding version.
     binding_version: Literal[2] | None = Field(default=None, exclude_if=lambda v: v is None)
     outcomes: tuple[tuple[str, str], ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
@@ -425,10 +425,9 @@ def _released_name(inputs: Path, path: Path) -> str:
 
 def _inputs_root(workspace: Path, binding_hash: str) -> Path:
     """The folder laid out as `research-inputs/` that a binding is read from: its kept view on the
-    data root (kernel.data_layer.inputs), or the workspace's own copies only while the
-    research-inputs upgrade reads the old store."""
-    kept = history.research_input_root(binding_hash, workspace)
-    return kept if kept is not None else confined(workspace, "research-inputs")
+    data root (kernel.data_layer.inputs)."""
+    root: Path = history.research_input_root(binding_hash, workspace)
+    return root
 
 
 def _copy_input(workspace: Path, source: Path, target: Path) -> None:
@@ -707,18 +706,12 @@ def _bind_factor_inputs(
         )
     store = reader.artifacts
     outcome_refs = []
-    legacy = os.environ.get("ALPHALATTICE_EXECUTION_OUTCOME_STORE", "catalog") == "legacy"
     for chunk in outcome.development_chunks:
-        if legacy:  # contract: row U retires the old file-bound reader and bundles.
-            path = store.resolve_chunk(chunk)
-            confined(source, str(path.relative_to(source)))
-            paths.append(path)
-        else:
-            if store.read_chunk(chunk, columns=["listing_id"]).num_rows != chunk.row_count:
-                raise AuthoringError("research_experiment.outcome_body_incomplete")
-            outcome_refs.append(
-                (history.execution_outcome_artifact_id(chunk.content_hash), chunk.content_hash)
-            )
+        if store.read_chunk(chunk, columns=["listing_id"]).num_rows != chunk.row_count:
+            raise AuthoringError("research_experiment.outcome_body_incomplete")
+        outcome_refs.append(
+            (history.execution_outcome_artifact_id(chunk.content_hash), chunk.content_hash)
+        )
     paths.extend(
         (
             store._json_path("manifests", outcome.snapshot_hash),
@@ -739,8 +732,8 @@ def _bind_factor_inputs(
         sessions=tuple(sorted(set(sessions))),
         files=files,
         database_snapshot_hash=dict(files)["market-data.duckdb"],
-        binding_version=None if legacy else 2,
-        outcomes=None if legacy else tuple(sorted(outcome_refs)),
+        binding_version=2,
+        outcomes=tuple(sorted(outcome_refs)),
     )
     # The explicitly named installed input is the idempotency anchor, not a
     # search for a latest compatible directory. Verify it before reuse.
@@ -760,8 +753,8 @@ def _bind_factor_inputs(
             if compatible_factor_inputs(
                 bundle,
                 candidate,
-                read_legacy=None if legacy else legacy_rows,
-                read_catalog=None if legacy else catalog_rows,
+                read_legacy=legacy_rows,
+                read_catalog=catalog_rows,
             ) and _logical_files(prior_source, panel_snapshot_hash):
                 bundle = candidate
     binding = ResearchWorkspaceExperimentInput(input_id=input_id, binding_hash=bundle.binding_hash)
@@ -934,7 +927,7 @@ def research_input_upgrade_family(holder: Callable[[Path], str | None]) -> Famil
     """Each 0.2.7 binding copy kept once on the data root behind the door, held by its workspace
     (`holder` names its id on the log; a workspace with copies and no id is refused by name, so
     nothing is kept unheld); ALL EQUAL when every kept binding reads back as its copy's bytes.
-    The old reader is the copies'."""
+    The upgrade reads the copies themselves."""
 
     def step(runner: Any) -> None:
         for workspace in runner.workspaces:
@@ -959,16 +952,10 @@ def research_input_upgrade_family(holder: Callable[[Path], str | None]) -> Famil
             for binding_hash, files in legacy_bindings(workspace)
         )
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        if mode == "old":
-            os.environ[history.INPUT_STORE_ENV] = "legacy"
-        else:
-            os.environ.pop(history.INPUT_STORE_ENV, None)
-
     def holds(workspace: Path) -> bool:
         return any(not history.research_input_kept(b) for b, _ in legacy_bindings(workspace))
 
-    return Family("research-inputs", step, verify, switch, holds)
+    return Family("research-inputs", step, verify, holds)
 
 
 _POOLS: Final = ("databases", "parquet")
@@ -1028,7 +1015,7 @@ def research_input_copies_family(repository: Path) -> Family:
     def verify(runner: Any) -> bool:
         return not any(_copies_left(workspace) for workspace in runner.workspaces)
 
-    return Family("research-input-copies", step, verify, lambda _mode: None, _copies_left)
+    return Family("research-input-copies", step, verify, _copies_left)
 
 
 def select_research_inputs(

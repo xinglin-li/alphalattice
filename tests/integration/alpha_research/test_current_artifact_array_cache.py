@@ -217,9 +217,7 @@ def test_immutable_artifacts_are_read_once_across_request_scopes(
 
 
 @pytest.mark.proves("alpha_research.current_artifacts_read_once_per_process")
-def test_publishing_the_same_immutable_artifact_succeeds_after_a_read(
-    current_artifacts, tmp_path, monkeypatch
-):
+def test_publishing_the_same_immutable_artifact_succeeds_after_a_read(current_artifacts, tmp_path):
     """requirement: publishing an artifact already kept in memory names the same content and reads
     back."""
     store, observation, preparation = current_artifacts
@@ -241,28 +239,24 @@ def test_publishing_the_same_immutable_artifact_succeeds_after_a_read(
         assert store.load_frozen_observations(repeated.snapshot_hash).source_binding_hash == (
             observation.snapshot_hash
         )
-    _check_frozen_rollback(tmp_path / "rollback", monkeypatch)
-    _check_candidate_score(tmp_path / "score", monkeypatch)
-    _check_array_upgrade(tmp_path / "upgrade", monkeypatch)
+    _check_frozen_bytes(tmp_path / "frozen")
+    _check_candidate_score(tmp_path / "score")
+    _check_array_doors(tmp_path / "upgrade")
 
 
-def _check_frozen_rollback(tmp_path, monkeypatch):
-    """A frozen input is readable by the storage mode that wrote it."""
+def _check_frozen_bytes(tmp_path):
+    """A frozen input read back from the door is the bytes that were published."""
     store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
     payload = b"frozen input"
     category = "frozen-feature-arrays"
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "legacy")
     digest = store._publish_packed_bytes(category="current/" + category, payload=payload)
     assert store._frozen_payload(category, digest) == payload
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "door")
     assert store._publish_packed_bytes(category="current/" + category, payload=payload) == digest
     assert store._frozen_payload(category, digest) == payload
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "legacy")
-    assert store._frozen_payload(category, digest) == payload
 
 
-def _check_candidate_score(tmp_path, monkeypatch):
-    """A nullable score and its listing identity survive both readers and the typed relation."""
+def _check_candidate_score(tmp_path):
+    """A nullable score and its listing identity read back from the door and the typed relation."""
     from hashlib import sha256
 
     from alphalattice.kernel.data_layer import history
@@ -287,25 +281,21 @@ def _check_candidate_score(tmp_path, monkeypatch):
         formation_session=session,
         ordered_listing_ids=("QA-A", "QA-B"),
     )
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "legacy")
-    old = store.publish_current_candidate_score_chunk(table, **args)
-    assert store.resolve_current_candidate_score_chunk(old).equals(table)
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "door")
     new = store.publish_current_candidate_score_chunk(table, **args)
-    assert new == old
     assert store.resolve_current_candidate_score_chunk(new).equals(table)
     packed = history.read_alpha_part(new.content_hash, "current/current-candidate-score-chunks")
     digest = sha256(packed).hexdigest()
     assert digest != new.content_hash
     assert history.array_profile(digest)["kind"] == "packed"
     assert store.publish_current_candidate_score_chunk(table, **args) == new
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "legacy")
-    assert store.resolve_current_candidate_score_chunk(old).equals(table)
 
 
-def _check_array_upgrade(tmp_path, monkeypatch):
-    """The upgrade moves a workspace's exact bodies before changing the reader."""
+def _check_array_doors(tmp_path):
+    """The door holds the Alpha arrays a workspace writes; the upgrade family moves a workspace's
+    0.2.7 files into it and then holds none of them."""
     from types import SimpleNamespace
+
+    import pyarrow.parquet as pq
 
     from alphalattice.investment.alpha_research.experiments.development_artifacts import (
         alpha_array_files,
@@ -315,7 +305,17 @@ def _check_array_upgrade(tmp_path, monkeypatch):
 
     family = alpha_array_upgrade_family(lambda _workspace: None)
     assert not family.holds(tmp_path / "new-workspace")
-    monkeypatch.setenv("ALPHALATTICE_ARRAY_STORE", "legacy")
+    workspace = tmp_path / "upgrade-workspace"
+    folder = workspace / "alpha-research" / "current" / "current-candidate-score-chunks"
+    folder.mkdir(parents=True)
+    old = folder / f"{'f' * 64}.parquet"
+    pq.write_table(pa.table({"row_id": ["2026-01-02|QA-A"], "value": [1.5]}), old)
+    assert [path for path, _ in alpha_array_files(workspace)] == [old]
+    assert family.holds(workspace)
+    runner = SimpleNamespace(root=history.data_root(), log=history.held(), workspaces=(workspace,))
+    family.step(runner)
+    assert family.verify(runner)
+    assert not family.holds(workspace)
     store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
     observation = store.publish_frozen_observations(_source(), disposition="SYNTHETIC_INPUT_QA")
     history_values = {"open": np.arange(4, dtype=np.float64).reshape(2, 2)}
@@ -349,16 +349,6 @@ def _check_array_upgrade(tmp_path, monkeypatch):
         formation_session=session,
         ordered_listing_ids=("QA-A",),
     )
-    before = {path: path.read_bytes() for path, _ in alpha_array_files(tmp_path)}
-    assert before and any(path.suffix == ".bin" for path in before)
-    assert any(path.suffix == ".parquet" for path in before)
-    log = history.held()
-    assert family.holds(tmp_path)
-    runner = SimpleNamespace(root=history.data_root(), log=log, workspaces=(tmp_path,))
-    family.step(runner)
-    assert family.verify(runner)
-    assert not family.holds(tmp_path)
-    family.switch("new")
     assert store.resolve_current_candidate_score_chunk(score).equals(table)
     assert (
         store.load_frozen_observations(observation.snapshot_hash).source_binding_hash
@@ -367,7 +357,6 @@ def _check_array_upgrade(tmp_path, monkeypatch):
     loaded_head, loaded = store.load_workspace_observation_history(canonical_hash("slot"))
     assert loaded_head == history_head
     np.testing.assert_array_equal(loaded["open"], history_values["open"])
-    family.switch("old")
     assert store.resolve_current_candidate_score_chunk(score).equals(table)
     assert (
         store.load_frozen_observations(observation.snapshot_hash).source_binding_hash
@@ -376,7 +365,6 @@ def _check_array_upgrade(tmp_path, monkeypatch):
     loaded_head, loaded = store.load_workspace_observation_history(canonical_hash("slot"))
     assert loaded_head == history_head
     np.testing.assert_array_equal(loaded["open"], history_values["open"])
-    assert {path: path.read_bytes() for path in before} == before
 
 
 @pytest.mark.proves("alpha_research.current_artifacts_read_once_per_process")

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Iterator
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -543,17 +542,20 @@ class PortfolioLedgerStore(ObservationStore):
         if not path.is_file():
             self.content.atomic_write(path, payload)
 
-    def _read_result_descriptor(self, category: str, digest: str) -> dict[str, Any]:
-        """The reconstructed model's original identity proves this descriptor and its rows."""
+    def _read_result_descriptor(self, category: str, digest: str, field: str) -> dict[str, Any]:
+        """The reconstructed model's original identity proves this descriptor and its rows; one
+        that is not a descriptor holding `field`, the part its rows rebuild, is refused as
+        tampered before it is read."""
         self.content.require_hash(digest)
         try:
-            return cast(
-                dict[str, Any], json.loads((self.root / category / f"{digest}.json").read_bytes())
-            )
+            descriptor = json.loads((self.root / category / f"{digest}.json").read_bytes())
         except FileNotFoundError as error:
             raise ContentAddressedStoreError(f"content_store.artifact_missing:{digest}") from error
         except (OSError, ValueError) as error:
             raise ContentAddressedStoreError("content_store.artifact_tampered") from error
+        if not isinstance(descriptor, dict) or field not in descriptor:
+            raise ContentAddressedStoreError("content_store.artifact_tampered")
+        return descriptor
 
     def _read_index_entry(
         self, path: Path, *, declared: dict[str, str], tampered: str
@@ -720,10 +722,7 @@ class PortfolioLedgerStore(ObservationStore):
             materialized paths.
         """
         history.require_portfolio_result_store()
-        # The retained artifact supports rollback until its reader retires in row U.
-        uri = self.content.publish_model(
-            category="execution-ledgers", value=value, identity_field="ledger_hash"
-        )
+        self.content.require_hash(value.ledger_hash)
         self._publish_execution_body(value)
         # One program, one materialized path. Two different ledgers under one
         # program would mean the program did not determine the fills.
@@ -732,7 +731,7 @@ class PortfolioLedgerStore(ObservationStore):
             {"program_hash": value.program_hash, "ledger_hash": value.ledger_hash},
             conflict="portfolio_application.execution_identity_reused",
         )
-        return uri
+        return self.content.uri("execution-ledgers", value.ledger_hash)
 
     def _publish_execution_body(
         self,
@@ -826,11 +825,9 @@ class PortfolioLedgerStore(ObservationStore):
             Content-addressed evidence URI.
         """
         history.require_portfolio_result_store()
-        uri = self.content.publish_model(
-            category="reports", value=value, identity_field="report_hash"
-        )
+        self.content.require_hash(value.report_hash)
         self._publish_report_body(value)
-        return uri
+        return self.content.uri("reports", value.report_hash)
 
     def _publish_report_body(
         self,
@@ -1102,19 +1099,7 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Validated concrete artifact reopened through content-addressed storage.
         """
-        # contract: row U retires the legacy Portfolio artifact readers.
-        # First-start upgrade switches to the catalog after migration verifies.
-        mode = history.portfolio_results_mode(self.artifact_root)
-        if mode == "catalog":
-            return self._load_execution_catalog(ledger_hash)
-        if mode != "legacy":
-            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
-        return self.content.load_model(
-            category="execution-ledgers",
-            content_hash=ledger_hash,
-            model=PortfolioExecutionLedger,
-            identity_field="ledger_hash",
-        )
+        return self._load_execution_catalog(ledger_hash)
 
     def _load_execution_catalog(
         self, ledger_hash: str, data: tuple[dict[str, Any], Any] | None = None
@@ -1134,7 +1119,9 @@ class PortfolioLedgerStore(ObservationStore):
             raise
         if profile["descriptor"] != ledger_hash:
             raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
-        descriptor = self._read_result_descriptor("execution-series-descriptors", ledger_hash)
+        descriptor = self._read_result_descriptor(
+            "execution-series-descriptors", ledger_hash, "formation_sessions"
+        )
         sessions = descriptor["formation_sessions"]
         names = pc.split_pattern(rows["name"], ":")
         fields, ordinals = pc.list_element(names, 0), pc.cast(pc.list_element(names, 1), pa.int64())
@@ -1205,17 +1192,7 @@ class PortfolioLedgerStore(ObservationStore):
         Returns:
             Validated concrete artifact reopened through content-addressed storage.
         """
-        mode = history.portfolio_results_mode(self.artifact_root)
-        if mode == "catalog":
-            return self._load_report_catalog(report_hash)
-        if mode != "legacy":
-            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
-        return self.content.load_model(
-            category="reports",
-            content_hash=report_hash,
-            model=PortfolioDeclaredPathReport,
-            identity_field="report_hash",
-        )
+        return self._load_report_catalog(report_hash)
 
     def _load_report_catalog(
         self, report_hash: str, data: tuple[dict[str, Any], Any] | None = None
@@ -1236,7 +1213,9 @@ class PortfolioLedgerStore(ObservationStore):
             raise
         if profile["descriptor"] != report_hash:
             raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
-        descriptor = self._read_result_descriptor("report-holdings-descriptors", report_hash)
+        descriptor = self._read_result_descriptor(
+            "report-holdings-descriptors", report_hash, "window_end_book"
+        )
         book = descriptor["window_end_book"]
         rows = table.to_pylist()
         weights = {str(row["listing_id"]): row for row in rows}
@@ -1262,11 +1241,6 @@ class PortfolioLedgerStore(ObservationStore):
         self, ledger_hash: str, report_hash: str
     ) -> tuple[PortfolioExecutionLedger, PortfolioDeclaredPathReport]:
         """Reopen the two related catalog bodies in one query for a reader needing both."""
-        mode = history.portfolio_results_mode(self.artifact_root)
-        if mode == "legacy":
-            return self.load_execution(ledger_hash), self.load_report(report_hash)
-        if mode != "catalog":
-            raise PortfolioLedgerStoreError("portfolio_application.results_store_invalid")
         try:
             ledger, report = history.read_portfolio_pair(ledger_hash, report_hash)
         except DataError as error:
@@ -1381,16 +1355,55 @@ class PortfolioLedgerStore(ObservationStore):
         self._publish_report_body(report)
         for category, value, identity_field in (
             ("programs", program, "program_hash"),
-            ("execution-ledgers", ledger, "ledger_hash"),
             ("economic-ledgers", economics, "economic_ledger_hash"),
             ("benchmark-comparisons", comparison, "comparison_hash"),
-            ("reports", report, "report_hash"),
             ("results", result, "result_hash"),
         ):
             self.content.publish_model(
                 category=category, value=value, identity_field=identity_field
             )
         return result.result_hash
+
+
+def carried_series_check(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+    """Refuse a carried execution series whose profile is not the one its publication writes, or
+    whose ledger, rebuilt from the workspace's descriptor as the catalog reader rebuilds it, is not
+    the one `digest` names."""
+    if profile != {"descriptor": digest}:
+        raise PortfolioLedgerStoreError("portfolio_application.execution_series_invalid")
+    _carried_check(workspace, PortfolioLedgerStore._load_execution_catalog, digest, profile, table)
+
+
+def carried_holding_check(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+    """Refuse carried report holdings whose profile is not the one their publication writes, or
+    whose report, rebuilt from the workspace's descriptor as the catalog reader rebuilds it, is not
+    the one `digest` names."""
+    if profile != {"descriptor": digest}:
+        raise PortfolioLedgerStoreError("portfolio_application.report_holdings_invalid")
+    _carried_check(workspace, PortfolioLedgerStore._load_report_catalog, digest, profile, table)
+
+
+def _carried_check(
+    workspace: Path,
+    load: Callable[[PortfolioLedgerStore, str, tuple[dict[str, Any], Any]], object],
+    digest: str,
+    profile: Any,
+    table: Any,
+) -> None:
+    """The catalog reader's own rebuild, in the namespace that keeps the descriptor; a result
+    whose descriptor the workspace does not keep cannot be proved, and is refused."""
+    missing: ContentAddressedStoreError | None = None
+    for namespace in (PUBLIC_NAMESPACE, PENDING_FINALIZATION_NAMESPACE):
+        store = PortfolioLedgerStore(workspace / "runtime" / "artifacts", namespace=namespace)
+        try:
+            load(store, digest, (profile, table))
+            return
+        except ContentAddressedStoreError as error:
+            if not isinstance(error.__cause__, FileNotFoundError):
+                raise
+            missing = error
+    assert missing is not None
+    raise missing
 
 
 def portfolio_results_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
@@ -1472,12 +1485,7 @@ def portfolio_results_upgrade_family(holder: Callable[[Path], str | None]) -> Fa
                 return False
         return True
 
-    def switch(mode: Literal["old", "new"]) -> None:
-        os.environ["ALPHALATTICE_PORTFOLIO_RESULTS_STORE"] = (
-            "legacy" if mode == "old" else "catalog"
-        )
-
-    return Family("portfolio-results", step, verify, switch)
+    return Family("portfolio-results", step, verify)
 
 
 __all__ = [
@@ -1487,5 +1495,7 @@ __all__ = [
     "ObservationStore",
     "PortfolioLedgerStore",
     "PortfolioLedgerStoreError",
+    "carried_holding_check",
+    "carried_series_check",
     "portfolio_results_upgrade_family",
 ]

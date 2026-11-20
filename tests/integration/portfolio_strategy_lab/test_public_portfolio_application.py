@@ -1887,7 +1887,8 @@ def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path:
         assert first.distinct_names_held >= 0
         assert dict(ledger.reads) == {"results": 1, "reports": 1, "economics": 1}
 
-        report_file = harness.application.ledger.root / "reports" / f"{result.report_hash}.json"
+        ledger_root = harness.application.ledger.root  # the report's bytes on disk: its descriptor
+        report_file = ledger_root / "report-holdings-descriptors" / f"{result.report_hash}.json"
         assert report_file.is_file()
         report_file.write_bytes(b"{}")
 

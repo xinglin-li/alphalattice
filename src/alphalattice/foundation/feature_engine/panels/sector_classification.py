@@ -9,8 +9,7 @@ map's map_hash, at the log's clock, made only when world classifies every listin
 the map's names at that cutoff. `classified` then returns the map's entries with each Sector
 name as world knew it at that cutoff. A map with no selection (read only outside a Host so far,
 or whose names world lacks or holds differently) reads its entries as the artifact holds them.
-A world revision known after the cutoff never reaches the map's readers. Under
-`ALPHALATTICE_MARKET_READS=workspace`, the market reads' rollback, every map reads its entries.
+A world revision known after the cutoff never reaches the map's readers.
 """
 
 from __future__ import annotations
@@ -33,8 +32,6 @@ def classified(classification: SectorRevisionMap) -> tuple[SectorRevisionEntry, 
     artifact's own. Refused by name (`feature_closure.sector_map_unserved`) when a selection's
     cutoff names a listing world does not classify, or no world catalog is reachable: never
     answered from the artifact instead."""
-    if world_reads.chosen() != "world":  # the market reads' rollback: the artifact's own names
-        return classification.entries
     cutoff = world_reads.map_cutoff(classification.map_hash)
     if cutoff is None:
         cutoff = _select(classification)

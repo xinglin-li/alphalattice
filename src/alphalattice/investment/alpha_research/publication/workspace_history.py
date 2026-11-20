@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from bisect import bisect_left
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -326,12 +325,6 @@ class _WorkspaceObservationHistoryStore:
             raise self.error(_INVALID)
         return target
 
-    def _door(self) -> bool:
-        mode = os.environ.get("ALPHALATTICE_ARRAY_STORE", "door")
-        if mode not in {"door", "legacy"}:
-            raise self.error(_INVALID)
-        return mode == "door"
-
     def _marker(self, scope_hash: str) -> WorkspaceObservationHistoryMarker | None:
         target = self._path(_MARKERS, scope_hash, "json")
         try:
@@ -373,25 +366,18 @@ class _WorkspaceObservationHistoryStore:
     ) -> _PartColumns:
         expected_shape = (part.stop - part.start, len(head.ordered_listing_ids))
         category = _part_category(head.column_names, expected_shape)
-        target = self._path(category, part.content_hash, "parquet")
+        self._require_hash(part.content_hash)
         try:
             key = f"{category}/{part.content_hash}"
-            if self._door():
-                payload = history.read_alpha_part(part.content_hash, category)
-                parquet = pq.ParquetFile(pa.BufferReader(payload))
-                metadata = parquet.metadata
-                if key not in verified:
-                    table = parquet.read()
-                    verified[key] = {
-                        name: np.ascontiguousarray(table.column(name).to_numpy())
-                        for name in table.column_names
-                    }
-            else:
-                metadata = pq.read_metadata(target)
-                if key not in verified:
-                    verified[key] = self.content.load_columns(
-                        category=category, content_hash=part.content_hash
-                    )
+            payload = history.read_alpha_part(part.content_hash, category)
+            parquet = pq.ParquetFile(pa.BufferReader(payload))
+            metadata = parquet.metadata
+            if key not in verified:
+                table = parquet.read()
+                verified[key] = {
+                    name: np.ascontiguousarray(table.column(name).to_numpy())
+                    for name in table.column_names
+                }
             columns = verified[key]
             shape = json.loads((metadata.metadata or {})[b"shape"])
             row_count = metadata.num_rows
@@ -509,21 +495,11 @@ class _WorkspaceObservationHistoryStore:
                 continue
             try:
                 columns = {name: value[start:stop] for name, value in held.items()}
-                if self._door():
-                    described = arrays.describe(columns)
-                    content_hash = described.content_digest
-                    category = _part_category(tuple(held), (stop - start, len(ordered_listing_ids)))
-                    payload = described.body()
-                    history.keep_alpha_part(
-                        content_hash, category, payload, capacity=content.capacity
-                    )
-                else:
-                    content_hash = content.publish_columns(
-                        category=_part_category(
-                            tuple(held), (stop - start, len(ordered_listing_ids))
-                        ),
-                        columns=columns,
-                    )
+                described = arrays.describe(columns)
+                content_hash = described.content_digest
+                category = _part_category(tuple(held), (stop - start, len(ordered_listing_ids)))
+                payload = described.body()
+                history.keep_alpha_part(content_hash, category, payload, capacity=content.capacity)
             except (ContentAddressedStoreError, DataError) as error:
                 raise self.error(_INVALID) from error
             parts.append(
@@ -727,8 +703,7 @@ class _WorkspaceObservationHistoryStore:
                     for part in head.parts:
                         self._part(head, part, {})
                 else:
-                    if self._door():
-                        protected.add(path)  # the old files remain available for rollback
+                    protected.add(path)  # the old files stay as the upgrade's input
                     try:
                         metadata = pq.read_metadata(path)
                         shape = json.loads((metadata.metadata or {})[b"shape"])
@@ -766,7 +741,7 @@ class _WorkspaceObservationHistoryStore:
                     head.column_names, (part.stop - part.start, len(head.ordered_listing_ids))
                 )
                 old_part = self._path(category, part.content_hash, "parquet")
-                if not self._door() or old_part.is_file():
+                if old_part.is_file():
                     protected.add(old_part)
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:

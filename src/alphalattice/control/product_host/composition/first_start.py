@@ -45,7 +45,6 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     execution_outcome_upgrade_family,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
@@ -89,8 +88,8 @@ def _portfolio_holds(family: Family, workspace: Path) -> bool:
 
 
 def _host_portfolio_family(family: Family) -> Family:
-    """First Start selects the verified reader once both Portfolio families finish."""
-    return replace(family, switch=lambda _mode: None, holds=partial(_portfolio_holds, family))
+    """A Portfolio family whose workspaces are judged by its own catalog comparison."""
+    return replace(family, holds=partial(_portfolio_holds, family))
 
 
 def _declared_family(declaration: dict[str, str]) -> Callable[[], Family]:
@@ -289,17 +288,6 @@ def recorded(subject: str, started: dict[str, Any]) -> Plan:
     return Plan(subject, workspaces, tuple(started["families"]), backups, recorded=True)
 
 
-def _restore_portfolio_reader(run: UpgradeRunner, workspaces: tuple[Path, ...]) -> None:
-    """Select the verified reader for the workspaces covered by the completed plan."""
-    started = run.started
-    if (
-        run.complete
-        and started is not None
-        and {"portfolio-benchmark", "portfolio-results"}.issubset(started["families"])
-    ):
-        history.select_portfolio_catalog(workspaces)
-
-
 class FirstStart:
     """The upgrade this Host start owes before it composes, if any: its plan, run and progress."""
 
@@ -366,13 +354,11 @@ class FirstStart:
         if started is not None and any(
             self.workspace == Path(row["workspace"]) for row in started["backups"]["workspaces"]
         ):
-            _restore_portfolio_reader(machine, (self.workspace,))
             return self._deferred_plan(subject, started)
         alone = self._runner(subject, (self.workspace,))
         started = alone.started
         if started is not None:
             if alone.complete:
-                _restore_portfolio_reader(alone, (self.workspace,))
                 return self._deferred_plan(subject, started)
             return recorded(subject, started)
         if not any(f.holds(self.workspace) for f in self.families):
@@ -411,7 +397,6 @@ class FirstStart:
                     self.plan.subject, self.plan.workspaces, self._backups(), families=families
                 )
                 runner.run()
-                _restore_portfolio_reader(runner, self.plan.workspaces)
         except Exception as error:
             self.state, self.failure = "FAILED", refusal_reason(error)
             raise
