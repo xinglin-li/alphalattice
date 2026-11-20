@@ -36,6 +36,18 @@
       "seconds": 5,
       "lower_layer": "It reads real sealed files through the owner's store and the process memory, which a unit test of one function cannot hold."
     },
+    "alpha_research.foundation_feature_axis_is_frozen": {
+      "description": "An Alpha compiler refuses a foundation feature axis that is narrowed, reordered or changed.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "alpha_research.historical_sector_coverage_is_bound": {
+      "description": "Historical Sector coverage changes an Alpha foundation's identity without changing its Sector revision or legacy identities.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "unit",
+      "seconds": 1
+    },
     "alpha_research.lifecycle_arrays_full_proof_refuses_tamper": {
       "description": "If full proof passed lifecycle arrays changed under their name, an install, an activation or the scrub would admit bytes never proved.",
       "owner": "alphalattice.investment.alpha_research",
@@ -55,6 +67,13 @@
       "owner": "alphalattice.investment.alpha_research",
       "layer": "integration",
       "seconds": 5
+    },
+    "alpha_research.sector_coverage_follows_panel_axis": {
+      "description": "Alpha's Sector coverage follows the selected Panel's listings and refuses incomplete coverage.",
+      "owner": "alphalattice.investment.alpha_research",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The Sector reader is composed at the Host's research-authoring boundary, which the unit layer cannot import."
     },
     "alpha_research.verification_hash_covers_every_executed_module": {
       "description": "If an executed scoring or outcome module sat outside the verified hash, changed code would keep an old identity and pass as already verified.",
@@ -132,6 +151,13 @@
       "lower_layer": "The comparison reads both receipts and their sealed span sets back from a real workspace artifact store over the Host's retrieval store.",
       "seconds": 20
     },
+    "alternative_evidence.retrieval_delivers_verified_source_spans": {
+      "description": "The installed retrieval packs find evidence for both development issuers and every delivered citation resolves to its declared range and source revision.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The workspace verifier, real CPU models, history, and canonical revision reader must run together."
+    },
     "alternative_evidence.retrieval_reads_world_evidence_as_of": {
       "description": "Retrieval keys evidence chunks by world's document and version and reads bodies from world at the cutoff, never returning superseded versions.",
       "lower_layer": "World's evidence documents and the store's projections are a real DuckLake catalog and a real log, so the as-of read needs both.",
@@ -163,6 +189,13 @@
       "owner": "alphalattice.evidence.alternative_evidence",
       "layer": "integration",
       "seconds": 5
+    },
+    "alternative_evidence.runtime_refuses_without_retrieval": {
+      "description": "A workspace with verified evidence authority refuses when its retrieval runtime is unavailable.",
+      "owner": "alphalattice.evidence.alternative_evidence",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The check opens sealed workspace authority and computes the runtime capability through the product verifier."
     },
     "alternative_evidence.store_hits_delivered_by_matched_line": {
       "description": "A store hit is cut to the lines its question states, one candidate a line, so over the development evidence set every issuer-topic cell the line chunks reached holds evidence and a delivered span is the matched sentence.",
@@ -280,6 +313,34 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.authored_declarations_cannot_move_identity": {
+      "description": "An authored identity or a foreign schema name is refused before planning decides an identity.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The tests exercise the experiment composition validator directly."
+    },
+    "composition.bad_experiment_requests_do_not_admit_tasks": {
+      "description": "Malformed or inadmissible experiment requests do not admit Tasks or displace Portfolio controls.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The refusal, Task registry and Portfolio controls are read together through the running Host."
+    },
+    "composition.capacity_blocked_study_resumes": {
+      "description": "A study stopped by a storage cap resumes its same confirmed Task only after capacity and unchanged input are restored.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The Host composes the capacity stop, input verification, Task recovery and exact reuse."
+    },
+    "composition.cli_and_web_compile_same_experiment": {
+      "description": "CLI and web requests compile the same bound experiment document and Program.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The CLI and web paths must both reach the running Host and its bound input."
+    },
     "composition.cli_names_a_closed_output_pipe": {
       "description": "The command reports an output pipe that closes before its answer finishes and returns failure.",
       "owner": "alphalattice.control.product_host.composition",
@@ -292,6 +353,13 @@
       "layer": "integration",
       "seconds": 30,
       "lower_layer": "It drives the live Host scheduler and consumes the Task lifecycle committed by Task Control's persisted runner."
+    },
+    "composition.feature_extension_page_reads_its_number": {
+      "description": "The feature extension route reads the page number and names the first out-of-range page.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The named refusal traverses query parsing and the live feature-extension route."
     },
     "composition.goal_export_proves_its_sources": {
       "description": "If a Goal export answered from kept sources, a changed sealed result could leave the workspace without a fresh proof.",
@@ -1410,6 +1478,7 @@
     },
     "feature_engine.handoff_binds_logical_closure_without_mutating_inputs": {
       "description": "If an Alpha handoff changed its original Factor inputs or failed to bind the logical panel closure, a later reader could use a different dataset.",
+      "lower_layer": "A real workspace binding and its persisted Panel closure are read before and after the handoff.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 30
@@ -2184,6 +2253,13 @@
       "seconds": 2,
       "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
+    "product_host.backup_listing_read_creates_no_generation": {
+      "description": "The live backup listing reads the held root and generations without adding a generation.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The Storage route must read the same generations on its second call."
+    },
     "product_host.first_start_asks_nothing_of_catalog_held_outcomes": {
       "description": "A fileless outcome chunk asks no upgrade only when the catalog holds its rows; one it lacks is refused by name; other faults stop the start.",
       "owner": "alphalattice.control.product_host",
@@ -2253,6 +2329,13 @@
       "layer": "integration",
       "seconds": 15
     },
+    "product_host.workspace_backup_restores_held_state": {
+      "description": "A workspace backup restores the held Tasks, every exported market table's rows and every held file's bytes.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The proof copies and restores real workspace files, a market database and a Task store."
+    },
     "research_authoring.schema_notes_end_on_a_ref_cycle": {
       "description": "If a schema's $ref chain were followed with no memory, a self-referencing definition would hang the client.",
       "owner": "alphalattice.protocols.research_authoring",
@@ -2265,6 +2348,34 @@
         "why": "The goal's Proof requires one unit test per bounded runtime loop; net source is negative because the card deletes the uncalled PreFactorWorkspaceHost.run.",
         "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
+    },
+    "research_program.development_workspace_authority_reopens": {
+      "description": "The workspace authority resolver reopens a bound research workspace with a stable authority and its full ordered session axis.",
+      "owner": "alphalattice.control.research_program",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The real resolver reads the bound Panel, universe and source watermark on the development workspace."
+    },
+    "research_program.factor_small_input_is_refused_before_a_task": {
+      "description": "A Factor plan names the production listing floor and admits no Task when its bound input is too small.",
+      "owner": "alphalattice.control.research_program",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "A real bound Panel and Host Task registry prove the input refusal precedes admission."
+    },
+    "research_program.object_and_yaml_reject_python_paths": {
+      "description": "Both object and YAML declarations refuse an authored Python module path.",
+      "owner": "alphalattice.control.research_program",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The tests exercise both declaration-loader entries directly."
+    },
+    "research_program.unknown_universe_is_refused": {
+      "description": "The workspace authority resolver refuses an unknown universe handle by name.",
+      "owner": "alphalattice.control.research_program",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The real resolver reads the workspace's bound research data when it checks authority."
     },
     "shared_kernel.a_wait_ends_at_its_bound": {
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",

@@ -761,6 +761,11 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 builder.warm_real_risk_golden(external=external)
             for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
                 builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
+            if any(
+                hasattr(i, "callspec") and i.callspec.params.get("input_seed") == "development"
+                for i in session.items
+            ):
+                builder.warm_real_risk_golden(symbols=builder.DEVELOPMENT_SYMBOLS)
             # `revision_seed` asks for `prepared` only when it builds: list both names.
             if any({"prepared", "revision_seed"} & set(i.fixturenames) for i in session.items):
                 symbols, sector_size = builder.READINESS_UNIVERSE

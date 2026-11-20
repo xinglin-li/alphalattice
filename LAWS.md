@@ -888,7 +888,7 @@ Not yet held: Panel chunks bind row hashes, not values; the scrub covers saved s
 `test: tests/integration/product_host/test_local_web_factor_experiments.py::test_a_read_answers_from_the_full_check_and_the_scrub_finds_a_planted_change`,
 `test: tests/integration/portfolio_strategy_lab/test_public_portfolio_finalization.py::test_readback_reports_a_finalization_artifact_that_will_not_open`,
 `test: tests/integration/product_host/test_local_web_factor_experiments.py::test_input_tamper_refuses_a_replay_without_losing_historical_readback`,
-`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body`
+`test: tests/integration/product_host/test_local_web_service.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body`
 for the study edges;
 `test: tests/integration/workspace_runtime/test_content_store.py::test_a_changed_sealed_file_reads_at_its_name_and_full_proof_refuses_it`,
 `test: tests/integration/workspace_runtime/test_content_store.py::test_a_store_read_takes_sealed_bytes_at_their_name_and_full_proof_refuses_a_change`,

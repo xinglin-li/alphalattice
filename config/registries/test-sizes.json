@@ -1761,14 +1761,14 @@
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "owner": "tests.workspace_readiness",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold setup builds the prepared workspace and input revision journey before checking recovery.",
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
       "admitted": "2026-11-02: the cold setup exceeded the 60-second Medium bound; retain this classification until the shared seed is measured within it.",
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: most cases here build cold seeded workspaces that take over 60 s, so the file runs as one Large group until the build-once fixture lands; a few fixture-free cases ride along.",
+      "reason": "The remaining real Factor-publication journeys share the installed cross-sectional redundancy and walk-forward floors; moved readers and declaration checks use the smaller set.",
       "admitted": "2026-10-23: the shared session seed timed out in setup at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture.",
       "size_contract": "nightly_only"
     },
@@ -1789,14 +1789,14 @@
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs a deferred daily, its in-place recovery and the following exchange session; it copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Daily automation resumes an installed strategy with an activated book over 521 formations while its published update becomes the next session's parent.",
       "timeout_seconds": 5400,
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_unregistered_or_tampered_versions_refuse_before_work*",
       "owner": "tests.workspace_readiness",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: setup builds cold input-revision history until the dedicated input-revision seed is admitted.",
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
       "timeout_seconds": 1200,
       "size_contract": "nightly_only"
     },
@@ -1819,12 +1819,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_local_web_shared_research_context.py::test_shared_plan_is_navigable_and_visible_as_activity_without_execution*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: setup builds cold shared-preview input until the dedicated shared-preview seed is admitted.",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once*",
       "owner": "tests.workspace_maintenance",
       "reason": "Uses 60 registered sufficient-set members so one audited listing fits the shipped 2% bound and two exceed it.",
@@ -1833,7 +1827,8 @@
     {
       "pattern": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation."
+      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_initialization_creates_real_factor_inputs_and_reopens_without_strategies*",
@@ -1904,7 +1899,7 @@
     {
       "pattern": "tests/integration/product_host/test_local_web_shared_research_context.py::test_competing_previews_expiry_and_restart_keep_every_plan_addressable*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs retained-preview admission through a real Factor publication, Host restart and exact reuse.",
+      "reason": "This journey publishes a real Factor study to prove preview recovery and reuse; its accepted source must meet the installed redundancy and fold support.",
       "size_contract": "nightly_only"
     },
     {
@@ -2011,13 +2006,13 @@
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_a_saved_capture_continues_on_its_published_revision*",
       "owner": "tests.workspace_readiness",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold setup publishes the input-revision research journey for a saved-capture continuation control.",
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/causal_outcomes/test_held_friday_update.py::test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "The ordinary activation path requires an installed whole book past 521 formations from the full lifecycle before it can advance held Friday and refuse missing Monday data.",
       "timeout_seconds": 1500,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
@@ -2025,7 +2020,7 @@
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Cancellation and Data continuation act on the installed book's accepted research update; activation needs an admitted book over 521 formations and its installed lifecycle.",
       "timeout_seconds": 2100,
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
@@ -2033,28 +2028,28 @@
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_reviewed_research_book_runs_forward_when_a_person_activates_it*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Ordinary activation requires the installed whole book past 521 formations, fitted on the installed 1,260-session lifecycle and tied to its review.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "The network-stop journey writes the activated strategy's market and resumes the same Task under operator and workspace network controls; the installed whole book requires over 521 formations.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "The owning update starts from the admitted checkpoint of an installed whole book with over 521 formations and resumes on its own working membership.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_installed_book_controls_saves_the_flat_declaration_its_preview_reads*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "It copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "The existing installed-book replay stays nightly while its development fixture cannot seal a kept payload with a hard link outside the workspace.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
@@ -2074,20 +2069,6 @@
       "original_data": "upgrade replay"
     },
     {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 356.599 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_small_input_reports_the_production_requirement_before_any_task*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 68.426 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 148.380 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
@@ -2095,24 +2076,11 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary",
-      "owner": "tests.workspace_readiness",
-      "reason": "Builds and hydrates a workspace before checking cancellation and recovery at the chunk boundary.",
-      "admitted": "2026-10-30: measured 11.163 s on Windows; size registration pilot admits the Large classification."
-    },
-    {
       "pattern": "tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
       "owner": "tests.structural",
       "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
       "size_contract": "nightly_only",
       "admitted": "2026-11-16: 16 passes at most 48.3 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-16: 11 passes at most 51.8 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     },
     {
       "pattern": "tests/integration/product_host/test_native_session_binding.py::test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said[[]True-True[]]",
@@ -2230,11 +2198,6 @@
       "admitted": "2026-11-19: the QA copy's 1.4 GB upgrade, rollback, batch and restore ran 15.9 s here; a Large test is killed only as hung, at the large timeout of 900 s"
     },
     {
-      "budget": "large:tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body*",
-      "value": 900,
-      "admitted": "2026-11-19: Renamed from ..._tampered_pool (workspace pools retired with the machine-held research inputs); its Large rule and historical maximum of 356.599 s are unchanged, under the large timeout of 900 s"
-    },
-    {
       "budget": "large:tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
       "value": 900,
       "admitted": "2026-11-18: The 100,000-chunk build and its 62 timed queries ran 73 s on mac1 and about 100 s on the main PC; a Large test is killed only as hung, at the large timeout of 900 s"
@@ -2266,11 +2229,6 @@
     },
     {
       "budget": "large:tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
-      "value": 900,
-      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
-    },
-    {
-      "budget": "large:tests/integration/product_host/test_workspace_team_scene.py::test_team_scene_reads_declared_work_and_owner_facts_from_the_real_feed",
       "value": 900,
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
     },

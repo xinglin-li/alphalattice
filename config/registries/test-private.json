@@ -87,7 +87,10 @@
     "tests/integration/causal_outcomes/test_causal_outcome_publication.py::import _method_authority": 1,
     "tests/integration/product_host/test_exploration_by_sector.py::import _relation": 1,
     "tests/integration/product_host/test_local_web_factor_experiments.py::import _FoldCancellation": 1,
-    "tests/integration/product_host/test_local_web_factor_experiments.py::patch _copy_input": 2,
+    "tests/integration/product_host/test_local_web_service.py::patch _copy_input": {
+      "count": 2,
+      "description": "Plants a corrupt copy and a changed source at the binding copy boundary."
+    },
     "tests/integration/product_host/test_local_web_shared_research_context.py::patch _current": 1,
     "tests/integration/feature_engine/test_real_workspace.py::patch _BUILDER_MODULES": 1,
     "tests/integration/feature_engine/test_real_workspace.py::patch _GOLDEN_WAIT_SECONDS": 1,

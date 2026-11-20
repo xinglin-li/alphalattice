@@ -35,6 +35,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     SealedResearchProgram,
 )
 from devtools.architecture.evidence_roots import PLAYPEN_ROOT
+from tests._support import development_universe
 from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
@@ -42,6 +43,7 @@ from tests.researcher_methodology_surface.factor_web_support import (
     _session,
 )
 from tests.researcher_methodology_surface.real_workspace import (
+    DEVELOPMENT_SYMBOLS,
     FACTOR_SCALE,
     SUFFICIENT_SYMBOLS,
     RealRiskWorkspace,
@@ -165,14 +167,16 @@ def risk_development_run(
 
 
 @pytest.fixture(scope="module")
-def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
     """The exact original real input build, once per run, including its bind/reuse assertions."""
 
+    development = getattr(request, "param", None) == "development"
+
     def build(root: Path) -> dict:
-        real_risk_workspace = build_real_risk_workspace(
+        data = build_real_risk_workspace(
             tmp_path_factory.mktemp("factor-input-source"),
-            symbols=SUFFICIENT_SYMBOLS,
-            standard=FACTOR_SCALE,
+            symbols=DEVELOPMENT_SYMBOLS if development else SUFFICIENT_SYMBOLS,
+            standard=development_universe.STANDARD if development else FACTOR_SCALE,
         )
         # The Portfolio artifact is deliberately not consumed by this Factor-only
         # composition harness; its typed reference must nevertheless survive bind.
@@ -191,19 +195,17 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
         history.open_history("factor-seed", "factor seed", root)
         try:
-            outcome, _ref = publish_causal_outcomes(
-                real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
-            )
+            outcome, _ref = publish_causal_outcomes(data, at=datetime(2026, 8, 2, tzinfo=UTC))
             first = bind_factor_inputs(
                 workspace=root,
-                source=real_risk_workspace.workspace,
+                source=data.workspace,
                 outcome_snapshot_hash=outcome,
             )
             before = (root / "research-workspace.json").read_bytes()
             assert (
                 bind_factor_inputs(
                     workspace=root,
-                    source=real_risk_workspace.workspace,
+                    source=data.workspace,
                     outcome_snapshot_hash=outcome,
                 )
                 == first
@@ -216,7 +218,8 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
             history.close_history()
         return {}
 
-    return session_workspace(tmp_path_factory, "factor_input", build)[0]
+    name = "development_factor_input" if development else "factor_input"
+    return session_workspace(tmp_path_factory, name, build)[0]
 
 
 SEEDS = (  # most derived first

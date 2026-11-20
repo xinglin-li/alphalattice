@@ -18,6 +18,7 @@ import pytest
 
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
+    verify_evidence_review_workspace,
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     SETUP_OPTIONS,
@@ -1293,6 +1294,20 @@ def test_a_semantic_capability_mismatch_refuses_installation(tmp_path: Path) -> 
             binding=binding,
             semantic_capability_reader=lambda _runtime: "d" * 64,
         )
+
+
+@pytest.mark.proves("alternative_evidence.runtime_refuses_without_retrieval")
+def test_a_workspace_without_the_retrieval_runtime_refuses_rather_than_degrades(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sealed test authority still needs a local retrieval runtime."""
+    binding, _registry = _package(tmp_path, managed=False)
+    monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(tmp_path / "empty-model-store"))
+    with pytest.raises(
+        ResearchWorkspaceError,
+        match=r"evidence_review\.semantic_capability_invalid.*bekko-static-512-int8",
+    ):
+        verify_evidence_review_workspace(workspace=tmp_path, binding=binding)
 
 
 @pytest.mark.parametrize("managed", [True, False])

@@ -309,6 +309,7 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     assert read_research_workspace_manifest(host.workspace).manifest_hash == manifest_before
 
 
+@pytest.mark.parametrize("input_seed", ["development"], indirect=True)
 def test_shared_plan_is_navigable_and_visible_as_activity_without_execution(
     host: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:

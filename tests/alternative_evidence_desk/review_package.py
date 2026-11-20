@@ -62,7 +62,11 @@ def _write(path: Path, value: Any) -> EvidenceReviewArtifactBinding:
 
 
 def _package(
-    workspace: Path, *, semantic_capability_hash: str = CAPABILITY_HASH, managed: bool = True
+    workspace: Path,
+    *,
+    semantic_capability_hash: str = CAPABILITY_HASH,
+    managed: bool = True,
+    corpus: tuple[RecordedEvidenceDocument, ...] | None = None,
 ) -> tuple[ResearchWorkspaceEvidenceReview, Path]:
     """The authority a workspace ships.
 
@@ -72,27 +76,34 @@ def _package(
     """
 
     authority = workspace / "authority"
+    issuers = (
+        ("AAPL", "0000320193", "Apple Inc."),
+        ("MSFT", "0000789019", "Microsoft Corporation"),
+    )
+    entities = {"AAPL"} if corpus is None else {document.entity_id for document in corpus}
     registry = seal_contract(
         SecIssuerRegistrySnapshot,
         "registry_hash",
         captured_at=NOW - timedelta(days=1),
-        entries=(
-            SecIssuerRegistryEntry(
-                entity_id="AAPL",
-                ticker="AAPL",
-                cik="0000320193",
-                legal_name="Apple Inc.",
-            ),
+        entries=tuple(
+            SecIssuerRegistryEntry(entity_id=ticker, ticker=ticker, cik=cik, legal_name=name)
+            for ticker, cik, name in issuers
+            if ticker in entities
         ),
         source_content_hash="c" * 64,
     )
     listing = seal_portfolio_evidence_contract(
         AdmittedListingTickerAuthority,
         "authority_hash",
-        entries=(AdmittedListingTicker(listing_id="US-AAPL", ticker="AAPL"),),
+        entries=tuple(
+            AdmittedListingTicker(listing_id=f"US-{entry.ticker}", ticker=entry.ticker)
+            for entry in registry.entries
+        ),
     )
     documents = RecordedEvidenceDocumentBundle.create(
-        (
+        corpus
+        if corpus is not None
+        else (
             RecordedEvidenceDocument(
                 entity_id="AAPL",
                 source_right="USER_PROVIDED_FOR_LOCAL_RESEARCH",
