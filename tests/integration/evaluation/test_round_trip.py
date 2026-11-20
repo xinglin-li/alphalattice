@@ -19,11 +19,29 @@ ROOT = Path(__file__).resolve().parents[3]
 CASES = """
 from uuid import UUID
 
+import pytest
+
+from alphalattice.control.product_host.composition.local_web_session import (
+    LocalPortfolioWebSession,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from tests._support.portfolio_strategy_lab_fixtures import live as live
-from tests._support.portfolio_strategy_lab_fixtures import read_only_live as read_only_live
+from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
+
+
+@pytest.fixture(scope="module")
+def module_host(tmp_path_factory):
+    # The module scope under test is this file's own, never a shared fixture's.
+    host = LocalPortfolioWebSession(
+        workspace=tmp_path_factory.mktemp("module-host"),
+        workspace_manifest=_manifest("qa-module-host"),
+        resolver=_Resolver(_resolved()),
+    )
+    host.start()
+    yield host
+    host.stop()
 
 TASK = str(UUID(int=1))
 STOPPED = {
@@ -38,8 +56,8 @@ def _stopped_run(operations, monkeypatch):
     operations.execute(PortfolioResearchOperationRequest(operation="RUN", spec={}))
 
 
-def test_a_module_hosts_stopped_answer(read_only_live, monkeypatch):
-    _stopped_run(read_only_live.operations, monkeypatch)
+def test_a_module_hosts_stopped_answer(module_host, monkeypatch):
+    _stopped_run(module_host.operations, monkeypatch)
 
 
 def test_keeps_its_own_host(live):
