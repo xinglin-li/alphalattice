@@ -47,7 +47,7 @@ import re
 import secrets
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import partial
@@ -82,6 +82,7 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
+from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
@@ -178,6 +179,15 @@ class Route:
     """Native signal and catalog workspace id, supplied together by the serving Host."""
     traced: bool = True
     """Whether a client's call opens a step span; a call's own end opens none."""
+
+    def admits_read(self, operation: object, declared_reads: Collection[str]) -> bool:
+        """Recognize a registered read or the bounded carrier at its authenticated door."""
+        return isinstance(operation, str) and (
+            operation in declared_reads
+            or (
+                self.external_client and self.path == OPERATIONS_PATH and operation == CLI_OPERATION
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -667,9 +677,7 @@ class LocalWebApplication:
         try:
             action = partial(route.handler, admitted.query, payload)
             operation = payload.get("operation")
-            writes = route.mutates and (
-                not isinstance(operation, str) or operation not in command_table()["reads"]
-            )
+            writes = route.mutates and not route.admits_read(operation, command_table()["reads"])
             if self.admission is not None:
                 action = partial(self.admission, action, writes)
             if admitted.call is not None and route.traced and not route.otlp:

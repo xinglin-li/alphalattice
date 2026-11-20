@@ -1712,6 +1712,12 @@
       "seconds": 2,
       "lower_layer": "The real HTTP owner calls client admission and Host observation, which import process owners outside the unit layer."
     },
+    "local_application.cli_request_keeps_read_admission": {
+      "description": "The bounded CLI carrier receives read admission through its authenticated operation route, so it never renews the Host idle deadline and remains admissible while writes are stopping.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "local_application.codex_first_use_names_project_trust": {
       "description": "Codex's trust of a project is read as Codex documents it: an untrusted project gets the person's one step, an explicitly untrusted one names their setting, and a trusted one is ready.",
       "owner": "alphalattice.interface.local_application",
@@ -1729,6 +1735,13 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.console_entry_imports_only_the_standard_library": {
+      "description": "The packaged CLI entry imports only standard-library dependencies before it chooses the running Host or the full CLI.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "An isolated Python import proves the process import closure without sharing previously loaded modules."
     },
     "local_application.doctor_names_windows_long_path_setting": {
       "description": "The doctor and no-Host refusal identify authenticated project Hosts; the Windows doctor reports long-path support and a packaged shell's potentially redirected model store.",

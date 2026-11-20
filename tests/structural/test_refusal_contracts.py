@@ -146,6 +146,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/web.py", "LocalWebApplication._refuse"): (
             "an idle-closing Host offers a detached restart bound to its own workspace"
         ),
+        ("interface/local_application/thin_cli.py", "<module>"): (
+            "the console selector uses one spelling for the caller workspace option"
+        ),
         ("interface/local_application/client.py", "_write_bundle"): (
             "where an entry's workspace ends, never printed"
         ),

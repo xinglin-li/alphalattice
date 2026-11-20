@@ -11,6 +11,7 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 
@@ -152,6 +153,16 @@ def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     arguments = sys.argv[1:] if argv is None else argv
     try:
+        if argv is None:
+            try:
+                if (code := thin_cli.invoke(arguments)) is not None:
+                    return code
+            except thin_cli.DeliveryLost as error:
+                from alphalattice.interface.local_application.cli import (  # lazy: lost reply
+                    delivery_lost,
+                )
+
+                return delivery_lost(arguments, error)
         from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
         result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))

@@ -544,8 +544,8 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to_source
                 if "AGENT_SESSION_VARIABLES" in body or variable.search(body):
                     readers.setdefault(path.name, set()).add(node.name)
     assert readers == {
-        "cli_contract.py": {"agent_session", "request_provenance"},
-        "client.py": {"_codex_thread"},
+        "cli_contract.py": {"request_provenance"},
+        "thin_cli.py": {"agent_session_values"},
     }, readers
 
 

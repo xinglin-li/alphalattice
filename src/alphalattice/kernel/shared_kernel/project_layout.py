@@ -12,8 +12,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any, Final
 
-from alphalattice.kernel.shared_kernel import spawn
-
 REFUSAL_WORDS_RESOURCE: Final = "src/alphalattice/interface/local_application/refusal_words.json"
 
 
@@ -107,6 +105,8 @@ def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
 @cache
 def _tool_bin(uv: str) -> str:
     """Cache successful directory discovery; failed probes remain retriable."""
+    from alphalattice.kernel.shared_kernel import spawn  # lazy: only tool directory discovery.
+
     found = spawn.run(
         [uv, "tool", "dir", "--bin"],
         capture_output=True,

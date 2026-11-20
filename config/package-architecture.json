@@ -548,6 +548,7 @@
   "deferred_imports": {
     "alphalattice.control.workspace_runtime.artifacts": "Resolve the workspace artifact store in the Sector publication command.",
     "alphalattice.investment.sector_research.experiments.service": "Load the Sector experiment and its numerical adapters only for the publication command.",
+    "alphalattice.kernel.shared_kernel.spawn": "Load process supervision only when locating a CLI executable outside PATH.",
     "alphalattice.kernel.data_layer.upgrade": "Load migration composition only when a verified first-start family is requested; ordinary Portfolio reads do not run an upgrade.",
     "alphalattice.foundation.market_data_ops.storage.world": "Resolve legacy listing identities only for catalog holdings; ordinary Portfolio ledger reads do not open market storage.",
     "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",

@@ -35,7 +35,6 @@ import argparse
 import difflib
 import functools
 import json
-import os
 import re
 import sys
 import textwrap
@@ -46,7 +45,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from alphalattice.interface.local_application import call_span, client
+from alphalattice.interface.local_application import call_span, cli_invocation, client
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
@@ -76,6 +75,8 @@ from alphalattice.interface.local_application.cli_contract import (
     shell,
     worded,
 )
+from alphalattice.interface.local_application.cli_invocation import cli_print as print
+from alphalattice.interface.local_application.cli_invocation import command_prefix
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
@@ -83,7 +84,6 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
 from alphalattice.interface.local_application.read_views import summary_display
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     (
@@ -222,6 +222,9 @@ class _Parser(argparse.ArgumentParser):
             return super().parse_args(args, namespace)
         finally:
             _PARSER_LINE.reset(token)
+
+    def _print_message(self, message: str, file: Any = None) -> None:
+        super()._print_message(message, cli_invocation.stream(file, error=True))
 
     def error(self, message: str) -> Any:
         if (line := _PARSER_LINE.get()) is not None and line[2]:
@@ -1422,7 +1425,7 @@ def main(
         code = stopped.code if isinstance(stopped.code, int) else code
         raise
     finally:
-        call_span.end(os.environ, code, reached=code != EXIT_CODES["NO_HOST"])
+        call_span.end(cli_invocation.environment(), code, reached=code != EXIT_CODES["NO_HOST"])
         call_span.CALL.reset(scope)
 
 
@@ -1464,7 +1467,7 @@ def _command_line(
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
         if args.noun != "serve":  # the Host itself is no call of its own
-            call_span.begin(os.environ, form)
+            call_span.begin(cli_invocation.environment(), form)
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
         if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
@@ -1478,7 +1481,9 @@ def _command_line(
         try:
             directory = _routing_bundle(parser, args)
             args.workspace, bound, chosen_by = _workspace(
-                getattr(args, "workspace", None), directory, args.request_timeout
+                cli_invocation.workspace(getattr(args, "workspace", None)),
+                directory,
+                args.request_timeout,
             )
         except client.LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
@@ -1594,7 +1599,7 @@ def _workspace(
         LocalResearchClientError: ``local_client.workspace_unbound`` or
             ``local_client.workspace_bound_to_another_session`` for a workspace left out.
     """
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     found = None
     bound: Path | None = None
     if session is not None:
@@ -1605,7 +1610,7 @@ def _workspace(
         )
 
         with suppress(NativeBridgeError, OSError):
-            found = NativeResearchBinding.find(Path.cwd(), session=session)
+            found = NativeResearchBinding.find(cli_invocation.cwd(), session=session)
         if found is not None and found[1].serves(session):
             bound = found[1].workspace.resolve()
     intended = bundle_workspace(directory)
@@ -1751,7 +1756,7 @@ def _refused(
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
         if code == "local_client.service_not_running":
-            detail += serving_workspace_notice(Path.cwd(), client.LocalResearchClient)
+            detail += serving_workspace_notice(cli_invocation.cwd(), client.LocalResearchClient)
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
@@ -1785,6 +1790,15 @@ def _refused(
         )
     )
     return EXIT_CODES[refusal.outcome]
+
+
+def delivery_lost(arguments: list[str], error: ValueError) -> int:
+    """Report an uncertain Host outcome without executing the command again."""
+    language = ANSWER_LANGUAGE.set(_line_context(arguments))
+    try:
+        return _refused(str(error), time.perf_counter())
+    finally:
+        ANSWER_LANGUAGE.reset(language)
 
 
 WORKSPACE_FREE: Final = frozenset({("session", "unbind")})
@@ -1843,13 +1857,13 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     )
     from alphalattice.interface.local_application.native_setup import unbind_session
 
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     host, session_id = (None, None) if session is None else session
     named = getattr(args, "workspace", None)
     try:
         try:
             answer = unbind_session(
-                session_project(Path.cwd(), host), session_id=session_id, host=host
+                session_project(cli_invocation.cwd(), host), session_id=session_id, host=host
             )
         except NativeBridgeError:
             if named is None or session is None:
@@ -1885,7 +1899,7 @@ def _problem(args: argparse.Namespace, started: float) -> int:
     try:
         body = problem_report(
             args.workspace,
-            project=Path.cwd(),
+            project=cli_invocation.cwd(),
             sentence=args.sentence,
             expected_route=args.expected_route,
         )
@@ -1921,19 +1935,21 @@ def _bind(args: argparse.Namespace, started: float) -> int:
         transport = client.LocalResearchClient(Path(args.workspace), timeout=args.request_timeout)
     except client.LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     if session is None:
         return _refused("local_client.session_unnamed", started)
     host, _session_id = session
     try:
-        project = session_project(Path.cwd(), host)
+        project = session_project(cli_invocation.cwd(), host)
         bound = transport.bind_native_session(project, usage=args.usage)
     except NativeBridgeError as error:
         return _refused(f"local_client.session_bind_refused:{error}", started)
     except client.LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
     except OSError as error:
-        bound = files_unavailable(error, project=Path.cwd(), workspace=Path(args.workspace))
+        bound = files_unavailable(
+            error, project=cli_invocation.cwd(), workspace=Path(args.workspace)
+        )
     outcome: Outcome = "REFUSED" if bound.get("status") == "REFUSED" else "OK"
     if outcome == "REFUSED":
         code = str(bound.get("failure_code", "native_bridge.binding_invalid"))
@@ -2434,7 +2450,7 @@ def _read_lead(
         if named_goal is None and operation == "GOAL_SUBMIT":
             named_goal = document.get("goal_id")
         receipts = client.lead_readings(
-            Path.cwd(), os.environ, workspace=workspace, goal=named_goal
+            cli_invocation.cwd(), cli_invocation.environment(), workspace=workspace, goal=named_goal
         )
     except Exception as error:
         receipts = [

@@ -29,6 +29,8 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
+from alphalattice.interface.local_application import cli_invocation
+from alphalattice.interface.local_application.cli_invocation import command_prefix
 from alphalattice.interface.local_application.cli_refused import refused as refused
 from alphalattice.interface.local_application.message_catalog import catalog_words
 from alphalattice.interface.local_application.request_offers import (
@@ -43,9 +45,24 @@ from alphalattice.interface.local_application.request_offers import (
 from alphalattice.interface.local_application.request_offers import (
     shell as shell,
 )
+from alphalattice.interface.local_application.thin_cli import (
+    AGENT_SESSION_VARIABLES as AGENT_SESSION_VARIABLES,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    CLIENT_HEADER as CLIENT_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    INSTANCE_HEADER as INSTANCE_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    MAXIMUM_REQUEST_BODY_BYTES as MAXIMUM_REQUEST_BODY_BYTES,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    WORKSPACE_HEADER as WORKSPACE_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import agent_session_values
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
-    command_prefix,
     resolve_playpen_root,
     runtime_json,
 )
@@ -180,9 +197,6 @@ def deprecation_notices(
     }
 
 
-CLIENT_HEADER: Final = "X-Alphalattice-Client"
-WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
-INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
 """The client's wire to the Host: the connection's token, the workspace's key and the Host
 instance, one header each, checked by the Host's boundary (`web.py`)."""
 
@@ -198,13 +212,6 @@ not. The Host records them beside what the request did, so a result outlives its
 and a goal holds what was done for it."""
 
 TRACE_VARIABLES: Final = {"TRACEPARENT": "traceparent", "BAGGAGE": "baggage"}  # W3C, as text
-
-AGENT_SESSION_VARIABLES: Final = (
-    ("claude-code", "CLAUDE_CODE_SESSION_ID"),
-    ("codex", "CODEX_THREAD_ID"),
-)
-"""Where each vendor names its session in the command environment (read on 2026-09-28; not a
-documented promise, so a missing one only leaves a request without an agent session)."""
 
 AGENT_HOST_WAITS: Final = {
     "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
@@ -232,7 +239,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
     Returns:
         The vendor and the session's id; None for no session, two, or an id not a plain token.
     """
-    found = [(vendor, environ.get(name, "").strip()) for vendor, name in AGENT_SESSION_VARIABLES]
+    found = [(vendor, value.strip()) for vendor, value in agent_session_values(environ).items()]
     sessions = [(vendor, value) for vendor, value in found if value]
     if len(sessions) == 1 and _SESSION_ID.match(sessions[0][1]):
         return sessions[0]
@@ -368,7 +375,7 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     Returns:
         The session's launches so far, this one included; None without an agent session.
     """
-    named = agent_session(os.environ if environment is None else environment)
+    named = agent_session(cli_invocation.environment() if environment is None else environment)
     if named is None:
         return None
 
@@ -395,7 +402,6 @@ _ZH_ENTRY: Final = re.compile(rf"^\s*({_ZH_STRING})\s*:\s*({_ZH_STRING}),?\s*$",
 
 BUNDLE_WORKSPACE: Final = "workspace.json"
 
-MAXIMUM_REQUEST_BODY_BYTES: Final[int] = 128 * 1024
 """The largest request body this service will read, named rather than implied.
 
 Most writes this product takes are one small JSON document -- a spec, a result

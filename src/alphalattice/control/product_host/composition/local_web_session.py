@@ -184,6 +184,7 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     refusal_words,
 )
+from alphalattice.interface.local_application.cli_invocation import invoke as invoke_cli
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
 )
@@ -214,6 +215,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from alphalattice.interface.local_application.thin_cli import CLI_OPERATION
 from alphalattice.interface.local_application.web import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     LocalWebApplication,
@@ -1613,6 +1615,8 @@ def build_local_web_application(
 
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
     def external_operation(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+        if payload.get("operation") == CLI_OPERATION:
+            return invoke_cli(payload, session.workspace)
         try:
             document = PortfolioResearchRequestDocument.model_validate(payload)
         except ValidationError as error:

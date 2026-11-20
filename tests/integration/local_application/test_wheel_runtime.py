@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import tomllib
 import zipfile
@@ -127,9 +128,43 @@ def test_runtime_setup_owners_expose_the_checkout_flags(owner, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("case", ["metadata", "build-child"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "metadata",
+        "build-child",
+        pytest.param(
+            "client-imports",
+            marks=pytest.mark.proves(
+                "local_application.console_entry_imports_only_the_standard_library"
+            ),
+        ),
+    ],
+)
 def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch) -> None:
     """requirement: one packaged console entry, existing backend, named development exceptions."""
+    if case == "client-imports":
+        probe = """
+import json
+import sys
+before = set(sys.modules)
+from alphalattice.control.product_host.composition import entry
+
+names = {name.split(".", 1)[0] for name in set(sys.modules) - before}
+print(json.dumps({
+    "third_party": sorted(names - sys.stdlib_module_names - {"__main__", "alphalattice"}),
+    "full_cli": "alphalattice.interface.local_application.cli" in sys.modules,
+}))
+"""
+        loaded = spawn.run(
+            [sys.executable, "-I", "-B", "-c", probe],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+        assert json.loads(loaded.stdout) == {"third_party": [], "full_cli": False}
+        return
     if case == "build-child":
         from scripts.release import wheel_build
 

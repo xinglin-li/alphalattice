@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from alphalattice.interface.local_application import web
+from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
 
 TEST_SOURCE = "src/alphalattice/interface/local_application/web.py"
 
@@ -42,3 +43,21 @@ def test_a_trickled_refused_body_is_drained_no_longer_than_its_deadline(monkeypa
     silent.connection, silent.close_connection = connection, False
     web._Handler._discard_announced_body(cast("web._Handler", silent))
     assert silent.close_connection is True
+
+
+@pytest.mark.proves("local_application.cli_request_keeps_read_admission")
+@pytest.mark.parametrize(
+    ("path", "operation", "read"),
+    [
+        pytest.param(OPERATIONS_PATH, "TASKS", True, id="ordinary-read"),
+        pytest.param(OPERATIONS_PATH, CLI_OPERATION, True, id="bounded-cli-read"),
+        pytest.param(OPERATIONS_PATH, "RUN", False, id="ordinary-write"),
+        pytest.param("/other", CLI_OPERATION, False, id="carrier-on-another-route"),
+    ],
+)
+def test_bounded_cli_requests_share_the_existing_read_admission(path, operation, read):
+    """Only the carrier at its own operation door receives the ordinary read policy."""
+    route = web.Route(
+        "POST", path, lambda _query, _payload: None, mutates=True, external_client=True
+    )
+    assert route.admits_read(operation, {"TASKS"}) is read

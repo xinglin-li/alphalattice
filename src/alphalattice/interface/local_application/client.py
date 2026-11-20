@@ -21,6 +21,7 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -64,6 +65,7 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
+from alphalattice.interface.local_application.cli_invocation import cli_print as print
 from alphalattice.interface.local_application.failure_codes import (
     LocalResearchClientError as LocalResearchClientError,
 )
@@ -73,25 +75,32 @@ from alphalattice.interface.local_application.review_evidence import (
     review_prepared,
     select_preparation,
 )
+from alphalattice.interface.local_application.thin_cli import (
+    CONNECTION_NAME as CONNECTION_NAME,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    OPERATIONS_PATH,
+    agent_session_values,
+    connection_path,
+    connection_port,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    workspace_connection_key as workspace_connection_key,
+)
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
 from alphalattice.kernel.shared_kernel.waits import pause, spaced
 
-CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""
 WHOLE_REFERENCE = re.compile(
     r"\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
 """SHA-256 or UUID."""
-DEFAULT_HTTP_WAIT_SECONDS = 120.0
-"""Transport waiting, not a Task budget; verified historical PLAN/readback may exceed 30 s."""
-
-
-def workspace_connection_key(workspace: Path) -> str:
-    """Bind local transport to the requested location, not a supplied descriptor id."""
-    return sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,29 +124,9 @@ class LocalResearchConnection:
         Raises:
             ValueError: If the descriptor is malformed or points outside loopback.
         """
-        values = (self.schema_id, self.workspace, self.workspace_id, self.url, self.instance)
-        if (
-            not all(isinstance(value, str) for value in (*values, self.token))
-            or self.schema_id != "local-research-connection"
-            or not self.workspace_id
-            or not 16 <= len(self.instance) <= 128
-            or not 32 <= len(self.token) <= 128
-        ):
-            raise ValueError("local_client.connection_unreadable")
-        target = urlsplit(self.url)
-        if (
-            not Path(self.workspace).is_absolute()
-            or target.scheme != "http"
-            or target.hostname != "127.0.0.1"
-            or not target.port
-            or target.username is not None
-            or target.password is not None
-            or target.path not in ("", "/")
-            or target.query
-            or target.fragment
-            or self.url.rstrip("/") != f"http://127.0.0.1:{target.port}"
-        ):
-            raise ValueError("local_client.connection_not_local")
+        connection_port(
+            self.schema_id, self.workspace, self.workspace_id, self.url, self.instance, self.token
+        )
 
     def to_json(self) -> str:
         """Serialize the connection descriptor for its controlled local file.
@@ -170,11 +159,12 @@ class LocalResearchConnection:
         Raises:
             LocalResearchClientError: If the path is a symlink or escapes the root.
         """
-        root = workspace.resolve()
-        path = root / "runtime" / CONNECTION_NAME
-        if path.is_symlink() or not path.resolve().is_relative_to(root):
-            raise LocalResearchClientError("local_client.connection_path_escapes_workspace")
-        return path
+        try:
+            return connection_path(workspace)
+        except ValueError as error:
+            raise LocalResearchClientError(
+                "local_client.connection_path_escapes_workspace"
+            ) from error
 
     @classmethod
     def read(cls, workspace: Path) -> Self:
@@ -249,7 +239,7 @@ class LocalResearchClient:
 
             if (path := codex_command()[0]) is not None:
                 document = {**document, "wake_codex_path": path}
-        return self._exchange("/api/client/operations", document, timeout=timeout)
+        return self._exchange(OPERATIONS_PATH, document, timeout=timeout)
 
     def publish_sector_development(self, document: dict[str, Any]) -> dict[str, Any]:
         """Ask the served workspace to publish a Sector development experiment."""
@@ -365,7 +355,7 @@ class LocalResearchClient:
             WORKSPACE_HEADER: workspace_connection_key(self.workspace),
             INSTANCE_HEADER: connection.instance,
             # The agent session this command runs in and the goal it names (OP13).
-            **agent_provenance_headers(os.environ, self.goal),
+            **agent_provenance_headers(cli_invocation.environment(), self.goal),
         }
         # The recorded loopback port itself: no configured proxy is consulted, and a redirect
         # is an answer, never followed.
@@ -1512,7 +1502,7 @@ def _context(
     """The context every answer names, as agent CLIs name their session: the workspace
     and how it was chosen (`WORKSPACE_FROM`), the goal the request counted toward and
     the agent session it came from."""
-    headers = agent_provenance_headers(os.environ)
+    headers = agent_provenance_headers(cli_invocation.environment())
     session = headers.get(AGENT_SESSION_HEADER)
     counted = (body or {}).get("attributed_goal_id")
     return {
@@ -2351,7 +2341,7 @@ def _wait_for_goal(
     """Wait for a goal's next Task to end or need a decision, its next message for this waiter
     (the session running the command; an accepted answer wakes its lead, never a message
     between two others; a request's own row wakes no one, its Task does), or its close."""
-    me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
+    me = agent_provenance_headers(cli_invocation.environment()).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
     deadline = _deadline(max_wait)
@@ -2430,7 +2420,7 @@ def _wait_for_goal(
 
 def _codex_thread() -> str:
     """The Codex thread the Host is to wake, named by the host's own session."""
-    thread = os.environ.get("CODEX_THREAD_ID", "").strip()
+    thread = agent_session_values(cli_invocation.environment())["codex"].strip()
     if not thread:
         raise LocalResearchClientError("local_client.codex_queue_unavailable")
     return thread
