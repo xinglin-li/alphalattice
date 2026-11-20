@@ -14,6 +14,7 @@ from uuid import uuid4
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
@@ -234,6 +235,7 @@ class ArtifactResolver:
             pq.write_table(table.replace_schema_metadata(merged), staged, compression="zstd")
             os.replace(staged, target)
             self._validate_feature_panel_chunk(target, content_hash)
+            file_sha256(target, written=True)
         staged.unlink(missing_ok=True)
         return ArtifactDescriptor(
             kind="feature-panel-chunk",

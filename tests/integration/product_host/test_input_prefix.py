@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from collections import Counter
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -262,9 +262,10 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
     again only once its size or mtime moves (an edit is then refused, as the test above holds)."""
     market = MarketDataRepository(input_workspace)
     files = [path for path in (market.path, Path(str(market.path) + ".wal")) if path.exists()]
-    for path in files:
-        stat = path.stat()
-        os.utime(path, (stat.st_atime, stat.st_mtime - verified_facts.RACY_SECONDS - 1))
+    now = max(max(verified_facts._stamp(path)[-2:]) for path in files) + 10**10
+    monkeypatch.setattr(
+        verified_facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now)
+    )
     hashed: Counter[Path] = Counter()
     whole = strategy_score_inputs.file_sha256
 

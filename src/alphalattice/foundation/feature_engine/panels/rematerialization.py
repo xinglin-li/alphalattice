@@ -303,7 +303,7 @@ class ArtifactOnlyPanelRematerializer:
                 }
                 output = temp_root / f"{expected.chunk_hash}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
-                physical_sha = file_sha256(output)
+                physical_sha = file_sha256(output, written=True)
                 metadata_hash = _metadata_hash(output)
                 if metadata_hash != expected.metadata_hash:
                     raise PanelRematerializationMismatch(

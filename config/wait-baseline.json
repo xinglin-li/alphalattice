@@ -46,7 +46,6 @@
     "src/alphalattice/control/workspace_runtime/database.py::while-true-without-deadline": 1,
     "src/alphalattice/control/workspace_runtime/lock.py::call-without-timeout": 1,
     "src/alphalattice/control/workspace_runtime/mutation_gate.py::call-without-timeout": 1,
-    "src/alphalattice/control/workspace_runtime/verified_facts.py::sleep-outside-wait": 1,
     "src/alphalattice/control/workspace_runtime/verified_facts.py::swallowed-in-loop": 1,
     "src/alphalattice/control/workspace_runtime/verified_readbacks.py::call-without-timeout": 1,
     "src/alphalattice/evidence/alternative_evidence/retrieval/session.py::call-without-timeout": 14,

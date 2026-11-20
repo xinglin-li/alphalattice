@@ -22,6 +22,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue
 from threading import Barrier, BoundedSemaphore, Event, Lock, Semaphore, Thread, current_thread
+from types import SimpleNamespace
 from typing import ClassVar, Literal
 from uuid import uuid4
 
@@ -1149,24 +1150,60 @@ def _aged(target: Path) -> None:
     os.utime(target, (target.stat().st_atime - 10, target.stat().st_mtime - 10))
 
 
+def _advance_file_fact_clock(facts, target: Path, monkeypatch) -> None:
+    """Move past both the modification and change clocks without waiting."""
+    now = max(facts._stamp(target)[-2:]) + 10**10
+    monkeypatch.setattr(facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now))
+
+
 def _hashed(timing) -> int:
     """How many sealed files the verifier hashed inside `timing`."""
     return sum(row["count"] for row in timing.rows() if row["detail"] == "sealed_file")
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
+@pytest.mark.parametrize("case", ["just-written", "young-rewrite", "stamp-ages-during-hash"])
 def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch, case: str
 ) -> None:
-    """requirement: a reader's digest of a file modified within two seconds is not kept, since
-    a write in the same clock tick could leave its stamp; the writer's own digest is, and a
-    sealed file's is trusted only once its stat has settled."""
+    """A young reader hashes immediately and rehashes after a rewrite."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
+        young = now = max(facts._stamp(target)[-2:])
+
+        def unexpected_wait(_seconds: float) -> None:
+            pytest.fail("a reader must not wait for a file stamp")
+
+        def finish_hash_after_window(handle, algorithm):
+            nonlocal now
+            digest = hashlib.file_digest(handle, algorithm)
+            now += int((facts.RACY_SECONDS + 1) * 10**9)
+            return digest
+
+        monkeypatch.setattr(
+            facts,
+            "time",
+            SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now, sleep=unexpected_wait),
+        )
+        with monkeypatch.context() as hashing:
+            if case == "stamp-ages-during-hash":
+                hashing.setattr(
+                    facts, "hashlib", SimpleNamespace(file_digest=finish_hash_after_window)
+                )
+            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+        assert facts.file_fact(target, "sha256") is None
+        now = young
+        if case == "young-rewrite":
+            target.write_bytes(b"two")
+            assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
+            target.write_bytes(b"one")
+
         facts.record_file_fact(target, "columns", "a" * 64)
         assert facts.file_fact(target, "columns") is None
         facts.record_file_fact(target, "columns", "a" * 64, written=True)
         assert facts.file_fact(target, "columns") == "a" * 64
         sealed = hashlib.sha256(b"one").hexdigest()
+        assert facts.file_sha256(target, written=True) == sealed
+        assert facts.file_fact(target, "sha256") == sealed
         facts.record_sealed_file(target, sealed)
         stat = target.stat()
         target.write_bytes(b"two")  # same size, in the same tick as far as its stat says
@@ -1177,11 +1214,13 @@ def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
 def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """requirement: a digest verified once is kept for the next process of the workspace, and
     a sealed file's writer's digest lets that process read it with no hash."""
     with _kept_facts(tmp_path) as (facts, workspace, target):
         _aged(target)
+        _advance_file_fact_clock(facts, target, monkeypatch)
         sealed = hashlib.sha256(b"one").hexdigest()
         facts.record_sealed_file(target, sealed)
         facts.release_file_facts(workspace)
@@ -1254,6 +1293,7 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
             return digest(*args, **kwargs)
 
         with monkeypatch.context() as counting:
+            _advance_file_fact_clock(facts, target, counting)
             counting.setattr(hashlib, "file_digest", counted)
             with ThreadPoolExecutor(max_workers=4) as pool:
                 assert (
