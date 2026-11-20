@@ -1462,8 +1462,10 @@
         "feature_engine.PanelClosurePublisher"
       ],
       "writers": [
+        "data_layer.history:_carry_kept_files",
         "feature_engine.panels.closure:PanelClosurePublisher",
-        "feature_engine.panels.closure_artifacts:PanelClosureArtifactStore"
+        "feature_engine.panels.closure_artifacts:PanelClosureArtifactStore",
+        "feature_engine.panels.closure_files:FolderFiles"
       ],
       "readers": [
         "alpha_research.experiments.canonical_development",

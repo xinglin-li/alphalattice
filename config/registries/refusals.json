@@ -7946,6 +7946,11 @@
 "owner": "feature_closure",
 "category": "FAILED_PRECONDITION"
 },
+"feature_closure.closure_store_invalid": {
+"owner": "feature_closure",
+"category": "INVALID_ARGUMENT",
+"description": "The closure store switch holds a value other than log or legacy, so no closure store is read."
+},
 "feature_closure.closure_readback_failed": {
 "owner": "feature_closure",
 "category": "INTERNAL",

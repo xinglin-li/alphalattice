@@ -101,6 +101,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.arrays import CARRIED
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from devtools.architecture.structural import (
     dependency_closure,
@@ -908,7 +909,9 @@ def _source_tree_digest() -> str:
 
 
 def _workspace_files(workspace: Path) -> dict[str, str]:
-    """Content verification of an immutable test seed, not a scientific identity."""
+    """Content verification of an immutable test seed, not a scientific identity. The folder a seed
+    carries its log's arrays and kept files in (`arrays.CARRIED`) is not the golden's content: a
+    seed's builder writes it, and the Host that admits a copy proves each body by its digest."""
     root_info = workspace.lstat()
     if (
         not stat.S_ISDIR(root_info.st_mode)
@@ -930,7 +933,8 @@ def _workspace_files(workspace: Path) -> dict[str, str]:
                 ):
                     raise GoldenWorkspaceError(f"golden workspace contains a link: {path}")
                 if stat.S_ISDIR(info.st_mode):
-                    pending.append(path)
+                    if path.relative_to(workspace) != CARRIED:
+                        pending.append(path)
                 elif stat.S_ISREG(info.st_mode):
                     with path.open("rb") as stream:
                         hashes[path.relative_to(workspace).as_posix()] = hashlib.file_digest(

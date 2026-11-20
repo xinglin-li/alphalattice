@@ -383,6 +383,48 @@ def upgraded(workspace: Path) -> Path:
     return workspace
 
 
+def closure_on_log(workspace: Path) -> Path:
+    """`workspace`, built by test code outside a Host, with the Panel closure its builders wrote
+    in folder form (a folder no Host had put on the log) moved onto this process's data root as a
+    first start moves it: a seed then carries it with its arrays, and the Host serving a copy
+    opens with no upgrade to run. A workspace holding no such closure is left as it is."""
+    from alphalattice.control.product_host.composition.first_start import panel_closure
+    from alphalattice.control.product_host.composition.research_workspace import (
+        named_workspace_id,
+    )
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+
+    copy, family = workspace.resolve(), panel_closure()
+    if not family.holds(copy):
+        return workspace
+    opened = history.holding() is None
+    if opened:
+        history.open_history(str(named_workspace_id(copy)), copy.name, copy)
+    try:
+        backups = {"workspaces": [{"workspace": str(copy)}]}
+        UpgradeRunner(
+            history.data_root(), history.held(), (copy,), (family,), lambda *_: backups
+        ).run()
+    finally:
+        if opened:
+            history.close_history()
+    return workspace
+
+
+def admitted(workspace: Path) -> Path:
+    """`workspace`, a plain copy of a folder a Host served, admitted as a Host's open admits it
+    (`history.move_carried`): what it carries goes onto this test's log, so a read outside a Host
+    sees the closure that Host kept."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        named_workspace_id,
+    )
+    from alphalattice.kernel.data_layer import history
+
+    history.move_carried(workspace.resolve(), str(named_workspace_id(workspace)))
+    return workspace
+
+
 @contextmanager
 def project_scope(
     root: Path, temporary_root: Path | None = None, *, host_reads: bool = True

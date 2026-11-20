@@ -193,8 +193,7 @@ class ResearchFormulaValues:
 
     def lookup(self, binding_hash: str) -> ResearchFormulaColumn | None:
         """Find a verified Formula column by binding hash, if present."""
-        path = self.store.root / INDEX_CATEGORY / f"{binding_hash}.json"
-        if not path.exists():
+        if not self.store.holds(INDEX_CATEGORY, binding_hash):
             return None
         index = self.store.load_json(category=INDEX_CATEGORY, content_hash=binding_hash)
         column = self.read(str(index["column_hash"]))

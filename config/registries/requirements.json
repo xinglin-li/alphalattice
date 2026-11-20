@@ -1296,8 +1296,21 @@
       "layer": "integration",
       "seconds": 5
     },
+    "feature_engine.closure_moves_onto_the_log_all_equal": {
+      "description": "The upgrade keeps every file of a workspace's Panel closure folder on the log under its hold, reads each back equal, and the closure store then reads its children there.",
+      "lower_layer": "The family reads a real closure folder and writes a real log and data root.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 10
+    },
     "feature_engine.closure_pointer_requires_a_full_content_identity": {
       "description": "Feature closure pointers reject a partial or noncanonical content identity before looking up a head.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "feature_engine.closure_store_switch_refuses_an_unknown_value": {
+      "description": "The closure store's switch accepts only the log and the legacy folder, and refuses any other value by name before any store is read.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "unit",
       "seconds": 1
@@ -1307,6 +1320,13 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 5
+    },
+    "feature_engine.closure_writes_go_to_the_log_and_rollback_reads_the_folder": {
+      "description": "After the move the closure store writes only to the log, and the legacy switch reads the unchanged folder again.",
+      "lower_layer": "The closure store writes a real log and reads a real folder.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 10
     },
     "feature_engine.current_pointer_swaps_fail_closed": {
       "description": "If the current panel pointer moved without its compare and swap, two writers could leave readers on a publication neither finished.",
@@ -1332,6 +1352,13 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 30
+    },
+    "feature_engine.kept_closure_names_follow_their_writes": {
+      "description": "A moved closure folder lists its kept files by name and by last write, and a removed file is gone from both listings and reads as absent.",
+      "lower_layer": "The listing reads a real log's events.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 10
     },
     "feature_engine.logical_identity_moves_only_with_content": {
       "description": "If logical identity followed encoding, write batches or policy instead of content, reuse would serve changed values or rebuild unchanged panels.",

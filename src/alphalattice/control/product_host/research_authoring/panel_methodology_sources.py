@@ -717,10 +717,14 @@ def _corrected_panel_recipe(
             raise AuthoringError("alpha_research.panel_derivation_recipe_not_this_snapshot")
         return value, store
     matches: list[PanelDerivationRecipe] = []
-    for path in sorted((store.root / "recipes").glob("*.json")):
+    for name in store.files.names("recipes"):
+        if not name.endswith(".json"):
+            continue
         try:
             value = store.load_model(
-                category="recipes", content_hash=path.stem, model=PanelDerivationRecipe
+                category="recipes",
+                content_hash=name.removesuffix(".json"),
+                model=PanelDerivationRecipe,
             )
         except (FileNotFoundError, ValueError) as error:
             raise AuthoringError(

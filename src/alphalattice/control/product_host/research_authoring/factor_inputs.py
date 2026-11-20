@@ -66,6 +66,7 @@ from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCata
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
+from alphalattice.foundation.feature_engine.panels.closure_files import FolderFiles
 from alphalattice.foundation.feature_engine.panels.development_input import (
     ResolvedDevelopmentFeatureInput,
 )
@@ -473,6 +474,8 @@ def _logical_files(source: Path, snapshot: str) -> tuple[Path, ...]:
     if marker is None:
         return ()
     logical_panel_owner(source).verify_snapshot(snapshot)
+    if not isinstance(closure.files, FolderFiles):
+        return ()  # kept on the log: the staged copy's publisher writes this snapshot's closure
     refs = {
         "publication-markers": marker.marker_hash,
         "revisions": marker.logical_panel_hash,

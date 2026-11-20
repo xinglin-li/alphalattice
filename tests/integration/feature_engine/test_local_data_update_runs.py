@@ -48,6 +48,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _Resolver,
     admit_market_fixture,
 )
+from tests.pytest_environment import admitted
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,
@@ -1512,7 +1513,7 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     )
 
     layered, whole = tmp_path / "layered", tmp_path / "whole"
-    shutil.copytree(activated_seed, layered)
+    admitted(shutil.copytree(activated_seed, layered))  # read below with no Host of its own
     shutil.copytree(qualified, whole)
     shipped = FeatureCatalog.load()
     before = _feature_rows(qualified, shipped)
@@ -1523,6 +1524,17 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     layer = FeatureCatalogLayer.over(extended)
     assert layer.layered and layer.base.binding.catalog_hash == shipped.binding.catalog_hash
     column = layer.columns[0].binding.catalog_hash
+    # The layered Panel binds the shipped head and its column's, read while `layered` is its
+    # workspace id's folder on this log (`whole`, a copy of the same workspace, takes it next).
+    ledger = FeatureClosureLedger(
+        PanelClosureArtifactStore(ArtifactResolver(layered / "artifacts"))
+    )
+    binding = ledger.panel_binding(str(_active_panel_manifest(layered)["snapshot_hash"]))
+    assert binding is not None
+    assert binding.closure_head_hash == ledger.require_head(shipped.binding.catalog_hash).head_hash
+    assert [(item.catalog_hash, item.closure_head_hash) for item in binding.column_closures] == [
+        (column, ledger.require_head(column).head_hash)
+    ]
     with monkeypatch.context() as unlayered:
         # The whole build an unlayered store makes, for the equivalence below.
         unlayered.setattr(
@@ -1556,15 +1568,6 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     panel = _active_panel_manifest(layered)
     assert panel["safe_summary"]["lineage"]["catalog_hash"] == extended.binding.catalog_hash
     assert panel["panel_content_hash"] == _active_panel_manifest(whole)["panel_content_hash"]
-    ledger = FeatureClosureLedger(
-        PanelClosureArtifactStore(ArtifactResolver(layered / "artifacts"))
-    )
-    binding = ledger.panel_binding(str(panel["snapshot_hash"]))
-    assert binding is not None
-    assert binding.closure_head_hash == ledger.require_head(shipped.binding.catalog_hash).head_hash
-    assert [(item.catalog_hash, item.closure_head_hash) for item in binding.column_closures] == [
-        (column, ledger.require_head(column).head_hash)
-    ]
 
 
 def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(activated_seed, tmp_path):

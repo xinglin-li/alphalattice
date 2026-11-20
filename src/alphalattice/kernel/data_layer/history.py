@@ -376,10 +376,12 @@ def open_history(
         _open["hosts"] = _open.get("hosts", 0) + 1
         import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
-        # a copy's lanes move onto this log before anything reads them, its workers included
+        # a copy's lanes and kept files move onto this log before anything reads them, its
+        # workers and its first start included
         where, log = Path(_open["root"]), _open["log"]
         arrays.import_carried(where, log, folder, workspace=_open["workspace"])
         _import_alpha_parts(where, log, folder, _open["workspace"])
+        _import_kept_files(log, folder, _open["workspace"])
         spec: dict[str, Any] = {
             "storage": "none",  # the evidence stays in the workspace's store until row 8a
             "table": None,
@@ -2270,6 +2272,83 @@ def arrays_lacking(digests: Iterable[str]) -> list[str]:
         return [digest for digest in digests if arrays.profile(read, digest) is None]
 
 
+def kept_file_workspace(folder: Path) -> str | None:
+    """The id of the registered workspace whose folder is `folder`, or None when the log holds
+    none: its kept files (`kept_files`) are named by it."""
+    with _array_reader() as (_root, read):
+        rows = read(
+            "SELECT workspace_id FROM workspace WHERE folder = ? AND status = 'active'",
+            (str(folder.resolve()),),
+        )
+    return str(rows[0][0]) if len(rows) == 1 else None
+
+
+def read_kept_file(workspace_id: str, name: str) -> bytes | None:
+    """The workspace's kept file `name`, proved, or None when it is not kept."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    with _array_reader() as (root, read):
+        found: bytes | None = kept_files.read(root, read, workspace_id, name)
+    return found
+
+
+def kept_file_digest(workspace_id: str, name: str) -> str | None:
+    """The digest of the workspace's kept file `name`, or None when it is not kept."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    with _array_reader() as (_root, read):
+        digest: str | None = kept_files.digest_of(read, workspace_id, name)
+    return digest
+
+
+def kept_file_names(workspace_id: str, folder: str, *, by_write: bool = False) -> list[str]:
+    """The names of the workspace's kept files directly in `folder`: sorted, or `by_write`, the
+    one written last at the end."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    with _array_reader() as (_root, read):
+        found: list[str] = kept_files.names(read, workspace_id, folder, by_write=by_write)
+    return found
+
+
+def kept_files_held(workspace_id: str) -> dict[str, str]:
+    """Every kept file of the workspace: its name and its newest digest."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    with _array_reader() as (_root, read):
+        held_files: dict[str, str] = kept_files.held(read, workspace_id)
+    return held_files
+
+
+def keep_workspace_file(
+    workspace_id: str, name: str, data: bytes, *, durable: bool = True, rewrite: bool = False
+) -> str:
+    """Keep `data` as the workspace's file `name` on the log this process holds, the one its kept
+    files are read from (`_array_reader`): a Host's, else its data root's, opened (`held`).
+    Returns its digest. `rewrite`: `kept_files.keep`'s."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    log = _kept_file_log()
+    digest: str = kept_files.keep(
+        Path(_open["root"]), log, workspace_id, name, data, durable=durable, rewrite=rewrite
+    )
+    return digest
+
+
+def remove_workspace_file(workspace_id: str, name: str) -> None:
+    """Remove the workspace's kept file `name` on the log its kept files are read from."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    kept_files.remove(_kept_file_log(), workspace_id, name)
+
+
+def _kept_file_log() -> HostLog:
+    """The log a kept file is written to: the one this process holds, whatever its root, as reads
+    take it (`_array_reader`); else the data root's, opened and held."""
+    log: HostLog | None = _open.get("log")
+    return log if log is not None else held()
+
+
 def move_carried(folder: Path, workspace_id: str) -> int:
     """A Host's admission of a workspace copy: the lanes it carries move onto the log this process
     holds, held by the workspace, before admission reads them. Nothing when it carries none."""
@@ -2282,6 +2361,7 @@ def move_carried(folder: Path, workspace_id: str) -> int:
     root = Path(_open["root"])
     count = arrays.import_carried(root, log, folder, workspace=held_id)
     _import_alpha_parts(root, log, folder, held_id)
+    _import_kept_files(log, folder, held_id)
     return count
 
 
@@ -2351,7 +2431,53 @@ def _carry(arrays: Any, read: Callable[..., Any], root: Path, workspace: Path, c
         staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
         staged.write_bytes(payload)
         os.replace(staged, target)
+    _carry_kept_files(read, workspace_id, copy / arrays.CARRIED)
     return count
+
+
+def _carry_kept_files(read: Callable[..., Any], workspace_id: str, carried: Path) -> None:
+    """The workspace's kept files' index into its copy's carried arrays, whose bodies `arrays.carry`
+    wrote beside it, in the order of their newest writes; the copy's Host names them under its own
+    id at admission."""
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    files = kept_files.held(read, workspace_id)
+    target = carried / kept_files.CARRIED
+    if not files and not target.exists():
+        return
+    carried.mkdir(parents=True, exist_ok=True)
+    staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    staged.write_bytes(
+        json.dumps([[n, d] for n, d in files.items()], separators=(",", ":")).encode()
+    )
+    os.replace(staged, target)
+
+
+def _import_kept_files(log: HostLog, folder: Path, workspace: str) -> None:
+    """Name the kept files a copy carries under `workspace`, in their carried write order, once
+    their carried bodies are kept. A name the log already has any event for under `workspace` is
+    not named again: the index stays in the copy and is read at every start, so it applies once,
+    and a write or removal since then stands. An index naming a body the copy did not carry is
+    refused by name."""
+    import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
+    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+
+    index = folder / arrays.CARRIED / kept_files.CARRIED
+    if index.is_symlink():
+        raise DataError("the copy's kept-file index is a link", code="data_layer.kept_file_missing")
+    if not index.is_file():
+        return
+    rows = json.loads(index.read_text(encoding="utf-8"))
+    known = kept_files.known(log.read, workspace)
+    for name, digest in rows:
+        if name in known:
+            continue
+        if arrays.profile(log.read, digest) is None:
+            raise DataError(
+                f"the copy names its file {name} by a body it does not carry",
+                code="data_layer.kept_file_missing",
+            )
+        kept_files.index(log, workspace, name, digest)
 
 
 def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) -> None:

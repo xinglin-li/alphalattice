@@ -26,6 +26,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,
 )
+from tests.pytest_environment import closure_on_log
 from tests.researcher_methodology_surface.real_workspace import (
     SYMBOLS,
     build_real_risk_workspace,
@@ -195,6 +196,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     }
 
     def boot(now, provider):
+        closure_on_log(workspace)  # the closure written outside a Host, as its first start moves it
         return LocalPortfolioWebSession(
             workspace=workspace,
             workspace_manifest=manifest,

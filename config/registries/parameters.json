@@ -2801,9 +2801,10 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_path::64": {
+"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_name::64": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "A ledger pointer is named by its 64-character lowercase hexadecimal SHA-256 identity."
 },
 "src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::provisional::64": {
 "class": "METHOD",

@@ -31,6 +31,7 @@ from alphalattice.foundation.research_foundation.contracts import (
     PreResearchDeskSafeProjection,
     ResearchFoundationBinding,
 )
+from alphalattice.kernel.data_layer.history import carry_arrays
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import (
     _json,
@@ -38,6 +39,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
     _Resolver,
     admit_market_fixture,
 )
+from tests.pytest_environment import closure_on_log
 from tests.researcher_methodology_surface.real_workspace import AS_OF, OBSERVED_AT, SYMBOLS
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.local_data_provider import (
@@ -218,6 +220,7 @@ def _activate(workspace: Path, *specs) -> None:
 def _run_data_update(workspace: Path) -> None:
     manifest = bind_existing_data_workspace(workspace)
     admit_market_fixture(workspace, manifest.workspace_id)
+    closure_on_log(workspace)  # the closure written outside a Host, as its first start moves it
     service = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=manifest,
@@ -253,6 +256,8 @@ def activated_seed(qualified, tmp_path_factory):
     shutil.copytree(qualified, workspace)
     _activate(workspace, _formula("formula_reversal_5", "close / lag(close, 5) - 1"))
     _run_data_update(workspace)
+    # Its copies outlive this Host's log: the folder carries what the update kept there.
+    carry_arrays(workspace, workspace)
     return workspace
 
 

@@ -32,6 +32,7 @@ scripts/run_playpen_precommit.py
 src/alphalattice/foundation/feature_engine/producers/cross_section.py
 src/alphalattice/foundation/feature_engine/producers/preprocessing/robust_cross_section.py
 src/alphalattice/foundation/feature_engine/panels/closure_artifacts.py
+src/alphalattice/foundation/feature_engine/panels/closure_files.py
 src/alphalattice/foundation/feature_engine/panels/closure_contracts.py
 src/alphalattice/foundation/feature_engine/panels/closure.py
 src/alphalattice/foundation/feature_engine/panels/rematerialization.py

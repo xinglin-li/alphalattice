@@ -64,7 +64,8 @@ def test_two_workspaces_citing_one_lane_hold_one_body() -> None:
 @pytest.mark.proves("data_layer.workspace_copy_carries_its_lanes")
 def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(tmp_path: Path) -> None:
     """A copy carries its source's lanes in the old form; its Host, on a root of its own, moves
-    them onto its log when it opens, held by the copy's workspace."""
+    them onto its log when it opens, held by the copy's workspace. Its kept files come in their
+    write order, once: a write or removal on the copy stands at its next start."""
     source, copy = tmp_path / "source", tmp_path / "copy"
     source.mkdir()
     log, root = history.held(), history.data_root()
@@ -75,10 +76,22 @@ def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(tmp_path: P
     alpha = history.keep_alpha_part(
         "a" * 64, "alpha-layout", b"alpha body", upgrade_owner=(log, root, held)
     )
-    assert history.carry_arrays(source, copy) == 3
+    for name, data in (("dir/b", b"B"), ("dir/a", b"A"), ("dir/c", b"C")):
+        history.keep_workspace_file(held, name, data)
+    history.remove_workspace_file(held, "dir/c")
+    assert history.carry_arrays(source, copy) == 6
     with history.own_root(tmp_path / "copy-root"):
         history.open_history("copy", "copy", copy)
         try:
+            assert history.kept_file_names("copy", "dir", by_write=True) == ["b", "a"]
+            history.keep_workspace_file("copy", "dir/b", b"B2")
+            history.remove_workspace_file("copy", "dir/a")
+        finally:
+            history.close_history()
+        history.open_history("copy", "copy", copy)
+        try:
+            assert history.kept_file_names("copy", "dir", by_write=True) == ["b"]
+            assert history.read_kept_file("copy", "dir/b") == b"B2"
             assert history.read_array(columns, packed=True) == lane["value"].tobytes()
             assert history.read_array(packed, packed=True) == b"legacy"
             assert history.alpha_part_body_digest("a" * 64, "alpha-layout") == alpha

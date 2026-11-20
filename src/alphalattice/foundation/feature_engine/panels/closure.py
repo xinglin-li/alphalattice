@@ -737,8 +737,7 @@ class PanelClosurePublisher:
     def _publish_table(
         self, *, category: str, content_hash: str, kind: str, table: pa.Table
     ) -> ClosureArtifactRef:
-        target = self._store.root / category / f"{content_hash}.parquet"
-        existed = target.exists()
+        existed = self._store.holds(category, content_hash, ".parquet")
         reference: ClosureArtifactRef = self._store.publish_parquet(
             category=category, content_hash=content_hash, kind=kind, table=table
         )
@@ -749,8 +748,7 @@ class PanelClosurePublisher:
         return reference
 
     def _publish_model(self, category: str, content_hash: str, model: BaseModel) -> None:
-        target = self._store.root / category / f"{content_hash}.json"
-        existed = target.exists()
+        existed = self._store.holds(category, content_hash)
         self._store.publish_json(
             category=category,
             content_hash=content_hash,
@@ -759,7 +757,7 @@ class PanelClosurePublisher:
         if existed:
             self._reused += 1
         else:
-            self._new_bytes += target.stat().st_size
+            self._new_bytes += len(self._store.files.read(f"{category}/{content_hash}.json") or b"")
 
     def _report(self, stage: str, completed: int, total: int, item: str | None) -> None:
         if self._progress is not None:

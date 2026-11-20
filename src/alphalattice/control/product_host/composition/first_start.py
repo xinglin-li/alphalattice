@@ -46,6 +46,7 @@ from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterL
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     execution_outcome_upgrade_family,
 )
+from alphalattice.foundation.feature_engine.panels.closure_files import closure_upgrade_family
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     alpha_array_upgrade_family,
@@ -142,6 +143,12 @@ def risk_covariance() -> Family:
     return risk_covariance_upgrade_family(named_workspace_id)
 
 
+def panel_closure() -> Family:
+    """Each workspace's Panel closure folder (the closure store, the Feature ledger and the
+    logical identity's pointers) onto the log, byte for byte, held by its workspace."""
+    return closure_upgrade_family(named_workspace_id)
+
+
 FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     partial(market_upgrade_family, named_workspace_id),
     execution_outcomes,
@@ -152,6 +159,7 @@ FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     sector_results_upgrade_family,
     portfolio_benchmarks,
     portfolio_results,
+    panel_closure,
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
 factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""

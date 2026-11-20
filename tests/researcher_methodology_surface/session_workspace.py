@@ -289,7 +289,9 @@ def session_workspace(
             try:
                 with own_root(machine):
                     metadata = build(target / "workspace")
-                    # A seed outlives the data root it was built on: it carries its Tasks,
+                    # A Panel closure its builders wrote outside a Host moves onto the log first,
+                    environment.closure_on_log(target / "workspace")
+                    # so the seed, outliving the data root it was built on, carries it; its Tasks,
                     carry_tasks(target / "workspace", target / "workspace")
                     carry_arrays(target / "workspace", target / "workspace")
                 # and its machine, whose catalog alone holds the outcome bodies it names.

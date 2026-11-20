@@ -59,7 +59,6 @@
     "tests/integration/factor_research/test_execution_target_and_walk_forward.py::import _classification": 1,
     "tests/integration/feature_engine/test_feature_catalog_crud.py::import _contract": 1,
     "tests/integration/feature_engine/test_feature_closure_ledger.py::import _REQUIRED_COLUMNS": 1,
-    "tests/integration/feature_engine/test_feature_closure_ledger.py::patch _read_pointer": 1,
     "tests/integration/feature_engine/test_feature_engine.py::import _artifact_references": 1,
     "tests/integration/feature_engine/test_feature_observation_clock.py::patch _THREADS": 1,
     "tests/integration/feature_engine/test_feature_observation_clock.py::patch _windows_affinity": 1,
