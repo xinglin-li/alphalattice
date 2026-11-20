@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -28,6 +30,7 @@ from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.chain import digest as text_digest
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -125,6 +128,21 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
         history.release_history()
 
 
+def _provider_summary(dataset: str, providers: list[str]) -> dict[str, Any]:
+    """Read the one bounded summary and check it keeps the complete provider list."""
+    [(attrs, body, named_digest)] = history.store().log.read(
+        "SELECT attrs, text, text_digest FROM event LEFT JOIN event_text USING (seq)"
+        " WHERE type = 'admission' AND subject_id = 'w1'"
+        " AND json_extract(attrs, '$.dataset') = ?",
+        (dataset,),
+    )
+    assert body is not None and json.loads(body) == providers
+    assert text_digest(body.encode()) == named_digest
+    summary = json.loads(attrs)
+    assert summary.pop("provider") == {"count": len(providers), "digest": named_digest}
+    return summary
+
+
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
 @pytest.mark.parametrize(
     "focus",
@@ -136,6 +154,7 @@ def workspace(tmp_path: Path) -> Iterator[tuple[MarketDataRepository, UniverseMa
         ),
         "workspace",
         "lineage",
+        "providers",
     ),
 )
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
@@ -147,6 +166,31 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
     store, manifest, database = workspace
+    if focus == "providers":
+        providers = [f"development-alias-{index:02d}-" + "a" * 225 for index in range(17)]
+        with store.database.transaction() as connection:
+            listing, symbol, start, end, state = connection.execute(
+                "SELECT listing_id, provider_symbol, effective_from, effective_to, lifecycle_state"
+                " FROM provider_symbol_mapping WHERE provider = 'fixture'"
+                " ORDER BY listing_id LIMIT 1"
+            ).fetchone()
+            connection.executemany(
+                "INSERT INTO provider_symbol_mapping VALUES (?, ?, ?, ?, ?, ?)",
+                [(listing, provider, symbol, start, end, state) for provider in providers],
+            )
+        try:
+            admitted = world.admit(database, "w1")
+        except sqlite3.IntegrityError as error:
+            if "length(attrs) <= 4096" not in str(error):
+                raise
+            pytest.fail(f"the market summary exceeded the attrs limit: {error}")
+        assert admitted is not None
+        summary = _provider_summary("market", sorted([*providers, "fixture"]))
+        assert summary["marks"]
+        results = {key: summary[key] for key in ("rows", "dropped", "rewritten") if key in summary}
+        assert results == admitted
+        assert world.admit(database, "w1") is None
+        return
     if focus == "identity":
         from functools import partial
 
@@ -594,8 +638,10 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         )
     finally:
         connection.close()
-    assert callable(getattr(world, "admit_sectors", None))
-    world.admit_sectors(database, "w1")
+    sector = world.admit_sectors(database, "w1")
+    summary = _provider_summary("sector", ["fixture"])
+    assert summary["rows"] == sector["rows"]
+    assert summary["marks"] == world.sector_marks(database)
     assert world.admit_sectors(database, "w1") is None
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (

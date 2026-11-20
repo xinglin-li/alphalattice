@@ -60,7 +60,11 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import attach
-from alphalattice.kernel.data_layer.project import lineage, require_lineage
+from alphalattice.kernel.data_layer.project import (
+    ADMISSION_SUMMARY_TEXT_VERSION,
+    lineage,
+    require_lineage,
+)
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
 from alphalattice.kernel.quant.sector_history import SectorReclassification
@@ -782,6 +786,23 @@ def market_of(calendar: str) -> str:
     return re.split("[_+]", calendar)[0]
 
 
+def _record_admission_summary(
+    workspace_id: str, providers: Sequence[str], attrs: dict[str, Any], started: int
+) -> None:
+    """Record the admission with the full provider list bound to its ledger event."""
+    body = canonical(providers)
+    history.record(
+        "admission",
+        ("workspace", workspace_id),
+        attrs | {"provider": {"count": len(providers), "digest": digest(body)}},
+        text=body.decode(),
+        version=ADMISSION_SUMMARY_TEXT_VERSION,
+        phase="completed",
+        started_us=started,
+        node="market_data_ops",
+    )
+
+
 def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
     """Admit the workspace's market tables in `database` into world; the rows each world table took,
     those StorePort dropped and the later writes of held values it recorded, or None when nothing
@@ -812,13 +833,11 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         admitted = _admit(port, providers)
         _admit_universe_contents(database, workspace_id, port.lake)
         _revisions(port, workspace_id)
-        history.record(
-            "admission",
-            ("workspace", workspace_id),
-            {"provider": sorted(providers), "dataset": DATASET, "marks": marks} | admitted,
-            phase="completed",
-            started_us=started,
-            node="market_data_ops",
+        _record_admission_summary(
+            workspace_id,
+            sorted(providers),
+            {"dataset": DATASET, "marks": marks} | admitted,
+            started,
         )
         history.flush()
         return admitted
@@ -978,14 +997,12 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
                     rows += done.rows
                     for reason, count in done.dropped.items():
                         dropped[reason] = dropped.get(reason, 0) + count
-        history.record(
-            "admission",
-            ("workspace", workspace_id),
-            {"provider": providers, "dataset": "sector", "marks": marks, "rows": {"sector": rows}}
+        _record_admission_summary(
+            workspace_id,
+            providers,
+            {"dataset": "sector", "marks": marks, "rows": {"sector": rows}}
             | ({"dropped": dropped} if dropped else {}),
-            phase="completed",
-            started_us=started,
-            node="market_data_ops",
+            started,
         )
         return {"rows": {"sector": rows}}
     finally:

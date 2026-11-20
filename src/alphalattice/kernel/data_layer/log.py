@@ -52,7 +52,6 @@ from alphalattice.kernel.data_layer.chain import (
     fold_segments,
 )
 from alphalattice.kernel.data_layer.project import (
-    ARTIFACT_PROFILE_TEXT_VERSION,
     BOUND_TEXT_EVENTS,
     ENDED,
     definition_names,
@@ -337,28 +336,28 @@ class HostLog:
     ) -> int:
         """Append a new event of `type_`, its envelope made by `envelope`."""
         row = envelope(type_, subject, attrs, text=text, **more)
-        if type_ == "artifact.produced" and row["type_version"] == ARTIFACT_PROFILE_TEXT_VERSION:
+        if (type_, row["type_version"]) in BOUND_TEXT_EVENTS:
             with self.unit() as con:
-                self._register_artifact_profile_text(con)
+                self._register_bound_text(con, type_, row["type_version"])
                 return self.append(row, text, body, committed=committed)
         return self.append(row, text, body, committed=committed)
 
-    def _register_artifact_profile_text(self, con: sqlite3.Connection) -> None:
-        """Install the compatible profile-text version through the log at first use."""
-        key = {
-            "family": "event_type",
-            "name": "artifact.produced",
-            "version": ARTIFACT_PROFILE_TEXT_VERSION,
-        }
+    def _register_bound_text(self, con: sqlite3.Connection, kind: str, version: int) -> None:
+        """Install a compatible machine-text version through the log at first use."""
+        key = {"family": "event_type", "name": kind, "version": version}
         if con.execute(
             "SELECT 1 FROM definition WHERE family = ? AND name = ? AND version = ?",
-            (key["family"], key["name"], key["version"]),
+            ("event_type", kind, version),
         ).fetchone():
             return
-        spec = _spec(con, {"type": key["name"], "type_version": 1}) | {"text": "optional"}
+        spec = _spec(con, {"type": kind, "type_version": 1}) | {"text": "optional"}
+        description = {
+            "artifact.produced": "An artifact profile may carry its shape as machine text.",
+            "admission": "An admission may carry its complete provider list as machine text.",
+        }[kind]
         self.record(
             "definition.registered",
-            ("definition", "event_type/artifact.produced"),
+            ("definition", f"event_type/{kind}"),
             key,
             text=canonical(
                 key
@@ -366,7 +365,7 @@ class HostLog:
                     "spec": spec,
                     "status": "standard",
                     "relation": "equal",
-                    "text": "An artifact profile may carry its shape as machine text.",
+                    "text": description,
                 }
             ).decode(),
         )
