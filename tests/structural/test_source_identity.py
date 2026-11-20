@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 import importlib
 import json
-from collections import Counter
 from enum import StrEnum
 from pathlib import Path
 
@@ -129,6 +128,34 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
         is_current("role", value, _C, root=root) for value in predecessors("role", _C, root=root)
     )
 
+    # A value moved back to one held before (A to B, B to C, C back to B) moves again (B to D): the
+    # later move from the revisited B supersedes the earlier one, and A, B and C all lead to D.
+    revisited = _successors(
+        tmp_path / "revisited",
+        [
+            _move("role", _A, _B),
+            _move("role", _B, _C),
+            _move("role", _C, _B),
+            _move("role", _B, _D),
+        ],
+    )
+    for value in (_A, _B, _C):
+        assert latest("role", value, root=revisited) == _D, value
+        assert is_current("role", value, _D, root=revisited), value
+        assert value in predecessors("role", _D, root=revisited), value
+    for value in (_A, _B, _C, _D):  # backward and forward agree: the superseded B to C is not read
+        assert all(
+            is_current("role", earlier, value, root=revisited)
+            for earlier in predecessors("role", value, root=revisited)
+        ), value
+    assert predecessors("role", _C, root=revisited) == (_C,)
+    assert recorded_origin("role", _D, root=revisited) == _A
+    returned = _successors(
+        tmp_path / "returned",
+        [_move("role", _A, _B), _move("role", _B, _A), _move("role", _A, _D)],
+    )
+    assert recorded_origin("role", _D, root=returned) == _A, "an origin bound before a revisit"
+
 
 @pytest.mark.parametrize(
     ("moves", "version", "code"),
@@ -169,6 +196,12 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
             "shared_kernel.identity_successor_invalid: duplicate role " + _A,
             id="conflicting-successor",
         ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _B, _C), _move("role", _B, _D)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _B,
+            id="repeated-without-a-cycle",
+        ),
     ],
 )
 def test_moves_this_build_cannot_read_are_refused_not_ignored(
@@ -180,12 +213,33 @@ def test_moves_this_build_cannot_read_are_refused_not_ignored(
         is_current("role", _A, _B, root=root)
 
 
-def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role() -> None:
+def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role(
+    tmp_path: Path,
+) -> None:
+    # Once per link: a landing's next move from the value a role's last move reached, a value
+    # it moved back to included, reads and leads that chain to the new value.
     moves = recorded_moves(ROOT)
+    reached = {move.role: move.successor for move in moves}
+    composed = tmp_path / "composed" / "config" / "identity-successors"
+    composed.mkdir(parents=True)
+    ledger = ROOT / "config" / "identity-successors"
+    composed.with_suffix(".json").write_bytes(ledger.with_suffix(".json").read_bytes())
+    for path in ledger.glob("*.json"):
+        (composed / path.name).write_bytes(path.read_bytes())
+    (composed / "9-landing.json").write_text(
+        json.dumps(
+            {
+                "schema": "identity-successors",
+                "version": 1,
+                "moves": [_move(role, value, _D) for role, value in reached.items()],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    assert moves
-    twice = [key for key, n in Counter((m.role, m.predecessor) for m in moves).items() if n > 1]
-    assert not twice, f"a predecessor recorded with two successors: {twice}"
+    for move in moves:
+        if latest(move.role, move.predecessor, root=ROOT) == reached[move.role]:
+            assert latest(move.role, move.predecessor, root=composed.parents[1]) == _D, move.role
 
 
 def test_study_identities_track_no_platform_or_build_file() -> None:

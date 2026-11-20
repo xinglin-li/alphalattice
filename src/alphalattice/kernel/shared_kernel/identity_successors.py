@@ -91,7 +91,14 @@ def _read_set(path: Path) -> list[IdentityMove]:
 
 @cache
 def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
-    """Read the frozen ledger first, then sets in filename and row order."""
+    """Read the frozen ledger first, then sets in filename and row order.
+
+    A role's value can move back to one it held before; its recorded moves then lead from that
+    value around to itself. A later move from such a revisited value starts a new link: it
+    supersedes the earlier move from it, so every earlier value in the chain leads to the newest
+    (``latest`` and ``is_current`` read the later move). A repeated predecessor whose earlier
+    moves do not lead back to it is refused by name.
+    """
     base = resolve_playpen_root(Path(__file__)) if root is None else root
     directory = base / IDENTITY_SUCCESSORS_PATH
     try:
@@ -113,17 +120,42 @@ def recorded_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
         ) from error
     else:
         paths.insert(0, frozen)
-    moves: dict[tuple[str, str], IdentityMove] = {}
+    moves: list[IdentityMove] = []
+    current: dict[tuple[str, str], str] = {}  # each (role, value) -> its latest recorded successor
     for path in paths:
         for move in _read_set(path):
             key = (move.role, move.predecessor)
-            if key in moves:
+            if key in current and not _returns(current, move.role, current[key], move.predecessor):
                 raise IdentitySuccessorError(
                     "shared_kernel.identity_successor_invalid",
                     f"duplicate {move.role} {move.predecessor} in {path}",
                 )
-            moves[key] = move
-    return tuple(moves.values())
+            current[key] = move.successor
+            moves.append(move)
+    return tuple(moves)
+
+
+def _returns(current: dict[tuple[str, str], str], role: str, start: str, target: str) -> bool:
+    """Whether the moves recorded so far lead from ``start`` back to ``target`` for ``role``."""
+    value, seen = start, {start}
+    while value != target:
+        value = current.get((role, value), "")
+        if not value or value in seen:
+            return False
+        seen.add(value)
+    return True
+
+
+def effective_moves(root: Path | None = None) -> tuple[IdentityMove, ...]:
+    """The moves in force, in recorded order: of the moves from one value, the last recorded.
+
+    A later move from a revisited value supersedes the earlier move from it; `latest`,
+    `is_current` and `predecessors` read these, so forward and backward agree. It is derived
+    from `recorded_moves` at each call, so it follows that cache.
+    """
+    moves = recorded_moves(root)
+    last = {(move.role, move.predecessor): index for index, move in enumerate(moves)}
+    return tuple(m for i, m in enumerate(moves) if last[(m.role, m.predecessor)] == i)
 
 
 def latest(role: str, value: str, *, root: Path | None = None) -> str:
@@ -133,7 +165,7 @@ def latest(role: str, value: str, *, root: Path | None = None) -> str:
     because nothing succeeds the installed value; an index keyed by a recorded value uses it
     so that a recorded move keeps its entries found.
     """
-    successors = {m.predecessor: m.successor for m in recorded_moves(root) if m.role == role}
+    successors = {m.predecessor: m.successor for m in effective_moves(root) if m.role == role}
     seen = {value}
     while value in successors:
         value = successors[value]
@@ -150,7 +182,7 @@ def predecessors(role: str, value: str, *, root: Path | None = None) -> tuple[st
     recorded move: each is current exactly when ``value`` is the installed one.
     """
     back: dict[str, list[str]] = {}
-    for move in recorded_moves(root):
+    for move in effective_moves(root):
         if move.role == role:
             back.setdefault(move.successor, []).append(move.predecessor)
     found = [value]
@@ -178,7 +210,7 @@ def recorded_origin(role: str, value: str, *, root: Path | None = None) -> str:
         The origin of ``value``.
     """
     back: dict[str, str] = {}
-    for move in recorded_moves(root):
+    for move in recorded_moves(root):  # every recorded move: an origin bound before a revisit
         if move.role == role:
             back.setdefault(move.successor, move.predecessor)
     seen = {value}
@@ -194,7 +226,7 @@ def is_current(role: str, recorded: str, installed: str, *, root: Path | None = 
     """Whether a recorded value names the installed authority for ``role``."""
     if recorded == installed:
         return True
-    successors = {m.predecessor: m.successor for m in recorded_moves(root) if m.role == role}
+    successors = {m.predecessor: m.successor for m in effective_moves(root) if m.role == role}
     seen = {recorded}
     value = recorded
     while value in successors:
