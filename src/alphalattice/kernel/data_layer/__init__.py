@@ -1,7 +1,6 @@
 """The 0.2.8 data layer: one event log, its registry, the DuckLake catalog DDL, the index."""
 
 from alphalattice.kernel.data_layer import derived_reads as derived_reads  # registers its setup
-from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
 from alphalattice.kernel.data_layer.root import (
     SCHEMA_VERSION,
     DataRoot,
@@ -13,9 +12,7 @@ from alphalattice.kernel.data_layer.root import (
 __all__ = [
     "SCHEMA_VERSION",
     "DataRoot",
-    "backup_data_root",
     "create_data_root",
-    "restore_data_root",
     "schema_text",
     "seed_rows",
 ]

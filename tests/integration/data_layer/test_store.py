@@ -9,6 +9,7 @@ import sqlite3
 import statistics
 import subprocess
 import sys
+import threading
 import uuid
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
@@ -137,9 +138,10 @@ def owe(port: StorePort) -> dict:
 
 
 @pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
-@pytest.mark.parametrize("case", ("conversation", "workspace"))
+@pytest.mark.parametrize("case", ("conversation", "workspace", "stopping"))
 def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
-    """One sanitized export survives restart, without duplicate delivery or invented scope."""
+    """One sanitized export survives restart, without duplicate delivery or invented scope, and
+    a Host stop that meets a batch in the catalog's session waits for it to commit."""
 
     def batch(session, workspace="w1"):
         attributes = (
@@ -175,6 +177,31 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
             workspace_id=workspace,
         )
 
+    if case == "stopping":  # the batch holds the session's writer at its clock, then commits
+        entered, release, done = threading.Event(), threading.Event(), {}
+        with HostLog.open(root) as log:
+            port, clock = StorePort.open(root, log), log.clock
+
+            def held() -> int:
+                entered.set()
+                release.wait(30)
+                return clock()
+
+            monkeypatch.setattr(log, "clock", held)
+            call = threading.Thread(
+                target=lambda: done.update(rows=port.telemetry_batch(batch("c")))
+            )
+            call.start()
+            assert entered.wait(30)
+            stop = threading.Thread(target=port.close)
+            stop.start()
+            stop.join(0.5)
+            assert stop.is_alive()  # the close waits: DuckDB refuses to close a session in use
+            release.set()
+            call.join(30)
+            stop.join(30)
+        assert done == {"rows": 1} and not stop.is_alive()
+        return
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
         try:

@@ -34,7 +34,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -154,6 +154,11 @@ emits is one of these events."""
 
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _lock = threading.RLock()
+"""Protect the in-memory handles and state. Release before using the log or StorePort."""
+_opening = threading.RLock()
+"""Serialize creation of an unpublished log, independently of the Host lifecycle."""
+_lifecycle = threading.RLock()
+"""Serialize Host start, last close and process-local root switches."""
 CALLS_KEPT: Final = 1024
 """The live CLI calls, and the conversations' last calls, the Host keeps for links."""
 _calls: dict[str, list[str]] = {}
@@ -174,15 +179,12 @@ def held(root: Path | None = None) -> HostLog:
     `close_history`. Refused by name when another process holds the root
     (`data_layer.host_running`, with the way on), its log does not open, or this process holds
     another root (`data_layer.root_held`): a process writes one data root's log."""
-    with _lock:
-        where = data_root() if root is None else root
-        log: HostLog | None = _open.get("log")
+    _, log = _log_at(root)
+    if log is not None:
+        return log
+    with _opening:
+        where, log = _log_at(root)
         if log is not None:
-            if Path(_open["root"]) != Path(where):
-                raise DataError(
-                    f"this process holds the data root {_open['root']}, not {where}",
-                    code="data_layer.root_held",
-                )
             return log
         try:
             create_data_root(where)
@@ -200,14 +202,29 @@ def held(root: Path | None = None) -> HostLog:
                 f"the log at {where} did not open ({error}); restore it from its last backup",
                 code="data_layer.log_unavailable",
             ) from error
-        _open.update(log=log, root=where)
+        with _lock:
+            _open.update(log=log, root=where)
         return log
+
+
+def _log_at(root: Path | None) -> tuple[Path, HostLog | None]:
+    """Resolve the root and check the published log under the state lock."""
+    with _lock:
+        where = data_root() if root is None else root
+        log: HostLog | None = _open.get("log")
+        if log is not None and Path(_open["root"]) != Path(where):
+            raise DataError(
+                f"this process holds the data root {_open['root']}, not {where}",
+                code="data_layer.root_held",
+            )
+        return where, log
 
 
 def holding() -> HostLog | None:
     """The log this process holds, if it holds the data root named now; it takes none."""
-    log: HostLog | None = _open.get("log")
-    return log if log is not None and Path(_open["root"]) == data_root() else None
+    with _lock:
+        log: HostLog | None = _open.get("log")
+        return log if log is not None and Path(_open["root"]) == data_root() else None
 
 
 def store() -> StorePort | None:
@@ -217,24 +234,26 @@ def store() -> StorePort | None:
     holding a log unit takes them when it records: the other order deadlocks the first open from
     a worker thread against a writer's unit. Once open, outside both, the Host's start collects the
     bodies nothing holds (`StorePort.collect_unheld`); a restore's own opening never does."""
-    port: StorePort | None = _open.get("store")
-    log: HostLog | None = _open.get("log")
+    with _lock:
+        port: StorePort | None = _open.get("store")
+        log: HostLog | None = _open.get("log")
     if port is not None or log is None:
         return port
-    opened = None
-    with log.reading(), _lock:
-        port = _open.get("store")
-        if (
-            port is None
-            and _open.get("log") is log
-            and recording()
-            and _open.get("reading") is not None
-        ):
-            from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
+    with log.reading():
+        with _lock:
+            if _open.get("log") is not log:
+                return None
+            port = _open.get("store")
+            if port is not None or not recording() or _open.get("reading") is None:
+                return port
+            root = Path(_open["root"])
+        from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
 
-            port = opened = _open["store"] = StorePort.open(Path(_open["root"]), _open["log"])
-    if opened is not None:  # the collector takes the backup's lock first, so never under the guard
-        opened.started["unheld"] = opened.collect_unheld()
+        port = StorePort.open(root, log)
+        with _lock:
+            _open["store"] = port
+    # The collector takes the backup's lock first, so run it outside the log guard.
+    port.started["unheld"] = port.collect_unheld()
     return port
 
 
@@ -384,7 +403,7 @@ def own_root(folder: Path) -> Iterator[Path]:
     """Hold `folder` as this process's data root while a copy of a workspace opens, so the copy's
     Tasks go to a log of its own and never the machine's; the root held before comes back after.
     Refused by name (`data_layer.root_held`) while this process's Host records."""
-    with _lock:
+    with _lifecycle, _opening, _lock:
         if recording():
             raise DataError(
                 f"this process's Host records in {_open['root']}; a copy opens in another process",
@@ -396,48 +415,61 @@ def own_root(folder: Path) -> Iterator[Path]:
     try:
         yield folder
     finally:
-        with _lock:
-            close_history()
-            _open.update(aside)
-            if before is None:
-                os.environ.pop(DATA_ROOT_ENV, None)
-            else:
-                os.environ[DATA_ROOT_ENV] = before
+        with _lifecycle, _opening:
+            _close_history()
+            with _lock:
+                _open.update(aside)
+                if before is None:
+                    os.environ.pop(DATA_ROOT_ENV, None)
+                else:
+                    os.environ[DATA_ROOT_ENV] = before
 
 
 def release_history() -> None:
     """A Host's stop: its events are committed, and its history closes with the last Host this
     process opened on it."""
-    with _lock:
-        hosts = _open.get("hosts", 0) - 1
+    with _lifecycle:
+        with _lock:
+            hosts = _open.get("hosts", 0) - 1
+            log = _open.get("log")
+            if hosts > 0:
+                _open["hosts"] = hosts
         if hosts > 0:
-            _open["hosts"] = hosts
-            _open["log"].flush()
-            return
-        close_history()
+            log.flush()
+        else:
+            _close_history()
 
 
 def close_history() -> None:
     """Commit the open batch, close the reading session and release the data root; the live
     calls and the conversations' last calls go with it, so a history opened again links nothing
     to a call of the one before."""
-    with _lock:
-        _calls.clear()
-        _conversations.clear()
-        _open.pop("hosts", None)
-        _open.pop("remote", None)
-        port = _open.pop("store", None)
-        with _catalog_lock:
-            catalog_reader = _open.pop("catalog_reader", None)
-        reading = _open.pop("reading", None)
-        log = _open.pop("log", None)
-        _open.pop("workspace", None)
-        _open.pop("portfolio_catalog_workspaces", None)
-        _open.pop("root", None)
-        provider = _open.pop("tracer", None)
-        logger = _open.pop("logger", None)
-        _open.pop("exporter", None)
-        _open.pop("facts", None)
+    with _lifecycle:
+        _close_history()
+
+
+def _close_history() -> None:
+    """Detach the Host's handles after its guarded reads, then close them outside both locks."""
+    with _opening:
+        with _lock:
+            log = _open.get("log")
+        with log.reading() if log is not None else nullcontext(), _lock:
+            _calls.clear()
+            _conversations.clear()
+            _open.pop("hosts", None)
+            _open.pop("remote", None)
+            port = _open.pop("store", None)
+            with _catalog_lock:
+                catalog_reader = _open.pop("catalog_reader", None)
+            reading = _open.pop("reading", None)
+            _open.pop("log", None)
+            _open.pop("workspace", None)
+            _open.pop("portfolio_catalog_workspaces", None)
+            _open.pop("root", None)
+            provider = _open.pop("tracer", None)
+            logger = _open.pop("logger", None)
+            _open.pop("exporter", None)
+            _open.pop("facts", None)
     if logger is not None:
         logger.shutdown()
     if provider is not None:
@@ -776,27 +808,28 @@ def record(
 ) -> int | None:
     """Append one research event through the Host's log, in the Host's workspace unless `more`
     names another; None outside a Host whose history is open."""
-    if not recording():
+    opened = opened_log()
+    if opened is None:
         return None
+    log, workspace = opened
     if type_ == "trial" and more.get("phase") in {"completed", "failed", "cancelled"}:
         try:
-            with _lock:
-                port = store()
-                native = (
-                    {"status": "UNMEASURED"}
-                    if port is None
-                    else port.trial_agent_usage(
-                        str(subject[1]), workspace_id=str(more.get("workspace", _open["workspace"]))
-                    )
+            port = store()
+            native = (
+                {"status": "UNMEASURED"}
+                if port is None
+                else port.trial_agent_usage(
+                    str(subject[1]), workspace_id=str(more.get("workspace", workspace))
                 )
+            )
         except Exception as error:
             logging.getLogger(__name__).warning(
                 "agent_telemetry.trial_unmeasured: %s", type(error).__name__
             )
             native = {"status": "UNMEASURED"}
         attrs = dict(attrs or {}) | {"agent_telemetry": native}
-    more.setdefault("workspace", _open["workspace"])
-    return int(_open["log"].record(type_, subject, attrs, **more))
+    more.setdefault("workspace", workspace)
+    return int(log.record(type_, subject, attrs, **more))
 
 
 def recording() -> bool:
@@ -814,64 +847,60 @@ def flush() -> None:
 
 def opened_log() -> tuple[HostLog, str] | None:
     """The Host's log and its workspace while its history records; None outside a Host."""
-    return (_open["log"], str(_open["workspace"])) if recording() else None
+    with _lock:
+        return (_open["log"], str(_open["workspace"])) if recording() else None
 
 
 def receive_agent_telemetry(rows: list[dict[str, Any]]) -> int:
     """The Host's existing log lifetime alone may open the catalog's writer, lazily."""
-    with _lock:
-        port = store()
-        if port is None:
-            raise DataError(
-                "The Host has no writable catalog; start a Host with the data extra",
-                code="agent_telemetry.host_unavailable",
-            )
-        return port.telemetry_batch(rows)
+    port = store()
+    if port is None:
+        raise DataError(
+            "The Host has no writable catalog; start a Host with the data extra",
+            code="agent_telemetry.host_unavailable",
+        )
+    return port.telemetry_batch(rows)
 
 
 def agent_telemetry(host: str, session: str, *, workspace_id: str) -> list[dict[str, Any]] | None:
     """Read the serving Host's exact workspace/vendor/session; absent means unmeasured."""
-    with _lock:
-        port = store()
-        return (
-            None if port is None else port.agent_telemetry(host, session, workspace_id=workspace_id)
-        )
+    port = store()
+    return None if port is None else port.agent_telemetry(host, session, workspace_id=workspace_id)
 
 
 def unplaced_agent_telemetry(*, workspace_id: str) -> int | None:
     """Count this Host workspace's records without a conversation/session identity."""
-    with _lock:
-        port = store()
-        return None if port is None else port.unplaced_telemetry(workspace_id=workspace_id)
+    port = store()
+    return None if port is None else port.unplaced_telemetry(workspace_id=workspace_id)
 
 
 def read_experience(**filters: Any) -> dict[str, list[dict[str, Any]]] | None:
     """Read the open Host's experience and record the read; None if unavailable."""
-    with _lock:
+    with _held_log() as opened:
         reading = _open.get("reading")
-        if reading is None:
+        if opened is None or reading is None:
             return None
-        _open["log"].flush()
+        log, _, _ = opened
+        log.flush()
         trials = reading.read("experience", **filters)
         notes = reading.read("goal_notes", **filters)
         record("experience.read", attrs={"count": len(trials)})
-        _open["log"].flush()
+        log.flush()
         return {"trials": trials, "notes": notes}
 
 
 @contextmanager
 def _held_log() -> Iterator[tuple[HostLog, str | None, Path] | None]:
-    """The held log under its guard alone, with its workspace and root as they were then; None
-    without a log, or when it closed meanwhile. This module's lock is not taken: holding both,
-    a caller would wait on one while holding the other against `open_history` (the lock, then
-    the guard) or `store()` (the guard, then the lock)."""
-    log: HostLog | None = _open.get("log")
+    """Borrow the log under its guard, with the workspace and root for that lifetime."""
+    with _lock:
+        log: HostLog | None = _open.get("log")
     if log is None:
         yield None
         return
     with log.reading():
-        workspace, root = _open.get("workspace"), _open.get("root")
-        current = _open.get("log") is log and root is not None
+        with _lock:
+            workspace, root = _open.get("workspace"), _open.get("root")
+            current = _open.get("log") is log and root is not None
         yield (log, workspace, Path(root)) if current else None
 
 
@@ -920,10 +949,10 @@ def render_experiences() -> list[str]:
 
 def hypothesis_goal(hypothesis: str, *, expected_goal: str | None = None) -> str | None:
     """Resolve an explicitly selected hypothesis in the current Host's log."""
-    with _lock:
-        log = _open.get("log")
-        if log is None:
+    with _held_log() as opened:
+        if opened is None:
             raise ValueError("experience.history_unavailable")
+        log, current_workspace, _ = opened
         rows = log.read(
             "SELECT workspace_id, goal_id FROM hypothesis_scope WHERE hypothesis_id = ?",
             (hypothesis,),
@@ -931,7 +960,7 @@ def hypothesis_goal(hypothesis: str, *, expected_goal: str | None = None) -> str
         if not rows:
             raise ValueError("experience.hypothesis_unknown")
         workspace, goal = rows[0]
-        if workspace != _open["workspace"]:
+        if workspace != current_workspace:
             raise ValueError("experience.hypothesis_workspace")
         if expected_goal is not None and goal != expected_goal:
             raise ValueError("experience.hypothesis_goal")
@@ -1054,7 +1083,9 @@ def _record_condition(selection: str, window: Mapping[str, Any], actor: tuple[st
         return
     cutoff = int(window["cutoff_us"])
     try:
-        with _lock:
+        with _held_log() as opened:
+            if opened is None or reading is not _open.get("reading"):
+                return
             values = reading.read("market_condition", universe=universe, cutoff_us=cutoff)
     except DataError as error:
         logging.getLogger(__name__).warning("market_condition.unread: %s", error)
@@ -1256,11 +1287,12 @@ def _search_memory(
     """The reader's `name` read, as one gen_ai `search_memory` client span over the experience
     store, its record count `count` of the answer; the query and the records stay off it, the
     conventions making both opt-in. None while the history is not open."""
-    with _lock:
+    with _held_log() as opened:
         reading = _open.get("reading")
-        if reading is None:
+        if opened is None or reading is None:
             return None
-        _open["log"].flush()
+        log, _, _ = opened
+        log.flush()
         provider = _open.get("tracer")
         if provider is None:
             found: dict[str, Any] = reading.read(name, **filters)
@@ -1276,7 +1308,7 @@ def _search_memory(
         ) as span:
             found = reading.read(name, **filters)
             span.set_attribute(telemetry.GEN_AI_MEMORY_RECORD_COUNT, count(found))
-        _open["log"].flush()
+        log.flush()
         return found
 
 

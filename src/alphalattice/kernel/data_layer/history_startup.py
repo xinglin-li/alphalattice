@@ -20,6 +20,7 @@ from alphalattice.kernel.data_layer.history_runtime import (
     FACTS,
     STEPS,
     _import_kept_files,
+    _lifecycle,
     _lock,
     _open,
     _remote,
@@ -55,18 +56,19 @@ def open_history(
     `data_layer.history_unavailable` when the views do not; either way the data root is released.
     Opening an open history again records the workspace only.
     """
-    with _lock:
-        held(root)
+    with _lifecycle:
+        log = held(root)
         if "reading" not in _open:
             where = data_root() if root is None else root
+            catalog_reader = None
             try:  # the views' DuckDB, checked here without the log, which only the reader opens
                 session = reading_session(where, log=False)
                 if session is not None:
                     if (where / "machine" / "catalog.sqlite").is_file():
-                        _open["catalog_reader"] = CatalogReader(session)
+                        catalog_reader = CatalogReader(session)
                     else:
                         session.close()
-                _open["reading"] = None if session is None else LogReader(where)
+                reading = None if session is None else LogReader(where)
             except Exception as error:  # DuckDB raises its own errors too
                 close_history()  # the data root's lock goes with it, so the next start can open it
                 raise DataError(
@@ -81,23 +83,30 @@ def open_history(
                 tracer_provider,
             )
 
-            _open["exporter"] = LogSpanExporter(_open["log"])
+            exporter = LogSpanExporter(log)
             remote = _remote(ExternalSpanProcessor, can_export)
-            _open["tracer"] = tracer_provider(_open["exporter"], remote=remote)
-            if remote is not None:
-                _open["remote"] = remote
-            _open["facts"] = LogFactExporter(_open["exporter"])
-            _open["logger"] = logger_provider(_open["facts"])
-        _open["workspace"] = workspace_on_log(folder, name, workspace_id, root)
-        _open["hosts"] = _open.get("hosts", 0) + 1
+            tracer = tracer_provider(exporter, remote=remote)
+            facts = LogFactExporter(exporter)
+            logger = logger_provider(facts)
+            with _lock:
+                _open.update(
+                    reading=reading, exporter=exporter, tracer=tracer, facts=facts, logger=logger
+                )
+                if catalog_reader is not None:
+                    _open["catalog_reader"] = catalog_reader
+                if remote is not None:
+                    _open["remote"] = remote
+        workspace = workspace_on_log(folder, name, workspace_id, root)
+        with _lock:
+            _open.update(workspace=workspace, hosts=_open.get("hosts", 0) + 1)
         import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
         # a copy's lanes and kept files move onto this log before anything reads them, its
         # workers and its first start included
-        where, log = Path(_open["root"]), _open["log"]
-        arrays.import_carried(where, log, folder, workspace=_open["workspace"])
-        _import_alpha_parts(where, log, folder, _open["workspace"])
-        _import_kept_files(log, folder, _open["workspace"])
+        where = Path(_open["root"])
+        arrays.import_carried(where, log, folder, workspace=workspace)
+        _import_alpha_parts(where, log, folder, workspace)
+        _import_kept_files(log, folder, workspace)
         spec: dict[str, Any] = {
             "storage": "none",  # the evidence stays in the workspace's store until row 8a
             "table": None,

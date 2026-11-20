@@ -913,10 +913,13 @@ class StorePort:
         return {"expired": len(expiring), "deleted": len(deleted)}
 
     def close(self) -> None:
-        """Finish the keeps handed over, then close the Host's DuckDB session; the log is the
-        caller's."""
-        self._keeping.shutdown(wait=True)
-        self.lake.close()
+        """Finish the keeps handed over, then close the Host's DuckDB session once no call holds
+        it; the log is the caller's. A call borrows the session under the writer outside the
+        history's lock, so the close waits for it there: DuckDB refuses to close a session a
+        call is using."""
+        self._keeping.shutdown(wait=True)  # its keeps take the writer, so before it
+        with self._writer:
+            self.lake.close()
 
     def _registered(self, staged: Staged) -> None:
         """Refuse an admission naming a lineage the log does not register in its family."""

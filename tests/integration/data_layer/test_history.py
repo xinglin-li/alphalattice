@@ -6,11 +6,13 @@ import json
 import socket
 import sqlite3
 import threading
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -21,6 +23,12 @@ from alphalattice.control.product_host.composition.experience_read import (
     recall_experience,
     record_experience,
 )
+from alphalattice.control.task_control.registry import (
+    DuckDbTaskControlRegistry,
+    TaskAdmission,
+    resolve_task_control_database,
+)
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.answers import (
     ExperienceAnswer,
     ExperienceRecallAnswer,
@@ -36,8 +44,101 @@ from alphalattice.kernel.data_layer import (
     recall,
 )
 from alphalattice.kernel.data_layer.log import HostLog
+from tests.workspace_task_runner.task_control_support import task_contract
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
+
+
+def _read_while_registry_writes(
+    folder: Path, monkeypatch: pytest.MonkeyPatch, read_view: Callable[[], dict[str, Any]]
+) -> dict[str, Any]:
+    """Drive the existing history read across a real guarded Task registry write."""
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(folder), workspace_id="w1", gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract()
+    log = history.held()
+    original_reading, original_flush = log.reading, log.flush
+    writer_has_guard, reader_at_guard, writer_finished = (threading.Event() for _ in range(3))
+    reader: threading.Thread | None = None
+
+    def before_reader_guard() -> None:
+        if threading.current_thread() is reader:
+            reader_at_guard.set()
+            assert writer_finished.wait(3), "history and registry waited in opposite orders"
+
+    @contextmanager
+    def reading() -> Iterator[sqlite3.Connection]:
+        before_reader_guard()
+        with original_reading() as connection:
+            yield connection
+
+    def flush() -> None:
+        before_reader_guard()
+        original_flush()
+
+    def write() -> TaskAdmission:
+        try:
+            with registry.read_scope():
+                writer_has_guard.set()
+                assert reader_at_guard.wait(5), "history never attempted the log guard"
+                return registry.admit(
+                    input_envelope=envelope, goal=goal, plan=plan, observed_at=datetime.now(UTC)
+                )
+
+        finally:
+            writer_finished.set()
+
+    def read() -> dict[str, Any]:
+        nonlocal reader
+        reader = threading.current_thread()
+        assert writer_has_guard.wait(5), "the registry never acquired the log guard"
+        return read_view()
+
+    with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=2) as pool:
+        patch.setattr(log, "reading", reading)
+        patch.setattr(log, "flush", flush)
+        writing, result = pool.submit(write), pool.submit(read)
+        answer = result.result(timeout=10)
+        admitted = writing.result(timeout=10)
+    assert registry.task(admitted.record.task_id) == admitted.record
+    return answer
+
+
+def _assert_implicit_open_follows_copy_exit(
+    copy_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    closing_copy, sampled_copy = threading.Event(), threading.Event()
+    read_root = history.data_root
+
+    def sample_root() -> Path:
+        root = read_root()
+        if closing_copy.is_set() and root == copy_root:
+            sampled_copy.set()
+        return root
+
+    def open_implicit() -> HostLog:
+        assert closing_copy.wait(5), "the copy never reached its close"
+        return history.held()
+
+    try:
+        with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=1) as worker:
+            patch.setattr(history_runtime, "data_root", sample_root)
+            with history.own_root(copy_root):
+                copy = history.held()
+                close_copy = copy.close
+
+                def close() -> None:
+                    closing_copy.set()
+                    sampled_copy.wait(5)
+                    close_copy()
+
+                patch.setattr(copy, "close", close)
+                opened = worker.submit(open_implicit)
+            assert sampled_copy.is_set(), "the opener never read the root during copy close"
+            assert opened.result(timeout=5) is history.holding(), "the opener kept the retired copy"
+    finally:
+        history.close_history()
 
 
 @pytest.mark.proves("data_layer.host_history_records_or_refuses")
@@ -78,7 +179,9 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 experience_workspace="w1",
                 history_limit=25,
             )
-            answer = read_experience(request)
+            answer = _read_while_registry_writes(
+                folder, monkeypatch, lambda: read_experience(request)
+            )
             assert {n["text"] for n in answer.get("notes", [])} == {
                 "Goal conclusion",
                 "Attributed lesson",
@@ -181,9 +284,8 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             with pytest.raises(DataError, match="no trial") as refused:
                 history.record_return_series("none", ["2015-01"], [0.01])
             assert refused.value.failure.code == "data_layer.trial_unknown"
-            # A render holds the log's guard alone: while it is inside, the lock `open_history`
-            # takes before the guard is free, so neither waits on the other (a handshake; every
-            # wait is bounded and only a red one runs out).
+            # A render holds the log guard. A registry writer holding that guard can still look
+            # up the Host state under the state lock; the render does not hold it.
             inside, go, held = threading.Event(), threading.Event(), {}
 
             def render_pending(*_: object) -> list[str]:
@@ -236,6 +338,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             assert not history.recording() and history.holding() is None
         finally:
             history.close_history()
+    _assert_implicit_open_follows_copy_exit(tmp_path / "closing-copy", monkeypatch)
     # The same process shares the attached catalog but closes each reader's cursor.
     import duckdb
 

@@ -125,8 +125,8 @@ class LogReader:
     """The reading views of the data root's log, read in a process of their own (`serve`) that
     alone opens the log in DuckDB: started at the first read, restarted when it has ended, and
     ended by `close`. A read takes `experience` or `goal_notes` by name with their filters and
-    returns their rows as those functions do. One caller at a time: its owner, the history, reads
-    it under its own lock."""
+    returns their rows as those functions do. The history serializes its calls under the log's
+    guard."""
 
     def __init__(self, root: Path) -> None:
         """A reader of `root`'s log views; its process starts at the first read."""

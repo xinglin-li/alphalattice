@@ -3763,6 +3763,7 @@
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
     "data_layer.history_runtime:held": "opens the data root through HostLog.open, whose class is the data-root family's writer",
+    "data_layer.history_runtime:store": "opens the Host's catalog through StorePort.open, whose class is the data-root family's writer",
     "data_layer.log:attach": "opens log.sqlite read-only (mode=ro), so SQLite refuses its writes"
   }
 }
