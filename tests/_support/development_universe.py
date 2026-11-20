@@ -117,6 +117,15 @@ LISTINGS = (
 at five or more), and four excluded by name, each as the full data excludes its kind: a split
 and a dividend on one day (its action audit fails), a delisting, a mid-period start whose
 first adjusted closes are missing, and a halt longer than the standard's longest gap."""
+DENSE_LISTINGS = tuple(
+    item
+    for item in LISTINGS
+    if item.sector in {"Technology", "Healthcare"}
+    and not {"halt", "missing-days"}.intersection(item.cases)
+)
+"""Incumbents with an unbroken session set and both Sectors above or at the five-member floor."""
+MAINTENANCE_LISTINGS = tuple(item for item in DENSE_LISTINGS if "zero-volume" not in item.cases)
+"""The qualified dense cohort for tests that isolate one listing's maintenance."""
 MOVED = ("DVE", "DVJ", "DVK")
 """The eligible listings a scenario's unexplained moves take, in this order."""
 RENAMED = "DVW"
@@ -200,10 +209,14 @@ def bootstrap(
     )
 
 
-def source_loader(**kwargs: object) -> CurrentUniverseBootstrap:
+def source_loader(
+    *, listings: Sequence[Listing] = LISTINGS, **kwargs: object
+) -> CurrentUniverseBootstrap:
     """The universe source: the candidate set as observed at the Host's `observed_at`."""
     observed_at = kwargs.get("observed_at")
-    return bootstrap(observed_at if isinstance(observed_at, datetime) else OBSERVED_AT)
+    return bootstrap(
+        observed_at if isinstance(observed_at, datetime) else OBSERVED_AT, listings=listings
+    )
 
 
 @dataclass(frozen=True)
@@ -214,6 +227,15 @@ class _Bar:
     low: float
     close: float
     volume: float
+
+    def rescaled(self, factor: float) -> _Bar:
+        return replace(
+            self,
+            open=self.open * factor,
+            high=self.high * factor,
+            low=self.low * factor,
+            close=self.close * factor,
+        )
 
 
 class DevelopmentProvider:
@@ -328,7 +350,8 @@ class DevelopmentProvider:
             raise ProviderFetchError("data.empty_payload", "No fixture history", retryable=False)
         return self.by_symbol[symbol]
 
-    def _bars_of(self, symbol: str) -> list[_Bar]:
+    def bars_for(self, symbol: str) -> list[_Bar]:
+        """The recorded bars seen by both provider history readers."""
         item = self._item(symbol)
         bars = self._bars[item.symbol]
         if "correction-after-cutoff" in item.cases and self.clock() >= CHANGED_AT:
@@ -371,7 +394,7 @@ class DevelopmentProvider:
                     "cash_dividend": amounts.get((bar.session, "CASH_DIVIDEND"), 0.0),
                     "capital_gain": 0.0,
                 }
-                for bar in self._bars_of(symbol)
+                for bar in self.bars_for(symbol)
                 if start <= bar.session <= end
             ]
         return result
@@ -393,7 +416,7 @@ class DevelopmentProvider:
         whose case says so has none for its first twenty sessions."""
         self._asked("adjusted-close", provider_symbol, start, end)
         item = self._item(provider_symbol)
-        bars = self._bars_of(provider_symbol)
+        bars = self.bars_for(provider_symbol)
         factor, adjusted = 1.0, {}
         dividends = {
             event.effective_date: event.cash_amount or 0.0

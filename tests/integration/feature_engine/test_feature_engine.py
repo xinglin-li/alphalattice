@@ -78,11 +78,15 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support import development_universe, sufficient_universe
 from tests.feature_engine.panel_workspace import (
     NOW,
     SESSIONS,
     FixtureProvider,
     build_and_publish,
+    capture_panel_closure,
+    clipping_evidence,
+    development_panel_inputs,
     extended_formula_layer,
     fixture_manifest,
     fixture_session_authority,
@@ -1041,21 +1045,19 @@ def test_amihud_averages_the_sessions_with_volume_and_a_zero_volume_bar_never_bl
 def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_path: Path) -> None:
     """Control: Missing daily market observation keeps other members usable."""
 
-    from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
-    from alphalattice.foundation.feature_engine.panels.closure_source import (
-        PanelClosureSourceRepository,
-    )
     from alphalattice.foundation.feature_engine.panels.rematerialization import (
         ArtifactOnlyPanelRematerializer,
     )
 
-    manifest = fixture_manifest(listing_count=60)
+    members = (development_universe.LISTINGS[0], *sufficient_universe.LISTINGS[-49:])
+    manifest, provider = development_panel_inputs(
+        tuple(replace(item, sector=f"Sector-{index // 20}") for index, item in enumerate(members)),
+        row_cap=sufficient_universe.ROW_CAP,
+    )
     prior, today = SESSIONS[400:402]
-    workspace = panel_workspace(tmp_path / "partial", manifest, end=prior, spy="a" * 64)
-    workspace.provider.sectors = {
-        item.symbol: f"Sector-{index // 20}" for index, item in enumerate(manifest.listings)
-    }
-    workspace.provider.sectors["SPY"] = "Reference"
+    workspace = panel_workspace(
+        tmp_path / "partial", manifest, end=prior, spy="a" * 64, provider=provider
+    )
     _first, original = build_and_publish(
         workspace, manifest, spy="a" * 64, as_of=prior, observed_at=NOW, refresh_sector=True
     )
@@ -1082,7 +1084,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
         refresh_sector=False,
     )
     assert outcome.status is FeatureBuildStatus.COMPLETED
-    assert partial["safe_summary"]["membership"]["as_of_member_count"] == 60
+    assert partial["safe_summary"]["membership"]["as_of_member_count"] == 50
     # A bar missing at the end of a listing's span is not a gap inside it: the Panel records no
     # market observation, and its identity is what it was before the record existed.
     assert "market_observation" not in partial["safe_summary"]
@@ -1094,10 +1096,10 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
         )
     ).to_pandas()
     selected = table.loc[table["session_date"] == today]
-    assert len(selected) == 60
+    assert len(selected) == 50
     factor = "mom_126_21"
     assert selected.loc[selected["listing_id"] == missing, factor].isna().all()
-    assert selected.loc[selected["listing_id"] != missing, factor].notna().sum() == 59
+    assert selected.loc[selected["listing_id"] != missing, factor].notna().sum() == 49
     assert partial["chunks"][:-1] == original["chunks"][:-1]
     kwargs = dict(
         listing_ids=tuple(item.listing_id for item in manifest.listings),
@@ -1111,14 +1113,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     partial_hash = workspace.panel_state.panel_source_state_hash(
         **kwargs, allow_missing_market_observations=True
     )
-    closure = PanelClosurePublisher(
-        resolver=workspace.resolver,
-        source=PanelClosureSourceRepository(
-            database_path=workspace.market_data.path,
-            resolver=workspace.resolver,
-        ),
-        store=PanelClosureArtifactStore(workspace.resolver),
-    ).publish()
+    closure, store = capture_panel_closure(workspace.market_data.path, workspace.resolver)
     partial_recipe = closure.recipes[str(partial["snapshot_hash"])]
     base_manifest = next(iter(closure.base_manifests.values()))
     assert base_manifest.absent_source_keys is not None
@@ -1179,7 +1174,7 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
             metadata_hash=chunk["metadata_hash"],
         )
     ).to_pandas()
-    assert restored.loc[restored["session_date"] == today, factor].notna().sum() == 60
+    assert restored.loc[restored["session_date"] == today, factor].notna().sum() == 50
     reproduced = ArtifactOnlyPanelRematerializer(
         resolver=workspace.resolver,
         store=PanelClosureArtifactStore(workspace.resolver),
@@ -1187,7 +1182,6 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
     assert reproduced.logical_parity and reproduced.physical_parity
     from alphalattice.control.product_host.storage.retention import _artifact_references
 
-    store = PanelClosureArtifactStore(workspace.resolver)
     absent_path = store.physical_path(
         category="base-keys", reference=base_manifest.absent_source_keys
     )
@@ -1238,15 +1232,9 @@ def test_missing_daily_market_observation_keeps_the_other_members_usable(tmp_pat
         ),
         refresh_sector=False,
     )
-    assert restricted["safe_summary"]["membership"]["as_of_member_count"] == 60
+    assert restricted["safe_summary"]["membership"]["as_of_member_count"] == 50
     assert restricted["safe_summary"]["membership"]["source_exclusions"]
-    restricted_closure = PanelClosurePublisher(
-        resolver=workspace.resolver,
-        source=PanelClosureSourceRepository(
-            database_path=workspace.market_data.path, resolver=workspace.resolver
-        ),
-        store=store,
-    ).publish()
+    restricted_closure, _ = capture_panel_closure(workspace.market_data.path, workspace.resolver)
     restricted_recipe = restricted_closure.recipes[str(restricted["snapshot_hash"])]
     assert restricted_recipe.membership.source_exclusions
     workspace.panel_state.clear_listing_quarantine(
@@ -1270,35 +1258,12 @@ def _chunk_row_hashes(resolver: ArtifactResolver, entry: dict[str, object]) -> l
     return pq.read_table(path, columns=["row_hash"]).column("row_hash").to_pylist()
 
 
-def _clipping_evidence(resolver: ArtifactResolver, manifest_payload: dict[str, object]):
-    from alphalattice.foundation.feature_engine.producers.preprocessing.contracts import (
-        PanelClippingEvidence,
-    )
-    from alphalattice.foundation.feature_engine.publication.snapshots import (
-        resolve_panel_preprocessing_lineage,
-    )
-
-    lineage = resolve_panel_preprocessing_lineage(
-        resolver, panel_content_hash=str(manifest_payload["panel_content_hash"])
-    )
-    assert lineage is not None
-    return PanelClippingEvidence.model_validate(
-        resolver.load_panel_clipping_evidence(
-            resolver.panel_clipping_evidence_uri(str(lineage["clipping_evidence_hash"]))
-        )
-    )
-
-
 def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention(
     tmp_path, monkeypatch
 ) -> None:
     """Daily append reuses closed years and keeps provenance recovery and retention."""
 
     from alphalattice.foundation.feature_engine.panels import logical_identity
-    from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
-    from alphalattice.foundation.feature_engine.panels.closure_source import (
-        PanelClosureSourceRepository,
-    )
     from alphalattice.foundation.feature_engine.panels.reader import (
         FeaturePanelReader,
         FeaturePanelReadRequest,
@@ -1310,10 +1275,12 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         PanelRetentionResidueOwner,
     )
 
-    manifest = fixture_manifest()
+    manifest, provider = development_panel_inputs()
     day_one, day_two = SESSIONS[-2], SESSIONS[-1]
     spy_one, spy_two = "a" * 64, "b" * 64
-    workspace = panel_workspace(tmp_path / "daily", manifest, end=day_one, spy=spy_one)
+    workspace = panel_workspace(
+        tmp_path / "daily", manifest, end=day_one, spy=spy_one, provider=provider
+    )
     _first, manifest_one = build_and_publish(
         workspace, manifest, spy=spy_one, as_of=day_one, observed_at=NOW, refresh_sector=True
     )
@@ -1406,7 +1373,9 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         assert (projected["lifecycle"], projected["reason"]) == (lifecycle, reason)
 
     # The reused partitions are exactly what a build from scratch computes.
-    reference = panel_workspace(tmp_path / "reference", manifest, end=day_two, spy=spy_two)
+    reference = panel_workspace(
+        tmp_path / "reference", manifest, end=day_two, spy=spy_two, provider=provider
+    )
     _reference_build, reference_manifest = build_and_publish(
         reference, manifest, spy=spy_two, as_of=day_two, observed_at=NOW, refresh_sector=True
     )
@@ -1419,8 +1388,8 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         assert _chunk_row_hashes(workspace.resolver, reused) == _chunk_row_hashes(
             reference.resolver, rebuilt
         )
-    evidence_two = _clipping_evidence(workspace.resolver, manifest_two)
-    evidence_reference = _clipping_evidence(reference.resolver, reference_manifest)
+    evidence_two = clipping_evidence(workspace.resolver, manifest_two)
+    evidence_reference = clipping_evidence(reference.resolver, reference_manifest)
     assert evidence_two.panel_binding_hash == binding_two
     assert evidence_two.total_clipped_count == evidence_reference.total_clipped_count
     # Cell by cell on the calendar, not only in total: the fold joins each
@@ -1457,13 +1426,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
 
     # It freezes into a closure whose recipe records the origins, and the
     # artifact-only rematerializer reproduces every chunk byte-exact.
-    closure = PanelClosurePublisher(
-        resolver=workspace.resolver,
-        source=PanelClosureSourceRepository(
-            database_path=workspace.market_data.path, resolver=workspace.resolver
-        ),
-        store=PanelClosureArtifactStore(workspace.resolver),
-    ).publish()
+    closure, store = capture_panel_closure(workspace.market_data.path, workspace.resolver)
     assert not closure.blocked_snapshots
     recipe = closure.recipes[str(manifest_two["snapshot_hash"])]
     assert {item.panel_binding_hash for item in recipe.partition_origins or ()} == {binding_one}
@@ -1471,7 +1434,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
         binding_one for _ in years[:-1]
     ] + [binding_two]
     result = ArtifactOnlyPanelRematerializer(
-        resolver=workspace.resolver, store=PanelClosureArtifactStore(workspace.resolver)
+        resolver=workspace.resolver, store=store
     ).rematerialize(recipe.recipe_hash)
     assert result.logical_parity and result.physical_parity
     assert [item.chunk_hash for item in result.chunks] == [
@@ -1560,7 +1523,7 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
     }
     # The corrected cells are the only ones this build measured; the evidence
     # still describes the whole Panel, folded from every batch that owns cells.
-    evidence_three = _clipping_evidence(workspace.resolver, manifest_three)
+    evidence_three = clipping_evidence(workspace.resolver, manifest_three)
     assert evidence_three.panel_binding_hash == binding_two
     assert {item.factor_id for item in evidence_three.factor_records} == {
         item.factor_id for item in evidence_reference.factor_records
@@ -1572,17 +1535,9 @@ def test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_rete
     # The correction left day two's batches owning only the cells it did not
     # recompute. Their receipts cannot re-derive from those cells alone; the
     # cells are verified one by one and the chunks still reproduce byte-exact.
-    closure_three = PanelClosurePublisher(
-        resolver=workspace.resolver,
-        source=PanelClosureSourceRepository(
-            database_path=workspace.market_data.path, resolver=workspace.resolver
-        ),
-        store=PanelClosureArtifactStore(workspace.resolver),
-    ).publish()
+    closure_three, _ = capture_panel_closure(workspace.market_data.path, workspace.resolver)
     recipe_three = closure_three.recipes[str(manifest_three["snapshot_hash"])]
-    rematerializer = ArtifactOnlyPanelRematerializer(
-        resolver=workspace.resolver, store=PanelClosureArtifactStore(workspace.resolver)
-    )
+    rematerializer = ArtifactOnlyPanelRematerializer(resolver=workspace.resolver, store=store)
     replayed = rematerializer.rematerialize(recipe_three.recipe_hash)
     assert replayed.logical_parity and replayed.physical_parity
     assert [item.chunk_hash for item in replayed.chunks] == [

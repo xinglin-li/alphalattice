@@ -127,8 +127,21 @@ def _active_panel_manifest(workspace: Path) -> dict:
     )
 
 
-def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Path:  # type: ignore[no-untyped-def]
+def one_sector_seed(
+    tmp_path_factory: pytest.TempPathFactory, name: str, members: tuple[str, ...]
+) -> Path:
     """A qualified workspace of ``members`` in one Sector: real history, catalog and Panel."""
+    return prepared_update_seed(tmp_path_factory, name, members, sector_size=len(members))
+
+
+def prepared_update_seed(
+    tmp_path_factory: pytest.TempPathFactory,
+    name: str,
+    members: tuple[str, ...],
+    *,
+    sector_size: int = 5,
+) -> Path:
+    """One product-built update seed for the fixture's fixed membership."""
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
@@ -141,7 +154,7 @@ def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Pa
 
     def build(root):  # type: ignore[no-untyped-def]
         built = build_real_risk_workspace(
-            tmp_path_factory.mktemp(f"{name}-base"), symbols=members, sector_size=len(members)
+            tmp_path_factory.mktemp(f"{name}-base"), symbols=members, sector_size=sector_size
         )
         publish_research_workspace_manifest(built.workspace, _manifest(f"data-update-{name}"))
         _seed_foundation(built.workspace, built.panel_snapshot_hash)
@@ -215,6 +228,20 @@ def _activate(workspace: Path, *specs) -> None:
             for spec in specs
         )
     ).write(workspace)
+
+
+def run_update_to_status(
+    live: LocalPortfolioWebSession,
+    request: dict[str, object],
+    *,
+    timeout: int = 300,
+    task_id: str | None = None,
+) -> tuple[dict, dict]:
+    admitted = _json(live, "/api/data-update/run", method="POST", payload=request)
+    if task_id is not None:
+        assert admitted["task_id"] == task_id, admitted
+    live.dispatcher.drain_for_tests(timeout=timeout)
+    return admitted, _json(live, "/api/status?task_id=" + admitted["task_id"])
 
 
 def _run_data_update(workspace: Path) -> None:

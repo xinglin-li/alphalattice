@@ -32,7 +32,7 @@ from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
-from functools import cache
+from functools import cache, partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -528,29 +528,31 @@ def build_real_risk_workspace(
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
 
 
-def session_fresh_seed(factory):
+def session_fresh_seed(factory, symbols=SYMBOLS):
     """Build the real fresh workspace once per session, before a test's timer."""
     from tests.researcher_methodology_surface.session_workspace import session_workspace
 
     def build(root: Path) -> dict:
-        record = build_real_risk_workspace(root, fresh=True)
-        key = _golden_key(record.feature_catalog, record.feature_kernels, SYMBOLS)
-        return _sidecar(record, SYMBOLS, key)
+        record = build_real_risk_workspace(root, fresh=True, symbols=symbols)
+        key = _golden_key(record.feature_catalog, record.feature_kernels, symbols)
+        return _sidecar(record, symbols, key)
 
-    return session_workspace(factory, "fresh_real_risk", build, inputs=_environment_digest())
+    return session_workspace(
+        factory, "fresh_real_risk", build, inputs=(_environment_digest(), symbols)
+    )
 
 
-def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
+def copy_fresh_workspace(factory, target: Path, symbols=SYMBOLS) -> RealRiskWorkspace:
     """Give one test a private writable copy, restored through product readers."""
     from tests.researcher_methodology_surface.session_workspace import copy_workspace
 
-    source, metadata = session_fresh_seed(factory)
+    source, metadata = session_fresh_seed(factory, symbols)
     workspace = copy_workspace(source / "workspace", target)
     return _restore(
         workspace,
         FeatureCatalog.load(),
         default_extension_kernel_registry(),
-        SYMBOLS,
+        symbols,
         str(metadata["key"]),
         metadata,
     )
@@ -1388,12 +1390,20 @@ def _build_workspace(
     # every reader that takes only a workspace path assumes. A sibling directory
     # works only for callers that are told about it separately.
     artifact_root = workspace / "artifacts"
-    if tuple(symbols) == DEVELOPMENT_SYMBOLS:
-        provider = development_universe.development_provider()
-        load = development_universe.source_loader
-    elif tuple(symbols) == SUFFICIENT_SYMBOLS:
+    if tuple(symbols) == SUFFICIENT_SYMBOLS:
         provider = sufficient_universe.sufficient_provider()
         load = sufficient_universe.source_loader
+    elif "DVA" in symbols and set(symbols).issubset(SUFFICIENT_SYMBOLS):
+        members = tuple(item for item in sufficient_universe.LISTINGS if item.symbol in symbols)
+        row_cap = (
+            development_universe.ROW_CAP
+            if set(symbols).issubset(DEVELOPMENT_SYMBOLS)
+            else sufficient_universe.ROW_CAP
+        )
+        provider = development_universe.DevelopmentProvider(
+            sessions=development_universe.calendar_sessions(), listings=members, row_cap=row_cap
+        )
+        load = partial(development_universe.source_loader, listings=members)
     else:
         schedule = materialize_calendar_schedule(
             ("XNAS",), start=history_start(standard), end=AS_OF, as_of_timestamp=OBSERVED_AT

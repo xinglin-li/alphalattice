@@ -24,6 +24,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from tests._support import development_universe
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
     _json,
@@ -38,7 +39,7 @@ from tests.researcher_methodology_surface.real_workspace import (
 )
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
 from tests.workspace_maintenance import data_update_support
-from tests.workspace_maintenance.data_update_support import _provider, one_sector_seed
+from tests.workspace_maintenance.data_update_support import _provider
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
     recording_provider,
@@ -54,9 +55,8 @@ years: a computation over this many is the listing's whole history."""
 
 @pytest.fixture(scope="session")
 def entrant_seed(tmp_path_factory):
-    """The real five-member Sector floor, full history and full shipped catalog."""
-    members = SYMBOLS[:5]
-    return one_sector_seed(tmp_path_factory, "entrant", members), members
+    members = tuple(item.symbol for item in development_universe.MAINTENANCE_LISTINGS)
+    return data_update_support.prepared_update_seed(tmp_path_factory, "entrant", members)
 
 
 @pytest.fixture(scope="session")
@@ -428,15 +428,20 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
     )
 
     workspace = tmp_path / "new-member"
-    seed, members = entrant_seed
-    copy_workspace(seed, workspace)
+    copy_workspace(entrant_seed, workspace)
     binding = bind_existing_data_workspace(workspace)
-    symbols = (*members, "NEW")
-    candidate = _bootstrap(symbols)
+    source_members = (
+        *development_universe.MAINTENANCE_LISTINGS,
+        development_universe.Listing("NEW", "SP500", "Technology"),
+    )
+    candidate = development_universe.bootstrap(listings=source_members)
     tomorrow = NOW + timedelta(days=1)
     clock_now = NOW
-    provider = recording_provider(symbols=symbols, now=tomorrow + timedelta(days=1))
-    provider.sectors["NEW"] = "Sector-0"
+    provider = development_universe.DevelopmentProvider(
+        clock=lambda: clock_now,
+        sessions=development_universe.calendar_sessions(end=development_universe.THROUGH),
+        listings=source_members,
+    )
     entrant = build_current_index_acquisition_manifest(
         ROOT / "config/market-profiles/us-current-index-research.yaml", candidate
     ).listing_for_symbol("NEW")
@@ -483,6 +488,10 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
 
         monkeypatch.setattr(provider, "fetch_daily", with_zero_volume)
     market = MarketDataRepository(workspace)
+    held_manifest = market.current_quality_filtered_research_manifest(
+        market_profile_id="us-current-index-research"
+    )
+    incumbents = {item.listing_id for item in held_manifest.listings}
     calls = []
     made = ChildCalls.make
 
@@ -519,20 +528,14 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             method="POST",
             payload={"update_plan_hash": plan["plan_hash"]},
         )
-        started = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": plan["plan_hash"]},
+        _, status = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": plan["plan_hash"]}, task_id=queued["task_id"]
         )
-        assert started["task_id"] == queued["task_id"]
-        live.dispatcher.drain_for_tests(timeout=300)
-        status = _json(live, "/api/status?task_id=" + queued["task_id"])
-        assert status["lifecycle"] == "SUCCEEDED", status.get("latest_failure_code", status)
+        assert status["lifecycle"] == "SUCCEEDED", json.dumps(status.get("failure_cause", status))
         current = market.current_quality_filtered_research_manifest(
             market_profile_id="us-current-index-research"
         )
-        assert current.listing_for_symbol("NEW") is None
+        assert {item.listing_id for item in current.listings} == incumbents
         assert not market.membership_events("us-current-index-research")
         own_calls = [item for item in calls if item[0] == entrant.listing_id]
         if candidate_features_available == "recoverable_history":
@@ -547,8 +550,8 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
             str(snapshot["manifest_uri"])
         )
-        assert payload["safe_summary"]["membership"]["as_of_member_count"] == len(members)
-        assert payload["active_listing_count"] == len(members)
+        assert payload["safe_summary"]["membership"]["as_of_member_count"] == len(incumbents)
+        assert payload["active_listing_count"] == len(incumbents)
         repeated = _json(
             live,
             "/api/data-update/run",
@@ -566,27 +569,23 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             else "candidate_recheck"
         )
         assert recheck[scope_key]["listing_ids"] == [entrant.listing_id]
-        rerun = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": recheck["plan_hash"]},
+        _, result = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": recheck["plan_hash"]}
         )
-        live.dispatcher.drain_for_tests(timeout=300)
-        result = _json(live, "/api/status?task_id=" + rerun["task_id"])
         assert result["lifecycle"] == "SUCCEEDED", result
         events = market.membership_events("us-current-index-research")
         assert [(event.listing_id, event.kind) for event in events] == [
             (entrant.listing_id, "ENTRY")
         ]
         assert events[0].effective_session > tomorrow.date()
-        assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
+        daily_calls = [
+            (symbol, start)
+            for kind, symbol, start, _ in provider.calls[prices_before:]
+            if kind == "daily"
+        ]
+        assert all(start > HISTORY_START for _, start in daily_calls)
         if candidate_features_available == "recoverable_history":
-            assert all(
-                symbols == ("NEW",)
-                for symbols, start, _ in provider.calls[prices_before:]
-                if start < date(2026, 1, 1)
-            )
+            assert all(symbol == "NEW" for symbol, start in daily_calls if start < date(2026, 1, 1))
             raw_scope = market.latest_current_universe_onboarding_disclosure(
                 market_profile_id="us-current-index-research"
             )
@@ -613,14 +612,9 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         clock_now = tomorrow + timedelta(days=1)
         next_plan = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert next_plan["status"] != "CONFIRMATION_REQUIRED", next_plan
-        next_run = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": next_plan["plan_hash"]},
+        _, next_status = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": next_plan["plan_hash"]}
         )
-        live.dispatcher.drain_for_tests(timeout=300)
-        next_status = _json(live, "/api/status?task_id=" + next_run["task_id"])
         assert next_status["lifecycle"] == "SUCCEEDED", next_status.get(
             "latest_failure_code", next_status
         )
@@ -630,7 +624,9 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         next_payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
             str(next_snapshot["manifest_uri"])
         )
-        assert next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(symbols)
+        assert (
+            next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(incumbents) + 1
+        )
         assert next_payload["chunks"][:-1] == payload["chunks"][:-1]
         assert market.membership_events("us-current-index-research") == events
         # Only one preparation consumed the entrant's full history.

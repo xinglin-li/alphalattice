@@ -1809,8 +1809,7 @@
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_missing_quality_scope_refuses_publication_and_child_evidence_still_refuses*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Its cold seed setup takes over 60 s until the build-once fixture lands; it reads the sixty-name ten-sector seed (ten_sector, six members a sector), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "admitted": "2026-10-23: setup timed out at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture.",
+      "reason": "Uses 60 registered sufficient-set members so the resumed approved quarantine clears the 98% floor and reaches the later missing-scope refusal.",
       "size_contract": "nightly_only"
     },
     {
@@ -1827,26 +1826,6 @@
       "reason": "Runs a deferred daily, its in-place recovery and the following exchange session; it copies the recorded data-platform QA workspace ls1_daily_flows, a full-history book, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "timeout_seconds": 5400,
       "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the real scientific workspace and refuses foreign sidecar identities.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the real scientific workspace and restores its second consumer with exact identities.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_the_golden_key_binds_the_interpreter_and_the_installed_distributions*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the scientific golden and checks interpreter and installed-distribution key changes.",
-      "timeout_seconds": 5400
     },
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_unregistered_or_tampered_versions_refuse_before_work*",
@@ -1882,7 +1861,7 @@
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Builds the sixty-name sector seed and runs a dated update through governed price-move audits; it reads the sixty-name ten-sector seed (ten_sector, six members a sector), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Uses 60 registered sufficient-set members so one audited listing fits the shipped 2% bound and two exceed it.",
       "size_contract": "nightly_only"
     },
     {
@@ -1895,28 +1874,6 @@
       "owner": "tests.workspace_readiness",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold-builds the 120-listing preparation with publication interruption and verifies its reopened inputs.",
       "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
-      "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use Data and Feature admission through changed source-volume eligibility; it reads the eight-year Factor-scale first use (real_workspace.FACTOR_SCALE, over 100 listings), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
-      "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use preparation through recoverable sector exclusion and Feature readback; it reads the eight-year Factor-scale first use (real_workspace.FACTOR_SCALE, over 100 listings), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs three real daily updates across year-end and checks partition reuse and corrected values."
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
-      "owner": "tests.feature_engine",
-      "reason": "Builds and appends real Panel partitions, then exercises closure recovery and retention."
     },
     {
       "pattern": "tests/integration/product_host/test_promotion_next_step.py::test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery*",
@@ -1967,20 +1924,9 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
-      "owner": "tests.feature_engine",
-      "reason": "Builds real Panel rows across membership joins and leaves and rematerializes their closures."
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate; on the two-year walk 60.2 s with setup under a four-worker mac1 leg (11-18), at the 60 s Medium bound.",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_otherwise*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Runs the first governed quarantine and the next daily recheck over the real market and Panel stores; it reads the sixty-name ten-sector seed (standing_quarantine_seed over ten_sector), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Exercises continuation and clearance on 60 registered sufficient-set members, where 59 remaining after one quarantine meet the 98% Panel floor.",
       "size_contract": "nightly_only"
     },
     {
@@ -2004,7 +1950,7 @@
     {
       "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_missing_daily_market_observation_keeps_the_other_members_usable*",
       "owner": "tests.feature_engine",
-      "reason": "Builds the sixty-member Panel and rematerializes its closure around a missing daily observation; it reads the sixty-member Panel, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Builds and rematerializes a Panel with one observation missing across 50 registered sufficient-set members, so the other 49 meet the 98% coverage floor.",
       "size_contract": "nightly_only"
     },
     {
@@ -2028,7 +1974,72 @@
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_task*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Cold setup builds the ten-sector maintenance workspace before the quarantine decision and same-task publication recovery; it reads the sixty-name ten-sector seed (ten_sector, six members a sector), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "reason": "Uses 60 registered sufficient-set members so masking one still meets the 98% Panel floor without changing nominal membership.",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "Uses the development set but needs a cold golden and the refusal replays, measured at 100.54 s in the solo admission.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 5400,
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "Uses the development set but builds a cold golden and verifies the copies, measured at 97.28 s in the solo admission.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 5400,
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
+      "owner": "tests.workspace_readiness",
+      "reason": "Replays development first use after source correction, with observed times of 109.25 s on Windows and 32.59 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
+      "owner": "tests.workspace_readiness",
+      "reason": "Replays development first use after sector exclusion, with observed times of 89.77 s on Windows and 31.29 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Materializes and corrects three development sessions across year-end, with observed times of 161.68 s on Windows and 72.92 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
+      "owner": "tests.feature_engine",
+      "reason": "Builds development Panels to compare closed-year reuse, recovery and retention, with observed times of 151.51 s on Windows and 89.74 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
+      "owner": "tests.feature_engine",
+      "reason": "Rebuilds the development Panel through entry and exit, with observed times of 74.11 s on Windows and 41.48 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Runs all development entrant qualification cases, with the slowest observed calls taking 95.89 s on Windows and 44.11 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
+      "owner": "tests.workspace_readiness",
+      "reason": "Runs first use on the development set to measure the shortage reason, taking 55.12 s in the solo admission run.",
+      "admitted": "2026-10-30: measured 18.278 s on Windows; size registration pilot admits the Large classification.",
       "size_contract": "nightly_only"
     },
     {
@@ -2118,13 +2129,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
-      "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use preparation with an incomplete qualified baseline and checks its offered next step; it reads the eight-year Factor-scale first use (real_workspace.FACTOR_SCALE, over 100 listings), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "admitted": "2026-10-30: measured 18.278 s on Windows; size registration pilot admits the Large classification.",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary",
       "owner": "tests.workspace_readiness",
       "reason": "Builds and hydrates a workspace before checking cancellation and recovery at the chunk boundary.",
@@ -2209,6 +2213,51 @@
     }
   ],
   "budget_admissions": [
+    {
+      "budget": "large:tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
+      "value": 5400,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
+      "value": 5400,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
     {
       "budget": "large:tests/integration/product_host/research_authoring/test_factor_inputs.py::test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them*",
       "value": 900,

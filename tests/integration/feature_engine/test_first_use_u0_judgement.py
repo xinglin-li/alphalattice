@@ -15,6 +15,7 @@ from alphalattice.control.product_host.composition.local_web_session import Loca
 from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
 from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
 from alphalattice.interface.local_application.client import LocalResearchClient
+from tests._support import development_universe
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
@@ -56,50 +57,42 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
         WorkspaceMaintenanceCoordinator,
     )
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+    from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-    from tests.researcher_methodology_surface.real_workspace import (
-        AS_OF,
-        SeededWalkProvider,
-    )
 
-    class VolumeShapedProvider(SeededWalkProvider):
-        """The seeded walk, with per-symbol volume overrides by session."""
+    symbols = {v.symbol for v in development_universe.LISTINGS} - {"DVM", "DVQ", "DVR", "DVS"}
+    provider = development_universe.development_provider()
+    sessions = tuple(day for day in provider.sessions if day <= AS_OF)
+    missing_sector, stale_unavailable, stale_available = "DVK", "DVD", "DVI"
+    sector, fetch, volume_overrides = provider.fetch_current_sector, provider.fetch_daily, {}
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.volume_overrides: dict[str, dict[str, int]] = {}
+    def missing(*, provider_symbol):
+        if provider_symbol == missing_sector:
+            raise ProviderFetchError(
+                "sector.missing_current_sector", "not observed", retryable=False
+            )
+        return sector(provider_symbol=provider_symbol)
 
-        def fetch_daily(self, symbols, *, start, end):  # type: ignore[no-untyped-def]
-            result = super().fetch_daily(symbols, start=start, end=end)
-            for symbol, rows in result.items():
-                overrides = self.volume_overrides.get(symbol)
-                if overrides:
-                    result[symbol] = tuple(
-                        {**row, "volume": overrides.get(str(row["session_date"]), row["volume"])}
-                        for row in rows
-                    )
-            return result
+    def volume_shaped(requested, *, start, end):
+        result = fetch(requested, start=start, end=end)
+        for symbol, rows in result.items():
+            if overrides := volume_overrides.get(symbol):
+                result[symbol] = [
+                    {**row, "volume": overrides.get(str(row["session_date"]), row["volume"])}
+                    for row in rows
+                ]
+        return result
 
-    symbols = tuple(f"F{i:03d}" for i in range(104))
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=history_start(FACTOR_SCALE), end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    sessions = tuple(v["session_date"] for v in schedule.to_pylist())
-    provider = VolumeShapedProvider(symbols, sessions)
-    provider.sectors = {s: f"Sector-{i % 3}" for i, s in enumerate(symbols)}
-    provider.sectors["SPY"] = "Reference"
-    missing_sector = symbols[7]
-    del provider.sectors[missing_sector]
-    stale_unavailable, stale_available = symbols[20], symbols[41]
+    monkeypatch.setattr(provider, "fetch_current_sector", missing)
+    monkeypatch.setattr(provider, "fetch_daily", volume_shaped)
     tail = [s.isoformat() for s in sessions[-64:]]
     # A: the last 64 volumes identical at first use.
-    provider.volume_overrides[stale_unavailable] = dict.fromkeys(tail, 2_000_000)
+    volume_overrides[stale_unavailable] = dict.fromkeys(tail, 2_000_000)
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
     live.data_provider, live.data_source_loader = (
         provider,
-        _source_loader_for(symbols, FACTOR_SCALE),
+        development_universe.source_loader,
     )
     market = MarketDataRepository(tmp_path)
     corrected_at: list[str] = []
@@ -117,8 +110,8 @@ def test_first_use_judges_u0_from_rows_the_current_source_still_explains(
             # Observed before this frozen clock's instant, as a correction that
             # landed before the next cycle is; the audits stay fresh.
             observed_at = OBSERVED_AT - timedelta(minutes=1)
-            provider.volume_overrides[stale_unavailable][tail[-5]] = 2_600_000
-            provider.volume_overrides[stale_available] = dict.fromkeys(tail, 1_500_000)
+            volume_overrides[stale_unavailable][tail[-5]] = 2_600_000
+            volume_overrides[stale_available] = dict.fromkeys(tail, 1_500_000)
             for symbol in (stale_unavailable, stale_available):
                 listing = next(item for item in manifest.listings if item.symbol == symbol)
                 rows = provider.fetch_daily((symbol,), start=sessions[-64], end=AS_OF)[symbol]
@@ -250,13 +243,17 @@ def test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on(tm
     """Partial lag with five current names still reaches Feature's per-sector judgement.
     The real numerical qualification and Host need more than ten seconds."""
 
-    symbols = tuple(f"F{i:03d}" for i in range(10))
-    provider = LaggingProvider(symbols, lag_sessions=20)
-    latest = provider.sessions[-21]
-    provider.covered.update(dict.fromkeys((*symbols[:2], *symbols[5:8]), AS_OF))
+    provider = development_universe.development_provider()
+    latest = provider.sessions[provider.sessions.index(AS_OF) - 1]
+    current = {"DVA", "DVB", "DVG", "DVH", "DVK", "SPY"}
+    for listing in development_universe.LISTINGS:
+        if listing.symbol not in current:
+            provider._bars[listing.symbol] = [
+                bar for bar in provider._bars[listing.symbol] if bar.session <= latest
+            ]
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
+    live.data_source_loader = development_universe.source_loader
     with live:
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
         admitted = _json(
@@ -274,8 +271,8 @@ def test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on(tm
     assert "five in each sector present" in shown["detail"], shown["detail"]
     cause = shown["failure_cause"]
     assert cause["exception_type"] == "FeatureBaselinePopulationError"
-    assert cause["detail"].startswith(f"5 of 10 candidates qualify at {AS_OF}"), cause
-    assert f"5 no market observation at the session (latest bar {latest})" in cause["detail"]
+    assert cause["detail"].startswith(f"5 of 13 candidates qualify at {AS_OF}"), cause
+    assert f"8 no market observation at the session (latest bar {latest})" in cause["detail"]
 
 
 def test_a_lagging_provider_resumes_its_data_stage_before_any_feature_work(tmp_path, monkeypatch):
