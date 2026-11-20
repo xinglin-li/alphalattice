@@ -7,6 +7,8 @@ package still pays only for the workspaces its own cases resolve against.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -24,12 +26,25 @@ from tests.researcher_methodology_surface.real_workspace import (
 )
 
 
-@pytest.fixture(scope="module")
-def outcome_catalog_root(tmp_path_factory: pytest.TempPathFactory):
+@contextmanager
+def open_outcome_catalog(root: Path) -> Iterator[Path]:
     """Isolate causal outcome recording from the workspace's own catalog."""
-    root = tmp_path_factory.getbasetemp() / "methodology-outcome-catalog"
     with history.own_root(root):
         history.open_history("methodology-outcomes", "Methodology outcomes", root, root=root)
+        yield root
+
+
+def shared_outcome_catalog(factory: pytest.TempPathFactory) -> Path:
+    """The process's one outcome catalog. The session's workspaces are shared across modules,
+    and a workspace's publication reads its outcome bodies from the catalog that recorded them,
+    so every module publishing on them records here."""
+    return factory.getbasetemp() / "methodology-outcome-catalog"
+
+
+@pytest.fixture(scope="module")
+def outcome_catalog_root(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Hold the module's isolated catalog for its shared publication fixtures."""
+    with open_outcome_catalog(shared_outcome_catalog(tmp_path_factory)) as root:
         yield root
 
 

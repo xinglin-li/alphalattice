@@ -35,11 +35,14 @@ def future_sample(
             )
 
 
-def published_panel_chunks(root: Path) -> set[str]:
-    """Every Panel chunk a published generation's manifest names, as the storage plan names it."""
+def published_panel_chunks(root: Path, panel_hashes: list[str]) -> set[str]:
+    """Chunk paths for the given published generations, as the storage plan names them."""
 
+    manifests = root / "artifacts/feature-panel/manifests"
     return {
         f"artifacts/feature-panel/chunks/{chunk['chunk_hash']}.parquet"
-        for manifest in (root / "artifacts/feature-panel/manifests").glob("*.json")
-        for chunk in json.loads(manifest.read_text(encoding="utf-8"))["chunks"]
+        for panel_hash in panel_hashes
+        for chunk in json.loads((manifests / f"{panel_hash}.json").read_text(encoding="utf-8"))[
+            "chunks"
+        ]
     }

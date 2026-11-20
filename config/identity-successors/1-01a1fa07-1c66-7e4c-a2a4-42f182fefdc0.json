@@ -1,0 +1,41 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "f7f0f2da4f16c855de67768de70941fbc06bbfd15a51f3210a8b283ab45866c1",
+   "successor": "f3d8f788c54cdac798f2888556cfb5de78542e7e958babfcfe8336d421174a5d",
+   "change": "Research outputs stay inside their folder on case-sensitive filesystems",
+   "reason": "A lawful change: the release repairs change the authoring code that resolves a selected Panel's sealed Universe revision and admits output paths, now refusing a prospective sibling outside the root on a case-sensitive filesystem, so the same implementation identities of the research experiments and the feature preparation move; dated reads stay on the study cutoff and both current-cutoff controls read equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1436fc82df1c9fcb9ed917352572b9ef4b3c535c4ba5f35d5d551bb80d04f245",
+   "successor": "a743d23366352c0a9b1a7e474aad4327762b0386aa98c5f475431221f286984c",
+   "change": "Research outputs stay inside their folder on case-sensitive filesystems",
+   "reason": "A lawful change: the release repairs change the authoring code that resolves a selected Panel's sealed Universe revision and admits output paths, now refusing a prospective sibling outside the root on a case-sensitive filesystem, so the same implementation identities of the research experiments and the feature preparation move; dated reads stay on the study cutoff and both current-cutoff controls read equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1436fc82df1c9fcb9ed917352572b9ef4b3c535c4ba5f35d5d551bb80d04f245",
+   "successor": "a743d23366352c0a9b1a7e474aad4327762b0386aa98c5f475431221f286984c",
+   "change": "Research outputs stay inside their folder on case-sensitive filesystems",
+   "reason": "A lawful change: the release repairs change the authoring code that resolves a selected Panel's sealed Universe revision and admits output paths, now refusing a prospective sibling outside the root on a case-sensitive filesystem, so the same implementation identities of the research experiments and the feature preparation move; dated reads stay on the study cutoff and both current-cutoff controls read equal."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "2e23fbfe5d79465ab9fa3df7334b3832a6a0d27333792fdde9bf300ec2a75912",
+   "successor": "e2b76905696e52c7e40afe5c9f221ed3a11db3fbbd1d42594fc3a713c0abb18b",
+   "change": "Research outputs stay inside their folder on case-sensitive filesystems",
+   "reason": "A lawful change: the release repairs change the authoring code that resolves a selected Panel's sealed Universe revision and admits output paths, now refusing a prospective sibling outside the root on a case-sensitive filesystem, so the same implementation identities of the research experiments and the feature preparation move; dated reads stay on the study cutoff and both current-cutoff controls read equal."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "243fa8c6c0c38f444c3753686b6453d1d955b68d3626542db6fa3675c29e1aa2",
+   "successor": "a99c4c9df12dcce148dfa43a2ee03dcd76554c4977003a42dc50299ac1763f6c",
+   "change": "Research outputs stay inside their folder on case-sensitive filesystems",
+   "reason": "A lawful change: the release repairs change the authoring code that resolves a selected Panel's sealed Universe revision and admits output paths, now refusing a prospective sibling outside the root on a case-sensitive filesystem, so the same implementation identities of the research experiments and the feature preparation move; dated reads stay on the study cutoff and both current-cutoff controls read equal."
+  }
+ ]
+}

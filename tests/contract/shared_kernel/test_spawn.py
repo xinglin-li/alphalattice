@@ -243,10 +243,9 @@ def test_an_interactive_session_stops_at_its_deadline():
         child = session.start(
             [sys.executable, "-c", "import threading; threading.Event().wait(20)"]
         )
-        child.wait(timeout=8)
+        assert child.wait(timeout=8) != 0
         with pytest.raises(subprocess.TimeoutExpired):
             session.check()
-        assert not psutil.pid_exists(child.pid)
 
 
 @pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")

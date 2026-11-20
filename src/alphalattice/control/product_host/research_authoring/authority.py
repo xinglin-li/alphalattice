@@ -375,8 +375,13 @@ class WorkspaceResearchAuthorityResolver:
             raise AuthoringError(
                 "research_authoring.snapshot_universe_lineage_unavailable"
             ) from error
+        # An exact Panel names a sealed roster that can have been admitted after
+        # the study's decision date. Keep the decision cutoff for dated reads.
+        manifest_store = (
+            store if current_manifest is not None else MarketDataRepository(self._workspace)
+        )
         try:
-            manifest = store.load_universe_manifest_revision(manifest_revision)
+            manifest = manifest_store.load_universe_manifest_revision(manifest_revision)
         except ValueError as error:
             raise AuthoringError("research_authoring.universe_handle_unresolved") from error
         if manifest.profile.market_profile_id != profile:

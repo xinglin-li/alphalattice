@@ -171,6 +171,7 @@ data = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
+    { name = "pytz" },
     { name = "tzdata" },
 ]
 data-live = [
@@ -288,6 +289,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12,<3" },
     { name = "pydantic-core" },
     { name = "python-dotenv", specifier = ">=1.1,<2" },
+    { name = "pytz", marker = "extra == 'data'", specifier = ">=2026.2,<2027" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "scikit-learn", marker = "extra == 'quant'", specifier = ">=1.9,<2" },
     { name = "scipy", marker = "extra == 'quant'", specifier = ">=1.18,<2" },

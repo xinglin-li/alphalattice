@@ -55,6 +55,7 @@ from alphalattice.investment.sector_research.experiments.development_artifacts i
     sector_artifact_uri,
 )
 from alphalattice.investment.sector_research.experiments.service import (
+    SectorExperimentPublication,
     SectorExperimentRequest,
     SectorResearchDevelopmentService,
 )
@@ -78,9 +79,8 @@ from tests._support.researcher_methodology_session_fixtures import (
 )
 from tests._support.researcher_methodology_session_fixtures import (
     factor_scale_workspace,
-)
-from tests._support.researcher_methodology_session_fixtures import (
-    outcome_catalog_root as outcome_catalog_root,
+    open_outcome_catalog,
+    shared_outcome_catalog,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
@@ -525,6 +525,16 @@ def test_immature_label_is_refused_before_the_adapter_and_singleton_is_frozen() 
 # ------------------------------------------------------------- service fixture
 
 
+type SectorPublicationFixture = tuple[
+    SectorResearchDevelopmentService,
+    str,
+    str,
+    SectorExperimentPublication,
+    SectorExperimentPublication,
+    tuple[date, date],
+]
+
+
 def _service(workspace: RealRiskWorkspace) -> SectorResearchDevelopmentService:
     return SectorResearchDevelopmentService(
         artifact_root=workspace.artifact_root,
@@ -533,31 +543,52 @@ def _service(workspace: RealRiskWorkspace) -> SectorResearchDevelopmentService:
     )
 
 
+@pytest.fixture
+def outcome_catalog_root(tmp_path: Path) -> Iterator[Path]:
+    """Record independent Sector cases in a fresh catalog for the duration of the case."""
+    with open_outcome_catalog(tmp_path / "outcomes") as root:
+        yield root
+
+
 @pytest.fixture(scope="module")
-def sector_publication(development_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path):  # type: ignore[no-untyped-def]
-    """Publish the EWMA and ZERO experiments through the active store."""
-    snapshot_hash, _manifest_ref = publish_causal_outcomes(development_risk_workspace)
+def sector_publication_seed(
+    development_risk_workspace: RealRiskWorkspace, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[Path, SectorPublicationFixture]:
+    """Publish once and release process history before another case sets up its workspace."""
+    root = shared_outcome_catalog(tmp_path_factory)
     service = _service(development_risk_workspace)
-    reader = CausalExecutionOutcomeDevelopmentReader(development_risk_workspace.artifact_root)
-    manifest = reader.load_manifest(snapshot_hash)
-    first = min(value.first_formation_session for value in manifest.development_chunks)
-    last = max(value.last_formation_session for value in manifest.development_chunks)
-    revision = _sector_revision(development_risk_workspace)
+    with open_outcome_catalog(root):
+        snapshot_hash, _manifest_ref = publish_causal_outcomes(development_risk_workspace)
+        reader = CausalExecutionOutcomeDevelopmentReader(development_risk_workspace.artifact_root)
+        manifest = reader.load_manifest(snapshot_hash)
+        first = min(value.first_formation_session for value in manifest.development_chunks)
+        last = max(value.last_formation_session for value in manifest.development_chunks)
+        revision = _sector_revision(development_risk_workspace)
 
-    def request(method_id: str) -> SectorExperimentRequest:
-        return SectorExperimentRequest(
-            causal_outcome_snapshot_hash=snapshot_hash,
-            sector_revision=revision,
-            method_id=method_id,
-            training_start=first,
-            training_end=last,
-            forecast_start=first,
-            forecast_end=last + timedelta(days=30),
-        )
+        def request(method_id: str) -> SectorExperimentRequest:
+            return SectorExperimentRequest(
+                causal_outcome_snapshot_hash=snapshot_hash,
+                sector_revision=revision,
+                method_id=method_id,
+                training_start=first,
+                training_end=last,
+                forecast_start=first,
+                forecast_end=last + timedelta(days=30),
+            )
 
-    ewma = service.publish(request("EWMA_SECTOR_MEAN"))
-    zero = service.publish(request("ZERO_SECTOR_FORECAST"))
-    return service, snapshot_hash, revision, ewma, zero, (first, last)
+        ewma = service.publish(request("EWMA_SECTOR_MEAN"))
+        zero = service.publish(request("ZERO_SECTOR_FORECAST"))
+    return root, (service, snapshot_hash, revision, ewma, zero, (first, last))
+
+
+@pytest.fixture
+def sector_publication(
+    sector_publication_seed: tuple[Path, SectorPublicationFixture],
+) -> Iterator[SectorPublicationFixture]:
+    """Reopen the shared publication for one case and release it before the next setup."""
+    root, publication = sector_publication_seed
+    with open_outcome_catalog(root):
+        yield publication
 
 
 # -------------------------------------------------------------- service cases

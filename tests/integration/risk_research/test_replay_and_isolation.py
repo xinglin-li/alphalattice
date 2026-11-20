@@ -56,14 +56,19 @@ def _workflow(*, source: Path, root: Path) -> ResearchProgramWorkflow:
         "../escaped",
         "../../escaped",
         "nested/../../escaped",
+        pytest.param("../STRASSE/prospective", id="case_folded_sibling"),
     ],
 )
 def test_output_workspace_cannot_escape_the_authorized_root(tmp_path: Path, declared: str) -> None:
-    """Rejecting absolute paths was never enough -- `..` is relative."""
+    """Resolve prospective outputs within the authorized directory."""
 
-    root = tmp_path / "root"
+    root = tmp_path / "Straße"
     root.mkdir()
     workflow = _workflow(source=tmp_path / "source", root=root)
+    requested_parent = (root / declared).parent
+    if requested_parent.is_dir() and requested_parent.samefile(root):
+        assert workflow._output_workspace(declared).parent.samefile(root)
+        return
     with pytest.raises(AuthoringError, match="output_workspace_escapes_root"):
         workflow._output_workspace(declared)
 
@@ -80,13 +85,13 @@ def test_output_workspace_cannot_be_the_source_workspace(tmp_path: Path, alias: 
 
     root = tmp_path / "root"
     (root / "ws").mkdir(parents=True)
-    if alias == "WS" and sys.platform != "win32":
-        # Preserve NTFS's case spelling on Windows; use an explicit alias elsewhere.
-        alias = "source-alias"
-        (root / alias).symlink_to(root / "ws", target_is_directory=True)
     workflow = _workflow(source=root / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_is_source"):
         workflow._output_workspace(alias)
+    if alias == "WS" and sys.platform != "win32":
+        (root / "source-alias").symlink_to(root / "ws", target_is_directory=True)
+        with pytest.raises(AuthoringError, match="output_workspace_is_source"):
+            workflow._output_workspace("source-alias")
     if sys.platform == "win32":
         extended = Path("\\\\?\\" + str(root / "ws"))
         with pytest.raises(AuthoringError, match="output_workspace_is_source"):
@@ -99,6 +104,8 @@ def test_output_workspace_cannot_nest_inside_the_source(tmp_path: Path) -> None:
     workflow = _workflow(source=root / "ws", root=root)
     with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
         workflow._output_workspace("ws/inner")
+    with pytest.raises(AuthoringError, match="output_workspace_overlaps_source"):
+        workflow._output_workspace("WS/inner")
     if sys.platform == "win32":
         extended = Path("\\\\?\\" + str(root / "ws"))
         workflow = _workflow(source=extended, root=root)

@@ -926,12 +926,16 @@ class ResearchProgramWorkflow:
         # resolve() follows symlinks and junctions and collapses "..", so an
         # escape shows up as a path that is no longer under the authorized root.
         output = (root / candidate).resolve()
-        if not self._contains(root, output) and output != root:
+        if not self._contains(root, output) and not self._same_path(root, output):
             raise AuthoringError("research_authoring.output_workspace_escapes_root")
+        # Each check errs toward refusal: an output is inside the root only by real identity, and it
+        # touches the source by any spelling the filesystem may fold (`folded`).
         source = self._source_workspace.resolve()
-        if self._same_path(output, source):
+        if self._same_path(output, source, folded=True):
             raise AuthoringError("research_authoring.output_workspace_is_source")
-        if self._contains(source, output) or self._contains(output, source):
+        if self._contains(source, output, folded=True) or self._contains(
+            output, source, folded=True
+        ):
             raise AuthoringError("research_authoring.output_workspace_overlaps_source")
         return output
 
@@ -948,21 +952,29 @@ class ResearchProgramWorkflow:
         return path
 
     @classmethod
-    def _same_path(cls, left: Path, right: Path) -> bool:
-        return cls._normalized(left) == cls._normalized(right)
+    def _same_path(cls, left: Path, right: Path, *, folded: bool = False) -> bool:
+        """Whether two paths name one directory. Existing paths compare by their identity, so an
+        alias the filesystem folds is one. Otherwise, `folded` (a refusal of the source) takes any
+        case-folded spelling as one; else an existing path and a missing one are never one, and
+        two missing paths compare by the platform's own spelling rule."""
+        try:
+            return os.path.samefile(left, right)
+        except (FileNotFoundError, NotADirectoryError):
+            if folded:
+                return cls._normalized(left).casefold() == cls._normalized(right).casefold()
+            if left.exists() or right.exists():
+                return False
+            return cls._normalized(left) == cls._normalized(right)
 
     @classmethod
-    def _contains(cls, parent: Path, child: Path) -> bool:
+    def _contains(cls, parent: Path, child: Path, *, folded: bool = False) -> bool:
         """Report whether ``child`` is strictly inside ``parent``.
 
         Compared component-wise rather than by string prefix, so a sibling named
         ``workspace-backup`` is not mistaken for a child of ``workspace``.
         """
-        parent_parts = Path(cls._normalized(parent)).parts
-        child_parts = Path(cls._normalized(child)).parts
-        return len(child_parts) > len(parent_parts) and (
-            child_parts[: len(parent_parts)] == parent_parts
-        )
+        ancestor = len(child.parts) - len(parent.parts) - 1
+        return ancestor >= 0 and cls._same_path(parent, child.parents[ancestor], folded=folded)
 
 
 __all__ = ["ResearchEvidenceStore", "ResearchProgramStore", "ResearchProgramWorkflow"]
