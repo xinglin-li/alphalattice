@@ -286,6 +286,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "composition.daily_automation_resumes_the_recorded_task": {
+      "description": "Daily replay keeps its original persisted Task when rereading a published result or when an enabled update defers for incomplete inputs and its retry becomes due.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "It drives the live Host scheduler and consumes the Task lifecycle committed by Task Control's persisted runner."
+    },
     "composition.goal_export_proves_its_sources": {
       "description": "If a Goal export answered from kept sources, a changed sealed result could leave the workspace without a fresh proof.",
       "owner": "alphalattice.control.product_host.composition",
