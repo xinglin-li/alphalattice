@@ -97,7 +97,6 @@ const PRODUCT_ACTIONS = {
     'workspace-delegate':key=>LiveWorkspace.preview('delegate',key),
     'workspace-revoke-delegation':key=>LiveWorkspace.preview('revoke-delegation',key),
     'workspace-continue':key=>LiveWorkspace.preview('continue',key),
-    'workspace-pin':key=>LiveWorkspace.preview('pin',key),
     'workspace-pin-index':key=>LiveWorkspace.preview('pin-index',key),
     'workspace-rebuild-index':key=>LiveWorkspace.preview('rebuild-index',key),
     'workspace-resume-cleanup':key=>LiveWorkspace.preview('resume-cleanup',key),

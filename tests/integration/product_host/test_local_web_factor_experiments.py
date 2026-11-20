@@ -29,6 +29,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     bind_factor_inputs,
+    factor_input_paths,
     read_factor_bundle,
 )
 from alphalattice.interface.local_application.cli_contract import error_projection
@@ -1674,7 +1675,7 @@ def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planne
 
 
 @pytest.mark.proves("feature_engine.factor_handoff_refuses_a_changed_input")
-def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
+def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body(
     inputs: Path, tmp_path: Path, monkeypatch
 ):
     """Binding refuses corrupt or changed inputs."""
@@ -1683,7 +1684,7 @@ def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
 
     original = read_research_workspace_manifest(inputs).experiment_inputs[0]
     bundle = read_factor_bundle(inputs, original.binding_hash)
-    source = inputs / "research-inputs" / original.binding_hash / "source"
+    source = factor_input_paths(inputs, original.binding_hash)[0]
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     publish_research_workspace_manifest(workspace, _manifest("binding-boundaries"))
@@ -1705,19 +1706,16 @@ def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     with pytest.raises(AuthoringError, match="source_changed_during_binding"):
         bind_factor_inputs(**bind)
     monkeypatch.setattr(owner.shutil, "copy2", copy2)
-    assert not any(
-        p.is_dir() and len(p.name) == 64 for p in (workspace / "research-inputs").iterdir()
-    )
+    assert not any((workspace / "research-inputs").iterdir())  # nothing staged is left
     # The source moves after the copies were taken: the final pass refuses.
     lifecycle = next(p for p in source.rglob("*.json") if p.parent.name == "feature-panel")
     copy_input = owner._copy_input
     original_bytes = lifecycle.read_bytes()
 
-    def move_source_after_copy(workspace_, src, target, expected, **kwargs):
-        verified = copy_input(workspace_, src, target, expected, **kwargs)
+    def move_source_after_copy(workspace_, src, target):
+        copy_input(workspace_, src, target)
         if src.samefile(lifecycle):
             lifecycle.write_bytes(original_bytes + b"\n")
-        return verified
 
     monkeypatch.setattr(owner, "_copy_input", move_source_after_copy)
     try:
@@ -1726,32 +1724,26 @@ def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
     finally:
         lifecycle.write_bytes(original_bytes)
         monkeypatch.setattr(owner, "_copy_input", copy_input)
-    assert not any(
-        p.is_dir() and len(p.name) == 64 for p in (workspace / "research-inputs").iterdir()
-    )
-    # A clean binding publishes; a pool object whose bytes no longer match
-    # its content-addressed name is refused by a later binding that would
-    # link it, before anything is linked.
+    assert not any((workspace / "research-inputs").iterdir())  # nothing staged is left
+    # A clean binding publishes; a kept body whose bytes no longer match its
+    # digest is refused by a read, and by a later binding that would reuse it:
+    # equal bytes are kept once, so the source's own view holds the same body
+    # and the Panel reader refuses the changed chunk before anything is kept.
     binding = bind_factor_inputs(**bind)
     enhanced = read_factor_bundle(workspace, binding.binding_hash)
-    pooled = next(
-        p for p in (workspace / "research-inputs" / "parquet").iterdir() if p.suffix == ".parquet"
-    )
-    poisoned = pooled.read_bytes()
-    pooled.write_bytes(poisoned[:-1] + bytes([poisoned[-1] ^ 1]))
+    kept = next(factor_input_paths(workspace, binding.binding_hash)[0].rglob("*.parquet"))
+    poisoned = kept.read_bytes()
+    kept.write_bytes(poisoned[:-1] + bytes([poisoned[-1] ^ 1]))
     try:
         with pytest.raises(AuthoringError, match="input_file_tampered"):
             read_factor_bundle(workspace, binding.binding_hash)
         other = tmp_path / "other"
         other.mkdir()
         publish_research_workspace_manifest(other, _manifest("binding-boundaries-other"))
-        shutil.copytree(
-            workspace / "research-inputs" / "parquet", other / "research-inputs" / "parquet"
-        )
-        with pytest.raises(AuthoringError, match="input_file_tampered"):
+        with pytest.raises(AuthoringError, match=r"feature_panel\.chunk_unresolved"):
             bind_factor_inputs(**{**bind, "workspace": other})
     finally:
-        pooled.write_bytes(poisoned)
+        kept.write_bytes(poisoned)
     assert read_factor_bundle(workspace, binding.binding_hash) == enhanced
 
 
@@ -1766,7 +1758,7 @@ def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
 
     original = read_research_workspace_manifest(inputs).experiment_inputs[0]
     bundle = read_factor_bundle(inputs, original.binding_hash)
-    source = inputs / "research-inputs" / original.binding_hash / "source"
+    source = factor_input_paths(inputs, original.binding_hash)[0]
     publish_research_workspace_manifest(tmp_path, _manifest("handoff-inputs"))
     binding = bind_factor_inputs(
         workspace=tmp_path,
@@ -1779,7 +1771,7 @@ def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
     assert enhanced.binding_version == 2 and enhanced.outcomes
     assert compatible_factor_inputs(bundle, enhanced)
     assert binding.binding_hash != original.binding_hash
-    target = tmp_path / "research-inputs" / binding.binding_hash / "source"
+    target = factor_input_paths(tmp_path, binding.binding_hash)[0]
     logical_panel_owner(target).verify_snapshot(bundle.panel_snapshot_hash)
     assert not tuple(target.rglob("current.json"))
     assert (
@@ -1904,7 +1896,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
     monkeypatch.setattr(FactorExperimentExecutor, "execute", forbidden)
     task_id, report, _export = published
     original = read_research_workspace_manifest(inputs).experiment_inputs[0]
-    source = inputs / "research-inputs" / original.binding_hash / "source"
+    source = factor_input_paths(inputs, original.binding_hash)[0]
     bundle = read_factor_bundle(inputs, original.binding_hash)
     enhanced = bind_factor_inputs(
         workspace=inputs,
@@ -2095,7 +2087,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         assert replay == preview
         # The decision remains historical evidence if an enhanced input breaks;
         # fresh downstream preparation must not silently reuse earlier success.
-        target = inputs / "research-inputs" / enhanced.binding_hash / "source"
+        target = factor_input_paths(inputs, enhanced.binding_hash)[0]
         mapping = (
             target
             / "artifacts/feature-panel/closure/logical/operational/snapshot-mappings"
@@ -2219,7 +2211,7 @@ def test_input_tamper_refuses_a_replay_without_losing_historical_readback(
         binding = session.workspace_manifest.experiment_inputs[0]
         bundle = read_factor_bundle(inputs, binding.binding_hash)
         chunk_name = next(name for name, _ in bundle.files if name.endswith(".parquet"))
-        chunk = inputs / "research-inputs" / binding.binding_hash / "source" / chunk_name
+        chunk = factor_input_paths(inputs, binding.binding_hash)[0] / chunk_name
         original = chunk.read_bytes()
         try:
             chunk.write_bytes(original + b"tampered")
@@ -2485,7 +2477,7 @@ def test_a_capacity_block_reopens_the_same_study_only_after_capacity_is_restored
         )
         # Restored capacity cannot authorize a changed input. The same confirmed
         # Task remains blocked until the exact input bytes are restored too.
-        source = inputs / "research-inputs" / controls["input_binding_hash"] / "source"
+        source = factor_input_paths(inputs, controls["input_binding_hash"])[0]
         held = next(
             p
             for p in source.rglob("*.json")

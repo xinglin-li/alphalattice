@@ -14,7 +14,8 @@ import re
 import shutil
 import sqlite3
 import uuid
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
@@ -588,6 +589,19 @@ def verify_data_root(
             f"{generation / 'machine'} cannot be verified; use an intact backup",
         ) from error
     return manifest
+
+
+@contextmanager
+def generation_reads(generation: Path) -> Iterator[tuple[Path, Any]]:
+    """A generation as a restore reads it, in place: its pooled files, laid out as a data root's
+    `data/` and `blobs/`, and a read of its saved log. Verify the generation first."""
+    saved = sqlite_read_only_uri(_real(generation.resolve() / "machine/log.sqlite"))
+    with closing(sqlite3.connect(saved, uri=True)) as log:
+
+        def read(sql: str, args: tuple[Any, ...] = ()) -> list[Any]:
+            return log.execute(sql, args).fetchall()
+
+        yield generation.resolve().parent.parent / "files", read
 
 
 def restore_data_root(generation: Path, target: Path) -> Path:

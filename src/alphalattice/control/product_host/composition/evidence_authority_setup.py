@@ -52,6 +52,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    factor_input_paths,
     read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.input_revisions import (
@@ -1592,8 +1593,8 @@ def _acquire_sec_sources(
 def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[str, str]:
     # The caller admitted and verified this input through ResearchInputRevisions.
     bundle = read_factor_bundle(workspace, binding_hash, verify=False)
-    source = workspace / "research-inputs" / binding_hash / "source"
-    resolver = ArtifactResolver(source / "artifacts")
+    source, artifacts = factor_input_paths(workspace, binding_hash)
+    resolver = ArtifactResolver(artifacts)
     panel = resolver.load_feature_panel_manifest(
         resolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)
     )

@@ -280,6 +280,8 @@ def _submitted(
     answer: Path | None = None,
 ) -> _Submitted:
     """Hand one call to a kept worker; one that has ended answers as an interruption."""
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+
     pool = None
     try:
         pool = _worker(worker)
@@ -291,6 +293,7 @@ def _submitted(
             threads,
             None if answer is None else str(answer),
             _carrier(),
+            os.environ.get(DATA_ROOT_ENV),
         )
     except BrokenProcessPool:
         assert pool is not None
@@ -434,6 +437,16 @@ def _worker_started(worker: int = 0) -> None:
     threading.Thread(target=_watch_parent, name="parent-watch", daemon=True).start()
 
 
+def _follow_root(root: str | None) -> None:
+    """Name the caller's data root in this worker's environment, which `data_root` reads."""
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+
+    if root is None:
+        os.environ.pop(DATA_ROOT_ENV, None)
+    else:
+        os.environ[DATA_ROOT_ENV] = root
+
+
 def _call(
     target: str,
     arguments: dict[str, Any],
@@ -441,6 +454,7 @@ def _call(
     threads: int | None = None,
     answer: str | None = None,
     trace: Mapping[str, str] | None = None,
+    root: str | None = None,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -451,10 +465,13 @@ def _call(
     call's spans, with the worker's CPU seconds and bytes over it, ride beside the answer for
     the parent's stage ledger (A4). With `trace`, the W3C context of the step that sent the call,
     the call is one `worker.call` span in that trace, handed back as its step event (`trace`).
+    The call reads the data root its caller names (`root`, unset for the default): a kept worker
+    started under another root, before the caller's history opened, reads the caller's.
     """
     ledger: SpanLedger | None = None
     rows: list[dict[str, Any]] = []
     try:
+        _follow_root(root)
         arguments = _held(arguments)
         module_name, _, name = target.partition(":")
         function = getattr(importlib.import_module(module_name), name)

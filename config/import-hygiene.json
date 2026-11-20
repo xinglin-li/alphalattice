@@ -91,7 +91,6 @@
     "src/alphalattice/control/product_host/research_authoring/panel_methodology_context.py::_panel_stores_resolvable_at_their_owner::from alphalattice.control.product_host.research_authoring.panel_methodology_sources import PanelMethodologySourceRoots, resolve_corrected_panel_snapshot_hash": 1,
     "src/alphalattice/control/product_host/research_authoring/panel_methodology_context.py::_sector_context_stores_readable_at_their_owner::from alphalattice.investment.sector_research.inputs.storage import SectorContextStore": 1,
     "src/alphalattice/control/product_host/research_authoring/risk_reports.py::RiskReportLinks.export::from alphalattice.interface.local_application.experiment_report import render_linked_risk_report": 1,
-    "src/alphalattice/control/product_host/storage/input_references.py::ResearchInputStorage._references::from alphalattice.foundation.research_foundation.publication.sponsorship import read_foundation_admission": 1,
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.acquire::import fcntl": 1,
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.acquire::import msvcrt": 1,
     "src/alphalattice/control/workspace_runtime/writer_lease.py::WorkspaceWriterLease.close::import fcntl": 1,

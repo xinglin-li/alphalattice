@@ -2,6 +2,10 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "storage.input_pin_retired": {
+      "owner": "alphalattice.control.product_host", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "A research input version is kept on this machine while any study names it, so it takes no pin; only an evidence index is pinned. Read what storage holds (`alphalattice storage show`).", "zh-CN": "只要仍有研究引用某个研究输入版本，它就保留在本机上，因此无需钉住；只有证据索引可以钉住。请查看存储保有的内容（`alphalattice storage show`）。"}
+    },
     "activity.observation_id_invalid": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The selected observation must be named by the exact observation id the activity page returns. Read the activity page and use that id as it is.", "zh-CN": "所选观察必须使用活动页返回的准确观察标识来指定。请读取活动页，并原样使用该标识。"}

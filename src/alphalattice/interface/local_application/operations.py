@@ -896,7 +896,9 @@ GRAMMAR: Final[dict[str, Command]] = {
         "task_id",
     ),
     "STORAGE_CONFIRM": Command(
-        "storage", "confirm", "Applies a storage clean-up plan, deleting the input copies it names."
+        "storage",
+        "confirm",
+        "Applies a storage clean-up plan, deleting the evidence indexes and Panel chunks it names.",
     ),
     "STORAGE_EVIDENCE_REBUILD": Command(
         "storage",
@@ -906,12 +908,12 @@ GRAMMAR: Final[dict[str, Command]] = {
     "STORAGE_PIN": Command(
         "storage",
         "pin",
-        "Pins or unpins a research input or evidence index against storage clean-up.",
+        "Pins or unpins an evidence index against storage clean-up; a research input takes no pin.",
     ),
     "STORAGE_PLAN": Command(
         "storage",
         "plan",
-        "Plans a storage clean-up of unpinned input copies and saves it for confirmation.",
+        "Plans a storage clean-up of unpinned evidence indexes and Panel chunks for confirmation.",
     ),
     "STORAGE_CAP_SHOW": Command(
         "storage", "cap", "Shows the operator storage cap, its automatic estimate and free disk."
@@ -925,7 +927,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "STORAGE_READBACK": Command(
         "storage",
         "show",
-        "Shows storage use, retained inputs and evidence indexes, pins and pending clean-up.",
+        "Shows storage use, evidence indexes, pins and pending clean-up; inputs: `input list`.",
     ),
     "STRATEGY_CALIBRATION_PLAN": Command(
         "calibration",

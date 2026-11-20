@@ -17,7 +17,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     _copy_input,
     confined,
     factor_input_paths,
-    file_digest,
     read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.portfolio_handoff import (
@@ -360,7 +359,7 @@ def prepare_frozen_portfolio_authority(
         origin = source_returns.resolve_chunk(chunk)
         destination = target_returns._chunk_path(chunk.content_hash)
         if not destination.exists():
-            _copy_input(workspace, origin, destination, file_digest(origin))
+            _copy_input(workspace, origin, destination)  # resolve_chunk verifies its rows
         target_returns.resolve_chunk(chunk)
     target_returns.publish_manifest(returns)
     expected_sector = panel["safe_summary"]["lineage"]["sector_revision"]

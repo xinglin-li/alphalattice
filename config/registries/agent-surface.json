@@ -58248,6 +58248,8 @@
     "refusal:data_layer.handle_outside_root": {},
     "refusal:data_layer.history_unavailable": {},
     "refusal:data_layer.host_running": {},
+    "refusal:data_layer.input_invalid": {},
+    "refusal:data_layer.input_missing": {},
     "refusal:data_layer.lag_rule_unknown": {},
     "refusal:data_layer.lag_rule_version_moved": {},
     "refusal:data_layer.legacy_anchor_missing": {},
@@ -58693,6 +58695,7 @@
     "refusal:feature_panel.legacy_replay_layout_unproven": {},
     "refusal:feature_panel.listing_axis_mismatch": {},
     "refusal:feature_panel.logical_content_mismatch": {},
+    "refusal:feature_panel.market_observation_invalid": {},
     "refusal:feature_panel.membership_count_invalid": {},
     "refusal:feature_panel.membership_epochs_missing": {},
     "refusal:feature_panel.membership_epochs_overlap": {},
@@ -58705,7 +58708,6 @@
     "refusal:feature_panel.sector_revision_map_unrecoverable": {},
     "refusal:feature_panel.semantic_index_handoff_incomplete": {},
     "refusal:feature_panel.source_eligibility_policy_unavailable": {},
-    "refusal:feature_panel.market_observation_invalid": {},
     "refusal:feature_panel.source_exclusion_outside_axis": {},
     "refusal:feature_panel.source_manifest_revision_missing": {},
     "refusal:feature_research.artifact_identity_invalid": {},
@@ -58768,6 +58770,7 @@
     "refusal:feature_research.value_index_mismatch": {},
     "refusal:feature_storage.row_catalog_identity_absent": {},
     "refusal:feature_storage.row_catalog_identity_mismatch": {},
+    "refusal:feature_storage.workspace_before_0_2_7": {},
     "refusal:feature_trial.alpha_candidate_ambiguous": {},
     "refusal:feature_trial.completed_study_required": {},
     "refusal:feature_trial.feature_adds_no_factor": {},
@@ -60863,6 +60866,7 @@
     "refusal:risk_research.return_chunk_uri_invalid": {},
     "refusal:risk_research.return_formation_session_invalid": {},
     "refusal:risk_research.return_listing_scope_invalid": {},
+    "refusal:risk_research.return_market_observation_unverified": {},
     "refusal:risk_research.return_omission_invalid": {},
     "refusal:risk_research.return_price_basis_unsupported": {},
     "refusal:risk_research.return_read_axis_invalid": {},
@@ -60872,7 +60876,6 @@
     "refusal:risk_research.return_read_incomplete": {},
     "refusal:risk_research.return_scope_outside_request": {},
     "refusal:risk_research.return_session_axis_invalid": {},
-    "refusal:risk_research.return_market_observation_unverified": {},
     "refusal:risk_research.return_session_count_invalid": {},
     "refusal:risk_research.return_source_duplicate": {},
     "refusal:risk_research.return_source_session_missing": {},
@@ -61107,6 +61110,7 @@
     "refusal:storage.evidence_runtime_not_admitted": {},
     "refusal:storage.human_confirmation_required": {},
     "refusal:storage.input_binding_missing": {},
+    "refusal:storage.input_pin_retired": {},
     "refusal:storage.input_pin_unavailable": {},
     "refusal:storage.managed_capacity_exceeded": {},
     "refusal:storage.plan_invalid": {},
@@ -64602,11 +64606,32 @@
   },
   "release": "0.2.0.dev0",
   "retirements": {
+    "answer:STORAGE_PLAN.bindings": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
+      "replacement": "answer:STORAGE_PLAN.targets",
+      "status": "Deprecated"
+    },
+    "answer:STORAGE_READBACK.inputs": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
+      "replacement": "answer:STORAGE_READBACK.evidence",
+      "status": "Deprecated"
+    },
     "refusal:native_bridge.child_not_a_specialist": {
       "reason": "Usage is read independently of specialist-role verification; the separate verification fact remains.",
       "removed_in": "0.1.6",
       "replacement": "native usage delivery with binding verification",
       "status": "Removed"
+    },
+    "refusal:storage.input_binding_missing": {
+      "announced": "0.2.8",
+      "earliest_removal": "0.3.0",
+      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
+      "replacement": "refusal:data_layer.input_missing",
+      "status": "Deprecated"
     },
     "view:full": {
       "announced": "0.2.4",

@@ -3513,7 +3513,7 @@
     "name": "inputs",
     "kind": "array",
     "required": true,
-    "meaning": "Each research input version kept: its roots, bytes, and whether all its files are present."
+    "meaning": "Deprecated in 0.2.8, always empty: research inputs are kept once on the data root while a binding names them, outside storage cleanup."
    },
    {
     "name": "evidence",
@@ -3619,7 +3619,7 @@
     "name": "bindings",
     "kind": "array",
     "required": true,
-    "meaning": "The research input versions no root keeps, whose copies the plan releases, by binding hash."
+    "meaning": "Deprecated in 0.2.8, always empty: research inputs are kept once on the data root while a binding names them, outside storage cleanup."
    },
    {
     "name": "retained_bytes",

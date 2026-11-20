@@ -196,6 +196,16 @@ def binding(database: Path) -> str | None:
     return name if len(name) == 64 and set(name) <= set("0123456789abcdef") else None
 
 
+def _copy_workspace(database: Path) -> Path | None:
+    """The workspace a research-input copy belongs to: the folder holding its `research-inputs/`,
+    or, for a binding kept on the data root, the workspace its view `views/<workspace_id>`
+    stands for (kernel.data_layer.inputs); None for a view of a workspace the log does not know."""
+    holder = database.parents[3]
+    if holder.parent.name != "views":
+        return holder
+    return history.research_input_workspace(holder)
+
+
 def selected(database: Path) -> int | None:
     """The cutoff of the selection made for the research-input copy `database`, in the workspace
     that holds it: what its research may see. None for a database that is no copy, and for a copy
@@ -209,9 +219,9 @@ def selected(database: Path) -> int | None:
         " (workspace_id) WHERE json_extract(s.spec, '$.binding_hash') = ? ORDER BY s.made_seq"
     )
     rows = _log_rows(sql, (found,))
-    workspace = database.parents[3]
+    workspace = _copy_workspace(database)
     for cutoff, folder in rows:  # the folder as the log records it, the copy's in its own form
-        if folder and Path(folder).is_dir() and os.path.samefile(folder, workspace):
+        if workspace and folder and Path(folder).is_dir() and os.path.samefile(folder, workspace):
             return int(cutoff)
     return None
 
@@ -312,7 +322,9 @@ def taken(admissions: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
 
 def workspace(database: Path) -> str | None:
     """The registered workspace owning this database, if its folder is unambiguous."""
-    folder = database.parents[3] if binding(database) is not None else database.parent
+    folder = _copy_workspace(database) if binding(database) is not None else database.parent
+    if folder is None:
+        return None
     rows = _log_rows(
         "SELECT workspace_id FROM workspace WHERE folder = ? AND status = 'active'",
         (str(folder.resolve()),),

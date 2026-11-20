@@ -421,20 +421,6 @@
       "retention_owner": "knowledge",
       "rebuildability": "REBUILDABLE_FROM_THE_CORPUS",
       "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "feature_ineligibility",
-        "feature_ineligibility_legacy",
-        "feature_year_seal"
-      ],
-      "database": "workspace",
-      "semantic_role": "retired Feature tables (eligibility, year seals), altered and dropped by the migrations that replaced them",
-      "generation_model": "LEGACY_MIGRATION_ONLY",
-      "authority_owner": "feature_engine.storage.FeatureStateRepository",
-      "retention_owner": "feature_engine",
-      "rebuildability": "NONE_RETIRED",
-      "artifact_relationship": "NONE"
     }
   ]
 }

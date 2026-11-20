@@ -31,7 +31,6 @@ class GenerationModel(StrEnum):
     BY_CATALOG = "BY_CATALOG"
     BY_REVISION = "BY_REVISION"
     OPERATIONAL_PROJECTION = "OPERATIONAL_PROJECTION"
-    LEGACY_MIGRATION_ONLY = "LEGACY_MIGRATION_ONLY"
 
 
 class StorageAuthorityGroup(_Contract):

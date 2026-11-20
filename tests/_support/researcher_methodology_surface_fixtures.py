@@ -23,6 +23,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     bind_factor_inputs,
+    factor_input_paths,
     read_factor_bundle,
 )
 from alphalattice.investment.risk_research.experiments.execution import (
@@ -209,7 +210,8 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
             )
             assert (root / "research-workspace.json").read_bytes() == before
             assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
-            assert not tuple((root / "research-inputs").rglob("sealed-holdout"))
+            kept = factor_input_paths(root, first.binding_hash)[0].parent
+            assert not tuple(kept.rglob("sealed-holdout"))
         finally:
             history.close_history()
         return {}

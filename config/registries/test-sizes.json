@@ -2089,7 +2089,15 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool*",
+      "pattern": "tests/integration/product_host/research_authoring/test_factor_inputs.py::test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them*",
+      "owner": "tests",
+      "reason": "Upgrades a copy of the recorded QA root alpha_development_outcomes' alpha-base research inputs (1.4 GB, 0.2.7's real binding and pools), real data the development sets do not give, so it runs only in the nightly; the held test keeps the upgrade's and the batch's proof at merge.",
+      "admitted": "2026-11-19: the QA copy's replay and rollback, proved on real 0.2.7 research inputs",
+      "size_contract": "nightly_only",
+      "original_data": "upgrade replay"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 356.599 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
@@ -2201,6 +2209,16 @@
     }
   ],
   "budget_admissions": [
+    {
+      "budget": "large:tests/integration/product_host/research_authoring/test_factor_inputs.py::test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them*",
+      "value": 900,
+      "admitted": "2026-11-19: the QA copy's 1.4 GB upgrade, rollback, batch and restore ran 15.9 s here; a Large test is killed only as hung, at the large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body*",
+      "value": 900,
+      "admitted": "2026-11-19: Renamed from ..._tampered_pool (workspace pools retired with the machine-held research inputs); its Large rule and historical maximum of 356.599 s are unchanged, under the large timeout of 900 s"
+    },
     {
       "budget": "large:tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
       "value": 900,

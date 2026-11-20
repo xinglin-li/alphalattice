@@ -1031,6 +1031,11 @@
   "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`alphalattice storage plan`).",
   "next_action": "PLAN_THE_CLEANUP_AGAIN"
  },
+ "storage.input_pin_retired": {
+  "message_id": "storage.input_pin_retired",
+  "detail": "storage.input_pin_retired",
+  "next_action": "READ_STORAGE"
+ },
  "storage.input_binding_missing": {
   "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"

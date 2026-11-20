@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, BinaryIO, Literal, Self, cast
+from typing import Any, BinaryIO, Final, Literal, Self, cast
 from uuid import UUID
 
 import pyarrow.parquet as pq
@@ -37,6 +37,7 @@ from alphalattice.control.product_host.research_authoring.authority import (
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.retention import require_available_input
 from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
+from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_aside
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -85,7 +86,15 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import history, inputs
+from alphalattice.kernel.data_layer.backup import (
+    backup_data_root,
+    generation_reads,
+    verify_data_root,
+)
+from alphalattice.kernel.data_layer.inputs import folder_files
+from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -330,6 +339,14 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
         return self
 
 
+def input_absent(error: BaseException) -> bool:
+    """Whether a read failed because the binding, or a file of it, is not there: absent from the
+    workspace's copies, or not kept on this data root (`data_layer.input_missing`)."""
+    return isinstance(error, FileNotFoundError) or (
+        isinstance(error, DataError) and error.failure.code == "data_layer.input_missing"
+    )
+
+
 def read_factor_bundle(
     workspace: Path, binding_hash: str, *, verify: bool = True
 ) -> FactorInputBundle:
@@ -351,7 +368,8 @@ def read_factor_bundle(
     workspace = _windows_long_path(workspace)
     if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
-    root = confined(workspace, f"research-inputs/{binding_hash}")
+    inputs = _inputs_root(workspace, binding_hash)
+    root = confined(inputs, binding_hash)
     manifest = confined(root, "manifest.json")
     try:
         manifest_bytes = manifest.read_bytes()
@@ -367,21 +385,16 @@ def read_factor_bundle(
         for name, _expected in bundle.files:
             target = confined(source, name)
             if not target.exists():
-                require_available_input(
-                    workspace, target.relative_to(workspace.resolve()).as_posix()
-                )
+                require_available_input(workspace, _released_name(inputs, target))
         if _closed_files(source) != {name for name, _ in bundle.files}:
             raise AuthoringError("research_experiment.input_file_set_changed")
         database: Path | None = None
         if bundle.database_snapshot_hash is not None:
             database = confined(
-                workspace,
-                f"research-inputs/databases/{bundle.database_snapshot_hash}/market-data.duckdb",
+                inputs, f"databases/{bundle.database_snapshot_hash}/market-data.duckdb"
             )
             if not database.is_file():
-                require_available_input(
-                    workspace, database.relative_to(workspace.resolve()).as_posix()
-                )
+                require_available_input(workspace, _released_name(inputs, database))
                 raise AuthoringError("research_experiment.input_database_unavailable")
         targets = {name: confined(source, name) for name, _expected in bundle.files}
         digests = file_digests((*targets.values(), *((database,) if database else ())))
@@ -398,57 +411,39 @@ def factor_input_paths(workspace: Path, binding_hash: str) -> tuple[Path, Path]:
     workspace = _windows_long_path(workspace)
     if len(binding_hash) != 64 or any(v not in "0123456789abcdef" for v in binding_hash):
         raise AuthoringError("research_experiment.input_hash_invalid")
-    source = confined(workspace, f"research-inputs/{binding_hash}/source")
+    source = confined(_inputs_root(workspace, binding_hash), f"{binding_hash}/source")
     # Referenced bundles expose a local alias of a sealed DB object. No alias
     # ever points at the mutable market database or another workspace.
     return source, source / "artifacts"
 
 
-def _copy_input(
-    workspace: Path,
-    source: Path,
-    target: Path,
-    expected: str,
-) -> bool:
-    """Share only workspace-owned immutable Parquet, never the mutable database.
+def _released_name(inputs: Path, path: Path) -> str:
+    """The name a 0.2.7 cleanup's receipt gives a released input file: its workspace path under
+    `research-inputs/`, whichever store the binding is read from now."""
+    return "research-inputs/" + path.relative_to(inputs.resolve()).as_posix()
 
-    Answers whether ``target`` holds bytes this call verified: a link to a
-    pool object whose digest was read here (staged from the source, or already
-    pooled) is verified; a copied file is not, and its caller must read it.
-    """
+
+def _inputs_root(workspace: Path, binding_hash: str) -> Path:
+    """The folder laid out as `research-inputs/` that a binding is read from: its kept view on the
+    data root (kernel.data_layer.inputs), or the workspace's own copies only while the
+    research-inputs upgrade reads the old store."""
+    kept = history.research_input_root(binding_hash, workspace)
+    return kept if kept is not None else confined(workspace, "research-inputs")
+
+
+def _copy_input(workspace: Path, source: Path, target: Path) -> None:
+    """Stage one input file: a workspace-owned immutable Parquet linked where the volume allows,
+    anything else (the mutable database first) copied. The binding is then kept on the data root,
+    which keeps equal bytes once (kernel.data_layer.inputs), so the workspace pools nothing."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    database = source.name == "market-data.duckdb"
-    if source.suffix != ".parquet" and not database:
-        shutil.copy2(source, target)
-        return False
-    relative = (
-        f"databases/{expected}/market-data.duckdb" if database else f"parquet/{expected}.parquet"
-    )
-    pool = confined(workspace, f"research-inputs/{relative}")
-    if not pool.exists():
-        pool.parent.mkdir(parents=True, exist_ok=True)
-        with staging_directory(pool.parent) as temporary:
-            staged = Path(temporary) / "object"
-            if not database and source.resolve().is_relative_to(workspace.resolve()):
-                try:
-                    os.link(source, staged)
-                except OSError:
-                    require_storage_capacity(workspace, additional_bytes=source.stat().st_size)
-                    shutil.copy2(source, staged)
-            else:
-                shutil.copy2(source, staged)
-            if file_digest(staged) != expected:
-                raise AuthoringError("research_experiment.source_changed_during_binding")
-            staged.rename(pool)
-    elif file_digest(pool) != expected:
-        raise AuthoringError("research_experiment.input_file_tampered")
-    try:
-        os.link(pool, target)
-    except OSError:
-        require_storage_capacity(workspace, additional_bytes=pool.stat().st_size)
-        shutil.copy2(pool, target)
-        return False
-    return True
+    if source.suffix == ".parquet" and source.resolve().is_relative_to(workspace.resolve()):
+        try:
+            os.link(source, target)
+            return
+        except OSError:  # another volume, or no links: a copy
+            pass
+    require_storage_capacity(workspace, additional_bytes=source.stat().st_size)
+    shutil.copy2(source, target)
 
 
 def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:
@@ -753,7 +748,7 @@ def _bind_factor_inputs(
         prior = next((v for v in manifest.experiment_inputs or () if v.input_id == input_id), None)
         if prior is not None:
             candidate = read_factor_bundle(workspace, prior.binding_hash)
-            prior_source = confined(workspace, f"research-inputs/{prior.binding_hash}/source")
+            prior_source = factor_input_paths(workspace, prior.binding_hash)[0]
 
             def legacy_rows(name: str) -> Any:
                 return pq.read_table(confined(prior_source, name))
@@ -770,13 +765,14 @@ def _bind_factor_inputs(
             ) and _logical_files(prior_source, panel_snapshot_hash):
                 bundle = candidate
     binding = ResearchWorkspaceExperimentInput(input_id=input_id, binding_hash=bundle.binding_hash)
-    parent = confined(workspace, "research-inputs")
+    parent = confined(workspace, "research-inputs")  # the binding's staging place only
     parent.mkdir(parents=True, exist_ok=True)
-    destination = parent / bundle.binding_hash
+    kept = history.research_input_kept(bundle.binding_hash)
     needs_logical = include_alpha_handoff and not _logical_files(
-        destination / "source" if destination.exists() else source, panel_snapshot_hash
+        factor_input_paths(workspace, bundle.binding_hash)[0] if kept else source,
+        panel_snapshot_hash,
     )
-    if destination.exists() and not needs_logical:
+    if kept and not needs_logical:
         read_factor_bundle(workspace, bundle.binding_hash)
     else:
         market.load_universe_manifest_revision(
@@ -790,38 +786,28 @@ def _bind_factor_inputs(
                 links_available = True
             except OSError:
                 links_available = False
-        required = 0
-        for name, digest in files:
-            item = confined(source, name)
-            if item.name == "market-data.duckdb":
-                pool = parent / "databases" / digest / "market-data.duckdb"
-                required += 0 if pool.exists() else item.stat().st_size
-            elif item.suffix == ".parquet":
-                pool = parent / "parquet" / f"{digest}.parquet"
-                required += (
-                    0
-                    if pool.exists() or (links_available and item.is_relative_to(workspace))
-                    else item.stat().st_size
-                )
-            else:
-                required += item.stat().st_size
-                continue
-            if not links_available:
-                required += item.stat().st_size
+        # The staged copy: a workspace-owned Parquet is linked where the volume allows
+        # (`_copy_input`); the binding is then kept on the data root, never pooled here.
+        staged_items = (confined(source, name) for name, _digest in files)
+        required = sum(
+            0
+            if links_available and item.suffix == ".parquet" and item.is_relative_to(workspace)
+            else item.stat().st_size
+            for item in staged_items
+        )
         require_storage_capacity(workspace, additional_bytes=required)
         with staging_directory(parent, ".binding-") as temporary:
             staged = Path(temporary) / "complete"
-            # Every staged object is verified once by the bytes it will keep:
-            # a pooled object by its digest when staged or already pooled
-            # (the target is a link to it), a copied file by reading the
-            # copy. The source is read again, whole, at the end of the
-            # binding; a change to it anywhere in between is refused there.
+            # Every staged file is verified once by reading the bytes it will
+            # keep (a link's are the source's own). The source is read again,
+            # whole, at the end of the binding; a change to it anywhere in
+            # between is refused there.
             for name, expected in files:
                 src = confined(source, name)
                 target = confined(staged / "source", name)
                 target.parent.mkdir(parents=True, exist_ok=True)
-                linked = _copy_input(workspace, src, target, expected)
-                if not linked and file_digest(target) != expected:
+                _copy_input(workspace, src, target)
+                if file_digest(target) != expected:
                     raise AuthoringError("research_experiment.source_changed_during_binding")
             if include_alpha_handoff:
                 owner = logical_panel_owner(staged / "source")
@@ -862,7 +848,6 @@ def _bind_factor_inputs(
                 binding = ResearchWorkspaceExperimentInput(
                     input_id=input_id, binding_hash=bundle.binding_hash
                 )
-                destination = parent / bundle.binding_hash
             if (source / "market-data.duckdb.wal").exists():
                 raise AuthoringError("research_experiment.source_changed_during_binding")
             final_digests = file_digests(confined(source, name) for name, _expected in files)
@@ -872,12 +857,17 @@ def _bind_factor_inputs(
             (staged / "manifest.json").write_text(
                 bundle.model_dump_json(indent=2), encoding="utf-8"
             )
-            if destination.exists():
-                read_factor_bundle(workspace, bundle.binding_hash)
-            else:
-                staged.rename(destination)
+            if not history.research_input_kept(bundle.binding_hash):
+                history.keep_research_input(
+                    bundle.binding_hash, _kept_files(staged, bundle.binding_hash, bundle)
+                )
+            read_factor_bundle(workspace, bundle.binding_hash)
+    history.hold_research_input(bundle.binding_hash)  # kept for another workspace: held here too
     select_research_inputs(
-        destination, source, bundle, str(panel["safe_summary"]["lineage"]["manifest_revision"])
+        factor_input_paths(workspace, bundle.binding_hash)[0].parent,
+        source,
+        bundle,
+        str(panel["safe_summary"]["lineage"]["manifest_revision"]),
     )
     if not bind_configuration:
         return binding
@@ -892,6 +882,153 @@ def _bind_factor_inputs(
 
     update_research_workspace_manifest(workspace, bind, gate=gate)
     return binding
+
+
+def _kept_files(
+    staged: Path, binding_hash: str, bundle: FactorInputBundle
+) -> list[tuple[str, Path]]:
+    """A binding's files at their paths under `research-inputs/`: its folder, and the database
+    the bundle names at the pooled path the door reads it from, while the folder holds it (a
+    0.2.7 copy a cleanup released keeps only what it has; the door refuses the rest by name)."""
+    files = [(f"{binding_hash}/{relative}", path) for relative, path in folder_files(staged)]
+    database = confined(staged / "source", "market-data.duckdb")
+    if bundle.database_snapshot_hash is not None and database.is_file():
+        files.append((f"databases/{bundle.database_snapshot_hash}/market-data.duckdb", database))
+    return files
+
+
+def legacy_bindings(workspace: Path) -> list[tuple[str, list[tuple[str, Path]]]]:
+    """Each 0.2.7 binding `workspace` copied under `research-inputs/<binding_hash>/`, with its
+    files laid out as the door keeps them. The pools those copies link, and the publication
+    records (`publications/`, which stay in the workspace), are not bindings."""
+    folder = _windows_long_path(workspace) / "research-inputs"
+    try:
+        names = sorted(os.listdir(folder))
+    except FileNotFoundError:
+        return []
+    found = []
+    for name in names:
+        if len(name) != 64 or any(c not in "0123456789abcdef" for c in name):
+            continue
+        tree = folder / name
+        if tree.is_symlink() or not tree.is_dir():
+            raise AuthoringError("research_experiment.input_link_not_admitted")
+        bundle = FactorInputBundle.model_validate_json((tree / "manifest.json").read_bytes())
+        if bundle.binding_hash != name:
+            raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
+        found.append((name, _kept_files(tree, name, bundle)))
+    return found
+
+
+def _reads_equal(root: Path, read: Any, binding_hash: str, files: list[tuple[str, Path]]) -> bool:
+    """Whether the binding kept on `root` (as `read` records it) is the copy's files, byte for
+    byte: the same paths, each body's BLAKE3 the copy's own."""
+    kept = inputs.members(root, read, binding_hash)
+    copy = dict(files)
+    return [relative for relative, _ in kept] == sorted(copy) and all(
+        inputs.file_digest(body) == inputs.file_digest(copy[relative]) for relative, body in kept
+    )
+
+
+def research_input_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
+    """Each 0.2.7 binding copy kept once on the data root behind the door, held by its workspace
+    (`holder` names its id on the log; a workspace with copies and no id is refused by name, so
+    nothing is kept unheld); ALL EQUAL when every kept binding reads back as its copy's bytes.
+    The old reader is the copies'."""
+
+    def step(runner: Any) -> None:
+        for workspace in runner.workspaces:
+            held = holder(workspace)
+            bindings = legacy_bindings(workspace)
+            if bindings and held is None:
+                raise DataError(
+                    f"the workspace at {workspace} has research input copies and no id on the "
+                    "log to hold them; open it once so the Host records it",
+                    code="upgrade.refused",
+                )
+            for binding_hash, files in bindings:
+                inputs.keep_binding(
+                    runner.root, runner.log, binding_hash, files, workspace=held, durable=False
+                )
+            runner.log.flush()
+
+    def verify(runner: Any) -> bool:
+        return all(
+            _reads_equal(runner.root, runner.log.read, binding_hash, files)
+            for workspace in runner.workspaces
+            for binding_hash, files in legacy_bindings(workspace)
+        )
+
+    def switch(mode: Literal["old", "new"]) -> None:
+        if mode == "old":
+            os.environ[history.INPUT_STORE_ENV] = "legacy"
+        else:
+            os.environ.pop(history.INPUT_STORE_ENV, None)
+
+    def holds(workspace: Path) -> bool:
+        return any(not history.research_input_kept(b) for b, _ in legacy_bindings(workspace))
+
+    return Family("research-inputs", step, verify, switch, holds)
+
+
+_POOLS: Final = ("databases", "parquet")
+"""The 0.2.7 pools under `research-inputs/` that its binding copies link."""
+
+
+def _copies_left(workspace: Path) -> bool:
+    """Whether `workspace` still holds a 0.2.7 binding copy, or a removal of them not finished
+    (`set_aside`'s `retired-0.2.7/` under `research-inputs/`, recorded or not yet deleted)."""
+    folder = _windows_long_path(workspace) / "research-inputs"
+    return bool(legacy_bindings(workspace)) or (folder / RETIRED_DIRECTORY).exists()
+
+
+def _remove_copies(folder: Path, binding_hashes: list[str]) -> None:
+    """Retire one workspace's verified copies through the task upgrade's removal boundary: the
+    set (both pools, then each binding tree) moves whole under `retired-0.2.7/`, its directory
+    recorded before its first move, so a stop leaves each tree at its old name or retired, never
+    part of one, and a resumed removal finishes the recorded set first; then it is deleted. The
+    pools name only the copies they link, so they go with the set."""
+    set_aside(folder, [*(folder / pool for pool in _POOLS), *(folder / b for b in binding_hashes)])
+    shutil.rmtree(folder / RETIRED_DIRECTORY)
+
+
+def research_input_copies_family(repository: Path) -> Family:
+    """The 0.2.7 copies removed: first a machine backup in `repository` that holds their kept
+    bodies, its seals verified, and every binding replayed from it (its saved log, its pooled
+    bodies: what a restore places) ALL EQUAL with its copy; then each workspace's copies and its
+    pools (`_remove_copies`). A replay that differs keeps every copy and stops the upgrade by
+    name. A stop part-way resumes: a removal begun finishes before any other step. It selects no
+    store."""
+
+    def step(runner: Any) -> None:
+        for workspace in runner.workspaces:  # a removal a stop left part-way, first
+            folder = _windows_long_path(workspace) / "research-inputs"
+            if (folder / RETIRED_DIRECTORY).exists():
+                _remove_copies(folder, [b for b, _ in legacy_bindings(workspace)])
+        held = [(workspace, legacy_bindings(workspace)) for workspace in runner.workspaces]
+        if not any(bindings for _, bindings in held):
+            return
+        runner.log.flush()  # the generation holds every kept body and its pin
+        generation = backup_data_root(runner.root, repository)
+        verify_data_root(generation, source=runner.root)
+        with generation_reads(generation) as (pool, read):
+            for _workspace, bindings in held:
+                for binding_hash, files in bindings:
+                    if not _reads_equal(pool, read, binding_hash, files):
+                        raise DataError(
+                            f"the backup of research input {binding_hash} does not read back as "
+                            "its copy; every copy is kept",
+                            code="upgrade.refused",
+                        )
+        for workspace, bindings in held:
+            if bindings:
+                folder = _windows_long_path(workspace) / "research-inputs"
+                _remove_copies(folder, [binding_hash for binding_hash, _files in bindings])
+
+    def verify(runner: Any) -> bool:
+        return not any(_copies_left(workspace) for workspace in runner.workspaces)
+
+    return Family("research-input-copies", step, verify, lambda _mode: None, _copies_left)
 
 
 def select_research_inputs(

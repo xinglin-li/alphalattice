@@ -941,7 +941,8 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
     """The research input's version, by its binding hash; with `research_input_id` it names the
     data a study reads."""
     input_pinned: bool | None = Field(default=None, strict=True)
-    """true keeps the research input's version from clean-up; false lets clean-up release it."""
+    """true keeps the named evidence index from clean-up; false lets clean-up release it. A
+    research input's version takes no pin (`storage.input_pin_retired`)."""
     research_input_id: str | None = None
     """The research input, by its id (RESEARCH_INPUTS lists them)."""
     experiment_document: dict[str, Any] | None = None

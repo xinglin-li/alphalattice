@@ -1240,56 +1240,6 @@
         "product_host.storage.evidence_references"
       ]
     },
-    "retired-feature-tables": {
-      "summary": "Feature tables the migrations already altered and dropped",
-      "class": "derived",
-      "tier": 3,
-      "retire": "dropped by the migrations that replaced them; no reader",
-      "location": "workspace-database",
-      "bytes": null,
-      "covers": [
-        "table:feature_ineligibility"
-      ],
-      "authority_owners": [
-        "feature_engine.storage.FeatureStateRepository"
-      ],
-      "writers": [],
-      "readers": [
-        "causal_outcomes.execution.readers",
-        "data_platform.delegation",
-        "data_platform.maintenance.coordinator",
-        "data_platform.maintenance.orphaned_bind",
-        "data_platform.preflight",
-        "data_platform.readiness",
-        "data_platform.remediation_case",
-        "data_platform.runtime",
-        "feature_engine.inputs.gateway",
-        "feature_engine.panels.feature_closure_coordinator",
-        "feature_engine.producers.ineligibility",
-        "feature_engine.producers.reference_data",
-        "feature_engine.publication.sector_map_activation",
-        "feature_engine.publication.snapshots",
-        "feature_engine.runtime.closure_genesis",
-        "feature_engine.runtime.service",
-        "feature_engine.storage.listing_proofs",
-        "portfolio_inputs.benchmark",
-        "product_host.composition.goals",
-        "product_host.composition.research_authoring",
-        "product_host.composition.strategy_score_inputs",
-        "product_host.composition.workspace",
-        "product_host.data_preparation.application",
-        "product_host.data_preparation.host",
-        "product_host.data_preparation.remediation",
-        "product_host.maintenance.data_update",
-        "product_host.research_authoring.authority",
-        "product_host.research_authoring.execution",
-        "product_host.research_authoring.factor_inputs",
-        "product_host.research_authoring.feature_materialization",
-        "product_host.research_authoring.panel_methodology_sources",
-        "product_host.storage.input_references",
-        "research_foundation.runtime.delta_service"
-      ]
-    },
     "alpha-qualification": {
       "summary": "Alpha qualification programs, candidate registries, qualification evidence and candidate sets",
       "class": "sealed-result",
@@ -1407,8 +1357,7 @@
         "artifacts:storage-governance/input-cleanup-completed"
       ],
       "authority_owners": [
-        "product_host.storage.BoundedStorageRetentionOwner",
-        "workspace_runtime.BoundedStorageRetentionOwner"
+        "product_host.storage.BoundedStorageRetentionOwner"
       ],
       "writers": [
         "product_host.storage.retention:BoundedStorageRetentionOwner"
@@ -2709,6 +2658,8 @@
         "product_host.research_authoring.risk_workflow"
       ],
       "writers": [
+        "data_layer.inputs:_place",
+        "data_layer.inputs:carry",
         "product_host.research_authoring.factor_inputs:_bind_factor_inputs",
         "product_host.research_authoring.factor_inputs:_copy_input",
         "product_host.research_authoring.factor_inputs:_record_input_publication",
@@ -3362,15 +3313,16 @@
       "location": "backup-root",
       "bytes": null,
       "writers": [
+        "data_layer.backup:_snapshot",
+        "data_layer.backup:backup_data_root",
+        "data_layer.backup:copy_files",
+        "data_layer.backup:generation_reads",
         "product_host.storage.backup:WorkspaceBackups",
         "product_host.storage.backup:_Objects",
         "product_host.storage.backup:_copy_file",
         "product_host.storage.backup:_export_rows",
         "product_host.storage.backup:_export_table",
-        "product_host.storage.backup:_record_attempt",
-        "data_layer.backup:backup_data_root",
-        "data_layer.backup:copy_files",
-        "data_layer.backup:_snapshot"
+        "product_host.storage.backup:_record_attempt"
       ],
       "readers": [
         "product_host.composition.entry",
@@ -3763,7 +3715,7 @@
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, with the knowledge store's tables, the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<table>/<digest>.<suffix>, each derived partition held as one file (a Panel chunk's body, derived_files), placed once per digest",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, with the knowledge store's tables, the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<table>/<digest>.<suffix>, each derived partition held as one file (a Panel chunk's body, derived_files), placed once per digest, blobs/<artifact_id>, each research-input file and binding manifest the input door keeps (data_layer.inputs), and views/research-inputs/<pin_id>/, each kept binding linked as its folder, rebuilt on a miss",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [
@@ -3782,7 +3734,10 @@
         "data_layer.arrays:_columns_body",
         "data_layer.arrays:_packed_body",
         "data_layer.arrays:settle",
-        "data_layer.derived_files:keep"
+        "data_layer.derived_files:keep",
+        "data_layer.inputs:_keep",
+        "data_layer.inputs:keep_binding",
+        "data_layer.inputs:view"
       ],
       "readers": [
         "data_layer.backup:backup_data_root",

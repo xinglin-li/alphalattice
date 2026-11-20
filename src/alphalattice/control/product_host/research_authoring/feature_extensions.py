@@ -24,7 +24,10 @@ from pydantic import BaseModel, ConfigDict
 from alphalattice.control.product_host.composition.feature_trials import FeatureTrial, FeatureTrials
 from alphalattice.control.product_host.composition.result_standing import packet_standing
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    input_absent,
+    read_factor_bundle,
+)
 from alphalattice.control.product_host.research_authoring.feature_activations import (
     FeatureActivation,
     FeatureExtensionRegistry,
@@ -428,7 +431,9 @@ class FeatureExtensions:
     def _contract(self, spec: FactorSpec, recipe: str | None, binding: str) -> dict[str, Any]:
         try:
             sessions = len(read_factor_bundle(self.workspace, binding, verify=False).sessions)
-        except FileNotFoundError:
+        except (FileNotFoundError, RuntimeError) as error:
+            if not input_absent(error):
+                raise
             sessions = spec.minimum_observations
         try:
             specification = build_research_formula_specification(

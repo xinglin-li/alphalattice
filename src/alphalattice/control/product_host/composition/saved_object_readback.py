@@ -21,7 +21,12 @@ from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
 )
-from alphalattice.kernel.data_layer.history import carry_arrays, data_root, own_root
+from alphalattice.kernel.data_layer.history import (
+    carry_arrays,
+    carry_research_inputs,
+    data_root,
+    own_root,
+)
 
 
 def _request(
@@ -205,6 +210,7 @@ def _read_saved(
         _copy(root, copy)
         carry_tasks(root, copy, root=source)
         carry_arrays(root, copy, root=source)
+        carry_research_inputs(root, copy, root=source)
         for _ in carry_risk_covariance(root, copy, source_root=source):
             pass
         opened = _open_copy(copy, name, rows, fallback, opener)

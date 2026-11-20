@@ -192,27 +192,9 @@ def specialist_answer_bound_samples():
 
 
 def workbench_source_inputs():
-    """Workbench retention and Goal inputs enumerate their original source declarations."""
+    """Workbench Goal inputs enumerate their original source declarations."""
 
     root = ROOT
-    retention_owner = root / "src/alphalattice/control/product_host/storage/input_references.py"
-    additions = [
-        call
-        for call in ast.walk(ast.parse(retention_owner.read_text(encoding="utf-8")))
-        if isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Attribute)
-        and call.func.attr in {"add", "update"}
-        and isinstance(call.func.value, ast.Subscript)
-        and isinstance(call.func.value.value, ast.Name)
-        and call.func.value.value.id == "roots"
-    ]
-    assert additions and all(
-        len(call.args) == 1
-        and isinstance(call.args[0], ast.Constant)
-        and isinstance(call.args[0].value, str)
-        for call in additions
-    ), "Every owner retention reason must participate in the language census"
-    retention_roots = sorted({call.args[0].value for call in additions})
     goal_owner = root / "src/alphalattice/control/product_host/composition/goals.py"
     goal_tree = ast.parse(goal_owner.read_text(encoding="utf-8"))
     goal_reference_operations = next(
@@ -233,7 +215,7 @@ def workbench_source_inputs():
             for target in node.targets
         )
     )
-    return retention_roots, goal_reference_operations, goal_comparison_refusals
+    return goal_reference_operations, goal_comparison_refusals
 
 
 def generated_evidence_sentences():

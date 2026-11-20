@@ -1116,9 +1116,7 @@ class ResearchExperimentApplication:
         if kind == RISK_EXPERIMENT_KIND:
             return {**risk_controls(self.session, binding), **needed}
         bundle = read_factor_bundle(self.session.workspace, binding.binding_hash)
-        root = confined(
-            self.session.workspace, f"research-inputs/{binding.binding_hash}/source/artifacts"
-        )
+        root = factor_input_paths(self.session.workspace, binding.binding_hash)[1]
         panel = ArtifactResolver(root).load_feature_panel_manifest(
             ArtifactResolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)
         )

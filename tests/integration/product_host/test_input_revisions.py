@@ -534,7 +534,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         )
         assert bad["status"] == "REFUSED" and "version_not_admitted" in bad["failure_code"]
         bundle = read_factor_bundle(root, publication.binding_hash)
-        path = root / "research-inputs" / bundle.binding_hash / "manifest.json"
+        path = factor_input_paths(root, bundle.binding_hash)[0].parent / "manifest.json"
         original = path.read_bytes()
         try:
             path.write_bytes(original.replace(bundle.binding_hash.encode(), b"0" * 64))
@@ -552,7 +552,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         assert len(registry.tasks()) == before
         manifest_bytes = (root / "research-workspace.json").read_bytes()
         for binding in (anchor.binding_hash, publication.binding_hash):
-            manifest = root / "research-inputs" / binding / "manifest.json"
+            manifest = factor_input_paths(root, binding)[0].parent / "manifest.json"
             held_manifest = manifest.with_suffix(".held")
             original_manifest = manifest.read_bytes()
             manifest.rename(held_manifest)
@@ -646,7 +646,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         assert len(registry.tasks()) == before
         assert (root / "research-workspace.json").read_bytes() == manifest_bytes
         # Missing numerical input prevents execution, not reopening immutable evidence.
-        database = root / "research-inputs" / anchor.binding_hash / "source/market-data.duckdb"
+        database = factor_input_paths(root, anchor.binding_hash)[0] / "market-data.duckdb"
         held = database.with_suffix(".held")
         database.rename(held)
         try:

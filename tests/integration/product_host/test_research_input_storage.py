@@ -1,4 +1,4 @@
-"""Input retention mechanics; no synthetic file is claimed as numerical evidence."""
+"""Input storage and cleanup mechanics; no synthetic file is claimed as numerical evidence."""
 
 from __future__ import annotations
 
@@ -24,16 +24,14 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     FactorInputBundle,
     _copy_input,
+    factor_input_paths,
     file_digest,
+    legacy_bindings,
     read_factor_bundle,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-from alphalattice.control.task_control.contracts import (
-    ResearchGoal,
-    ResearchPlan,
-    TaskInputEnvelope,
-    WorkItemDefinition,
-)
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _manifest
@@ -318,45 +316,15 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
         old, new, read_legacy=read_old, read_catalog=lambda _: rows.slice(0, 1)
     )
 
-    # Emulate Windows' path limit at the real bundle-reader boundary.
-    long_root = tmp_path / ("long-workspace-" + "x" * 80)
-    long_root.mkdir()
-    (long_bundle,) = _inputs(long_root, count=1)
-    original_open = Path.open
-    long_reads = []
-
-    def windows_path_limit(path, *args, **kwargs):
-        value = str(path)
-        if len(value) >= 260:
-            long_reads.append(value)
-            if not value.startswith("\\\\?\\"):
-                raise FileNotFoundError("simulated Windows long-path refusal")
-        return original_open(path, *args, **kwargs)
-
-    with monkeypatch.context() as patch:
-        if os.name == "nt":
-            patch.setattr(Path, "open", windows_path_limit)
-        try:
-            readback = read_factor_bundle(long_root, long_bundle.binding_hash)
-        except AuthoringError as error:
-            if str(error) != "research_experiment.input_file_unavailable":
-                raise
-            pytest.fail(f"long-path readback was refused: {error}")
-        except FileNotFoundError as error:
-            if str(error) != "simulated Windows long-path refusal":
-                raise
-            pytest.fail(f"long-path readback was refused: {error}")
-        assert readback == long_bundle
-    assert os.name != "nt" or long_reads
-    missing = long_root / "research-inputs" / ("a" * 64) / "manifest.json"
-    with pytest.raises(FileNotFoundError) as failure:
-        read_factor_bundle(long_root, "a" * 64, verify=False)
-    assert failure.value.filename == str(missing.resolve())
+    # A binding this data root does not keep is refused by name, never read from elsewhere.
+    with pytest.raises(DataError) as missing:
+        read_factor_bundle(tmp_path, "a" * 64, verify=False)
+    assert missing.value.failure.code == "data_layer.input_missing"
 
     (bundle,) = _inputs(tmp_path, count=1)
-    source = tmp_path / "research-inputs" / bundle.binding_hash / "source"
+    source = factor_input_paths(tmp_path, bundle.binding_hash)[0]
     alias = source / "market-data.duckdb"
-    pool = tmp_path / "research-inputs/databases" / bundle.database_snapshot_hash
+    pool = source.parent.parent / "databases" / bundle.database_snapshot_hash
     pool = pool / "market-data.duckdb"
     assert os.stat(alias).st_ino == os.stat(pool).st_ino
     reads = _counting_reads(monkeypatch)
@@ -364,7 +332,7 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     # Three objects (the manifest copy, the Parquet object, the database
     # object named by its alias and its pool path), three reads.
     assert reads[0] == 3
-    forged = tmp_path / "forged.duckdb"
+    forged = pool.with_name("forged.duckdb")  # beside the view, on its volume
     forged.write_bytes(b"database-X")  # the same size as the pooled "database-0"
     saved = pool.read_bytes()
     os.replace(forged, pool)
@@ -423,6 +391,9 @@ def test_managed_inventory_preserves_file_identity_and_link_refusal(tmp_path):
 
 
 def _inputs(root: Path, *, count: int = 3):
+    """Bound inputs as 0.2.8 binds them: each staged beside the workspace as the writer stages
+    it, then kept once on the data root behind the door; the workspace holds its publication
+    records and manifest."""
     manifest = _manifest("input-storage")
     bundles = []
     source = root / "staging"
@@ -447,8 +418,9 @@ def _inputs(root: Path, *, count: int = 3):
             files=files,
             database_snapshot_hash=file_digest(database),
         )
-        folder = root / "research-inputs" / bundle.binding_hash
-        for name, digest in files:
+        bound = root.parent / f"{root.name}-bind"  # laid out as a copy, outside the workspace
+        staged = bound / "research-inputs" / bundle.binding_hash
+        for name, _digest in files:
             original = (
                 database
                 if name == "market-data.duckdb"
@@ -456,8 +428,10 @@ def _inputs(root: Path, *, count: int = 3):
                 if name == "data.parquet"
                 else panel_file
             )
-            _copy_input(root, original, folder / "source" / name, digest)
-        (folder / "manifest.json").write_text(bundle.model_dump_json(), encoding="utf-8")
+            _copy_input(root, original, staged / "source" / name)
+        (staged / "manifest.json").write_text(bundle.model_dump_json(), encoding="utf-8")
+        (kept,) = [files for h, files in legacy_bindings(bound) if h == bundle.binding_hash]
+        history.keep_research_input(bundle.binding_hash, kept)
         updated = manifest.with_bindings(
             experiment_inputs=(
                 ResearchWorkspaceExperimentInput(
@@ -473,9 +447,9 @@ def _inputs(root: Path, *, count: int = 3):
             "next_manifest_hash": updated.manifest_hash,
         }
         receipt = canonical_hash(values)
-        history = root / "research-inputs/publications"
-        history.mkdir(exist_ok=True)
-        (history / f"{receipt}.json").write_text(
+        records = root / "research-inputs/publications"
+        records.mkdir(parents=True, exist_ok=True)
+        (records / f"{receipt}.json").write_text(
             json.dumps({**values, "receipt_hash": receipt}), encoding="utf-8"
         )
         manifest = updated
@@ -491,9 +465,7 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         ResearchInputRevision,
         ResearchInputSource,
     )
-    from alphalattice.control.product_host.storage.retention import StorageRetentionError
     from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
-    from alphalattice.interface.local_application.cli_contract import worded_refusal
     from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 
     a, b, c, default = _inputs(tmp_path, count=4)
@@ -632,51 +604,19 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         finally:
             replacement.unlink()
             original_record.write_bytes(original_bytes)
+        # The inputs are kept on the data root, outside the cleanup: no input row, no input
+        # target, and after a confirmed cleanup every version is still selectable.
         storage = ResearchInputStorage(session)
-        rows = {v["binding_hash"]: v["roots"] for v in storage.readback()["inputs"]}
-        assert rows[a.binding_hash] == []
-        assert "PREVIOUS_ROLLBACK" in rows[b.binding_hash]
-        assert "CURRENT_RESEARCH_VERSION" in rows[c.binding_hash]
-        assert "CURRENT_ACTIVE" in rows[default.binding_hash]
-        # The installed binding and a succeeded historical publication both
-        # name their exact missing manifest, without discarding the references.
-        before = storage.readback()
-        foreign = tmp_path / "elsewhere" / "research-inputs" / ("a" * 64) / "manifest.json"
-
-        def foreign_missing(_self):
-            raise FileNotFoundError(2, "missing", str(foreign))
-
-        with monkeypatch.context() as scoped:
-            scoped.setattr(type(app.revisions), "publications", foreign_missing)
-            with pytest.raises(FileNotFoundError) as unrelated:
-                storage.readback()
-            assert unrelated.value.filename == str(foreign)
-        for binding in (default.binding_hash, c.binding_hash):
-            folder = tmp_path / "research-inputs" / binding
-            aside = tmp_path / f"held-{binding}"
-            folder.rename(aside)
-            try:
-                with pytest.raises(StorageRetentionError) as refused:
-                    storage.readback()
-                subject = f"research-inputs/{binding}"
-                code = f"storage.input_binding_missing:{subject}"
-                assert refused.value.failure_code == code
-                answer = worded_refusal({"status": "REFUSED", "failure_code": code})
-                assert f"{subject}/manifest.json" in answer["detail"]
-                assert "backup restore" in answer["detail"]
-                assert answer["next_action"] == "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
-            finally:
-                aside.rename(folder)
-            restored = storage.readback()
-            assert restored["inputs"] == before["inputs"]
-            assert restored["references_hash"] == before["references_hash"]
+        assert storage.readback()["inputs"] == []
         plan = storage.plan()
-        assert plan["bindings"] == [a.binding_hash]
+        assert plan["bindings"] == []
+        assert not any(target.startswith("research-inputs/") for target in plan["targets"])
         storage.confirm(plan["plan_hash"], caller="HUMAN")
         assert app.revisions.versions()["status"] == "AVAILABLE"
-        with pytest.raises(RuntimeError, match="released"):
-            app.revisions.select("factor", a.binding_hash)
-        assert app.revisions.select("factor", b.binding_hash).binding_hash == b.binding_hash
+        for bundle in (a, b):
+            assert app.revisions.select("factor", bundle.binding_hash).binding_hash == (
+                bundle.binding_hash
+            )
 
 
 def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Path, monkeypatch):
@@ -702,7 +642,7 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         outcome_policy_hash="6" * 64,
         materializer_hash="7" * 64,
     )
-    sealed = tmp_path / "research-inputs" / bundle.binding_hash / "source" / "market-data.duckdb"
+    sealed = factor_input_paths(tmp_path, bundle.binding_hash)[0] / "market-data.duckdb"
     good = sealed.read_bytes()
     publications = tmp_path / "research-inputs/publications"
     before = sorted(path.name for path in publications.glob("*.json"))
@@ -759,43 +699,39 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         assert app.plan("factor")["status"] == "REUSED_EXACT"
 
 
-def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
+@pytest.mark.proves("product_host.storage_cleanup_takes_only_confirmed_eligible_targets")
+def test_a_cleanup_takes_only_its_eligible_targets_never_an_input(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    a, b, c = _inputs(tmp_path)
+    """A cleanup takes only a person's confirmation of its eligible targets, never a research input,
+    a forged target or a redirected path, and holds every other change while it is interrupted."""
+    # Its resume after an interruption is issue 1119-C2-7.
+    from alphalattice.foundation.feature_engine.panels.retention_residue import (
+        PanelRetentionResidueOwner,
+    )
+
+    a, b = _inputs(tmp_path, count=2)
+    chunk = _panel_generations(tmp_path, monkeypatch)
+    monkeypatch.setattr(PanelRetentionResidueOwner, "reconcile_physical_availability", len)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         storage = ResearchInputStorage(session)
-        publication = next((tmp_path / "research-inputs/publications").glob("*.json"))
-        saved = publication.read_bytes()
-        try:
-            value = json.loads(saved)
-            value["binding_hash"] = "f" * 64
-            publication.write_text(json.dumps(value), encoding="utf-8")
-            with pytest.raises(RuntimeError) as refused:
-                storage.plan()
-            assert refused.value.failure_code == "storage.retention_root_mismatch"
-        finally:
-            publication.write_bytes(saved)
+        with pytest.raises(ValueError, match=r"storage.input_pin_retired"):
+            storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
+        with pytest.raises(ValueError, match=r"storage.input_pin_unavailable"):
+            storage.pin("9" * 64, pinned=True, caller="HUMAN")
         plan = storage.plan()
-        assert plan["bindings"] == [a.binding_hash]
-        storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
+        assert plan["bindings"] == []
+        assert list(plan["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
         with pytest.raises(ValueError, match="human_confirmation"):
             storage.confirm(plan["plan_hash"], caller="INSTALLED_AGENT")
-        with pytest.raises(RuntimeError, match="changed"):
-            storage.confirm(plan["plan_hash"], caller="HUMAN")
-        assert storage.plan()["targets"] == {}
-        storage.pin(a.binding_hash, pinned=False, caller="HUMAN")
-        plan = storage.plan()
-        # A self-consistent forged plan still cannot include a protected input.
+        # A self-consistent forged plan still cannot include a protected chunk.
         forged = {k: v for k, v in plan.items() if k not in {"status", "plan_hash", "limitations"}}
-        forged["targets"] = {
-            f"research-inputs/{c.binding_hash}/source/market-data.duckdb": c.database_snapshot_hash
-        }
+        forged["targets"] = {chunk("c"): file_digest(tmp_path / chunk("c"))}
         forged_hash = storage.owner.publish_input_plan(forged)
         with pytest.raises(RuntimeError, match="not eligible"):
             storage.confirm(forged_hash, caller="HUMAN")
-        # A redirected alias must not turn an admitted input unlink into a
-        # deletion of another same-workspace file, even with identical bytes.
+        # A redirected path must not turn an admitted unlink into a deletion of another
+        # same-workspace file, even with identical bytes.
         victim = tmp_path / "market-data.duckdb"
         victim.write_bytes(b"must survive")
         redirected = next(iter(plan["targets"]))
@@ -817,7 +753,7 @@ def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
         removed = []
 
         def fail_after_one(path, *args, **kwargs):
-            if path.is_relative_to(tmp_path / "research-inputs"):
+            if path.is_relative_to(tmp_path / "artifacts/feature-panel/chunks"):
                 if removed:
                     raise OSError("simulated cleanup interruption")
                 removed.append(path)
@@ -829,17 +765,11 @@ def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
                 storage.confirm(plan["plan_hash"], caller="HUMAN")
         assert storage.readback()["status"] == "RECOVERY_REQUIRED"
         with pytest.raises(RuntimeError, match="Resume approved cleanup"):
-            storage.pin(c.binding_hash, pinned=True, caller="HUMAN")
+            storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
         with pytest.raises(RuntimeError, match="Resume approved cleanup"):
             storage.plan()
-        result = storage.confirm(plan["plan_hash"], caller="HUMAN")
-        assert result["deleted_paths"] > 0
-        assert read_factor_bundle(tmp_path, b.binding_hash) == b
-        assert read_factor_bundle(tmp_path, c.binding_hash) == c
-        assert read_factor_bundle(tmp_path, a.binding_hash, verify=False) == a
-        with pytest.raises(RuntimeError, match="released"):
-            read_factor_bundle(tmp_path, a.binding_hash)
-        assert storage.confirm(plan["plan_hash"], caller="HUMAN")["deleted_paths"] == 0
+        for bundle in (a, b):  # the inputs are untouched by any cleanup
+            assert read_factor_bundle(tmp_path, bundle.binding_hash) == bundle
 
 
 def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
@@ -869,41 +799,6 @@ def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
     assert roots["AUTHORITY"] == {"physical_bytes": 1024, "logical_bytes": 1024, "files": 1}
 
 
-def test_an_unfinished_task_protects_its_input_without_a_foundation(tmp_path: Path):
-    a, _b, _c = _inputs(tmp_path)
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
-        envelope = TaskInputEnvelope.create(
-            task_kind="research_experiment",
-            input_schema_id="test-input",
-            payload={"plan": {"binding": {"binding_hash": a.binding_hash}}},
-        )
-        goal = ResearchGoal.create(
-            goal_kind="TEST_RECOVERY",
-            input_hash=envelope.input_hash,
-            deliverable_kind="evidence",
-            summary="Keep input while work is owed.",
-        )
-        workflow = ResearchPlan.create(
-            goal_hash=goal.goal_hash,
-            workflow_definition_hash="c" * 64,
-            verifier_catalog_hash="d" * 64,
-            work_items=(
-                WorkItemDefinition.create(
-                    stage_id="check_input", dependency_ids=(), verifier_id="test.input"
-                ),
-            ),
-        )
-        session.task_control_registry.admit(
-            input_envelope=envelope, goal=goal, plan=workflow, observed_at=datetime.now(UTC)
-        )
-        view = ResearchInputStorage(session).readback()
-        assert (
-            "IN_FLIGHT_RECOVERY"
-            in next(v for v in view["inputs"] if v["binding_hash"] == a.binding_hash)["roots"]
-        )
-        assert ResearchInputStorage(session).plan()["targets"] == {}
-
-
 def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatch):
     import alphalattice.control.product_host.research_authoring.factor_inputs as inputs
     from alphalattice.control.product_host.storage.inventory import StorageInventoryError
@@ -923,41 +818,26 @@ def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatc
     monkeypatch.setattr(inputs, "require_storage_capacity", full)
     monkeypatch.setattr(inputs.shutil, "copy2", lambda *args: copied.append(args))
     with pytest.raises(StorageInventoryError):
-        _copy_input(tmp_path, source, target, file_digest(source))
+        _copy_input(tmp_path, source, target)
     assert copied == [] and not target.exists()
 
 
-def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_rest(
-    tmp_path, monkeypatch
-):
-    """Source snapshot roots keep current previous and rooted and release the rest."""
-
+def _panel_generations(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """Four Panel generations (`c` current, `b` before the last data update) and a chunk no
+    generation published (`e`); returns each chunk's workspace path by its letter."""
     from alphalattice.control.data_platform.maintenance.registry import (
         DuckDbWorkspaceMaintenanceRegistry,
     )
-    from alphalattice.control.product_host.storage.retention import file_content_hash
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 
-    panel_root = tmp_path / "artifacts/feature-panel"
+    panel_root = root / "artifacts/feature-panel"
     (panel_root / "manifests").mkdir(parents=True)
     (panel_root / "chunks").mkdir()
-    bundles = {}
     for name in "abcd":
-        panel_hash = name * 64
-        (panel_root / "manifests" / f"{panel_hash}.json").write_text("{}")
-        chunk = panel_root / "chunks" / f"{panel_hash}.parquet"
-        chunk.write_bytes(name.encode())
-        if name != "d":
-            bundle = FactorInputBundle.create(
-                panel_snapshot_hash=panel_hash,
-                outcome_snapshot_hash="f" * 64,
-                sessions=(date(2024, 1, 2),),
-                files=((chunk.relative_to(tmp_path).as_posix(), file_digest(chunk)),),
-            )
-            bundles[bundle.binding_hash] = bundle
-    orphan = panel_root / "chunks" / f"{'e' * 64}.parquet"  # a composition no one published
-    orphan.write_bytes(b"e")
+        (panel_root / "manifests" / f"{name * 64}.json").write_text("{}")
+        (panel_root / "chunks" / f"{name * 64}.parquet").write_bytes(name.encode())
+    (panel_root / "chunks" / f"{'e' * 64}.parquet").write_bytes(b"e")
     monkeypatch.setattr(
         PanelStateRepository,
         "feature_panel_snapshot_for_active",
@@ -977,23 +857,30 @@ def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_
         "load_feature_panel_manifest",
         lambda _self, uri: {"chunks": [{"chunk_hash": uri.rsplit("/", 1)[-1]}]},
     )
+    return lambda name: f"artifacts/feature-panel/chunks/{name * 64}.parquet"
+
+
+@pytest.mark.proves("product_host.panel_cleanup_keeps_current_and_previous_generations")
+def test_source_snapshot_roots_keep_current_previous_and_release_the_rest(tmp_path, monkeypatch):
+    """The current generation and the one before the last data update are kept, every other
+    chunk released; a busy workspace releases none, and without a data update's receipt every
+    generation is kept and only a chunk no generation published is released."""
+    from alphalattice.control.data_platform.maintenance.registry import (
+        DuckDbWorkspaceMaintenanceRegistry,
+    )
+    from alphalattice.control.product_host.storage.retention import file_content_hash
+
+    chunk = _panel_generations(tmp_path, monkeypatch)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         storage = ResearchInputStorage(session)
-        roots = {h: set() for h in bundles}
-        chunk = "artifacts/feature-panel/chunks/{}.parquet".format
-        view = storage._source_references(bundles, roots, busy=False)
-        assert list(view["targets"]) == [chunk("a" * 64), chunk("d" * 64), chunk("e" * 64)]
-        assert view["targets"][chunk("e" * 64)] == file_content_hash(orphan)
-        assert storage._source_references(bundles, roots, busy=True)["targets"] == {}
-        a = next(h for h, b in bundles.items() if b.panel_snapshot_hash == "a" * 64)
-        roots[a].add("USER_PINNED")
-        pinned = storage._source_references(bundles, roots, busy=False)["targets"]
-        assert list(pinned) == [chunk("d" * 64), chunk("e" * 64)]
+        view = storage._source_references(busy=False)
+        assert list(view["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
+        assert view["targets"][chunk("e")] == file_content_hash(tmp_path / chunk("e"))
+        assert storage._source_references(busy=True)["targets"] == {}
         monkeypatch.setattr(
             DuckDbWorkspaceMaintenanceRegistry, "read_data_update_receipt", lambda *_: None
         )
-        unreceipted = storage._source_references(bundles, roots, busy=False)["targets"]
-        assert list(unreceipted) == [chunk("b" * 64), chunk("e" * 64)]
+        assert list(storage._source_references(busy=False)["targets"]) == [chunk("e")]
 
 
 def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(

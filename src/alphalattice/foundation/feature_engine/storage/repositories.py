@@ -57,6 +57,7 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
     canonical_cutoff_set,
     ensure_feature_current_schema,
     feature_storage_layout,
+    refuse_before_0_2_7,
     runtime_view_hash,
 )
 from alphalattice.foundation.feature_engine.publication.persistence import admitted_writes
@@ -525,79 +526,7 @@ class FeatureStateRepository(WorkspaceRepository):
         return manifest
 
     def _ensure_feature_ineligibility_view(self, connection: duckdb.DuckDBPyConnection) -> None:
-        """Migrate the old row table once, then expose a diagnostic-only view."""
-        object_row = connection.execute(
-            """
-            SELECT table_type FROM information_schema.tables
-            WHERE table_schema = 'main' AND table_name = 'feature_ineligibility'
-            """
-        ).fetchone()
-        if object_row is not None and str(object_row[0]) == "BASE TABLE":
-            connection.execute("BEGIN TRANSACTION")
-            try:
-                connection.execute(
-                    "ALTER TABLE feature_ineligibility RENAME TO feature_ineligibility_legacy"
-                )
-                scopes = connection.execute(
-                    """
-                    SELECT DISTINCT listing_id, catalog_hash
-                    FROM feature_ineligibility_legacy ORDER BY listing_id, catalog_hash
-                    """
-                ).fetchall()
-                for listing_id, catalog_hash in scopes:
-                    legacy = connection.execute(
-                        """
-                        SELECT listing_id, session_date, catalog_hash, factor_id, reason,
-                               observation_count, materialization_receipt_hash, updated_at
-                        FROM feature_ineligibility_legacy
-                        WHERE listing_id = ? AND catalog_hash = ?
-                        ORDER BY factor_id, session_date
-                        """,
-                        [listing_id, catalog_hash],
-                    ).fetchall()
-                    positions = {
-                        row[0]: index
-                        for index, row in enumerate(
-                            connection.execute(
-                                """
-                                SELECT session_date FROM feature_daily_runtime
-                                WHERE listing_id = ? AND catalog_hash = ? ORDER BY session_date
-                                """,
-                                [listing_id, catalog_hash],
-                            ).fetchall()
-                        )
-                    }
-                    runs = self._compress_ineligibility_rows(
-                        {
-                            name: [row[index] for row in legacy]
-                            for index, name in enumerate(_INELIGIBILITY_FACT_COLUMNS)
-                        },
-                        positions,
-                    )
-                    if runs:
-                        # The same staged-relation shape the live write path
-                        # already uses below. Per row this migration paid an
-                        # index probe for its conflict clause, and a workspace
-                        # can carry tens of thousands of legacy runs.
-                        legacy_stage = "feature_ineligibility_legacy_run_stage"
-                        connection.register(
-                            legacy_stage, _staged_rows(_INELIGIBILITY_RUN_COLUMNS, runs)
-                        )
-                        try:
-                            connection.execute(
-                                f"""
-                                INSERT INTO feature_ineligibility_run
-                                SELECT * FROM {legacy_stage}
-                                ON CONFLICT (run_id) DO NOTHING
-                                """
-                            )
-                        finally:
-                            connection.unregister(legacy_stage)
-                connection.execute("DROP TABLE feature_ineligibility_legacy")
-                connection.execute("COMMIT")
-            except Exception:
-                connection.execute("ROLLBACK")
-                raise
+        """Expose the diagnostic-only view over the ineligibility runs."""
         connection.execute(
             """
             CREATE OR REPLACE VIEW feature_ineligibility AS
@@ -822,9 +751,16 @@ class FeatureStateRepository(WorkspaceRepository):
             connection.close()
 
     def ensure_current_storage(self) -> None:
-        """Install the active catalog-shaped Feature current schema."""
+        """Install the active catalog-shaped Feature current schema. A workspace a release before
+        0.2.7 last opened still holds a table 0.2.7 retired at its open, and is refused by name:
+        0.2.8 upgrades only from 0.2.7."""
         connection = self._connect()
         try:
+            tables = connection.execute(
+                "SELECT table_name, table_type FROM information_schema.tables"
+                " WHERE table_schema = 'main'"
+            ).fetchall()
+            refuse_before_0_2_7(dict(tables))
             self._ensure_feature_current_storage(connection)
             self._ensure_feature_ineligibility_view(connection)
         finally:

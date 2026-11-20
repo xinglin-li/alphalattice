@@ -57,6 +57,8 @@
 "data_layer.array_digest_reused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A digest names one array; the same bytes as another dtype or shape are not kept under it."},
 "data_layer.array_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
 "data_layer.array_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No array, or no body for its profile, is held for the digest; restore the data root from its backup."},
+"data_layer.input_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No research input is kept for the binding, or a file it lists is gone; restore the data root from its backup."},
+"data_layer.input_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A research input folder or file is a link; bind the input again from its source."},
 "data_layer.part_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The Alpha part relation is absent; restore the workspace and data root from their backup."},
 "data_layer.part_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An Alpha part relation or carried body is invalid; restore the workspace and data root from their backup."},
 "data_layer.array_profile_mismatch": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body's columns, dtype or shape differ from its profile; restore the data root from its backup."},
@@ -8680,6 +8682,11 @@
 "feature_storage.row_catalog_identity_mismatch": {
 "owner": "feature_storage",
 "category": "FAILED_PRECONDITION"
+},
+"feature_storage.workspace_before_0_2_7": {
+"owner": "feature_storage",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The workspace was last opened before 0.2.7 and still holds a table 0.2.7 retired; open it with 0.2.7 first."
 },
 "feature_trial.alpha_candidate_ambiguous": {
 "owner": "feature_trial",
@@ -17832,6 +17839,11 @@
 "storage.human_confirmation_required": {
 "owner": "storage",
 "category": "PERMISSION_DENIED"
+},
+"storage.input_pin_retired": {
+"owner": "storage",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A research input is kept on the data root while a binding names it, so it takes no pin; only an evidence index is pinned."
 },
 "storage.input_pin_unavailable": {
 "owner": "storage",

@@ -40,8 +40,8 @@ const bodies={
   '/api/workspace/data-issues/preview':{status:'CONFIRMATION_REQUIRED',confirmation:'HUMAN',case_token:'701f330072b97351',option:{option_id:'recoverable_quarantine',disposition:'auto',policy_args:{action:'quarantine_listing',recheck_after_at:'2026-08-04T23:00:45Z'}},next_action:'DATA_ISSUE_CONFIRM',effect_applied:false,
     next_requests:{confirm:{operation:'DATA_ISSUE_CONFIRM',data_issue_case_token:'701f330072b97351',data_issue_evidence_hash:'1587504c',data_issue_option_id:'recoverable_quarantine',data_issue_option_hash:'h2'}}},
   '/api/workspace/data-issues/confirm':{status:'CONFIRMED_PENDING_REVALIDATION',receipt_hash:'326dfabe18',case_token:'701f330072b97351',next_action:'RESUME_APPROVED_WORK',continuations:[]},
-  '/api/workspace/storage':{status:'AVAILABLE',inputs:[{binding_hash:OLD,panel_snapshot_hash:'36b5d3db',roots:['CURRENT_ACTIVE','PREVIOUS_ROLLBACK'],logical_bytes:388626012,available:true},{binding_hash:NEW,panel_snapshot_hash:'cc93b42d',roots:['CURRENT_RESEARCH_VERSION'],logical_bytes:424073272,available:true}],managed_bytes:1318904021,logical_bytes:2272589016,by_root:{ARTIFACTS:{physical_bytes:343704636,logical_bytes:486467068,files:337},IMMUTABLE_INPUTS:{physical_bytes:686529110,logical_bytes:1497451673,files:101},PROVIDER_CACHE:{physical_bytes:0,logical_bytes:0,files:0},RESEARCH_EXPERIMENTS:{physical_bytes:0,logical_bytes:0,files:0},STAGING:{physical_bytes:37443,logical_bytes:37443,files:1},WORKING_DATABASE:{physical_bytes:288632832,logical_bytes:288632832,files:1}},free_disk_bytes:5518340751360,capacity_status:'WITHIN_BUDGET',display:{managed:'1.23 GiB (1,318,904,021 bytes)',free:'5,139.36 GiB (5,518,340,751,360 bytes)',logical:'2.12 GiB (2,272,589,016 bytes)',cap:'10.00 GiB (10,737,418,240 bytes)'},budget:{managed_cap_bytes:10737418240},references_hash:'h',pending_cleanup:[]},
-  '/api/workspace/storage/plan':{status:'CONFIRMATION_REQUIRED',plan_hash:'77f93a79b4e3bd10',targets:{},bindings:[],retained_bytes:1318904021,reclaimable_bytes:0,limitations:['CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY','REPLAY_REQUIRES_RETAINED_INPUTS']},
+  '/api/workspace/storage':{status:'AVAILABLE',managed_bytes:1318904021,logical_bytes:2272589016,by_root:{ARTIFACTS:{physical_bytes:343704636,logical_bytes:486467068,files:337},IMMUTABLE_INPUTS:{physical_bytes:686529110,logical_bytes:1497451673,files:101},PROVIDER_CACHE:{physical_bytes:0,logical_bytes:0,files:0},RESEARCH_EXPERIMENTS:{physical_bytes:0,logical_bytes:0,files:0},STAGING:{physical_bytes:37443,logical_bytes:37443,files:1},WORKING_DATABASE:{physical_bytes:288632832,logical_bytes:288632832,files:1}},free_disk_bytes:5518340751360,capacity_status:'WITHIN_BUDGET',display:{managed:'1.23 GiB (1,318,904,021 bytes)',free:'5,139.36 GiB (5,518,340,751,360 bytes)',logical:'2.12 GiB (2,272,589,016 bytes)',cap:'10.00 GiB (10,737,418,240 bytes)'},budget:{managed_cap_bytes:10737418240},references_hash:'h',pending_cleanup:[]},
+  '/api/workspace/storage/plan':{status:'CONFIRMATION_REQUIRED',plan_hash:'77f93a79b4e3bd10',targets:{},retained_bytes:1318904021,reclaimable_bytes:0,limitations:['CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY','REPLAY_REQUIRES_RETAINED_INPUTS']},
   '/api/workspace/storage/confirm':{status:'COMPLETED',deleted_paths:1,plan_hash:'77f93a79b4e3bd10'},'/api/workspace/storage/pin':{status:'PINNED',binding_hash:OLD},
 };
 const views={};
@@ -283,44 +283,14 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   assert.ok(rootRow('Working database')>=0 && rootRow('Working database')<rootRow('Immutable input versions') && rootRow('Immutable input versions')<rootRow('Feature and outcome artifacts'),'the roots in the order the owner lists them');
   const working=markup.slice(rootRow('Working database'),rootRow('Immutable input versions'));
   assert.ok(working.includes('the DuckDB store the update owner maintains in place; not research input') && working.includes('275 <span class="num-unit">MiB</span>') && !working.includes('text-cell'),'a root says what it holds in its (i), then its bytes: '+working.slice(0,400));
-  assert.ok(markup.includes('ROW(2016-08-01 — 2026-07-31|<p>Kept because</p><p>configured default · previous version (rollback)</p>|371 <span class="num-unit">MiB</span>|BTN(Retain input:workspace-pin:'+OLD+':)') && markup.includes('<p>Kept because</p><p>latest published version</p>|404 <span class="num-unit">MiB</span>'),'every retained version, named by its sessions as Research inputs names it, says why it is kept (present is the usual state, not a fact to repeat)');
-  // the owner's complete root set, on both readbacks and in both languages.
-  const storageBefore=bodies['/api/workspace/storage'], originalWords=c.t, words=library.words(root);
-  const retentionRoots=library.codes().retention_roots || [...new Set([...fs.readFileSync(path.join(root,'../../../../../../control/product_host/storage/input_references.py'),'utf8').matchAll(/roots\[[^\n]+\]\.add\("([^"\n]+)"\)/g)].map(m=>m[1]))];
-  assert.ok(retentionRoots.length,'the owner supplied retention roots');
-  const reasonText={};
-  for(const lang of ['en','zh']) {
-    words.I18N.set(lang); c.t=words.t;
-    for(const reason of retentionRoots) {
-      bodies['/api/workspace/storage']={...storageBefore,inputs:[{...storageBefore.inputs[0],roots:[reason]}]};
-      c.app.page='storage';c.location.hash='#page=storage';await w.refresh('storage');
-      const store=w.page(), row=store.slice(store.indexOf('ROW(2016-08-01'),store.indexOf('BTN(',store.indexOf('ROW(2016-08-01')));
-      const retainedReason=(factBodies.get(words.t('Kept because')) || '').replace(/<[^>]+>/g,'');
-      assert.ok(retainedReason && !retainedReason.includes(reason),lang+' retention Facts name the root without leaking its code: '+reason);
-      assert.ok(!row.includes(reason),lang+' retention sentence leaked '+reason);
-      assert.ok(store.includes(reason),'exact inventory retains '+reason);
-      c.app.page='inputs';c.location.hash='#page=inputs&version='+OLD;await w.refresh('inputs');
-      const version=w.page();
-      assert.ok(!version.includes(reason),lang+' input version leaked '+reason);
-      if(lang==='en') reasonText[reason]=retainedReason;
-      else {
-        assert.notEqual(retainedReason,reasonText[reason],'the retained reason has an actual Chinese reading: '+reason);
-        assert.ok(!words.I18N.untranslated().includes(reasonText[reason]),'missing retention phrase '+reasonText[reason]);
-      }
-      if(reason==='MODEL_TRAINING_SOURCE') assert.ok(store.includes(lang==='zh'?'为模型训练保留':'retained for model training'));
-    }
-  }
-  c.t=originalWords;c.app.page='storage';c.location.hash='#page=storage';bodies['/api/workspace/storage']=storageBefore;await w.refresh('storage');
   const clean=posts.length;await w.preview('cleanup');assert.equal(posts.length,clean+1);assert.ok(w.page().includes('No eligible files to clean. Nothing was removed.') && w.page().includes('Reclaimable=0 <span class="num-unit">B</span>') && w.page().includes('Retained=1.23 <span class="num-unit">GiB</span>'),'a cleanup with nothing eligible removes nothing and says so');
-  bodies['/api/workspace/storage/plan']={...bodies['/api/workspace/storage/plan'],targets:{'research-inputs/aaa/source/data.parquet':'d1','research-inputs/parquet/d1.parquet':'d1'},bindings:['aaa'],reclaimable_bytes:1024*1024*7};
-  await w.preview('cleanup');assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Files selected for cleanup=2') && modal.content.includes('Reclaimable=7.00 <span class="num-unit">MiB</span>') && modal.content.includes('research-inputs/aaa/source/data.parquet'),'the exact targets are named before any confirmation');
+  bodies['/api/workspace/storage/plan']={...bodies['/api/workspace/storage/plan'],targets:{'artifacts/feature-panel/chunks/aaa.parquet':'d1','artifacts/feature-panel/chunks/bbb.parquet':'d2'},reclaimable_bytes:1024*1024*7};
+  await w.preview('cleanup');assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Files selected for cleanup=2') && modal.content.includes('Reclaimable=7.00 <span class="num-unit">MiB</span>') && modal.content.includes('artifacts/feature-panel/chunks/aaa.parquet'),'the exact targets are named before any confirmation');
   const wipe=posts.length;await w.commit();assert.deepEqual(posts.slice(wipe),[['/api/workspace/storage/confirm',{storage_plan_hash:'77f93a79b4e3bd10'}]]);
   assert.ok(w.page().includes('Cleanup completed: 1 file path released. Every retained version and the working database are as they were.'),'the cleanup says what it released, in the owner\'s count');
-  await w.preview('pin',OLD);assert.ok(modal.title==='Confirm input retention change' && modal.content.includes('Pin this version'));const pin=posts.length;await w.commit();assert.deepEqual(posts.slice(pin),[['/api/workspace/storage/pin',{input_binding_hash:OLD,input_pinned:true}]]);
-  assert.ok(w.page().includes('Version 65451da2923a is retained until you unpin it.'),'a pin is said as retention until lifted');
   // a plan whose only change links the retained model copy to the machine's store is confirmable,
   // names the copy and its bytes before the confirmation, and the confirmation says it was linked
-  bodies['/api/workspace/storage/plan']={status:'CONFIRMATION_REQUIRED',plan_hash:'relinkplan',targets:{},bindings:[],retained_bytes:1024,reclaimable_bytes:4096,relinks:{'evidence-cro-authority/semantic-model':4096},limitations:['A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES']};
+  bodies['/api/workspace/storage/plan']={status:'CONFIRMATION_REQUIRED',plan_hash:'relinkplan',targets:{},retained_bytes:1024,reclaimable_bytes:4096,relinks:{'evidence-cro-authority/semantic-model':4096},limitations:['A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES']};
   await w.preview('cleanup');
   assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Linked to the model store') && modal.content.includes('evidence-cro-authority/semantic-model') && !w.page().includes('No eligible files to clean'),'a relink alone is a plan to confirm: '+modal.content.slice(0,400));
   assert.ok(modal.content.includes('becomes links to the machine\'s model store it matches'),'the plan\'s limitation is said in words (U40, U44)');

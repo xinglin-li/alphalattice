@@ -30,9 +30,9 @@ from alphalattice.control.product_host.composition.strategy_scoring import (
     workspace_observation_history_scope,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    FactorInputBundle,
-    _windows_long_path,
     confined,
+    factor_input_paths,
+    read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.input_revisions import (
     ResearchInputRevisions,
@@ -77,7 +77,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
-from alphalattice.investment.portfolio_strategy_lab.application import research_experiment
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -126,13 +126,6 @@ def _display_bytes(value: int) -> str:
 
 
 EVIDENCE_PIN_PREFIX = "evidence-index:"
-
-
-def _missing_input_binding(binding_hash: str, detail: str) -> StorageRetentionError:
-    """Name a missing retained binding distinctly from a present but invalid record."""
-    return StorageRetentionError(
-        f"storage.input_binding_missing:research-inputs/{binding_hash}", detail
-    )
 
 
 class ResearchInputStorage:
@@ -222,15 +215,6 @@ class ResearchInputStorage:
             )
         return dict(data["pins"])
 
-    def _pins(self) -> dict[str, int]:
-        """Input pins only; evidence index pins carry their own prefix."""
-
-        return {
-            key: value
-            for key, value in self._all_pins().items()
-            if not key.startswith(EVIDENCE_PIN_PREFIX)
-        }
-
     def _evidence_pins(self) -> frozenset[str]:
         return frozenset(
             key[len(EVIDENCE_PIN_PREFIX) :]
@@ -248,128 +232,20 @@ class ResearchInputStorage:
             pinned_index_ids=self._evidence_pins(),
         )
 
-    def _bundles(self) -> dict[str, FactorInputBundle]:
-        """Read each retained input manifest once for this operation."""
-        bundles = {}
-        for path in sorted((self.workspace / "research-inputs").glob("*/manifest.json")):
-            value = FactorInputBundle.model_validate_json(path.read_bytes())
-            if value.binding_hash != path.parent.name:
-                raise StorageRetentionError(
-                    "storage.retention_root_mismatch", "Input manifest is misfiled."
-                )
-            bundles[value.binding_hash] = value
-        return bundles
-
-    def _references(
-        self,
-    ) -> tuple[dict[str, FactorInputBundle], dict[str, set[str]], dict[str, Any]]:
+    def _references(self) -> dict[str, Any]:
+        """Every fact a cleanup plan depends on, whose hash stales a plan when one changes. The
+        research inputs are not among them: they are kept once on the data root behind the
+        door (kernel.data_layer.inputs), held while a binding names them, outside this plan."""
         manifest = read_research_workspace_manifest(self.workspace)
-        bundles = self._bundles()
-        roots: dict[str, set[str]] = {h: set() for h in bundles}
-        for item in manifest.experiment_inputs or ():
-            if item.binding_hash not in roots:
-                raise _missing_input_binding(
-                    item.binding_hash, "An installed input manifest is missing."
-                )
-            roots[item.binding_hash].add("CURRENT_ACTIVE")
-        for item in manifest.model_training_inputs or ():
-            if item.input_binding_hash not in roots:
-                raise _missing_input_binding(
-                    item.input_binding_hash, "A retained model training input is missing."
-                )
-            roots[item.input_binding_hash].add("MODEL_TRAINING_SOURCE")
-        revisions = ResearchInputRevisions(self.session)
-        try:
-            verified_publications = revisions.publications()
-        except FileNotFoundError as error:
-            missing = _windows_long_path(Path(error.filename)) if error.filename else None
-            if (
-                missing is not None
-                and missing.name == "manifest.json"
-                and missing.parent.parent == _windows_long_path(self.workspace / "research-inputs")
-                and len(missing.parent.name) == 64
-                and all(value in "0123456789abcdef" for value in missing.parent.name)
-            ):
-                raise _missing_input_binding(
-                    missing.parent.name, "A published input manifest is missing."
-                ) from error
-            raise
-        except ValueError as error:
-            raise StorageRetentionError(
-                "storage.retention_root_mismatch", "Input publication is invalid."
-            ) from error
-        publications = [
-            {k: v for k, v in value.items() if k != "receipt_hash"}
-            for value in verified_publications
+        tasks = [
+            (str(task.task_id), task.input.input_hash, task.lifecycle.value)
+            for task in self.session.task_control_registry.tasks()
+            if task.lifecycle not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED}
         ]
-        known = {str(v["binding_hash"]) for v in publications}
-        for item in manifest.experiment_inputs or ():
-            parents = {
-                v["prior_binding_hash"]
-                for v in publications
-                if v["input_id"] == item.input_id and v["binding_hash"] == item.binding_hash
-            }
-            for parent in parents:
-                if parent in roots:
-                    roots[parent].add("PREVIOUS_ROLLBACK")
-            lineage = revisions._lineage_from_verified(item, verified_publications)
-            if lineage:
-                roots[lineage[-1].binding_hash].add("CURRENT_RESEARCH_VERSION")
-                roots[lineage[-1].prior_binding_hash].add("PREVIOUS_ROLLBACK")
-        for h in roots:
-            if h not in known:
-                roots[h].add("UNCLASSIFIED_LEGACY")
-        tasks = []
-        for task in self.session.task_control_registry.tasks():
-            portfolio_source = (
-                task.input.payload.get("plan", {}).get("portfolio_source")
-                if isinstance(task.input.payload.get("plan"), dict)
-                else None
-            )
-            if portfolio_source is not None:
-                source = research_experiment.PortfolioExperimentSource.model_validate(
-                    portfolio_source
-                )
-                if source.input_binding_hash not in roots:
-                    raise _missing_input_binding(
-                        source.input_binding_hash, "Portfolio research input is missing."
-                    )
-                roots[source.input_binding_hash].add("PORTFOLIO_RESEARCH")
-            if task.lifecycle not in {TaskLifecycle.SUCCEEDED, TaskLifecycle.CANCELLED}:
-                tasks.append((str(task.task_id), task.input.input_hash, task.lifecycle.value))
-                referenced = _strings(task.input.payload).intersection(roots)
-                # An older/custom task may carry a source path rather than a
-                # binding field. Unknown does not mean safe to evict.
-                for h in referenced or roots.keys():
-                    roots[h].add("IN_FLIGHT_RECOVERY")
-        pins = self._pins()
-        from alphalattice.foundation.research_foundation.publication.sponsorship import (
-            read_foundation_admission,
-        )
-
-        foundations = []
-        admission_root = (
-            self.workspace / "artifacts/factor-research/research-desk/foundation-admissions"
-        )
-        for path in sorted(admission_root.glob("*.json")):
-            admission = read_foundation_admission(self.workspace / "artifacts", path.stem)
-            foundations.append(admission.admission_hash)
-            for h in (admission.input_binding_hash, admission.factor_input_binding_hash):
-                if h not in roots:
-                    raise _missing_input_binding(h, "Foundation input is missing.")
-                roots[h].add("RESEARCH_FOUNDATION")
-        for h in pins:
-            if h not in roots:
-                raise _missing_input_binding(h, "Pinned input manifest is missing.")
-            roots[h].add("USER_PINNED")
         evidence: dict[str, Any] = {
             "manifest": manifest.manifest_hash,
-            "publications": publications,
-            "roots": {h: sorted(v) for h, v in sorted(roots.items())},
             "tasks": tasks,
-            "pins": pins,
-            "foundations": foundations,
-            "source": self._source_references(bundles, roots, busy=bool(tasks)),
+            "source": self._source_references(busy=bool(tasks)),
         }
         preparation = self._preparation_references(manifest, busy=bool(tasks))
         evidence["source"]["targets"].update(preparation["targets"])
@@ -379,7 +255,7 @@ class ResearchInputStorage:
             # Every fact a plan over evidence indexes depends on: a new pin, an
             # open reader or an unfinished Task changes the hash and stales it.
             evidence["evidence_indexes"] = references.evidence()
-        return bundles, roots, evidence
+        return evidence
 
     def _preparation_references(
         self, manifest: ResearchWorkspaceManifest, *, busy: bool
@@ -450,13 +326,7 @@ class ResearchInputStorage:
             },
         }
 
-    def _source_references(
-        self,
-        bundles: dict[str, FactorInputBundle],
-        roots: dict[str, set[str]],
-        *,
-        busy: bool,
-    ) -> dict[str, Any]:
+    def _source_references(self, *, busy: bool) -> dict[str, Any]:
         """Release classified completed snapshots, never raw history or recovery patches.
 
         A generation no research input captured is kept while it is the current one or the
@@ -468,10 +338,10 @@ class ResearchInputStorage:
         panel_root = artifacts / "feature-panel"
         if not tuple((panel_root / "manifests").glob("*.json")):
             return {"targets": {}, "roots": []}
-        known_panels = {b.panel_snapshot_hash for b in bundles.values()}
-        known_outcomes = {b.outcome_snapshot_hash for b in bundles.values()}
-        protected_panels = {b.panel_snapshot_hash for h, b in bundles.items() if roots[h]}
-        protected_outcomes = {b.outcome_snapshot_hash for h, b in bundles.items() if roots[h]}
+        # A research input keeps its own copy of what it captured on the data root, so no
+        # workspace generation is known to an input: none is released for one.
+        protected_panels: set[str] = set()
+        protected_outcomes: set[str] = set()
         panel_hashes = {p.stem for p in (panel_root / "manifests").glob("*.json")}
         market = MarketDataRepository(self.workspace)
         active = PanelStateRepository(
@@ -486,7 +356,7 @@ class ResearchInputStorage:
         receipt = DuckDbWorkspaceMaintenanceRegistry.read_data_update_receipt(market.path)
         if receipt is None:
             # Without a data update's receipt no generation is known to precede the current.
-            protected_panels.update(panel_hashes - known_panels)
+            protected_panels.update(panel_hashes)
         elif receipt.after.panel_hash == current:
             protected_panels.add(receipt.before.panel_hash)
         else:
@@ -502,7 +372,6 @@ class ResearchInputStorage:
             heads.append(head.head_hash)
         if busy:
             protected_panels.update(panel_hashes)
-            protected_outcomes.update(known_outcomes)
         resolver = ArtifactResolver(artifacts)
         protected: set[Path] = set()
         for panel_hash in protected_panels:
@@ -515,36 +384,16 @@ class ResearchInputStorage:
             )
         outcomes = CausalExecutionOutcomeDevelopmentReader(artifacts).artifacts
         for outcome in (*outcomes.manifests(), *outcomes.development_only_manifests()):
-            if (
-                outcome.snapshot_hash in protected_outcomes
-                or outcome.snapshot_hash not in known_outcomes
-            ):
-                protected.update(
-                    outcomes._parquet_path(c.split, c.content_hash)
-                    for c in outcome.development_chunks
-                )
+            protected.update(
+                outcomes._parquet_path(c.split, c.content_hash) for c in outcome.development_chunks
+            )
         targets = {}
-        for h, bundle in bundles.items():
-            if roots[h]:
-                continue
-            for name, digest in bundle.files:
-                if not name.startswith(
-                    (
-                        "artifacts/feature-panel/chunks/",
-                        "artifacts/data-operations/execution-outcomes/development/chunks/",
-                    )
-                ) or not name.endswith(".parquet"):
-                    continue
-                if confined(self.workspace, name) not in protected:
-                    targets[name] = digest
         if not busy:
             # The chunks no kept generation names: a superseded generation's own, and those a
             # composition wrote that no generation published (11 of `dh-append`'s 24).
-            captured = {name for h, b in bundles.items() if roots[h] for name, _ in b.files}
             for path in sorted((panel_root / "chunks").glob("*.parquet")):
-                name = path.relative_to(self.workspace).as_posix()
-                if path not in protected and name not in captured and name not in targets:
-                    targets[name] = file_content_hash(path)
+                if path not in protected:
+                    targets[path.relative_to(self.workspace).as_posix()] = file_content_hash(path)
         return {
             "targets": dict(sorted(targets.items())),
             "roots": sorted(protected_panels),
@@ -560,29 +409,16 @@ class ResearchInputStorage:
             Input availability, protected evidence indexes, budget/capacity/free disk and
             recovery-required cleanup facts; no cleanup is applied.
         """
-        bundles, roots, evidence = self._references()
+        evidence = self._references()
         files = managed_file_inventory(self.workspace)
         used = unique_managed_bytes(files)
-        rows = []
-        for h, bundle in bundles.items():
-            names = {f"research-inputs/{h}/source/{name}" for name, _digest in bundle.files}
-            held = tuple(v for v in files if v[0] in names)
-            rows.append(
-                {
-                    "binding_hash": h,
-                    "panel_snapshot_hash": bundle.panel_snapshot_hash,
-                    "roots": sorted(roots[h]),
-                    "logical_bytes": sum(v[1] for v in held),
-                    "available": len(held) == len(names),
-                }
-            )
         capacity = StorageCapStore(self.workspace).capacity(measured_data_bytes=used)
         pending = pending_input_cleanups(self.workspace)
         free = shutil.disk_usage(self.workspace).free
         references = self._evidence_references()
         return {
             "status": "RECOVERY_REQUIRED" if pending else "AVAILABLE",
-            "inputs": rows,
+            "inputs": [],  # deprecated in 0.2.8: inputs are kept on the data root
             "evidence": None
             if references is None
             else {
@@ -621,7 +457,7 @@ class ResearchInputStorage:
                 "logical": _display_bytes(sum(v[1] for v in files)),
                 "cap": _display_bytes(capacity.cap_bytes),
             },
-            "budget": {**self._input_scope(bundles, roots), **capacity.model_dump(mode="json")},
+            "budget": {**self._input_scope(), **capacity.model_dump(mode="json")},
             "references_hash": canonical_hash(evidence),
             "pending_cleanup": pending,
         }
@@ -659,27 +495,31 @@ class ResearchInputStorage:
             actions.append("PIN")
         return actions
 
-    def _input_scope(
-        self, bundles: dict[str, FactorInputBundle], roots: dict[str, set[str]]
-    ) -> dict[str, int]:
-        """Keep the current input owner's listing/session facts separate from execution capacity."""
+    def _input_scope(self) -> dict[str, int]:
+        """Keep the current input owner's listing/session facts separate from execution capacity:
+        each input the workspace makes current, and its newest published version, read through
+        the door."""
+        manifest = read_research_workspace_manifest(self.workspace)
+        revisions = ResearchInputRevisions(self.session)
+        verified = revisions.publications() if manifest.experiment_inputs else ()
+        current = set()
+        for item in manifest.experiment_inputs or ():
+            current.add(item.binding_hash)
+            lineage = revisions._lineage_from_verified(item, verified)
+            if lineage:
+                current.add(lineage[-1].binding_hash)
         estimates = []
-        for key, current in bundles.items():
-            if not roots[key].intersection({"CURRENT_ACTIVE", "CURRENT_RESEARCH_VERSION"}):
-                continue
-            panel_path = (
-                self.workspace
-                / "research-inputs"
-                / current.binding_hash
-                / "source"
-                / "artifacts/feature-panel/manifests"
-                / f"{current.panel_snapshot_hash}.json"
+        for binding_hash in sorted(current):
+            bundle = read_factor_bundle(self.workspace, binding_hash, verify=False)
+            artifacts = factor_input_paths(self.workspace, binding_hash)[1]
+            manifests = artifacts / "feature-panel/manifests"
+            panel = json.loads(
+                (manifests / f"{bundle.panel_snapshot_hash}.json").read_text(encoding="utf-8")
             )
-            panel = json.loads(panel_path.read_text(encoding="utf-8"))
             estimates.append(
                 storage_input_estimate(
                     active_listing_count=int(panel["active_listing_count"]),
-                    research_session_count=len(current.sessions),
+                    research_session_count=len(bundle.sessions),
                 )
             )
         return max(estimates, key=lambda row: row["estimated_core_bytes"], default={})
@@ -752,24 +592,19 @@ class ResearchInputStorage:
         """
         with self.session.mutation_gate.hold():
             require_no_pending_cleanup(self.workspace)
-            bundles, roots, evidence = self._references()
+            evidence = self._references()
             files = managed_file_inventory(self.workspace)
             targets = {
                 p: h
-                for p, h in (
-                    self._eligible_targets(bundles, roots)
-                    | evidence["source"]["targets"]
-                    | self._evidence_targets()
-                ).items()
+                for p, h in (evidence["source"]["targets"] | self._evidence_targets()).items()
                 if confined(self.workspace, p).is_file()
             }
-            unrooted = sorted(h for h in bundles if not roots[h])
             retained = tuple(v for v in files if v[0] not in targets)
             relinks = self._model_relinks()
             values: dict[str, object] = {
                 "references_hash": canonical_hash(evidence),
                 "targets": dict(sorted(targets.items())),
-                "bindings": unrooted,
+                "bindings": [],  # deprecated in 0.2.8: no input is a cleanup target
                 "retained_bytes": unique_managed_bytes(retained) - sum(relinks.values()),
                 "reclaimable_bytes": unique_managed_bytes(files)
                 - unique_managed_bytes(retained)
@@ -834,26 +669,6 @@ class ResearchInputStorage:
         references = self._evidence_references()
         return {} if references is None else references.targets()
 
-    @staticmethod
-    def _eligible_targets(
-        bundles: dict[str, FactorInputBundle], roots: dict[str, set[str]]
-    ) -> dict[str, str]:
-        protected = {digest for h, b in bundles.items() if roots[h] for _, digest in b.files}
-        targets = {}
-        for h, bundle in bundles.items():
-            if roots[h]:
-                continue
-            for name, digest in bundle.files:
-                if not name.endswith((".parquet", ".duckdb")):
-                    continue
-                targets[f"research-inputs/{h}/source/{name}"] = digest
-                if digest not in protected:
-                    if name.endswith(".parquet"):
-                        targets[f"research-inputs/parquet/{digest}.parquet"] = digest
-                    elif bundle.database_snapshot_hash is not None:
-                        targets[f"research-inputs/databases/{digest}/market-data.duckdb"] = digest
-        return targets
-
     def confirm(self, plan_hash: str, *, caller: str) -> dict[str, object]:
         """Require human confirmation and current references before applying the exact cleanup plan.
 
@@ -875,13 +690,11 @@ class ResearchInputStorage:
         if caller != "HUMAN":
             raise ValueError("storage.human_confirmation_required")
         with self.session.mutation_gate.hold():
-            bundles, roots, evidence = self._references()
+            evidence = self._references()
             deleted = self.owner.apply_input_plan(
                 plan_hash,
                 references_hash=canonical_hash(evidence),
-                eligible_targets=self._eligible_targets(bundles, roots)
-                | evidence["source"]["targets"]
-                | self._evidence_targets(),
+                eligible_targets=evidence["source"]["targets"] | self._evidence_targets(),
                 evidence_evictor=self._evict_evidence_index,
             )
             if any(
@@ -976,10 +789,12 @@ class ResearchInputStorage:
         return {"status": "REBUILT", "receipt_hash": identity, **receipt}
 
     def pin(self, binding_hash: str, *, pinned: bool, caller: str) -> dict[str, object]:
-        """Require human approval before atomically pinning or unpinning exact available storage.
+        """Require human approval before atomically pinning or unpinning an evidence index.
+
+        A research input needs no pin: it is kept on the data root while a binding names it.
 
         Args:
-            binding_hash: Exact admitted input or evidence index identity.
+            binding_hash: Exact evidence index identity.
             pinned: Whether to retain this explicit storage root.
             caller: Explicit caller required to be HUMAN.
 
@@ -987,42 +802,27 @@ class ResearchInputStorage:
             Exact pinned/unpinned storage selection.
 
         Raises:
-            ValueError: Caller is not human, cleanup is pending or selected storage is unavailable.
+            ValueError: Caller is not human, cleanup is pending, the identity is a research
+                input, or the selected index is unavailable.
         """
         if caller != "HUMAN":
             raise ValueError("storage.human_confirmation_required")
         with self.session.mutation_gate.hold():
             view = self.readback()
             require_no_pending_cleanup(self.workspace)
-            row = next((v for v in view["inputs"] if v["binding_hash"] == binding_hash), None)
-            evidence_row = None
-            if row is None and view["evidence"] is not None:
-                evidence_row = next(
+            evidence_row = (
+                None
+                if view["evidence"] is None
+                else next(
                     (v for v in view["evidence"]["indexes"] if v["index_id"] == binding_hash),
                     None,
                 )
+            )
             if evidence_row is not None:
                 return self._pin_evidence_index(evidence_row, pinned=pinned)
-            if row is None or (pinned and not row["available"]):
-                raise ValueError("storage.input_pin_unavailable")
-            pins = self._pins()
-            if pinned:
-                pins[binding_hash] = row["logical_bytes"]
-            else:
-                pins.pop(binding_hash, None)
-            pins = {**{k: v for k, v in self._all_pins().items() if k not in self._pins()}, **pins}
-            identity = canonical_hash(pins)
-            self.owner._publish("input-pin-receipts", identity, {k: v for k, v in pins.items()})
-            target = self.owner.governance_root / "input-pins.json"
-            with NamedTemporaryFile(dir=target.parent, delete=False) as handle:
-                handle.write(
-                    json.dumps({"pins": pins, "receipt_hash": identity}, sort_keys=True).encode()
-                )
-                handle.flush()
-                os.fsync(handle.fileno())
-                temporary = Path(handle.name)
-            os.replace(temporary, target)
-        return {"status": "PINNED" if pinned else "UNPINNED", "binding_hash": binding_hash}
+            if history.research_input_kept(binding_hash):
+                raise ValueError("storage.input_pin_retired")
+            raise ValueError("storage.input_pin_unavailable")
 
     def _pin_evidence_index(self, row: dict[str, Any], *, pinned: bool) -> dict[str, object]:
         """A pin on a generation's index, kept in the same receipted pin record."""

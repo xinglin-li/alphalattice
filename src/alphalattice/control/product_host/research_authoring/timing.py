@@ -10,6 +10,7 @@ from typing import Any, TypedDict, cast
 from alphalattice.control.product_host.maintenance.data_update import PROFILE
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
+    input_absent,
     read_factor_bundle,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -93,7 +94,9 @@ def binding_temporal_scope(
         panel = resolver.load_feature_panel_manifest(
             resolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, RuntimeError) as error:
+        if not input_absent(error):
+            raise
         return {"status": "NOT_RECORDED"}
     return temporal_scope(
         panel,
@@ -158,7 +161,9 @@ def research_timing(
     }
     try:
         bundle = read_factor_bundle(workspace, binding_hash, verify=False)
-    except FileNotFoundError:
+    except (FileNotFoundError, RuntimeError) as error:
+        if not input_absent(error):
+            raise
         return result
     result["input"].update(
         status="IDENTITY_BOUND_MANIFEST",

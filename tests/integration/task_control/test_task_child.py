@@ -258,8 +258,10 @@ class _Declared(RuntimeError):
     failure_class = "OPERATIONAL_FAILURE"
 
 
-def doubled(*, value: int, cancelled) -> dict[str, int]:  # type: ignore[no-untyped-def]
-    return {"value": value * 2, "pid": os.getpid()}
+def doubled(*, value: int, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    from alphalattice.kernel.data_layer.root import data_root
+
+    return {"value": value * 2, "pid": os.getpid(), "root": str(data_root())}
 
 
 def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-untyped-def]
@@ -331,18 +333,24 @@ def test_calls_spread_over_kept_workers_answer_in_order_and_bring_back_large_ans
 @pytest.mark.proves("task_control.alpha_child_returns_parts_to_host")
 @pytest.mark.parametrize("case", ["plain", "complete", "recover_fold", "cancel_fold"])
 def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
-    tmp_path: Path, case: str
+    tmp_path: Path, case: str, monkeypatch
 ) -> None:
-    """The child answers by kind and carries real fitted parts through the Host's held log."""
+    """The child answers by kind and carries real fitted parts through the Host's held log; its
+    warm second call reads the data root its caller names, not the one it was started under."""
 
     if case != "plain":
         _check_alpha_child_parts(tmp_path, interruption=None if case == "complete" else case)
         return
 
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
+
+    monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "first"))
     first = run_in_child(f"{HERE}:doubled", {"value": 21})
+    monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "second"))
     second = run_in_child(f"{HERE}:doubled", {"value": 1})
     assert (first["value"], second["value"]) == (42, 2)
     assert first["pid"] == second["pid"] != os.getpid()
+    assert (first["root"], second["root"]) == (str(tmp_path / "first"), str(tmp_path / "second"))
     with pytest.raises(ChildRefused, match=r"^fixture.refused_by_name$") as refusal:
         run_in_child(f"{HERE}:refused", {})
     assert refusal.value.type_name == "ValueError"

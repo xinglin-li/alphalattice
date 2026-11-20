@@ -35,6 +35,10 @@ from alphalattice.control.product_host.composition.research_workspace import (
     RESEARCH_WORKSPACE_MANIFEST_NAME,
     named_workspace_id,
 )
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    research_input_copies_family,
+    research_input_upgrade_family,
+)
 from alphalattice.control.product_host.storage.backup import (
     WorkspaceBackupError,
     WorkspaceBackups,
@@ -160,9 +164,13 @@ FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
     portfolio_benchmarks,
     portfolio_results,
     panel_closure,
+    partial(research_input_upgrade_family, named_workspace_id),
+    lambda: research_input_copies_family(default_backup_root("machine")),
 )
 """Every upgrade family a merged card declares, in its migration order: a family card adds its
-factory here. The Task store, its telemetry and heartbeats move at first use by their own seams."""
+factory here. The research-input copies go last: they are removed only once every family that
+reads them (the execution outcomes in their artifacts) is done. The Task store, its telemetry and
+heartbeats move at first use by their own seams."""
 
 State = Literal["PENDING", "RUNNING", "FAILED", "COMPLETED"]
 

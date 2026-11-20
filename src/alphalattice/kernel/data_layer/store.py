@@ -1595,6 +1595,9 @@ def collect_unheld(
                     log.queue_deletion(f"{folder}/{artifact}", kind, "collected")
         log.flush()
         remove_bodies(root, log, lake)
+        import alphalattice.kernel.data_layer.inputs as inputs  # lazy: BLAKE3
+
+        inputs.drop_views(root, log.read)  # a view's links to a collected input's bytes
     return [artifact for artifact, _ in found]
 
 

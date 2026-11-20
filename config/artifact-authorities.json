@@ -41,7 +41,7 @@
         "artifacts"
       ],
       "semantic_role": "current-state storage retention and physical availability, with the retired migration's marker-last evidence (RT R12)",
-      "authority_owner": "workspace_runtime.BoundedStorageRetentionOwner",
+      "authority_owner": "product_host.storage.BoundedStorageRetentionOwner",
       "retention_owner": "current workspace state",
       "rebuildability": "RECEIPTS_PHYSICAL_RETENTION_REQUIRED",
       "artifact_relationship": "STORAGE_GOVERNANCE_AND_OPERATIONAL_PROJECTION",

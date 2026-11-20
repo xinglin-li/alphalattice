@@ -885,7 +885,7 @@ def test_the_answer_form_holds_a_draft_at_its_owners_bounds():
 
 
 def test_the_workbench_harnesses_pass_source_shape() -> None:
-    """Workbench retention and Goal inputs enumerate their original source declarations."""
+    """Workbench Goal inputs enumerate their original source declarations."""
 
     workbench_source_inputs()
 

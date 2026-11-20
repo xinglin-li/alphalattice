@@ -1002,6 +1002,58 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.research_input_held_by_each_workspace_binding_it": {
+      "description": "A research input binding already kept for one workspace is held again by each later workspace that binds it, so no workspace's removal releases it from another.",
+      "lower_layer": "The holds are live_ref rows the log projects from two opened workspaces; only a real log shows them.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.research_input_path_stays_in_its_binding": {
+      "description": "A research-input file laid out outside its binding's folder is refused by name before any log or body is touched.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.research_input_released_with_its_last_workspace": {
+      "description": "Once the last workspace that binds a research input is deleted, its member and manifest bodies are collected and every view that linked them is removed, while other bindings stay.",
+      "lower_layer": "The release is the log's workspace projection, the collector on a real data root and the views' hard links; only those together free the bytes.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "data_layer.research_input_seal_is_blake3_of_its_bytes": {
+      "description": "A research-input file's seal is the BLAKE3 of its bytes, read without loading it whole, for any size the empty file included; a binding's files are listed by their relative POSIX paths.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.research_input_view_lays_out_each_binding": {
+      "description": "A kept research input binding reads as its folder under the holder's view, its pooled database placed once and shared, and an unkept binding is refused by name.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.research_input_views_go_with_their_bodies": {
+      "description": "A view of a research input binding whose bodies were collected is removed with each pooled database no kept binding lists, while kept bindings' views stay.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "data_layer.research_inputs_carried_into_a_copy": {
+      "description": "A workspace copy carries only the bindings its workspace holds, its own root keeps them at open, and a tampered carried body is refused.",
+      "lower_layer": "The holds are live_ref rows the log projects, on two real data roots; only real logs show the carry.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.research_inputs_kept_once_and_held_per_workspace": {
+      "description": "A binding's research-input files are kept once under blobs/, held once by each workspace that binds them, and read back as the folder it was bound from, byte for byte; a binding kept again records nothing.",
+      "lower_layer": "The holds are live_ref rows the log projects; the bodies are files under the data root.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
     "data_layer.research_records_are_named_by_ids": {
       "description": "Every research record is named by an id, so equal facts never collide or split across workspaces, trials, versions, renames or number forms.",
       "lower_layer": "Each record is written by the log's own projection inside its SQLite transaction and read back by its tables and views; only a real log shows the rows.",
@@ -1342,7 +1394,8 @@
       "seconds": 30
     },
     "feature_engine.factor_handoff_refuses_a_changed_input": {
-      "description": "If a Factor handoff accepted a corrupt copy, a changed source or a tampered pool, Alpha research would train on inputs its binding never named.",
+      "description": "If a Factor handoff accepted a corrupt copy, a changed source or a tampered kept body, Alpha research would train on inputs its binding never named.",
+      "lower_layer": "The refusals come from a real binding over a real Factor-scale workspace, its kept bodies on the data root and the Panel reader; no unit holds those together.",
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "integration",
       "seconds": 30
@@ -1384,6 +1437,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "feature_engine.retired_tables_mark_a_workspace_before_0_2_7": {
+      "description": "Only a base table 0.2.7 retired marks a workspace before 0.2.7 and is refused by name; the view and runs 0.2.7 left pass.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "unit",
+      "seconds": 1
+    },
     "feature_engine.sector_map_entries_take_world_names_or_are_refused": {
       "description": "A sector map's entries take world's Sector names with their provenance kept, and a listing world does not classify is refused by name.",
       "owner": "alphalattice.foundation.feature_engine",
@@ -1408,6 +1467,13 @@
       "owner": "alphalattice.foundation.feature_engine",
       "layer": "unit",
       "seconds": 1
+    },
+    "feature_engine.workspace_before_0_2_7_refused_by_name": {
+      "description": "A workspace an earlier release than 0.2.7 last opened is refused by name before its Feature schema is touched.",
+      "lower_layer": "The retired tables are read from a real workspace DuckDB database; only it shows them.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 5
     },
     "knowledge.a_new_authority_takes_the_int8_recipe": {
       "description": "If a new Evidence authority did not take the int8 recipe, or an installed one lost its own recipe on a rebind, first use stays slow or old indexes stop matching.",
@@ -2129,6 +2195,48 @@
       "layer": "integration",
       "seconds": 20
     },
+    "product_host.panel_cleanup_keeps_current_and_previous_generations": {
+      "description": "A cleanup keeps the current Panel generation and the one before the last data update, and releases nothing while a Task is busy.",
+      "lower_layer": "The generations are a real workspace's Panel files read under its writer session.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "product_host.research_input_copies_listed_as_kept": {
+      "description": "Each 0.2.7 binding copy is listed as the door keeps it, and a copy whose manifest names another binding is refused.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The listing reads a workspace's folders through the product host's bundle model, which a unit test may not import."
+    },
+    "product_host.research_input_copies_removed_after_backup_replay": {
+      "description": "A workspace's 0.2.7 copies, held or a QA copy's, upgrade ALL EQUAL, read the same through a rollback, and are removed once their restored backup reads every binding equal.",
+      "lower_layer": "The keep, the holds, the backup, its saved log and its restore are a real data root and log; only they show the replay.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "product_host.research_input_copy_removal_resumes_after_a_stop": {
+      "description": "A stop while the research input copies move aside or are deleted leaves every tree whole or retired, and the next step finishes the recorded set and both pools.",
+      "lower_layer": "The removal runs the task upgrade's recorded set-aside on real folders after a real backup and replay on a real log; only those together show the resume.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "product_host.research_input_copy_replay_unequal_keeps_every_copy": {
+      "description": "Copies of a workspace with no id on the log are refused before anything is kept, and a copy whose backed-up bytes replay unequal stops the upgrade and keeps every copy and pool.",
+      "lower_layer": "The keep, the backup and its saved log are a real data root and log; only they show the replay.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 10
+    },
+    "product_host.storage_cleanup_takes_only_confirmed_eligible_targets": {
+      "description": "A storage cleanup takes only a person's confirmation of its eligible targets, never a research input, a forged target or a redirected path.",
+      "lower_layer": "The plan, its journal and the unlinks are a real workspace's files under its writer session; only they show what a cleanup removes.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 15
+    },
     "research_authoring.schema_notes_end_on_a_ref_cycle": {
       "description": "If a schema's $ref chain were followed with no memory, a self-referencing definition would hang the client.",
       "owner": "alphalattice.protocols.research_authoring",
@@ -2222,7 +2330,7 @@
       "seconds": 1
     },
     "task_control.alpha_child_returns_parts_to_host": {
-      "description": "A real Alpha child returns each part to the Host, which keeps and reads it under its own log lock.",
+      "description": "A real Alpha child returns each part to the Host, which keeps and reads it under its own log lock; a kept child reads the data root its caller names, not the one it was started under.",
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 30,

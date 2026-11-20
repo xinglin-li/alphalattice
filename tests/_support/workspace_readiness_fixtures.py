@@ -13,7 +13,7 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data_layer.history import carry_arrays
+from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
 from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
@@ -143,6 +143,7 @@ def fresh_prepared(tmp_path_factory):
     # Its Tasks go with the workspace past the machine that made them, as a carried store.
     carry_tasks(root, root)
     carry_arrays(root, root)  # and its lanes
+    carry_research_inputs(root, root)  # and its bound inputs
     return root, task_id, view
 
 

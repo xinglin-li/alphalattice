@@ -18,6 +18,7 @@ from typing import Literal
 import duckdb
 
 from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
@@ -83,6 +84,21 @@ def cutoff_set_hash(canonical_payload: str) -> str:
     ).hexdigest()
 
 
+def refuse_before_0_2_7(tables: Mapping[str, str]) -> None:
+    """Refuse by name a workspace a release before 0.2.7 last opened, from its tables (each name
+    and its type): it still holds a table 0.2.7 retired at its open (the ineligibility rows, now a
+    view, or the year seals, now year facts), and 0.2.8 upgrades only from 0.2.7."""
+    retired = [
+        n for n in ("feature_ineligibility", "feature_year_seal") if tables.get(n) == "BASE TABLE"
+    ]
+    if retired:
+        raise DataError(
+            "This workspace was last opened by a release before 0.2.7, which retired its "
+            f"{retired[0]} table; open it with 0.2.7 first, then with this release.",
+            code="feature_storage.workspace_before_0_2_7",
+        )
+
+
 def feature_storage_layout(connection: duckdb.DuckDBPyConnection) -> FeatureStorageLayout:
     """Classify the existing Feature current table by its recorded identity columns."""
     columns = {
@@ -139,8 +155,6 @@ def ensure_feature_current_schema(
         )
         """
     )
-    # The year seals are year facts now; 0.1.3's own table goes with this schema.
-    connection.execute("DROP TABLE IF EXISTS feature_year_seal")
     ensure_year_fact_schema(connection)
     connection.execute(
         """

@@ -196,6 +196,8 @@ class BoundedStorageRetentionOwner:
         targets = []
         for relative, expected in payload["targets"].items():
             target = (self.workspace / relative).resolve()
+            if started.exists() and not target.exists():
+                continue  # released by this plan's start (a 0.2.7 input copy among them)
             evidence_index = relative.startswith(EVIDENCE_INDEX_PREFIX) and relative.endswith(".db")
             evidence_vector = relative.startswith(EVIDENCE_VECTOR_PREFIX) and relative.endswith(
                 (".f32", ".blocks.json")
@@ -206,8 +208,7 @@ class BoundedStorageRetentionOwner:
                     "An evidence object can be released only by its owner; none is admitted.",
                 )
             allowed = (
-                relative.startswith("research-inputs/")
-                or (
+                (
                     relative.startswith(
                         (
                             "artifacts/feature-panel/chunks/",

@@ -3,6 +3,13 @@ Last checked: 2026-11-14 against 0.2.7
 
 Latest released version: [0.2.7](#027). Earlier measurements describe their own versions.
 
+## 0.2.8 (in development)
+
+### Deprecated
+
+- `answer:STORAGE_READBACK.inputs` and `answer:STORAGE_PLAN.bindings` are always empty, and `refusal:storage.input_binding_missing` is no longer raised; a version this machine does not hold is refused as `data_layer.input_missing`. Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them. Earliest removal is 0.3.0.
+- `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
+
 ## 0.2.7
 
 0.2.7 bounds every wait, guides a first Codex session through trusting the project, and fixes several Evidence, Host and retrieval cases. Its test, CI and verification work changes how the project is verified; it does not change how people use AlphaLattice.
