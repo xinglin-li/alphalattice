@@ -30,15 +30,7 @@ from typing import Any
 
 import pytest
 
-from alphalattice.control.product_host.composition.research_authoring import (
-    build_research_program_workflow,
-    host_resolved_factor_inventory,
-)
-from alphalattice.control.product_host.research_authoring.execution import (
-    build_installed_desk_executors,
-)
 from alphalattice.control.research_program.authoring.workflow import ResearchEvidenceStore
-from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FactorExperimentCompiler,
     FactorInventoryEntry,
@@ -51,10 +43,14 @@ from alphalattice.foundation.factor_research.experiments.development_evidence im
     FactorDevelopmentReceipt,
     FactorDevelopmentReceiptReader,
     factor_development_evidence_handle,
+    factor_development_receipt_handle,
     verify_factor_development_receipt,
 )
 from alphalattice.foundation.factor_research.programs.program import (
     FactorResearchDeterministicEvidence,
+)
+from alphalattice.foundation.feature_engine.panels.development_input import (
+    ResolvedDevelopmentFeatureInput,
 )
 from alphalattice.foundation.feature_engine.producers.factors.open_intraday import (
     overnight_return_factor_spec,
@@ -69,18 +65,21 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import (
+    development_risk_workspace as development_risk_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     factor_scale_workspace,
 )
 from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )
 from tests.researcher_methodology_surface.factor_evidence_support import (
-    factor_development_checkpoint,
     factor_document,
+    factor_inventory,
+    factor_workflow,
+    short_lookback_factor_input,
 )
 from tests.researcher_methodology_surface.real_workspace import (
-    FACTOR_SCALE,
-    MARKET_PROFILE_ID,
     RealRiskWorkspace,
     publish_causal_outcomes,
 )
@@ -92,74 +91,41 @@ def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWor
     return factor_scale_workspace(tmp_path_factory)
 
 
-CASE_ROOT = Path(__file__).resolve().parents[3] / "tests/researcher_methodology_surface"
-PLAYPEN_ROOT = CASE_ROOT.parents[1]
 _FROZEN_AT = datetime(2026, 8, 2, tzinfo=UTC)
 
 
-def _document(inventory: tuple[Any, ...]) -> dict[str, Any]:
-    return factor_document(inventory)
-
-
 @pytest.fixture(scope="module")
-def factor_outcomes(
-    real_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path
-) -> tuple[str, str]:
-    """The causal outcomes a Factor program reads, published by the real writer.
-
-    Published here rather than in the shared builder: Risk never reads execution
-    outcomes, so every Risk case would otherwise pay for an artifact it ignores.
-    """
-
-    return publish_causal_outcomes(real_risk_workspace, at=_FROZEN_AT)
+def development_factor_input(
+    development_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path
+) -> tuple[RealRiskWorkspace, ResolvedDevelopmentFeatureInput]:
+    workspace = development_risk_workspace
+    publish_causal_outcomes(workspace, at=_FROZEN_AT)
+    return workspace, short_lookback_factor_input(workspace)
 
 
 def _workflow(
-    workspace: RealRiskWorkspace, outcomes: tuple[str, str], root: Path
-) -> tuple[Any, tuple[Any, ...]]:
-    """Compose exactly as the canonical CLI does, through Product Host.
-
-    The executor used to be constructed here, which meant the case study was the
-    only thing that could run a Factor experiment: ``build_installed_desk_executors``
-    installed Risk and nothing else, so ``freeze`` worked and ``run`` had no
-    executor to reach. Now the Host builds it, resolves the inventory off the
-    published Panel, and finds the causal outcomes by matching listing set -- so
-    what this exercises is the product path rather than a private assembly of it.
-    """
-
-    del outcomes
-    inventory = host_resolved_factor_inventory(
-        workspace=workspace.workspace, market_profile_id=MARKET_PROFILE_ID
+    workspace: RealRiskWorkspace,
+    root: Path,
+    *,
+    feature_input: ResolvedDevelopmentFeatureInput | None = None,
+    selected: tuple[str, ...] | None = None,
+) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+    inventory = factor_inventory(workspace, feature_input)
+    document = factor_document(inventory, selected=selected)
+    workflow, _ = factor_workflow(
+        workspace, root, document, inventory, feature_input, sufficient=feature_input is None
     )
-    document = factor_document(inventory)
-    envelope = ResearchExperimentEnvelope.create(**document["experiment"])
-    executors = build_installed_desk_executors(
-        envelope=envelope,
-        workspace=workspace.workspace,
-        workspace_root=root,
-        document=document,
-    )  # no stated policy: the Host applies the set's standard, its 100-listing Factor floor
-    (factor,) = (each for each in executors if hasattr(each, "minimum_required_listings"))
-    assert factor.minimum_required_listings == FACTOR_SCALE.minimum_factor_listings == 100
-    workflow = build_research_program_workflow(
-        workspace=workspace.workspace,
-        workspace_root=root,
-        executors=executors,
-        factor_inventory=inventory,
-    )
-    return workflow, inventory
+    return workflow, inventory, document
 
 
 def test_an_authored_factor_document_reaches_real_deterministic_evidence(
     real_risk_workspace: RealRiskWorkspace,
-    factor_outcomes: tuple[str, str],
+    outcome_catalog_root: Path,
     tmp_path: Path,
 ) -> None:
-    """An authored factor document reaches real deterministic evidence."""
-
     workspace = real_risk_workspace
-    workflow, inventory = _workflow(workspace, factor_outcomes, tmp_path)
-    document = _document(inventory)
+    publish_causal_outcomes(workspace, at=_FROZEN_AT)
+    workflow, inventory, document = _workflow(workspace, tmp_path)
 
     # The recorded gap, closed: the axis carries each Factor's *method* identity,
     # read off the published panel rather than restated here, so the Desk
@@ -207,14 +173,12 @@ def test_an_authored_factor_document_reaches_real_deterministic_evidence(
 
 
 def test_replay_walks_the_graph_and_reports_exact_reuse(
-    real_risk_workspace: RealRiskWorkspace,
-    factor_outcomes: tuple[str, str],
+    development_factor_input: tuple[RealRiskWorkspace, ResolvedDevelopmentFeatureInput],
     tmp_path: Path,
 ) -> None:
     """Replay walks the graph and reports exact reuse."""
-
-    workflow, inventory = _workflow(real_risk_workspace, factor_outcomes, tmp_path)
-    document = _document(inventory)
+    workspace, input_source = development_factor_input
+    workflow, _, document = _workflow(workspace, tmp_path, feature_input=input_source)
     computed, _binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
 
     replayed, _binding = workflow.replay(
@@ -224,6 +188,20 @@ def test_replay_walks_the_graph_and_reports_exact_reuse(
     assert replayed.numerical_call_count == 0
     assert replayed.artifact_uris == computed.artifact_uris
     assert replayed.desk_input_binding_hash == computed.desk_input_binding_hash
+
+    handle = factor_development_receipt_handle(computed.artifact_uris[0])
+    reader = FactorDevelopmentReceiptReader(tmp_path / _output_workspace(document))
+    receipt, child = reader.load(handle)
+    assert receipt.receipt_hash == handle
+    assert receipt.checkpoint_hash == child.checkpoint_hash
+
+    with pytest.raises(AuthoringError, match="development_receipt_unavailable"):
+        reader.load("b" * 64)
+    # A handle is content addressing, not a location, and is admitted as exactly
+    # 64 lowercase hex rather than merely "no separators".
+    for bad in ("../secrets", "not-a-hash", "A" * 64):
+        with pytest.raises(AuthoringError, match="receipt_handle_invalid"):
+            reader.load(bad)
 
 
 def _output_workspace(document: dict[str, Any]) -> str:
@@ -311,30 +289,25 @@ def test_the_factor_catalog_hash_consumes_methodology_identity() -> None:
 
 
 def test_the_selection_scopes_the_receipt_without_moving_the_statistics(
-    real_risk_workspace: RealRiskWorkspace,
-    factor_outcomes: tuple[str, str],
+    development_factor_input: tuple[RealRiskWorkspace, ResolvedDevelopmentFeatureInput],
     tmp_path: Path,
 ) -> None:
     """The selection scopes the receipt without moving the statistics."""
-
-    del factor_outcomes
-    inventory = host_resolved_factor_inventory(
-        workspace=real_risk_workspace.workspace, market_profile_id=MARKET_PROFILE_ID
-    )
+    workspace, source = development_factor_input
+    inventory = factor_inventory_from_panel_manifest(source.panel_manifest)
     ids = tuple(entry.factor_id for entry in inventory)
-    first_handle, first_selected, first_root = factor_development_checkpoint(
-        real_risk_workspace, root=tmp_path / "run-a", selected=ids[:3]
-    )
-    second_handle, second_selected, second_root = factor_development_checkpoint(
-        real_risk_workspace, root=tmp_path / "run-b", selected=ids[3:6]
-    )
 
-    assert first_selected != second_selected
-    assert first_handle != second_handle
+    def run(root: Path, selected: tuple[str, ...]):
+        workflow, _, document = _workflow(workspace, root, feature_input=source, selected=selected)
+        evidence, _ = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
+        return FactorDevelopmentReceiptReader(root / _output_workspace(document)).load(
+            evidence.artifact_uris[0]
+        )
 
-    first, first_child = FactorDevelopmentReceiptReader(first_root).load(first_handle)
-    second, second_child = FactorDevelopmentReceiptReader(second_root).load(second_handle)
-
+    first, first_child = run(tmp_path / "run-a", ids[:3])
+    second, second_child = run(tmp_path / "run-b", ids[3:6])
+    assert first.selected_factor_ids != second.selected_factor_ids
+    assert first.receipt_hash != second.receipt_hash
     assert first.selected_factor_ids == ids[:3]
     assert second.selected_factor_ids == ids[3:6]
     # The statistical universe is untouched: same context axis, same hypothesis
@@ -354,23 +327,17 @@ def test_the_selection_scopes_the_receipt_without_moving_the_statistics(
 
 
 def test_a_receipt_is_verified_against_re_derived_authority(
-    real_risk_workspace: RealRiskWorkspace,
-    factor_outcomes: tuple[str, str],
+    development_factor_input: tuple[RealRiskWorkspace, ResolvedDevelopmentFeatureInput],
     tmp_path: Path,
 ) -> None:
-    """A receipt is verified against re derived authority."""
-
-    del factor_outcomes
-    handle, _selected, root = factor_development_checkpoint(
-        real_risk_workspace, root=tmp_path / "run"
-    )
-    receipt, child = FactorDevelopmentReceiptReader(root).load(handle)
-    resolver = ArtifactResolver(real_risk_workspace.artifact_root)
-    manifest = dict(resolver.load_feature_panel_manifest(real_risk_workspace.panel_manifest_ref))
-    # The ordered typed inventory, exactly as the Host reads it off the Panel.
-    # Order is authority here: rebuilding it from a mapping and re-sorting would
-    # discard the Panel's published axis order.
-    inventory = factor_inventory_from_panel_manifest(manifest)
+    """A receipt is verified against re-derived authority."""
+    workspace, source = development_factor_input
+    workflow, _, document = _workflow(workspace, tmp_path, feature_input=source)
+    computed, _ = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
+    root = tmp_path / _output_workspace(document)
+    receipt, child = FactorDevelopmentReceiptReader(root).load(computed.artifact_uris[0])
+    inventory = factor_inventory_from_panel_manifest(source.panel_manifest)
+    snapshot_hash = source.panel_manifest["snapshot_hash"]
     evidence = ResearchEvidenceStore(root).load_for_program(receipt.program_hash)
     assert evidence is not None
 
@@ -379,7 +346,7 @@ def test_a_receipt_is_verified_against_re_derived_authority(
         child=child,
         evidence=evidence,
         panel_inventory=inventory,
-        panel_snapshot_hash=real_risk_workspace.panel_snapshot_hash,
+        panel_snapshot_hash=snapshot_hash,
     )
     # The generic layer sealed the same input binding this receipt carries, so
     # "these were the inputs" is one claim rather than two.
@@ -410,26 +377,10 @@ def test_a_receipt_is_verified_against_re_derived_authority(
     narrowed = _resealed(selected_factor_ids=list(receipt.selected_factor_ids[:1]))
     assert narrowed.receipt_hash != receipt.receipt_hash
     assert narrowed.desk_input_binding_hash != receipt.desk_input_binding_hash
-    with pytest.raises(AuthoringError, match="selection_not_admitted"):
-        verify_factor_development_receipt(
-            receipt=narrowed,
-            child=child,
-            evidence=evidence,
-            panel_inventory=inventory,
-            panel_snapshot_hash=real_risk_workspace.panel_snapshot_hash,
-        )
 
     # A forged input binding that leaves the selection alone still contradicts
     # the binding hash the generic evidence sealed.
     relabelled = _resealed(screening_policy_hash="9" * 64)
-    with pytest.raises(AuthoringError, match="receipt_input_binding_mismatch"):
-        verify_factor_development_receipt(
-            receipt=relabelled,
-            child=child,
-            evidence=evidence,
-            panel_inventory=inventory,
-            panel_snapshot_hash=real_risk_workspace.panel_snapshot_hash,
-        )
 
     # A child produced by another method binding, over the same Panel and the
     # same outcomes: identical statistics, identical program spec, resealed so its
@@ -450,25 +401,23 @@ def test_a_receipt_is_verified_against_re_derived_authority(
         input_binding=receipt.input_binding,
         checkpoint_hash=mixed.checkpoint_hash,
     )
-    with pytest.raises(AuthoringError, match="receipt_child_method_mismatch"):
-        verify_factor_development_receipt(
-            receipt=mixed_receipt,
-            child=mixed,
-            evidence=evidence,
-            panel_inventory=inventory,
-            panel_snapshot_hash=real_risk_workspace.panel_snapshot_hash,
-        )
 
     # A Panel whose methodology identity has moved no longer answers for it.
     drifted = tuple(replace(entry, methodology_hash="8" * 64) for entry in inventory)
-    with pytest.raises(AuthoringError, match="receipt_methodology_mismatch"):
-        verify_factor_development_receipt(
-            receipt=receipt,
-            child=child,
-            evidence=evidence,
-            panel_inventory=drifted,
-            panel_snapshot_hash=real_risk_workspace.panel_snapshot_hash,
-        )
+    for candidate, candidate_child, candidate_inventory, refusal in (
+        (narrowed, child, inventory, "selection_not_admitted"),
+        (relabelled, child, inventory, "receipt_input_binding_mismatch"),
+        (mixed_receipt, mixed, inventory, "receipt_child_method_mismatch"),
+        (receipt, child, drifted, "receipt_methodology_mismatch"),
+    ):
+        with pytest.raises(AuthoringError, match=refusal):
+            verify_factor_development_receipt(
+                receipt=candidate,
+                child=candidate_child,
+                evidence=evidence,
+                panel_inventory=candidate_inventory,
+                panel_snapshot_hash=snapshot_hash,
+            )
 
 
 def test_malformed_handles_and_catalog_entries_fail_as_domain_errors() -> None:

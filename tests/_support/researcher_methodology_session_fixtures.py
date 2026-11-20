@@ -14,6 +14,7 @@ import pytest
 from alphalattice.kernel.data_layer import history
 from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
+    DEVELOPMENT_SYMBOLS,
     FACTOR_SCALE,
     SUFFICIENT_SYMBOLS,
     SYMBOLS,
@@ -25,32 +26,30 @@ from tests.researcher_methodology_surface.real_workspace import (
 
 @pytest.fixture(scope="module")
 def outcome_catalog_root(tmp_path_factory: pytest.TempPathFactory):
-    """The shared workspace's outcome catalog stays with this worker across its modules."""
-    patch = pytest.MonkeyPatch()
+    """Isolate causal outcome recording from the workspace's own catalog."""
     root = tmp_path_factory.getbasetemp() / "methodology-outcome-catalog"
-    patch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
-    history.open_history("methodology-outcomes", "Methodology outcomes", root, root=root)
-    try:
+    with history.own_root(root):
+        history.open_history("methodology-outcomes", "Methodology outcomes", root, root=root)
         yield root
-    finally:
-        if history.holding() is not None:
-            history.close_history()
-        patch.undo()
 
 
 @pytest.fixture(scope="session")
 def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
-    """The product's own writers, end to end, once per source tree.
-
-    Session scope shares the copy inside one process; the golden cache under
-    ``tmp/golden-workspaces``, or the shared ``ALPHALATTICE_TEST_GOLDEN_ROOT``, shares the
-    eighty-second build across processes and checkouts,
-    so a gate that runs several groups needing this workspace builds it once
-    and each group pays a copy of a few seconds.
+    """Build through product writers once per tree; share a golden across processes
+    and copy it for each worker. The cache root can be set by ALPHALATTICE_TEST_GOLDEN_ROOT.
     """
 
     return build_real_risk_workspace(
         tmp_path_factory.mktemp("real-risk-workspace"), factory=tmp_path_factory
+    )
+
+
+@pytest.fixture(scope="session")
+def development_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("development-workspace"),
+        symbols=DEVELOPMENT_SYMBOLS,
+        factory=tmp_path_factory,
     )
 
 

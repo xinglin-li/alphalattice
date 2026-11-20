@@ -2042,6 +2042,20 @@
       "seconds": 1,
       "lower_layer": "The finalization store's real dependencies include Host facilities that the unit layer cannot load."
     },
+    "portfolio_strategy_lab.heterogeneous_closure_reopens_sealed_children": {
+      "description": "A sealed heterogeneous score closure reopens the same component models, Feature surfaces, listing axis and authority before it predicts.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The closure reader verifies sealed child files and projects the combined model and surface authority across owners."
+    },
+    "portfolio_strategy_lab.heterogeneous_model_set_binds_ordered_children": {
+      "description": "A heterogeneous score model-set identity binds the component recipe and the ordered vintage and seed children, and a recipe move only applies to its recorded role.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "integration",
+      "seconds": 15,
+      "lower_layer": "The test follows the manifest and child files through admission and the persisted recipe-successor registry."
+    },
     "portfolio_strategy_lab.lane_files_are_the_stores_lanes_alone": {
       "description": "A workspace's Strategy Lab lane files are its Parquet and legacy packed lanes named by a digest, never the ledger's namespaces, the carried lanes or the documents' category.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",

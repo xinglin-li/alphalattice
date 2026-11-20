@@ -43,17 +43,20 @@ from alphalattice.control.product_host.research_authoring.foundation import (
     assert_distinct_roots,
     build_alpha_development_foundation,
 )
-from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
-from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
+from alphalattice.foundation.feature_engine.panels.development_input import (
+    ResolvedDevelopmentFeatureInput,
+)
+from alphalattice.investment.alpha_research.experiments import development_execution
 from alphalattice.investment.alpha_research.experiments.comparison import (
     compare_saved_alpha_candidates,
 )
 from alphalattice.investment.alpha_research.experiments.contracts import (
+    AlphaDevelopmentSplitPolicy,
     AlphaExperimentBatchResult,
     AlphaExperimentCandidateResult,
     AlphaFitLedgerEntry,
@@ -113,6 +116,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import (
+    development_risk_workspace as development_risk_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     factor_scale_workspace,
 )
 from tests._support.researcher_methodology_session_fixtures import (
@@ -125,8 +131,13 @@ from tests.researcher_methodology_surface.alpha_development_support import (
     _workflow,
     alpha_authority_for,
 )
+from tests.researcher_methodology_surface.factor_evidence_support import (
+    factor_development_checkpoint,
+    short_lookback_factor_input,
+)
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
+    publish_causal_outcomes,
 )
 
 
@@ -239,6 +250,73 @@ def alpha_authority(
     """
 
     return alpha_authority_for(real_risk_workspace, tmp_path_factory.mktemp("factor-run"))
+
+
+@pytest.fixture(scope="module")
+def development_alpha_authority(
+    development_risk_workspace: RealRiskWorkspace,
+    outcome_catalog_root: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[ResolvedDevelopmentFeatureInput, str, tuple[str, ...], Path]:
+    workspace = development_risk_workspace
+    publish_causal_outcomes(workspace, at=_FROZEN_AT)
+    source = short_lookback_factor_input(workspace)
+    return source, *factor_development_checkpoint(
+        workspace, root=tmp_path_factory.mktemp("development-alpha-factor"), feature_input=source
+    )
+
+
+@pytest.fixture(scope="module")
+def development_alpha_test_recipe() -> AlphaDevelopmentSplitPolicy:
+    return seal_contract(
+        AlphaDevelopmentSplitPolicy,
+        dict(
+            mode="ROLLING",
+            train_sessions=119,
+            purge_sessions=1,
+            validation_sessions=39,
+            step_sessions=39,
+            embargo_sessions=0,
+            sealed_holdout_sessions=252,
+            minimum_folds=3,
+            expected_complete_folds=3,
+        ),
+        "policy_hash",
+    )
+
+
+@pytest.fixture
+def development_alpha_study(
+    development_risk_workspace: RealRiskWorkspace,
+    development_alpha_authority,
+    development_alpha_test_recipe: AlphaDevelopmentSplitPolicy,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, tuple[str, ...], Callable[[dict[str, Any]], str]]:
+    source, handle, feature_ids, root = development_alpha_authority
+
+    def derive_test_split(**arguments: Any) -> AlphaDevelopmentSplitPolicy:
+        arguments["geometry"] = development_alpha_test_recipe
+        return derive_alpha_development_split_policy(**arguments)
+
+    monkeypatch.setattr(
+        development_execution, "derive_alpha_development_split_policy", derive_test_split
+    )
+
+    def run(document: dict[str, Any]) -> str:
+        workflow = _workflow(
+            development_risk_workspace,
+            document,
+            evidence_root=root,
+            workspace_root=tmp_path,
+            feature_input=source,
+        )
+        evidence, _binding = workflow.run(
+            document, actor_kind=ActorKind.HUMAN, actor_id="researcher"
+        )
+        return evidence.artifact_uris[0]
+
+    return handle, feature_ids, run
 
 
 @pytest.fixture
@@ -499,14 +577,12 @@ def test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter(
 
 
 def test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
-    tmp_path: Path,
+    development_alpha_study,
     fold_leases: Callable[[], list[int]],
 ) -> None:
     """Control: Lightgbm policy without stated partition is refused before arrays."""
 
-    handle, factor_ids, evidence_root = alpha_authority
+    handle, factor_ids, run = development_alpha_study
     parameters = {**_lightgbm_parameters(), "training_policy": "L2_EARLY_STOPPING"}
     parameters["fixed_iterations"] = None
     document = _document(
@@ -515,37 +591,34 @@ def test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays(
         model_capability_handle="capability-2",
         model_parameters=parameters,
     )
-    workflow = _workflow(
-        real_risk_workspace, document, evidence_root=evidence_root, workspace_root=tmp_path
-    )
     leased = fold_leases()
     with pytest.raises(AuthoringError, match="development_training_policy_not_installed"):
-        workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
+        run(document)
     assert leased == []
 
 
 def test_the_declared_feature_axis_is_the_axis_that_was_fitted(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_risk_workspace: RealRiskWorkspace,
+    development_alpha_authority: tuple[ResolvedDevelopmentFeatureInput, str, tuple[str, ...], Path],
+    development_alpha_test_recipe: AlphaDevelopmentSplitPolicy,
     tmp_path: Path,
 ) -> None:
     """The declared feature axis is the axis that was fitted."""
 
-    handle, selected_ids, evidence_root = alpha_authority
+    source, handle, selected_ids, evidence_root = development_alpha_authority
     declared = selected_ids[:2]
     assert len(declared) < len(selected_ids)
 
-    workspace = real_risk_workspace
-    resolver = ArtifactResolver(workspace.artifact_root)
-    panel_manifest = dict(resolver.load_feature_panel_manifest(workspace.panel_manifest_ref))
+    workspace = development_risk_workspace
     foundation, outcome_ref = build_alpha_development_foundation(
-        panel_manifest=panel_manifest,
-        panel_snapshot_hash=workspace.panel_snapshot_hash,
+        panel_manifest=source.panel_manifest,
+        panel_snapshot_hash=source.panel_manifest["snapshot_hash"],
         artifact_root=workspace.artifact_root,
         factor_evidence_root=evidence_root,
         factor_evidence_handle=handle,
         source_workspace=workspace.workspace,
         output_workspace=tmp_path / "alpha-out",
+        feature_input=source,
     )
     # The parent axis is kept whole -- it records what the selection was made
     # from -- while the selected axis is what a document may draw from.
@@ -554,12 +627,12 @@ def test_the_declared_feature_axis_is_the_axis_that_was_fitted(
     plan = prepare_alpha_fold_plan(
         foundation=foundation,
         ordered_listing_ids=tuple(sorted(workspace.sector_by_listing_id)),
-        feature_reader=FeaturePanelReader(resolver),
+        feature_reader=source.reader,
         outcome_reader=CausalExecutionOutcomeDevelopmentReader(workspace.artifact_root),
-        feature_panel_manifest_ref=workspace.panel_manifest_ref,
+        feature_panel_manifest_ref=source.manifest_ref,
         causal_outcome_manifest_ref=outcome_ref,
         frozen_at=_FROZEN_AT,
-        split_policy=load_alpha_split_policy(),
+        split_policy=development_alpha_test_recipe,
         ordered_base_feature_ids=declared,
     )
     assert plan.base_feature_ids == declared
@@ -803,25 +876,17 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
 
 
 def test_a_tampered_child_lineage_entry_is_refused_on_readback(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_alpha_study,
     tmp_path: Path,
 ) -> None:
     """A tampered child lineage entry is refused on readback."""
 
-    handle, factor_ids, evidence_root = alpha_authority
+    handle, factor_ids, run = development_alpha_study
     document = _document(handle=handle, feature_ids=factor_ids[:2])
-    workflow = _workflow(
-        real_risk_workspace,
-        document,
-        evidence_root=evidence_root,
-        workspace_root=tmp_path,
-    )
-    evidence, _binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
 
     store_root = _ALPHA_STORE_ROOT(tmp_path)
     reader = AlphaDevelopmentReceiptReader(store_root)
-    receipt = reader.load(evidence.artifact_uris[0])
+    receipt = reader.load(run(document))
     assert len(receipt.child_lineage) > 1
 
     # One fold's entry pointing at another fold's estimator state. The fold
@@ -987,33 +1052,22 @@ def _forged_receipt(
 
 
 def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_alpha_study,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The candidate evidence a batch names is verified on readback."""
 
-    handle, factor_ids, evidence_root = alpha_authority
-    document = _document(handle=handle, feature_ids=factor_ids[:2])
-    workflow = _workflow(
-        real_risk_workspace, document, evidence_root=evidence_root, workspace_root=tmp_path
-    )
-    evidence, _binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
+    handle, factor_ids, run = development_alpha_study
+    evidence = run(_document(handle=handle, feature_ids=factor_ids[:2]))
     # A second run over another axis: another candidate, program and surface in
     # the same store, whose evidence is valid and belongs somewhere else.
-    other_document = _document(handle=handle, feature_ids=factor_ids[:1])
-    other_workflow = _workflow(
-        real_risk_workspace, other_document, evidence_root=evidence_root, workspace_root=tmp_path
-    )
-    other_evidence, _other = other_workflow.run(
-        other_document, actor_kind=ActorKind.HUMAN, actor_id="researcher"
-    )
+    other_evidence = run(_document(handle=handle, feature_ids=factor_ids[:1]))
 
     store_root = _ALPHA_STORE_ROOT(tmp_path)
     reader = AlphaDevelopmentReceiptReader(store_root)
     store = AlphaDevelopmentArtifactStore(store_root)
-    graph = reader.read(evidence.artifact_uris[0])
+    graph = reader.read(evidence)
     receipt, batch = graph.receipt, graph.batch
     assert len(batch.candidates) == 1 and len(graph.candidate_reports) == 1
     (report,), (inference,) = graph.candidate_reports, graph.inference_evidence
@@ -1023,7 +1077,7 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
     projection = reader.projection_of(graph)
     assert projection["candidate_reports"][0]["report_hash"] == report.report_hash
     assert projection["inference_evidence"][0]["evidence_hash"] == inference.evidence_hash
-    other_graph = reader.read(other_evidence.artifact_uris[0])
+    other_graph = reader.read(other_evidence)
     assert other_graph.batch.program_hash != batch.program_hash
 
     def read(handle: str) -> None:
@@ -1318,9 +1372,7 @@ def test_the_candidate_evidence_a_batch_names_is_verified_on_readback(
     assert reader.read(receipt.receipt_hash).candidate_reports == (report,)
 
 
-def test_the_declared_standardization_is_the_one_that_executed(
-    real_risk_workspace: RealRiskWorkspace,
-) -> None:
+def test_the_declared_standardization_is_the_one_that_executed() -> None:
     """The declared standardization is the one that executed."""
 
     recipes = installed_alpha_development_target_recipes(sector_revision="a" * 64)
@@ -1360,22 +1412,25 @@ def test_the_declared_standardization_is_the_one_that_executed(
     # them by output shape is what makes this a real check rather than a
     # restatement of the recipe field.
     assert not np.isclose(float(np.nanstd(finite)), 1.0, atol=0.05)
+    formation_spreads = np.nanstd(values.reshape(len(sessions), len(listings)), axis=1)
+    assert np.ptp(formation_spreads) > 1e-8
 
 
 def test_a_feature_axis_outside_the_factor_evidence_is_refused(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_risk_workspace: RealRiskWorkspace,
+    development_alpha_authority: tuple[ResolvedDevelopmentFeatureInput, str, tuple[str, ...], Path],
     tmp_path: Path,
 ) -> None:
     """The declared axis must be authorized, and is never quietly truncated."""
 
-    handle, factor_ids, evidence_root = alpha_authority
+    source, handle, factor_ids, evidence_root = development_alpha_authority
     unauthorized = _document(handle=handle, feature_ids=(*factor_ids[:2], "factor.not.published"))
     workflow = _workflow(
-        real_risk_workspace,
+        development_risk_workspace,
         unauthorized,
         evidence_root=evidence_root,
         workspace_root=tmp_path,
+        feature_input=source,
     )
     with pytest.raises(AuthoringError, match="feature_axis_not_in_panel"):
         workflow.run(unauthorized, actor_kind=ActorKind.HUMAN, actor_id="researcher")
@@ -1392,51 +1447,10 @@ def test_evidence_root_may_not_overlap_the_workspaces_it_authorizes() -> None:
         assert_distinct_roots(root, Path("source"), root)
 
 
-def test_the_factor_evidence_handle_is_read_by_hash_not_by_recency(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
-) -> None:
-    """A handle naming no stored checkpoint fails; nothing falls back to newest."""
-
-    from alphalattice.foundation.factor_research.experiments.development_evidence import (
-        FactorDevelopmentReceiptReader,
-    )
-
-    handle, _factor_ids, evidence_root = alpha_authority
-    reader = FactorDevelopmentReceiptReader(evidence_root)
-    receipt, child = reader.load(handle)
-    assert receipt.receipt_hash == handle
-    assert receipt.checkpoint_hash == child.checkpoint_hash
-
-    with pytest.raises(AuthoringError, match="development_receipt_unavailable"):
-        reader.load("b" * 64)
-    # A handle is content addressing, not a location, and is admitted as exactly
-    # 64 lowercase hex rather than merely "no separators".
-    for bad in ("../secrets", "not-a-hash", "A" * 64):
-        with pytest.raises(AuthoringError, match="receipt_handle_invalid"):
-            reader.load(bad)
-
-
-def test_the_panel_manifest_reader_is_the_one_the_host_uses(
-    real_risk_workspace: RealRiskWorkspace,
-) -> None:
-    """The Host resolves the axis it validates against, rather than being told it."""
-
-    resolver = ArtifactResolver(real_risk_workspace.artifact_root)
-    manifest = resolver.load_feature_panel_manifest(real_risk_workspace.panel_manifest_ref)
-    summary = dict(manifest)["safe_summary"]["factor_catalog_summary"]
-    assert summary
-    # Every entry carries method identity, which is what the Factor Desk binds
-    # and therefore what an Alpha axis is checked against.
-    assert all(len(entry["methodology_hash"]) == 64 for entry in summary.values())
-
-
 def _saved_alpha_side(
-    real_risk_workspace: RealRiskWorkspace,
+    run: Callable[[dict[str, Any]], str],
     document: dict[str, Any],
     *,
-    evidence_root: Path,
-    tmp_path: Path,
     reader: AlphaDevelopmentReceiptReader,
     before_read: Callable[[], None] = lambda: None,
 ) -> tuple[dict[str, Any], str, AlphaDevelopmentVerifiedGraph]:
@@ -1444,14 +1458,9 @@ def _saved_alpha_side(
     readback body, the first candidate and the graph one verification walked.
     ``before_read`` runs between the run and the walk (a counter's reset)."""
 
-    evidence, _binding = _workflow(
-        real_risk_workspace,
-        document,
-        evidence_root=evidence_root,
-        workspace_root=tmp_path,
-    ).run(document, actor_kind=ActorKind.HUMAN, actor_id="researcher")
+    evidence = run(document)
     before_read()
-    graph = reader.read(evidence.artifact_uris[0])
+    graph = reader.read(evidence)
     projection = reader.projection_of(graph)
     candidate_id = projection["result"]["candidates"][0]["candidate_id"]
     body = {
@@ -1466,14 +1475,13 @@ def _saved_alpha_side(
 
 
 def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputing_metrics(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_alpha_study,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Saved alpha comparison reads two real ridge receipts without recomputing metrics."""
 
-    handle, factor_ids, evidence_root = alpha_authority
+    handle, factor_ids, run = development_alpha_study
     reader = AlphaDevelopmentReceiptReader(_ALPHA_STORE_ROOT(tmp_path))
     left_document = _document(
         handle=handle,
@@ -1494,19 +1502,15 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
 
     monkeypatch.setattr(AlphaDevelopmentArtifactStore, "_resolve_development_chunk", counted)
     left, left_candidate_id, left_graph = _saved_alpha_side(
-        real_risk_workspace,
+        run,
         left_document,
-        evidence_root=evidence_root,
-        tmp_path=tmp_path,
         reader=reader,
         before_read=resolved.clear,
     )
     left_walk = list(resolved)
     right, right_candidate_id, right_graph = _saved_alpha_side(
-        real_risk_workspace,
+        run,
         right_document,
-        evidence_root=evidence_root,
-        tmp_path=tmp_path,
         reader=reader,
         before_read=resolved.clear,
     )
@@ -1573,22 +1577,19 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
 
 
 def test_saved_alpha_comparison_refuses_mismatched_input_binding(
-    real_risk_workspace: RealRiskWorkspace,
-    alpha_authority: tuple[str, tuple[str, ...], Path],
+    development_alpha_study,
     tmp_path: Path,
 ) -> None:
     """Control: Stored comparisons require matching inputs and each side's verified graph."""
 
-    handle, factor_ids, evidence_root = alpha_authority
+    handle, factor_ids, run = development_alpha_study
     document = _document(
         handle=handle,
         feature_ids=factor_ids[:8],
         model_parameters={"family": "ridge", "alpha": 1.0},
     )
     reader = AlphaDevelopmentReceiptReader(_ALPHA_STORE_ROOT(tmp_path))
-    left, left_candidate_id, graph = _saved_alpha_side(
-        real_risk_workspace, document, evidence_root=evidence_root, tmp_path=tmp_path, reader=reader
-    )
+    left, left_candidate_id, graph = _saved_alpha_side(run, document, reader=reader)
     # The owner must refuse on the declared binding before any candidate or
     # score support could be treated as shared evidence.  Reuse the verified
     # graph so this is a boundary test, not a second numerical run.

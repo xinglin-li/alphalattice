@@ -74,6 +74,9 @@ from alphalattice.investment.sector_research.targets.execution import (
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind
 from tests._support.researcher_methodology_session_fixtures import (
+    development_risk_workspace as development_risk_workspace,
+)
+from tests._support.researcher_methodology_session_fixtures import (
     factor_scale_workspace,
 )
 from tests._support.researcher_methodology_session_fixtures import (
@@ -84,13 +87,6 @@ from tests.researcher_methodology_surface.real_workspace import (
     _sector_revision,
     publish_causal_outcomes,
 )
-
-
-@pytest.fixture(scope="session")
-def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
-    """FACTOR_SCALE's walk: the campaign forecasts past its slowest method's warm-up."""
-    return factor_scale_workspace(tmp_path_factory)
-
 
 # --------------------------------------------------------------------- helpers
 
@@ -298,11 +294,13 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
         map_id=lambda _family, _digest, artifact: artifact,
     )
     assert family.holds(workspace)
+    before = runner.log.read("SELECT coalesce(max(seq), 0) FROM event")[0][0]
     family.step(runner)
     assert family.verify(runner)
     admissions = runner.log.read(
-        "SELECT attrs FROM event WHERE type = 'admission.committed'"
-        " AND json_extract(attrs, '$.tables.sector_evaluation') IS NOT NULL"
+        "SELECT attrs FROM event WHERE seq > ? AND type = 'admission.committed'"
+        " AND json_extract(attrs, '$.tables.sector_evaluation') IS NOT NULL",
+        (before,),
     )
     assert len(admissions) == 1
     attrs = json.loads(admissions[0][0])
@@ -536,16 +534,15 @@ def _service(workspace: RealRiskWorkspace) -> SectorResearchDevelopmentService:
 
 
 @pytest.fixture(scope="module")
-def sector_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path):  # type: ignore[no-untyped-def]
-    """One real EWMA experiment and one ZERO control over the shared workspace."""
-
-    snapshot_hash, _manifest_ref = publish_causal_outcomes(real_risk_workspace)
-    service = _service(real_risk_workspace)
-    reader = CausalExecutionOutcomeDevelopmentReader(real_risk_workspace.artifact_root)
+def sector_publication(development_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path):  # type: ignore[no-untyped-def]
+    """Publish the EWMA and ZERO experiments through the active store."""
+    snapshot_hash, _manifest_ref = publish_causal_outcomes(development_risk_workspace)
+    service = _service(development_risk_workspace)
+    reader = CausalExecutionOutcomeDevelopmentReader(development_risk_workspace.artifact_root)
     manifest = reader.load_manifest(snapshot_hash)
     first = min(value.first_formation_session for value in manifest.development_chunks)
     last = max(value.last_formation_session for value in manifest.development_chunks)
-    revision = _sector_revision(real_risk_workspace)
+    revision = _sector_revision(development_risk_workspace)
 
     def request(method_id: str) -> SectorExperimentRequest:
         return SectorExperimentRequest(
@@ -568,14 +565,14 @@ def sector_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_r
 
 def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type: ignore[no-untyped-def]
     sector_publication,
-    real_risk_workspace: RealRiskWorkspace,
+    development_risk_workspace: RealRiskWorkspace,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     """Host derives every identity and the verifier walks to the seal."""
 
     service, snapshot_hash, revision, ewma, _zero, _range = sector_publication
-    reader = CausalExecutionOutcomeDevelopmentReader(real_risk_workspace.artifact_root)
+    reader = CausalExecutionOutcomeDevelopmentReader(development_risk_workspace.artifact_root)
     seal = reader.resolve_method_seal(snapshot_hash)
     assert seal.disposition == "METHOD_BOUND"
 
@@ -791,10 +788,8 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
 
 
 def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type: ignore[no-untyped-def]
-    sector_publication, real_risk_workspace: RealRiskWorkspace
+    sector_publication, development_risk_workspace: RealRiskWorkspace
 ) -> None:
-    """Selection resolution is owned by sector and refuses wrong axes."""
-
     from alphalattice.investment.sector_research.experiments.resolution import (
         SectorForecastResolver,
         SectorForecastSelection,
@@ -804,7 +799,7 @@ def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type
     )
 
     _service_obj, _snapshot, revision, ewma, _zero, (first, _last) = sector_publication
-    artifact_root = real_risk_workspace.artifact_root
+    artifact_root = development_risk_workspace.artifact_root
     seam = SectorForecastResolver(
         artifact_root=artifact_root,
         outcome_reader=CausalExecutionOutcomeDevelopmentReader(artifact_root),
@@ -874,7 +869,7 @@ def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type
 
 def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-def]
     sector_publication,
-    real_risk_workspace: RealRiskWorkspace,
+    development_risk_workspace: RealRiskWorkspace,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The installed sector CLI publishes and inspects the same sealed evidence with identical
@@ -912,7 +907,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
         method = getattr(SectorResearchDevelopmentService, operation)
         monkeypatch.setattr(SectorResearchDevelopmentService, operation, while_held(method))
 
-    workspace = real_risk_workspace.workspace
+    workspace = development_risk_workspace.workspace
     web = workspace_web(workspace, None)
     mount_sector_development_publish(web, workspace, mutation_gate)
     with LocalWebService(application=web) as host:
@@ -930,7 +925,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
                     sys.executable,
                     str(script),
                     "--workspace",
-                    str(real_risk_workspace.workspace),
+                    str(development_risk_workspace.workspace),
                     "--publish",
                     "--snapshot-hash",
                     snapshot_hash,
@@ -966,7 +961,7 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
             sys.executable,
             str(script),
             "--workspace",
-            str(real_risk_workspace.workspace),
+            str(development_risk_workspace.workspace),
             "--inspect",
         ],
         capture_output=True,
@@ -1142,16 +1137,21 @@ def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ign
 # ------------------------------------------------------------ campaign acceptance
 
 
+@pytest.fixture(scope="session")
+def campaign_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    return factor_scale_workspace(tmp_path_factory)
+
+
 def test_the_campaign_compares_calibrates_decides_and_replays(  # type: ignore[no-untyped-def]
-    real_risk_workspace: RealRiskWorkspace,
+    campaign_workspace: RealRiskWorkspace,
     outcome_catalog_root: Path,
 ) -> None:
     """A real sector campaign compares, calibrates, validates, seals, and replays its evidence
     without numerical recomputation."""
 
-    snapshot_hash, _manifest_ref = publish_causal_outcomes(real_risk_workspace)
-    service = _service(real_risk_workspace)
-    reader = CausalExecutionOutcomeDevelopmentReader(real_risk_workspace.artifact_root)
+    snapshot_hash, _manifest_ref = publish_causal_outcomes(campaign_workspace)
+    service = _service(campaign_workspace)
+    reader = CausalExecutionOutcomeDevelopmentReader(campaign_workspace.artifact_root)
     manifest = reader.load_manifest(snapshot_hash)
     last = max(value.last_formation_session for value in manifest.development_chunks)
     sessions = reader.available_development_sessions(
@@ -1161,7 +1161,7 @@ def test_the_campaign_compares_calibrates_decides_and_replays(  # type: ignore[n
     # enough that the acceptance path stays a test rather than a campaign.
     request = SectorCampaignRequest(
         causal_outcome_snapshot_hash=snapshot_hash,
-        sector_revision=_sector_revision(real_risk_workspace),
+        sector_revision=_sector_revision(campaign_workspace),
         method_ids=SECTOR_CAMPAIGN_METHOD_IDS,
         training_start=sessions[0],
         training_end=sessions[-1],

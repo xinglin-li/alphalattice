@@ -1972,12 +1972,6 @@
       "reason": "Builds real Panel rows across membership joins and leaves and rematerializes their closures."
     },
     {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_a_missing_deterministic_child_fails_replay*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Runs the external Factor workflow, removes its deterministic child and exercises sealed replay refusal; it reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
       "owner": "tests.workspace_maintenance",
       "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate; on the two-year walk 60.2 s with setup under a four-worker mac1 leg (11-18), at the 60 s Medium bound.",
@@ -2005,12 +1999,6 @@
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_alpha_process_recovery_keeps_task_and_reuses_sealed_work*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: executes Alpha through a stopped scientific boundary and recovers using its sealed completed work.",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_an_external_method_reaches_a_published_panel_with_a_measured_identity*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Executes the authored external Factor batch over published outcomes and verifies its measured identity; it reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "size_contract": "nightly_only"
     },
     {
@@ -2047,18 +2035,6 @@
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_a_saved_capture_continues_on_its_published_revision*",
       "owner": "tests.workspace_readiness",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold setup publishes the input-revision research journey for a saved-capture continuation control.",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_a_curation_decision_the_host_never_admitted_cannot_be_persisted*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Cold setup runs external Factor research before a curation authority refusal control; retain this bound until a completed consumer seed is available; it reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_host_derives_every_identity_and_the_verifier_walks_to_the_seal*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Cold setup publishes two real sector experiments before retained evidence verification; retain this bound until a publication consumer seed is available; it reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "size_contract": "nightly_only"
     },
     {
@@ -2106,20 +2082,6 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputing_metrics*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "It reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_candidate_evidence_a_batch_names_is_verified_on_readback*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "It reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 310.792 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
@@ -2144,13 +2106,6 @@
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies*",
       "owner": "tests.researcher_methodology_surface",
       "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 148.380 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_the_installed_cli_publishes_and_inspects*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "It reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE), as its module's Factor and Alpha studies need: year-long lookbacks over all 53 Factors need about three years before the sealed holdout, more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
@@ -2210,158 +2165,39 @@
       "admitted": "2026-11-16: 11 passes at most 10.6 s and 1 red at 6 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
     },
     {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_a_feature_axis_outside_the_factor_evidence_is_refused*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 7.5 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
       "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
+      "reason": "The installed LightGBM proof needs 1,769 sessions for the 756-session training window, three 252-session validations and 252-session sealed holdout at the two-session maturity lag.",
       "size_contract": "nightly_only",
       "admitted": "2026-11-19: 77.4 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     },
     {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 7.2 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_a_tampered_child_lineage_entry_is_refused_on_readback*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 18.0 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
       "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_an_authored_alpha_document_reaches_the_real_model_runtime*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
+      "reason": "The installed Ridge split needs 1,769 sessions for the 756-session training window, three 252-session validations and 252-session sealed holdout at the two-session maturity lag.",
       "size_contract": "nightly_only",
       "admitted": "2026-11-19: 12.3 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     },
     {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_saved_alpha_comparison_refuses_mismatched_input_binding*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 16.5 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_declared_feature_axis_is_the_axis_that_was_fitted*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 8.2 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_declared_standardization_is_the_one_that_executed*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 0.0 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_factor_evidence_handle_is_read_by_hash_not_by_recency*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 4.4 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_panel_manifest_reader_is_the_one_the_host_uses*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 0.0 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_human_and_external_automation_curate_identically_with_distinct_provenance*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Reads the external workspace on the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, external_outcomes), which its walk-forward Factor program needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 12.4 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
       "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_authored_batch_reaches_real_evidence_and_replays_without_computing*",
       "owner": "tests.researcher_methodology_extension",
-      "reason": "Reads the external workspace on the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, external_outcomes), which its walk-forward Factor program needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
+      "reason": "The full external Factor panel needs about three years of lookback before its seal, beyond the development set's 250 pre-holdout sessions.",
       "size_contract": "nightly_only",
       "admitted": "2026-11-19: 77.1 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     },
     {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_verifier_refuses_a_fully_resealed_graph*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Reads the external workspace on the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, external_outcomes), which its walk-forward Factor program needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 13.0 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_factor_development_execution.py::test_a_receipt_is_verified_against_re_derived_authority*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 7.7 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
       "pattern": "tests/integration/factor_research/test_factor_development_execution.py::test_an_authored_factor_document_reaches_real_deterministic_evidence*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
+      "reason": "The complete installed 53-factor axis needs 274 pre-holdout observations for its longest method before the 252-session sealed holdout.",
       "size_contract": "nightly_only",
       "admitted": "2026-11-19: 9.1 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     },
     {
-      "pattern": "tests/integration/factor_research/test_factor_development_execution.py::test_replay_walks_the_graph_and_reports_exact_reuse*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 8.5 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_factor_development_execution.py::test_the_selection_scopes_the_receipt_without_moving_the_statistics*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 75.2 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_forged_recipe_policy_and_closure_cannot_pass_the_verifier*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 11.6 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 11.7 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_tamper_missing_child_and_wrong_lineage_are_refused*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 10.8 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
       "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_the_campaign_compares_calibrates_decides_and_replays*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
+      "reason": "The installed Sector campaign needs at least 252 development sessions and a 252-session sealed holdout, beyond the development set's 502 sessions.",
       "size_contract": "nightly_only",
       "admitted": "2026-11-19: 1.3 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_the_zero_control_is_resolved_through_the_sector_owner*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Reads the eight-year Factor-scale walk (real_workspace.FACTOR_SCALE, through this module's factor_scale_workspace override), which its walk-forward Factor evidence needs, more data than the development sets give, so it runs only in the nightly (the person, 11-19): its year-long lookbacks over all 53 Factors need about three years before the sealed holdout, where the development walk keeps 250 sessions.",
-      "size_contract": "nightly_only",
-      "admitted": "2026-11-19: 9.8 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     }
   ],
   "budget_admissions": [
@@ -2426,22 +2262,7 @@
       "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
     },
     {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_a_feature_axis_outside_the_factor_evidence_is_refused*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
       "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_policy_without_a_stated_partition_is_refused_before_arrays*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_a_tampered_child_lineage_entry_is_refused_on_readback*",
       "value": 900,
       "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
     },
@@ -2451,47 +2272,7 @@
       "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
     },
     {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_saved_alpha_comparison_refuses_mismatched_input_binding*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_the_declared_feature_axis_is_the_axis_that_was_fitted*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_the_declared_standardization_is_the_one_that_executed*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_the_factor_evidence_handle_is_read_by_hash_not_by_recency*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_the_panel_manifest_reader_is_the_one_the_host_uses*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_human_and_external_automation_curate_identically_with_distinct_provenance*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
       "budget": "large:tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_authored_batch_reaches_real_evidence_and_replays_without_computing*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_verifier_refuses_a_fully_resealed_graph*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/factor_research/test_factor_development_execution.py::test_a_receipt_is_verified_against_re_derived_authority*",
       "value": 900,
       "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
     },
@@ -2501,37 +2282,7 @@
       "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
     },
     {
-      "budget": "large:tests/integration/factor_research/test_factor_development_execution.py::test_replay_walks_the_graph_and_reports_exact_reuse*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/factor_research/test_factor_development_execution.py::test_the_selection_scopes_the_receipt_without_moving_the_statistics*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_forged_recipe_policy_and_closure_cannot_pass_the_verifier*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_tamper_missing_child_and_wrong_lineage_are_refused*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
       "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_the_campaign_compares_calibrates_decides_and_replays*",
-      "value": 900,
-      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
-    },
-    {
-      "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_the_zero_control_is_resolved_through_the_sector_owner*",
       "value": 900,
       "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
     }
