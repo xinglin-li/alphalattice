@@ -128,6 +128,72 @@ def test_an_accepted_definition_writes_its_event_text_head_and_row_together(root
     assert head == seq
 
 
+def _admission_summary_cases(log):
+    """Write legacy and bound provider lists through the same log."""
+    prior = log.read(
+        "SELECT spec FROM definition WHERE family = 'event_type'"
+        " AND name = 'admission' AND version = 1"
+    )[0][0]
+    key = {"family": "event_type", "name": "admission", "version": 2}
+    log.record(
+        "definition.registered",
+        ("definition", "event_type/admission"),
+        key,
+        text=json.dumps(
+            key
+            | {
+                "relation": "equal",
+                "text": "This admission can keep bound provider text.",
+                "spec": json.loads(prior) | {"text": "optional"},
+            }
+        ),
+    )
+    providers = [f"development-alias-{i:04d}" for i in range(200)]
+    summary_text = json.dumps(providers)
+    assert len(summary_text) > host.ATTRS_CHARACTERS
+    candidate = {"count": len(providers), "digest": host.digest(summary_text.encode())}
+    summaries = {}
+    for dataset, names, text in (
+        ("market", providers[:1], None),
+        ("sector", providers[:1], None),
+        ("market", candidate, summary_text),
+        ("sector", candidate, summary_text),
+    ):
+        attrs = {"provider": names, "dataset": dataset, "marks": {"fixture": [1, 2]}}
+        summary_seq = log.record(
+            "admission",
+            ("workspace", "admission-fixture"),
+            attrs,
+            text=text,
+            version=2 if text else 1,
+        )
+        summaries[summary_seq] = (attrs, text)
+        if text is None:
+            log.record("record.forgotten", attrs={"seq": summary_seq})
+        else:
+            with pytest.raises(DataError) as protected_summary:
+                log.record("record.forgotten", attrs={"seq": summary_seq})
+            assert protected_summary.value.failure.code == "data_layer.record_unforgettable"
+    encoded_fixture = r'["\u0073k-' + "a" * 20 + '"]'
+    for text, refusal in (
+        (summary_text, "data_layer.event_attrs_form"),
+        (encoded_fixture, "data_layer.event_secret"),
+    ):
+        with pytest.raises(DataError) as malformed:
+            log.record(
+                "admission",
+                ("workspace", "admission-fixture"),
+                {
+                    "provider": {"count": 1, "digest": host.digest(text.encode())},
+                    "dataset": "market",
+                },
+                text=text,
+                version=2,
+            )
+        assert malformed.value.failure.code == refusal
+    return summaries, summary_seq
+
+
 @pytest.mark.proves("data_layer.host_append_is_all_or_nothing")
 def test_an_inline_artifact_writes_its_profile_and_body_together(root):
     """The log projects both profile forms in the event unit, independently of the inline body."""
@@ -171,6 +237,7 @@ def test_an_inline_artifact_writes_its_profile_and_body_together(root):
         with pytest.raises(DataError) as protected:
             log.record("record.forgotten", attrs={"seq": seq})
         assert protected.value.failure.code == "data_layer.record_unforgettable"
+        summaries, summary_seq = _admission_summary_cases(log)
 
     query = (
         "SELECT a.artifact_id, a.produced_seq, a.body_state, a.shape, b.body"
@@ -185,7 +252,24 @@ def test_an_inline_artifact_writes_its_profile_and_body_together(root):
                 row[0]: (row[1], row[2], json.loads(row[3]), row[4])
                 for row in ledger.execute(query)
             } == expected
+            assert {
+                row[0]: (json.loads(row[1]), row[2])
+                for row in ledger.execute(
+                    "SELECT e.seq, e.attrs, t.text FROM event e LEFT JOIN event_text t USING(seq)"
+                    " WHERE e.type = 'admission'"
+                )
+            } == summaries
             assert verify_whole(ledger) and verify_from_checkpoint(ledger)
+
+    with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
+        con.row_factory = sqlite3.Row
+        with con:
+            con.execute("DELETE FROM event_text WHERE seq = ?", (summary_seq,))
+            assert not verify_whole(con) and not verify_from_checkpoint(con)
+            with pytest.raises(DataError) as missing_summary:
+                host.replay(con, root.parent / "missing-admission-summary.sqlite")
+            assert missing_summary.value.failure.code == "data_layer.event_text_missing"
+            con.rollback()
 
     with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
         con.row_factory = sqlite3.Row

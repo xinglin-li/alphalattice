@@ -53,6 +53,7 @@ from alphalattice.kernel.data_layer.chain import (
 )
 from alphalattice.kernel.data_layer.project import (
     ARTIFACT_PROFILE_TEXT_VERSION,
+    BOUND_TEXT_EVENTS,
     ENDED,
     definition_names,
     lineage,
@@ -581,12 +582,14 @@ def verify_whole(con: sqlite3.Connection) -> bool:
 
 
 def _verify_profile_text(con: sqlite3.Connection, after: int) -> bool:
-    """Whether each bound artifact profile in the verified range kept its named text."""
+    """Whether each bound machine profile in the verified range kept its named text."""
+    versions = ", ".join("(?, ?)" for _ in BOUND_TEXT_EVENTS)
+    keys = tuple(value for event in BOUND_TEXT_EVENTS for value in event)
     rows = con.execute(
         "SELECT e.text_digest, t.text FROM event e LEFT JOIN event_text t USING (seq)"
-        " WHERE e.seq > ? AND e.type = 'artifact.produced' AND e.type_version = ?"
+        f" WHERE e.seq > ? AND (e.type, e.type_version) IN ({versions})"
         " AND e.text_digest IS NOT NULL",
-        (after, ARTIFACT_PROFILE_TEXT_VERSION),
+        (after, *keys),
     )
     return all(text is not None and digest(text.encode()) == expected for expected, text in rows)
 

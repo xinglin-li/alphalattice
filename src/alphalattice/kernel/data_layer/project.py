@@ -29,6 +29,12 @@ from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, diges
 ENDED: Final = ("completed", "failed", "cancelled")
 ARTIFACT_PROFILE_TEXT_VERSION: Final = 2
 """The artifact.produced version whose optional machine text is the profile's JSON shape."""
+ADMISSION_SUMMARY_TEXT_VERSION: Final = 2
+"""The admission version whose optional machine text is its JSON provider list."""
+BOUND_TEXT_EVENTS: Final = (
+    ("artifact.produced", ARTIFACT_PROFILE_TEXT_VERSION),
+    ("admission", ADMISSION_SUMMARY_TEXT_VERSION),
+)
 RECIPE_ENCODING: Final = 1
 """The version of recipe_key's typed binary encoding, its first byte; a new encoding is a new
 version, so a key never changes meaning."""
@@ -1099,6 +1105,37 @@ def _trial(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     )
 
 
+@on("admission")
+def _admission_summary(_con: Con, e: Row, a: Attrs, text: str | None) -> None:
+    """Validate an admission's provider profile when it uses the bound-text form."""
+    if e["type_version"] != ADMISSION_SUMMARY_TEXT_VERSION:
+        return
+    provider, named = a["provider"], e["text_digest"]
+    # contract: keep the attribute form while old admission writers are still in use.
+    if named is None and not isinstance(provider, dict):
+        return
+    if text is None:
+        raise _refuse("event_text_missing", "an admission summary keeps its provider list")
+    if not isinstance(provider, dict) or provider.get("digest") != named:
+        raise _refuse("event_text_unbound", "the provider digest must match the admission text")
+    try:
+        providers = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise _refuse("event_attrs_form", "an admission's provider list is not JSON") from exc
+    count = provider.get("count")
+    if (
+        not isinstance(providers, list)
+        or type(count) is not int
+        or count != len(providers)
+        or not all(isinstance(name, str) for name in providers)
+    ):
+        raise _refuse("event_attrs_form", "an admission needs the named count of provider names")
+    if secrets_in(providers):
+        raise _refuse(
+            "event_secret", "an admission provider name would make a credential permanent"
+        )
+
+
 @on("artifact.produced")
 def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     """An artifact's profile: what it means, how it is identified and where its body is."""
@@ -1382,15 +1419,15 @@ def _forgotten(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     target = con.execute(
         "SELECT type, type_version, text_digest FROM event WHERE seq = ?", (a["seq"],)
     ).fetchone()
-    profile_text = ("artifact.produced", ARTIFACT_PROFILE_TEXT_VERSION)
     if (
         target is None
         or target[0] in MACHINE_TEXT
-        or (tuple(target)[:2] == profile_text and target[2])
+        or (tuple(target)[:2] in BOUND_TEXT_EVENTS and target[2])
     ):
         raise _refuse(
             "record_unforgettable",
-            "machine text rebuilds definitions, Task records and artifact profiles",
+            "machine text rebuilds definitions, Task records, artifact profiles"
+            " and admission summaries",
         )
     con.execute("DELETE FROM event_text WHERE seq = ?", (a["seq"],))  # the event and digest stay
 
