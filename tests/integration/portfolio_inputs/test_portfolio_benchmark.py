@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -273,3 +274,21 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
         assert [(name, read()) for name, read in cases] == before
     finally:
         history.close_history()
+
+    # A copy of the upgraded workspace served on a fresh data root, as a golden's copy is, owes
+    # no upgrade once the copy's Portfolio results are carried into that root.
+    from tests.pytest_environment import with_its_outcomes
+
+    served, fresh = tmp_path / "served-copy", tmp_path / "served-copy-root"
+    shutil.copytree(workspace, served)
+    with_its_outcomes(served, root, fresh)
+    with history.own_root(fresh):
+        assert [candidate.holds(served) for candidate in families] == [False, False]
+    # A benchmark only in its 0.2.7 file, which the source's catalog holds for no copy of this
+    # workspace, is left to the upgrade: nothing is carried and the copy's root is not written.
+    legacy, legacy_root = tmp_path / "legacy-copy", tmp_path / "legacy-copy-root"
+    initialize_research_workspace(legacy)
+    (legacy / old.relative_to(workspace)).parent.mkdir(parents=True)
+    (legacy / old.relative_to(workspace)).write_bytes(old.read_bytes())
+    with_its_outcomes(legacy, root, legacy_root)
+    assert not legacy_root.exists()

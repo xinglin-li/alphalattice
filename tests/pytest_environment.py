@@ -321,12 +321,43 @@ def with_its_tasks(workspace: Path) -> Path:
     return workspace
 
 
+PORTFOLIO_RESULTS = {
+    ("portfolio-strategy-lab", "execution-series-descriptors"): (
+        "portfolio_execution_series",
+        "series",
+    ),
+    ("portfolio-strategy-lab", "report-holdings-descriptors"): (
+        "portfolio_report_holding",
+        "holding",
+    ),
+    ("portfolio-benchmark", "surfaces"): ("portfolio_benchmark", "series"),
+}
+"""Each Portfolio result a workspace names by a file, by the owner folder and folder the file
+lies in, as the Portfolio upgrade families find them: its catalog kind and table. A descriptor is
+written only beside its catalog rows; a benchmark surface may be a 0.2.7 file the upgrade still
+moves into the catalog."""
+
+
+def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
+    """The Portfolio results `copy`'s files name: kind, digest and table, in a fixed order."""
+    from alphalattice.kernel.data_layer.upgrade import workspace_files  # lazy: a copy's only
+
+    found = set()
+    for path in workspace_files(copy):
+        depth = 2 if path.parent.name.endswith("-descriptors") else 1  # below a namespace
+        named = PORTFOLIO_RESULTS.get((path.parents[depth].name, path.parent.name))
+        if path.suffix == ".json" and named is not None:
+            kind, table = named
+            found.add((kind, path.stem, table))
+    return sorted(found)
+
+
 def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
-    carried into `root`, the copy's own served root unless named: the catalog of the root a
-    workspace was served on holds their bodies, not the workspace, so a copy served on a fresh
-    root lacks them and its first start plans an upgrade. A test that serves the copy in its own
-    process names the root it serves it on; no ambient root is ever written."""
+    and Portfolio results carried into `root`, the copy's own served root unless named: the
+    catalog of the root a workspace was served on holds their rows, not the workspace, so a copy
+    served on a fresh root lacks them and its first start plans an upgrade. A test that serves the
+    copy in its own process names the root it serves it on; no ambient root is ever written."""
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
     )
@@ -338,16 +369,33 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
     held = sorted(
         {c.content_hash for _store, c, file in committed_outcome_chunks(copy) if not file.exists()}
     )
-    if not held:
+    results = _portfolio_results(copy)
+    if not held and not results:
         return copy
     target = served_root(copy) if root is None else root
     with owning(source, target):
         with history.own_root(source):
             bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
+            workspace = str(named_workspace_id(copy))
+            rows = [  # a file-only benchmark is left to the upgrade, as a 0.2.7 workspace's is
+                (
+                    kind,
+                    digest,
+                    table,
+                    history.read_portfolio_result(kind, digest, result_table=table),
+                )
+                for kind, digest, table in results
+                if kind != "portfolio_benchmark"
+                or history.portfolio_result_held(kind, digest, workspace)
+            ]
+        if not bodies and not rows:  # nothing the copy's root must hold: it is not written
+            return copy
         with history.own_root(target):
-            history.open_history(str(named_workspace_id(copy)), copy.name, copy.resolve())
-            for digest, table in bodies:
-                history.write_execution_outcome(digest, table)
+            history.open_history(workspace, copy.name, copy.resolve())
+            for digest, body in bodies:
+                history.write_execution_outcome(digest, body)
+            for kind, digest, table, (profile, values) in rows:
+                history.write_portfolio_result(kind, digest, profile, values, result_table=table)
     return copy
 
 
