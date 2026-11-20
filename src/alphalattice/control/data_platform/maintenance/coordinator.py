@@ -2351,13 +2351,19 @@ class WorkspaceMaintenanceCoordinator:
                 if changed_sessions:
                     raise ValueError("uniform provider rescale contains changed-return sessions")
                 continue
-            if revision.session_set_changed and not self._set_change_admitted(
-                revision.listing_id,
-                changed_sessions,
-                date.fromisoformat(str(active_panel["as_of_session"])),
-                verified=revision.listing_id in verified_session_sets,
-                appended=bool(append_sessions.get(revision.listing_id)),
-                prior=prior_listing_ids,
+            # The receipt explains an adjusted tail even when a prior Feature pass consumed
+            # the raw append. Feature input authority is checked by its own readers.
+            if (
+                revision.session_set_changed
+                and not revision.tail_append
+                and not self._set_change_admitted(
+                    revision.listing_id,
+                    changed_sessions,
+                    date.fromisoformat(str(active_panel["as_of_session"])),
+                    verified=revision.listing_id in verified_session_sets,
+                    appended=bool(append_sessions.get(revision.listing_id)),
+                    prior=prior_listing_ids,
+                )
             ):
                 raise ValueError("provider session-set change unexplained", revision.listing_id)
             if not changed_sessions:

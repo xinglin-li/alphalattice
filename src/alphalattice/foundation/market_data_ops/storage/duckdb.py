@@ -243,7 +243,12 @@ class ProviderAdjustedSeriesRevision:
     source_receipt_hash: str
     observed_at: datetime
     disclosed: Mapping[str, Any] = field(default_factory=dict)
-    """The precision kept and any back-adjustment's segments, as `standing` disclosed them."""
+    """The precision kept, any back-adjustment segments and an exact tail append."""
+
+    @property
+    def tail_append(self) -> bool:
+        """The writer verified that every prior session and value was retained."""
+        return self.disclosed.get("tail_append") is True
 
     def hashed(self) -> str:
         """Its receipt hash, of what it records; a revision read back gives the one written."""
@@ -4780,7 +4785,8 @@ class MarketDataRepository(WorkspaceRepository):
                 "provider adjusted refresh omitted a canonical session"
             )
         added_sessions = set(observed) - set(prior)
-        if full_history and prior and any(session <= max(prior) for session in added_sessions):
+        adds_after_prior = bool(prior and added_sessions and min(added_sessions) > max(prior))
+        if full_history and prior and added_sessions and not adds_after_prior:
             raise ValueError("full provider adjusted series changed its historical session set")
         observed, next_values, disclosed = standing(
             prior, observed, added_sessions, tolerance, replaces=full_history, actions=actions
@@ -4793,6 +4799,13 @@ class MarketDataRepository(WorkspaceRepository):
                 connection, ADJUSTED_YEAR, pairs=[(scope, session.year) for session in prior]
             )
         session_set_changed = bool(prior or held) and set(prior) != set(next_values)
+        if (
+            adds_after_prior
+            and not disclosed
+            and changed_values == len(added_sessions)
+            and prior.keys() <= next_values.keys()
+        ):
+            disclosed["tail_append"] = True
         return_changes = (
             adjusted_return_changes(
                 prior,
