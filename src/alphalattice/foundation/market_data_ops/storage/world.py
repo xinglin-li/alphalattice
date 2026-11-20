@@ -28,11 +28,10 @@ equal marks end it there.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 import uuid
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
@@ -64,7 +63,6 @@ from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import lineage, require_lineage
 from alphalattice.kernel.data_layer.root import sql_path
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.kernel.quant.sector_history import SectorReclassification
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
@@ -1124,92 +1122,6 @@ def _revisions(port: Any, workspace_id: str) -> None:
                 workspace=workspace_id,
                 node="market_data_ops",
             )
-
-
-def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
-    """Admit older workspace tables through the shared, backed-up first-start protocol."""
-    from . import world_reads  # lazy: the reading surface imports this admission owner
-    from .duckdb import MarketDataRepository  # lazy: the repository imports this owner
-
-    wanted = os.environ.get(world_reads.SETTING)
-
-    def source(workspace: Path) -> tuple[MarketDataRepository, dict[str, list[int]]] | None:
-        repository = MarketDataRepository(workspace, universe_reader="workspace")
-        if not repository.path.is_file():
-            return None
-        with repository.database.read_transaction() as connection:
-            created = connection.execute(
-                "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
-                " AND schema_name = 'main' AND table_name = 'market_profile'"
-            ).fetchone()
-        if created == (WORKSPACE_MARKET_FORMAT,):
-            # A current workspace copied to another machine still uses ordinary market admission.
-            return None
-        marks = repository._market_marks()
-        if not marks:
-            raise DataError(
-                "Restore the older workspace's complete market tables before upgrading.",
-                code="upgrade.refused",
-            )
-        if not any(
-            marks[table][0]
-            for table in (
-                "raw_daily_bar_current",
-                "corporate_action_current",
-                "provider_symbol_mapping",
-            )
-        ):
-            return None
-        return repository, marks
-
-    def holds(workspace: Path) -> bool:
-        old = source(workspace)
-        return old is not None and not world_reads._admitted(
-            old[1], workspace_id=identify(workspace)
-        )
-
-    def step(runner: UpgradeRunner) -> None:
-        for workspace in runner.workspaces:
-            old = source(workspace)
-            if old is None:
-                continue
-            identity = identify(workspace)
-            if identity is None:
-                raise DataError(
-                    "Restore the market workspace's manifest identity.", code="upgrade.refused"
-                )
-            history.workspace_on_log(workspace, workspace.name, identity, root=runner.root)
-            admit(old[0].path, identity)
-            port = history.store()
-            if port is None:
-                raise DataError(
-                    "Open the Host's catalog before upgrading markets.", code="upgrade.refused"
-                )
-            for mic, market_id in port.lake.execute(
-                "SELECT mic, CAST(market_id AS VARCHAR) FROM market_asof(?)", [world_reads.LATEST]
-            ).fetchall():
-                runner.map_id("market-data", mic, market_id)
-
-    def verify(runner: UpgradeRunner) -> bool:
-        for workspace in runner.workspaces:
-            old = source(workspace)
-            if old is not None and not world_reads.holds(
-                old[0].path,
-                world_reads.LATEST,
-                listings=old[0]._listings("SELECT listing_id FROM listing", ()),
-            ):
-                return False
-        return True
-
-    def switch(mode: str) -> None:
-        if mode == "old":
-            os.environ[world_reads.SETTING] = "workspace"
-        elif wanted is None:
-            os.environ.pop(world_reads.SETTING, None)
-        else:
-            os.environ[world_reads.SETTING] = wanted
-
-    return Family("market-data", step, verify, switch, holds)
 
 
 def _register(run: Any) -> set[str]:

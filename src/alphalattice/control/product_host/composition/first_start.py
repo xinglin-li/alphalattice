@@ -46,7 +46,7 @@ from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterL
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     execution_outcome_upgrade_family,
 )
-from alphalattice.foundation.market_data_ops.storage.world import market_upgrade_family
+from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     alpha_array_upgrade_family,
 )

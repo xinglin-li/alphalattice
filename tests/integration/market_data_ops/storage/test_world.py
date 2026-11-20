@@ -26,6 +26,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import UniverseMan
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel.data_layer import history
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
@@ -159,7 +160,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
 
         assert "market-data" in [make().name for make in first_start.FAMILIES]
         monkeypatch.setenv(world_reads.SETTING, "world")
-        family = world.market_upgrade_family(lambda _workspace: "w1")
+        family = market_upgrade_family(lambda _workspace: "w1")
         assert not family.holds(store.workspace)
         with store.database.transaction() as connection:
             connection.execute("COMMENT ON TABLE market_profile IS NULL")
