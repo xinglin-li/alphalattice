@@ -9,9 +9,11 @@ artifact's body as one unit, all of it or none of it.
 Ordinary events commit in batches: a batch commits at BATCH_SIZE events, BATCH_SECONDS after its
 first, at `flush` and at `close`. Each event is its own savepoint inside the batch, so a refused
 event leaves the batch's others whole. An event whose type is durable in the registry commits at
-once, with the batch before it. Every commit is under synchronous FULL, so what has committed
-survives a lost machine, not only a killed process. A crash loses at most the open batch, never
-part of an event, and the chain verifies after it. `append` returns before an ordinary event's
+once, with the batch before it. The log runs WAL under synchronous NORMAL, so every commit
+survives a killed process; a commit that holds a durable event also syncs the WAL, as FULL would,
+so it and every commit before it survive a lost machine. A lost machine loses at most the
+ordinary commits after the last durable one, never part of an event or a gap before a kept one,
+and the chain verifies after it. `append` returns before an ordinary event's
 batch commits, so the Host calls `flush` before it returns anything to an agent: a reply never
 names an event a crash could still lose. An event may carry what its writer does once its fate is
 known (`committed`): called with True after the commit that holds it, with False when it is rolled
@@ -64,7 +66,8 @@ from alphalattice.kernel.data_layer.root import build_log, seed_rows, sqlite_rea
 
 BATCH_SIZE: Final = 64
 """Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256).
-FULL costs a tenth of that against NORMAL (14.6k against 16.6k at 64 on the workshop PC)."""
+A WAL sync costs about 0.35 to 0.6 ms a commit against 0.01 ms without one (the workshop PC),
+so only a durable event's commit pays it."""
 BATCH_SECONDS: Final = 0.2
 """The longest an ordinary event waits for its batch's commit."""
 
@@ -145,6 +148,8 @@ class HostLog:
         self._pending = 0
         self._units = 0  # how many `unit`s hold the transaction open; none commits inside one
         self._owed = False  # a durable event was appended inside a unit: commit when it ends
+        self._durable = False  # the open transaction holds a durable event: its commit syncs
+        self._wal = con.execute("PRAGMA database_list").fetchone()[2] + "-wal"
         self._timer: threading.Timer | None = None
         self._committed: list[Callable[[bool], None]] = []  # each open-batch event's, in order
         last = con.execute("SELECT recorded_us FROM event ORDER BY seq DESC LIMIT 1").fetchone()
@@ -173,7 +178,7 @@ class HostLog:
             )
             con.row_factory = sqlite3.Row
             con.execute("PRAGMA foreign_keys = ON")
-            con.execute("PRAGMA synchronous = FULL")
+            con.execute("PRAGMA synchronous = NORMAL")
             if not verify_from_checkpoint(con):
                 con.close()
                 raise DataError(
@@ -219,9 +224,12 @@ class HostLog:
         *,
         live: bool = True,
         committed: Callable[[bool], None] | None = None,
+        durable: bool = False,
     ) -> int:
         """Admit one event and write it as one unit; returns its seq. `committed` is called under
         the log's guard with True once the event has committed, or False once it is rolled back.
+        `durable` commits an ordinary type's event as a durable one: an event that no other record
+        carries, so nothing could append it again.
 
         The unit is the event, its text, the chain, its projection and an inline artifact's body.
         A durable type is committed on return; an ordinary one with its batch, so a caller that
@@ -236,7 +244,7 @@ class HostLog:
                 row = {**row, "type_version": _current(con, row["type"])}
             spec = _spec(con, row)
             attrs = admit(row, text, spec, _superseded(con), live=live, body=body)
-            durable = bool(spec.get("durable"))
+            durable = durable or bool(spec.get("durable"))
             if not con.in_transaction:
                 con.execute("BEGIN IMMEDIATE")
                 self._arm()
@@ -253,6 +261,7 @@ class HostLog:
                 raise
             con.execute("RELEASE event")
             self._pending += 1
+            self._durable = self._durable or durable
             if committed is not None:
                 self._committed.append(committed)
             if self._units:
@@ -275,7 +284,7 @@ class HostLog:
             if not con.in_transaction:
                 con.execute("BEGIN IMMEDIATE")
                 self._arm()
-            pending, actions = self._pending, len(self._committed)
+            pending, actions, durable = self._pending, len(self._committed), self._durable
             con.execute("SAVEPOINT unit")
             self._units += 1
             try:
@@ -283,7 +292,7 @@ class HostLog:
             except BaseException:
                 con.execute("ROLLBACK TO unit")
                 con.execute("RELEASE unit")
-                self._pending = pending
+                self._pending, self._durable = pending, durable
                 dropped, self._committed = self._committed[actions:], self._committed[:actions]
                 self._units -= 1
                 _run(dropped, committed=False)
@@ -518,12 +527,30 @@ class HostLog:
 
     def _end(self, statement: str) -> None:
         self._con.execute(statement)
-        self._pending = 0
+        durable = statement == "COMMIT" and self._durable
+        self._pending, self._durable = 0, False
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
         actions, self._committed = self._committed, []
-        _run(actions, committed=statement == "COMMIT")
+        try:  # the batch has ended: a failed sync is raised to its appender, never left open
+            if durable:
+                _sync(self._wal)
+        finally:
+            _run(actions, committed=statement == "COMMIT")
+
+
+def _sync(wal: str) -> None:
+    """Sync the log's WAL to the disk, as synchronous FULL does at each commit: what committed
+    before it survives a lost machine. A WAL a checkpoint has removed was synced into the log."""
+    try:
+        handle = os.open(wal, os.O_RDWR | getattr(os, "O_BINARY", 0))
+    except FileNotFoundError:
+        return
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
 
 
 def _run(actions: list[Callable[[bool], None]], *, committed: bool) -> None:

@@ -14,9 +14,8 @@ from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal, Protocol, Self
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
-import pandas as pd
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,6 +25,9 @@ from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReadRequest,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+if TYPE_CHECKING:
+    pass
 
 DEVELOPMENT_FEATURE_OVERLAY_CATEGORY = "development/feature-overlay"
 
@@ -214,6 +216,8 @@ class CompositeDevelopmentFeatureReader:
 
     def batches(self, request: FeaturePanelReadRequest) -> Iterator[pa.RecordBatch]:
         """The base rows joined row for row with the overlay's requested columns."""
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         if request.manifest_ref != self.manifest_ref or not set(request.factor_columns).issubset(
             self.ordered_factor_ids
         ):

@@ -10,10 +10,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -63,6 +62,9 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     panel_ordered_members_identity,
 )
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class PanelRematerializationMismatch(ValueError):
@@ -136,6 +138,8 @@ class ArtifactOnlyPanelRematerializer:
         a filesystem path.  The recipe binds the catalog, axes and base closure;
         every value chunk is re-hashed by ``_load_base_year`` before release.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         recipe = self._store.load_model(
             category="recipes", content_hash=recipe_hash, model=PanelDerivationRecipe
         )
@@ -547,6 +551,8 @@ class ArtifactOnlyPanelRematerializer:
         sector_history: SectorHistory,
         replays: _Replays,
     ) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         year_sessions = tuple(s for s in recipe.sessions if chunk.holds(s))
         # One row per member of each session, in physical order; a Panel under
         # the binding rule holds the whole axis on every session.
@@ -644,6 +650,8 @@ class ArtifactOnlyPanelRematerializer:
         binding: FeaturePanelBinding,
         base_cache: OrderedDict[int, pd.DataFrame],
     ) -> PanelMaterialization:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         receipt_sessions = tuple(
             sorted({date.fromisoformat(str(item["session_date"])) for item in receipt_rows})
         )
@@ -779,6 +787,8 @@ class ArtifactOnlyPanelRematerializer:
         recipe: PanelDerivationRecipe,
         year: int,
     ) -> pd.DataFrame:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         if year in cache:
             frame = cache.pop(year)
             cache[year] = frame
@@ -808,6 +818,8 @@ class ArtifactOnlyPanelRematerializer:
         factor_ids: tuple[str, ...],
         recipe: PanelDerivationRecipe,
     ) -> pd.DataFrame:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         key_descriptor = next((item for item in base.key_chunks if item.year == year), None)
         if key_descriptor is None:
             raise PanelRematerializationMismatch("feature_panel.base_closure_incomplete")
@@ -914,6 +926,8 @@ class ArtifactOnlyPanelRematerializer:
         bounds: tuple[date, date],
         factor_ids: tuple[str, ...],
     ) -> pa.Table:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         mask = _within(receipt_table.column("session_date"), bounds)
         receipts = receipt_table.filter(mask).to_pandas()
         receipts["session_date"] = pd.to_datetime(receipts["session_date"]).dt.date

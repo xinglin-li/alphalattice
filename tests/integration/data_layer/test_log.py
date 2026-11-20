@@ -406,21 +406,36 @@ os._exit(9)
 
 
 @pytest.mark.proves("data_layer.durable_events_commit_at_once")
-def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root):
+def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root, monkeypatch):
     """An ordinary event is committed by its batch's size, its deadline, a durable event after it
-    or the flush a reply waits for, which a killed Host keeps; a durable one when appended."""
+    or the flush a reply waits for, which a killed Host keeps; a durable one when appended. Only a
+    commit holding a durable event syncs the WAL to the disk."""
+    synced: list[int] = []
+    monkeypatch.setattr(os, "fsync", synced.append)  # SQLite's own syncs are not Python's
     with HostLog.open(root, now_us=T0) as log:  # a goal is set in its workspace
         log.record("workspace.created", ("workspace", "w1"), {"name": "main"})
     base = _events(root)
     with HostLog.open(root, batch=2, seconds=60, now_us=T0) as log:
+        assert log.read("PRAGMA synchronous")[0][0] == 1  # NORMAL
+        synced.clear()
         log.record("tool.call", attrs={"tool": "a"}, phase="completed", started_us=T0)
         assert _events(root) == base
         goal = {"title": "durable"}
         log.record("goal.set", ("goal", "g1"), goal, workspace="w1", actor=("person", "me"))
-        assert _events(root) == base + 2
+        assert (_events(root), len(synced)) == (base + 2, 1)
         log.record("tool.call", attrs={"tool": "b"}, phase="completed", started_us=T0)
         log.record("tool.call", attrs={"tool": "c"}, phase="completed", started_us=T0)
-        assert _events(root) == base + 4
+        assert (_events(root), len(synced)) == (base + 4, 1)
+
+        def rolled_back() -> None:  # a durable event its unit rolls back syncs nothing
+            with log.unit():
+                log.record("goal.set", ("goal", "g2"), goal, workspace="w1", actor=("person", "me"))
+                raise LookupError
+
+        with pytest.raises(LookupError):
+            rolled_back()
+        log.flush()
+        assert (_events(root), len(synced)) == (base + 4, 1)
     with HostLog.open(root, seconds=0.01, now_us=T0) as log:
         log.record("tool.call", attrs={"tool": "d"}, phase="completed", started_us=T0)
         deadline = log._timer  # None once it has already fired
@@ -435,3 +450,14 @@ def test_a_durable_event_commits_at_once_and_an_ordinary_one_with_its_batch(root
         **kwargs,
     )
     assert (child.returncode, _events(root)) == (9, base + 6)
+
+    def disk_lost(handle: int) -> None:
+        raise OSError("disk lost")
+
+    monkeypatch.setattr(os, "fsync", disk_lost)  # a sync fails after its batch has committed
+    with HostLog.open(root, batch=10, seconds=60, now_us=T0) as log:
+        log.record("tool.call", attrs={"tool": "e"}, phase="completed", started_us=T0)
+        with pytest.raises(OSError, match="disk lost"):  # its appender never replies on it
+            log.record("goal.set", ("goal", "g3"), goal, workspace="w1", actor=("person", "me"))
+        assert _events(root) == base + 8
+    assert _events(root) == base + 8  # and the log closes with no batch left open

@@ -245,7 +245,7 @@ _LIMITS_LOCK = threading.Lock()
 def _load_limited_libraries(*, preload_models: bool) -> None:
     """Load the numerical libraries a limit holds before it is set: one first loaded inside a
     limited block would start at its own default threads, which the limit never reaches."""
-    import scipy.linalg  # type: ignore[import-untyped]  # noqa: F401  # lazy: SciPy's BLAS
+    import scipy.linalg  # noqa: F401  # lazy: SciPy's BLAS
 
     if not preload_models:
         return

@@ -863,7 +863,7 @@
       "seconds": 1
     },
     "data_layer.durable_events_commit_at_once": {
-      "description": "A durable event commits when appended; an ordinary one with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
+      "description": "A durable event commits when appended and syncs the log's WAL to the disk; an ordinary one commits with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
       "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
       "owner": "alphalattice.kernel.data_layer",
       "layer": "integration",

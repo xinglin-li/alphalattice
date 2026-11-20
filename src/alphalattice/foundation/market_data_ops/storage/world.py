@@ -1106,15 +1106,16 @@ def sector_map(
     if not listings:
         return {}
     reader = cursor if cursor is not None else port.lake
-    rows = reader.execute(
+    (found,) = reader.execute(
         "WITH choices AS (SELECT DISTINCT a.symbol, s.scheme_id, s.sector_code, s.valid_from"
         " FROM sector_asof(?) s JOIN provider_symbol_asof(?) a ON a.listing_id = s.listing_id"
         " WHERE a.provider_id = ? AND a.symbol IN (SELECT unnest(?))"
         " AND s.valid_from <= ? AND (s.valid_to IS NULL OR s.valid_to >= ?)),"
         " current AS (SELECT * FROM choices QUALIFY row_number() OVER"
         " (PARTITION BY symbol, scheme_id ORDER BY valid_from DESC) = 1)"
-        " SELECT symbol, min(sector_code) FROM current GROUP BY symbol"
-        " HAVING count(*) = 1 ORDER BY symbol",
+        " SELECT map(list(symbol ORDER BY symbol), list(code ORDER BY symbol)) FROM"
+        " (SELECT symbol, min(sector_code) AS code FROM current GROUP BY symbol"
+        " HAVING count(*) = 1)",
         [
             cutoff_us,
             LATEST,
@@ -1123,8 +1124,8 @@ def sector_map(
             session,
             session,
         ],
-    ).fetchall()
-    return dict(rows)
+    ).fetchone()
+    return found or {}
 
 
 def sector_holds(database: Path, cursor: Any, *, cutoff_us: int) -> bool:

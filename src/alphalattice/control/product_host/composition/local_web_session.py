@@ -251,6 +251,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 )
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.history import data_root, held, move_carried, release_history
+from alphalattice.kernel.data_layer.store import preload_grouping
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
@@ -757,6 +758,7 @@ class LocalPortfolioWebSession:
         )
         publish_client_connection(connection, serving_host=serving_host)
         self.client_connection = connection
+        preload_grouping()  # the admission's grouping engine loads once the Host serves
 
     def _upgrade_in_background(self) -> None:
         """Run the acknowledged upgrade off the request thread, then compose and serve in full."""

@@ -5,10 +5,9 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.foundation.feature_engine.catalog.contracts import desktop_core_feature_bundle
@@ -33,6 +32,9 @@ from .formula import (
 from .formula_language import FormulaError
 from .open_intraday import MEAN_ADJUSTED_RETURN_ID
 from .registry import FeatureKernelRegistry
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 ROBUST_SECTOR_NEUTRAL_Z_ROLE = "ROBUST_SECTOR_NEUTRAL_Z"
 TIME_SERIES_ABSOLUTE_STATE_ROBUST_ROLE = "TIME_SERIES_ABSOLUTE_STATE_ROBUST"
@@ -862,6 +864,8 @@ def golden_example_frame(
 
     Give each listing a stable suffix under the requested identifier prefix.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     rows = example.row_count
     frames: list[pd.DataFrame] = []
     for position in range(example.listing_count):

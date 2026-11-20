@@ -10,9 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
-from typing import cast
-
-import pandas as pd
+from typing import TYPE_CHECKING, cast
 
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
@@ -44,6 +42,9 @@ from alphalattice.kernel.quant.cross_section import (
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 CellOwnership = Mapping[tuple[str, str], frozenset[str]]
 """``(receipt_hash, factor_id) -> sessions`` a Panel attributes to that batch."""

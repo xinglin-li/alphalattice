@@ -49,10 +49,9 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
@@ -70,6 +69,9 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 FUTURE_PROBE_SESSIONS: Final = 3
 """Ordered sessions kept after the observation, so look-ahead has somewhere to hide."""
@@ -181,6 +183,8 @@ def _probe_frame(rows: int, *, listings: int) -> tuple[pd.DataFrame, pd.DataFram
     implementation reads, and that is a property of the code rather than of any
     particular price history.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     index: np.ndarray = np.arange(rows, dtype=float)
 
@@ -264,6 +268,8 @@ def _perturbed(
     return from a leader mean, and a common shift cancels exactly -- so it would
     report that a leader/lag method consumes nothing.
     """
+
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
 
     def bump(frame: pd.DataFrame, rows: pd.Series, columns: tuple[str, ...]) -> None:
         present = [column for column in columns if column in frame]
@@ -358,6 +364,8 @@ class _ExtensionEvaluator:
 
 
 def _calendar_source_position(rows: int, observation: int) -> int | None:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     periods = sessions.to_period("M")
     selected = periods[observation] - 12
@@ -366,6 +374,8 @@ def _calendar_source_position(rows: int, observation: int) -> int | None:
 
 
 def _calendar_earliest_position(rows: int, observation: int) -> int | None:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     periods = sessions.to_period("M")
     selected = periods[observation] - 13

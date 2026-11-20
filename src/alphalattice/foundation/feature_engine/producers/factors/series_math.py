@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def ordered_frame(source: pd.DataFrame) -> pd.DataFrame:
@@ -34,6 +37,8 @@ def finite_positive(values: pd.Series) -> pd.Series:
     Returns:
         Values on the same index, with nonnumeric, nonpositive, and nonfinite entries missing.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     numeric = pd.to_numeric(values, errors="coerce").astype(float)
     return numeric.where(np.isfinite(numeric) & (numeric > 0.0))
 
@@ -48,6 +53,8 @@ def log_return(values: pd.Series, groups: pd.Series) -> pd.Series:
     Returns:
         Log price ratios on the input index; first rows and invalid price pairs are missing.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     prices = finite_positive(values)
     prior = prices.groupby(groups, sort=False).shift(1)
     ratio = prices / prior
@@ -83,6 +90,8 @@ def grouped_pair_rolling_apply(
         Per-row values on the aligned series index. Incomplete or nonfinite windows and
         nonfinite scalar results remain missing; callback failures propagate.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = pd.DataFrame({"left": left, "right": right, "group": groups})
     output = pd.Series(np.nan, index=frame.index, dtype=float)
     for _group, positions in frame.groupby("group", sort=False).groups.items():

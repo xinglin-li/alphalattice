@@ -33,6 +33,7 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from importlib import resources
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -59,6 +60,26 @@ from alphalattice.kernel.data_layer.root import (
 )
 from alphalattice.kernel.data_layer.telemetry import usage
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
+
+_GROUPING = threading.Lock()
+_grouping: list[threading.Thread] = []
+
+
+def preload_grouping() -> None:
+    """Load Arrow's grouping engine, which an admission groups its rows with, on a thread of its
+    own, once a process: the Host calls it once it serves, so its first admission does not pay
+    the load (about a second, pandas with it) and its start does not either."""
+    with _GROUPING:
+        if _grouping or find_spec("pyarrow") is None:
+            return
+        thread = threading.Thread(target=_load_grouping, name="arrow-grouping", daemon=True)
+        _grouping.append(thread)
+    thread.start()
+
+
+def _load_grouping() -> None:
+    import pyarrow.acero  # noqa: F401  # lazy: the Host preloads it once it serves
+
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
@@ -984,7 +1005,7 @@ class StorePort:
     def _judged(self, staged: Staged, known: int, dropped: dict[str, int]) -> None:
         """Record an admission whose every changed row was dropped, with each drop's count, once:
         a retried commit of it finds its event. No catalog commit carries the event, which names
-        the snapshot it was judged against."""
+        the snapshot it was judged against, so it commits durably before its staging goes."""
         if self.log.read(
             "SELECT 1 FROM event WHERE type = 'admission.committed' AND subject_id = ?",
             (staged.admission_id,),
@@ -995,7 +1016,7 @@ class StorePort:
         row = {column: owed[column] for column in ENVELOPE if column in owed and column != "seq"}
         attrs = json.loads(owed["attrs"]) | {"catalog_snapshot": snapshot[0]}
         row["attrs"] = canonical(attrs).decode()
-        self.log.append(row)
+        self.log.append(row, durable=True)
 
     def _known(
         self,
@@ -1139,8 +1160,10 @@ class StorePort:
     def _declared(self, table: str, columns: set[str]) -> dict[str, str]:
         """A world table's content and SOURCE columns with their catalog types, as the engine
         holds them; refused by name when the rows carry a column the table does not hold."""
-        described = self.lake.execute(f"DESCRIBE lake.world.{table}").fetchall()
-        declared = {row[0]: row[1] for row in described if row[0] not in ADMITTED}
+        (described,) = self.lake.execute(
+            f"SELECT map(list(column_name), list(column_type)) FROM (DESCRIBE lake.world.{table})"
+        ).fetchone()
+        declared = {name: kind for name, kind in described.items() if name not in ADMITTED}
         foreign = sorted(columns - set(declared))
         if foreign:
             raise DataError(

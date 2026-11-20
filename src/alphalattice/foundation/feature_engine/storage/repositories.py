@@ -754,11 +754,11 @@ class FeatureStateRepository(WorkspaceRepository):
         0.2.8 upgrades only from 0.2.7."""
         connection = self._connect()
         try:
-            tables = connection.execute(
-                "SELECT table_name, table_type FROM information_schema.tables"
+            (tables,) = connection.execute(
+                "SELECT map(list(table_name), list(table_type)) FROM information_schema.tables"
                 " WHERE table_schema = 'main'"
-            ).fetchall()
-            refuse_before_0_2_7(dict(tables))
+            ).fetchone()
+            refuse_before_0_2_7(tables or {})
             self._ensure_feature_current_storage(connection)
             self._ensure_feature_ineligibility_view(connection)
         finally:

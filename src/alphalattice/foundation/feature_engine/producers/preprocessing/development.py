@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
@@ -23,6 +22,9 @@ from .robust_cross_section import (
     PanelFactorClipObservation,
     PanelMaterialization,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 ABSOLUTE_LOOKBACK = 252
 ABSOLUTE_MINIMUM_FINITE = 126
@@ -49,6 +51,8 @@ def _axes(
     feature_rows: pd.DataFrame,
     active_listing_ids: tuple[str, ...],
 ) -> tuple[pd.DataFrame, tuple[date, ...], pd.MultiIndex]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = feature_rows.copy()
     frame["session_date"] = pd.to_datetime(frame["session_date"]).dt.date
     frame = frame.loc[frame["listing_id"].isin(active_listing_ids)]
@@ -141,6 +145,8 @@ def materialize_absolute_state(
         KeyError: A required listing, session, or factor source column is absent.
         ValueError: Listing-session rows are duplicated.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = feature_rows if isinstance(feature_rows, pd.DataFrame) else pd.DataFrame(feature_rows)
     frame, sessions, grid = _axes(frame, active_listing_ids)
     aligned = frame.set_index(["session_date", "listing_id"]).reindex(grid)
@@ -253,6 +259,8 @@ def materialize_state_interactions(
         ValueError: The cross-section is invalid, rows are duplicated, or a factor
             lacks its state child column.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = feature_rows if isinstance(feature_rows, pd.DataFrame) else pd.DataFrame(feature_rows)
     child = PanelCrossSectionKernel().materialize(
         feature_rows=frame,

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
-from scipy.special import ndtri  # type: ignore[import-untyped]
 
 from alphalattice.kernel.quant.cross_section import (
     robust_zscore,
@@ -14,6 +13,9 @@ from alphalattice.kernel.quant.cross_section import (
 from alphalattice.kernel.validation.screening_statistics import average_ranks
 
 from .contracts import StandardizedTargetLane
+
+if TYPE_CHECKING:
+    pass
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -34,6 +36,8 @@ the new method being read as a respelling of either.
 
 def rank_gauss(values: FloatArray) -> FloatArray:
     """Map each cross-section to Gaussian quantiles of its average ranks."""
+    from scipy.special import ndtri  # lazy: not at the Host's start
+
     result = np.full(values.shape, np.nan, dtype=np.float64)
     for index, row in enumerate(values):
         finite = np.isfinite(row)

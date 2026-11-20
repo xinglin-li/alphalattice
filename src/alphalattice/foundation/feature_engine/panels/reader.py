@@ -7,10 +7,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pyarrow as pa
-import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -21,6 +20,9 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+
+if TYPE_CHECKING:
+    pass
 
 _VALUES_VERIFIED: BoundedMemo[str, bool] = BoundedMemo()
 """The byte digests of the chunk files whose values this process has checked: a
@@ -155,6 +157,8 @@ class FeaturePanelReader:
         self, manifest: dict[str, object], request: FeaturePanelReadRequest
     ) -> Iterator[pa.RecordBatch]:
         """Read verified immutable cells for this owner; research admission belongs to batches."""
+        import pyarrow.dataset as ds  # lazy: not at the Host's start
+
         chunk_paths = self._qualified_chunk_paths(manifest, request)
         if not chunk_paths:
             raise ValueError("feature panel read range has no snapshot chunks")
@@ -343,6 +347,8 @@ class FeaturePanelReader:
         Raises:
             ValueError: Catalog, admission, temporal identity, or chunk integrity is invalid.
         """
+        import pyarrow.dataset as ds  # lazy: not at the Host's start
+
         manifest = self.resolver.load_feature_panel_manifest(manifest_ref)
         summary = manifest.get("safe_summary")
         factors = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None

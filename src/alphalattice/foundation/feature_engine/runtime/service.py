@@ -9,9 +9,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
-from typing import Any, NamedTuple, cast
-
-import pandas as pd
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
@@ -140,6 +138,9 @@ from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictErr
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 _PANEL_CONNECTION_SESSION_BUDGET = 630
 _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
 """A listing's computation, run in the Host's kept workers (W10)."""
@@ -182,6 +183,8 @@ def feature_source_frame(
     Returns:
         One row per bar, or per calendar session when aligned.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = pd.DataFrame(projected_feature_rows(source))
     if sessions is not None:
         frame = align_feature_source_sessions(frame, tuple(sessions))
@@ -416,6 +419,8 @@ class FeatureFoundationService:
         ``compose_panel=False`` stops once the base values are materialized and the Sector
         revision is active, for a membership its baseline qualification will replace.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         now = observed_at or datetime.now(UTC)
         if now.tzinfo is None:
             raise ValueError("feature build observed_at must be timezone-aware")
@@ -1970,6 +1975,8 @@ class FeatureFoundationService:
         row before reusing it and the judgement after the build sees the
         recomputed ones.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         catalog_hash = self.catalog.binding.catalog_hash
         rows = self.feature_state.feature_rows(
             listing_ids=listing_ids,

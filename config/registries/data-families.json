@@ -3716,6 +3716,7 @@
       "bytes": null,
       "writers": [
         "data_layer.log:HostLog",
+        "data_layer.log:_sync",
         "data_layer.log:hold",
         "data_layer.log:replay",
         "data_layer.root:_database",

@@ -411,10 +411,10 @@ BATCHES = {
     [
         pytest.param("observed", "commit", 0, False, id="observed after the files"),
         pytest.param("observed", "repair", 1500, True, id="observed after the catalog commit"),
-        pytest.param("observed", "delete", 1500, False, id="observed after the event"),
+        pytest.param("observed", "delete", 1500, True, id="observed after the event"),
         pytest.param("results", "commit", 0, False, id="results after the files"),
         pytest.param("results", "repair", 1500, True, id="results after the catalog commit"),
-        pytest.param("results", "delete", 1500, False, id="results after the event"),
+        pytest.param("results", "delete", 1500, True, id="results after the event"),
         pytest.param("results set", "commit", 0, False, id="table set before catalog commit"),
         pytest.param("results set", "repair", 1500, True, id="table set after catalog commit"),
         pytest.param("array", "commit", 0, False, id="array after its staged body"),
@@ -1324,6 +1324,11 @@ def test_one_fact_is_one_version_however_it_is_staged(
             " WHERE type = 'admission.committed' AND subject_id = ?",
             (admission,),
         )
+        with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as other:  # committed only
+            kept = other.execute(
+                "SELECT count(*) FROM event WHERE type = 'admission.committed' AND subject_id = ?",
+                (admission,),
+            ).fetchone()[0]
         if table == "corporate_action":
             parts = log.read(
                 "SELECT json_extract(attrs, '$.parts'), json_extract(attrs, '$.rewritten')"
@@ -1340,6 +1345,10 @@ def test_one_fact_is_one_version_however_it_is_staged(
         port.close()
     got = (done.rows, done.rewritten, done.dropped) if done else (0, 0, {})
     assert (refused, *got, versions, replaced) == expected
+    if (
+        done and not done.rows and not done.rewritten and done.dropped
+    ):  # no catalog commit carries it
+        assert kept == 1, "an all-dropped admission's judgment is committed before its staging goes"
     assert most <= 1
     assert [json.loads(dropped or "{}") for dropped, _ in events] == (
         [expected[3]] if any(expected[1:4]) or table == "corporate_action" else []

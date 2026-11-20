@@ -13,10 +13,9 @@ from datetime import date, datetime
 from itertools import groupby
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import (
@@ -102,6 +101,9 @@ from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 @dataclass(frozen=True)
@@ -563,6 +565,8 @@ def _rows_since(
     connection: object = None,
 ) -> pd.DataFrame:
     """Stored Feature rows of each read (`_reads`): their keys and values, one frame."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     extra = {} if connection is None else {"_connection": connection}
     frames = [
         feature.feature_rows(
@@ -816,6 +820,8 @@ def _read_workspace_component_inputs(
     PanelFeatureSourceArrays | None,
     PreparedWorkspaceComponentInputs | None,
 ]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     if workspace_score_source_identity(workspace) != expected_source_hash:
         raise ValueError("strategy_score.source_revision_changed")
     market = MarketDataRepository(workspace)

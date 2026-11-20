@@ -7,13 +7,18 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from datetime import date
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def align_feature_source_sessions(frame: pd.DataFrame, sessions: Sequence[date]) -> pd.DataFrame:
     """Keep absent sessions in a lookback, never fill their numerical observations."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     expected = tuple(sessions)
     observed = tuple(pd.to_datetime(frame["session_date"]).dt.date)
     if (
@@ -36,6 +41,8 @@ def align_feature_source_sessions(frame: pd.DataFrame, sessions: Sequence[date])
 
 def feature_source_values_hash(frame: pd.DataFrame, columns: Sequence[str]) -> str:
     """Hash exact numerical arguments, independently of batch/projection metadata."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     dates = tuple(pd.to_datetime(frame["session_date"]).dt.date)
     if not dates or dates != tuple(sorted(set(dates))):
         raise ValueError("feature.source_window_calendar_invalid")

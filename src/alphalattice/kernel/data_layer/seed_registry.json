@@ -340,8 +340,8 @@
         "known_us"
       ],
       "text": "none",
-      "durable": true,
-      "description": "Outside data entered the world; the catalog commit carried this event."
+      "durable": false,
+      "description": "Outside data entered the world; the catalog commit carried this event, and the store's repair appends it again from that commit."
     },
     {
       "name": "selection.made",

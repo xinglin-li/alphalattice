@@ -13,7 +13,6 @@ from typing import Any, Literal, Protocol, Self, cast
 
 import numpy as np
 import numpy.typing as npt
-from joblib import Parallel, delayed, parallel_config  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.alpha_modeling.contracts import (
@@ -4352,6 +4351,8 @@ class PanelResearchMethodologyExecutor:
         int,
     ]:
         """Run missing folds in bounded workers and publish each completed fold."""
+
+        from joblib import Parallel, delayed, parallel_config  # lazy: not at the Host's start
 
         plan = self.inputs.plan
         if plan is None:
