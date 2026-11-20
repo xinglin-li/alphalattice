@@ -643,7 +643,7 @@
     "tests/integration/workspace_runtime/test_network_access.py::type-ignore": 1,
     "tests/portfolio_strategy_lab/activation_review_support.py::type-ignore[arg-type]": 1,
     "tests/portfolio_strategy_lab/local_web_support.py::type-ignore[arg-type]": 1,
-    "tests/portfolio_strategy_lab/local_web_support.py::type-ignore[union-attr]": 4,
+    "tests/portfolio_strategy_lab/local_web_support.py::type-ignore[union-attr]": 1,
     "tests/portfolio_strategy_lab/process_death.py::type-ignore[no-untyped-def]": 2,
     "tests/pytest_environment.py::type-ignore[attr-defined]": 1,
     "tests/researcher_methodology_surface/alternate_capability.py::type-ignore[arg-type]": 3,

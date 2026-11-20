@@ -24,7 +24,7 @@ from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
 from alphalattice.kernel.data_layer import history, history_execution_outcomes
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family
-from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 
 TEST_SOURCE = "src/alphalattice/control/product_host/composition/first_start.py"
 OUTCOMES = Path("artifacts/data-operations/execution-outcomes")

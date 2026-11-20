@@ -60,12 +60,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
     EligiblePoolShort,
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
     _InterruptsOnce,
-    _json,
     _manifest,
-    _request,
     _resolved,
     _Resolver,
 )

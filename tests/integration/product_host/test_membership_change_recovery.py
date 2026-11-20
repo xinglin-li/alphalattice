@@ -30,9 +30,9 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from devtools.evaluation.golden_workspaces import refuse_writers
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _resolved,
     _Resolver,
     admit_market_fixture,

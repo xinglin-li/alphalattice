@@ -25,9 +25,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from tests._support import development_universe
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _resolved,
     _Resolver,
     admit_market_fixture,

@@ -48,7 +48,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     build_workspace,
     start_service,
 )
-from tests.portfolio_strategy_lab.local_web_support import _request
+from tests.portfolio_strategy_lab.host_requests import _request
 
 LONG_MULTILINGUAL = (
     " Zusätzliche Erläuterung des Vorstands zur Liquiditätslage und zu den Lieferketten; "

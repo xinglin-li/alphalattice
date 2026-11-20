@@ -30,10 +30,8 @@ from alphalattice.interface.local_application.client import (
 from alphalattice.interface.local_application.retrieval_environment import interpreter_path
 from alphalattice.kernel.shared_kernel import spawn
 from tests.portfolio_strategy_lab.cli_support import _cli
-from tests.portfolio_strategy_lab.local_web_support import (
-    _json,
-    serve_conflict,
-)
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import serve_conflict
 from tests.pytest_environment import served_root
 
 

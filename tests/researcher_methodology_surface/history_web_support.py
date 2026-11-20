@@ -17,7 +17,8 @@ from alphalattice.control.product_host.research_authoring.comparison import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 
 
 def exercise_history(workspace: Path, portfolio_task_id: str) -> dict[str, object]:

@@ -20,7 +20,7 @@ from tests.portfolio_strategy_lab.activation_review_support import (
     publish_activation_review,
 )
 from tests.portfolio_strategy_lab.cli_support import _cli
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 
 pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 

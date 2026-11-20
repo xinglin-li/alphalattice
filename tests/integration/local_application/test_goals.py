@@ -1802,7 +1802,7 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
 ):
     """A served sealing answer offers experience recording once with exact owner reads."""
     from alphalattice.interface.local_application.client import LocalResearchClient, compact_display
-    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.portfolio_strategy_lab.node_runner import read_in_chinese
     from tests.workspace_task_runner.task_control_support import task_contract
 
     client = LocalResearchClient(live.workspace)
@@ -1889,7 +1889,7 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     """The research case page continues to work over goals."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.portfolio_strategy_lab.local_web_support import _json, _request
+    from tests.portfolio_strategy_lab.host_requests import _json, _request
 
     tasks = tuple(live.operations.workspace_session.task_control_registry.tasks())
     document = {

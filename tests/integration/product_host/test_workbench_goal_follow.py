@@ -52,7 +52,8 @@ from tests.feature_input_gateway.gateway_support import (
     _sectors,
     _temporal,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, run_node
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.workspace_task_runner.task_control_support import digest
 
 

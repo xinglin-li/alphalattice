@@ -28,13 +28,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
-from tests.portfolio_strategy_lab.local_web_support import (
-    _agent,
-    _json,
-    _request,
-    _resolved,
-    _Resolver,
-)
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import _agent, _resolved, _Resolver
 
 ALPHA, BETA = ("ALPHA_BOOK", "BETA_BOOK")
 

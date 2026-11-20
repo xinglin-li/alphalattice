@@ -42,9 +42,9 @@ from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _resolved,
     _Resolver,
 )
@@ -1371,7 +1371,8 @@ from alphalattice.control.product_host.composition.research_experiments import (
 from alphalattice.investment.alpha_research.experiments.development_execution import (
     _FoldCancellation,
 )
-from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved
 import alphalattice.control.product_host.research_authoring.factor_handoff as handoff
 from tests.integration.product_host.test_local_web_factor_experiments import _inline
 # The fit runs in this process, so the fold boundary below pauses it where the test kills it.
@@ -2120,7 +2121,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.research_experiments import (
     ResearchExperimentApplication, STAGES,
 )
-from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved
 root, marker = Path(sys.argv[1]), Path(sys.argv[2])
 original = ResearchExperimentApplication.execute_stage
 def pause(self, **kwargs):

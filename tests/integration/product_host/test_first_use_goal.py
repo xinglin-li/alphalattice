@@ -57,7 +57,8 @@ from alphalattice.interface.local_application.goals import (
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel import spawn
 from tests._support.history_fixtures import native_first_use
-from tests.portfolio_strategy_lab.local_web_support import _json, _request, run_node
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
 

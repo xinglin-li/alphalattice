@@ -105,7 +105,7 @@ from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
     bundle_slot,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.workspace_task_runner.task_control_support import task_contract
 
 JUDGMENT_ROLES = {

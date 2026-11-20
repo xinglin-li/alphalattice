@@ -37,7 +37,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 from tests.researcher_methodology_surface.real_workspace import (
     FACTOR_SCALE,
     OBSERVED_AT,

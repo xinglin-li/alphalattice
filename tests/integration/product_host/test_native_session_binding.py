@@ -31,7 +31,8 @@ from alphalattice.interface.local_application.native_setup import (
     files_unavailable,
 )
 from tests.portfolio_strategy_lab.cli_support import _agent_project, _session_cli
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 
 ROOT = Path(__file__).resolve().parents[3]
 

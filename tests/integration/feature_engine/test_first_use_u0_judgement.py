@@ -16,7 +16,7 @@ from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemL
 from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
 from alphalattice.interface.local_application.client import LocalResearchClient
 from tests._support import development_universe
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     FACTOR_SCALE,

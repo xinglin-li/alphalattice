@@ -37,7 +37,8 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
     restore_seed,

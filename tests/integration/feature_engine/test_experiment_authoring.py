@@ -33,7 +33,8 @@ from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 _FIXTURE = (

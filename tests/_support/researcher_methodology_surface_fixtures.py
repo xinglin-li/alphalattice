@@ -36,7 +36,8 @@ from alphalattice.protocols.research_authoring.contracts import (
 )
 from devtools.architecture.evidence_roots import PLAYPEN_ROOT
 from tests._support import development_universe
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
     _publish_factor,

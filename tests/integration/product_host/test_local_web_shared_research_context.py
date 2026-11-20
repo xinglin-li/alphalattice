@@ -40,7 +40,8 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PreviewRegistry,
 )
 from alphalattice.interface.local_application.cli import main
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, on_seed_machine
 
 

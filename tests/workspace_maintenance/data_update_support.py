@@ -33,8 +33,8 @@ from alphalattice.foundation.research_foundation.contracts import (
 )
 from alphalattice.kernel.data_layer.history import carry_arrays
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
-    _json,
     _resolved,
     _Resolver,
     admit_market_fixture,

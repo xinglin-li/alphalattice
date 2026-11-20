@@ -14,7 +14,8 @@ from alphalattice.interface.local_application.cli_contract import TASK_STATE_FIE
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 
 STUDY_READS = frozenset(
     {"EXPERIMENTS", "EXPERIMENT_READBACK", "RESEARCH_INPUTS", "RESEARCH_HISTORY"}

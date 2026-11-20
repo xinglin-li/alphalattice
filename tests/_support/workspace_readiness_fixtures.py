@@ -14,7 +14,7 @@ from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     FACTOR_SCALE,

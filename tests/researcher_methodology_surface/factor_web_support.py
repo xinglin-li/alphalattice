@@ -12,7 +12,8 @@ from alphalattice.control.product_host.composition.local_web_session import Loca
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
 
 def _facts(body: dict) -> dict:  # type: ignore[type-arg]

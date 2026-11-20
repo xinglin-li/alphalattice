@@ -38,11 +38,10 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from tests._support import development_universe, sufficient_universe
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _manifest,
-    _request,
     _resolved,
     _Resolver,
     admit_market_fixture,
@@ -887,7 +886,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
         ActionAuditScopeInsufficient,
     )
     from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
-    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.portfolio_strategy_lab.node_runner import read_in_chinese
 
     audit, paying = MarketDataRepository.complete_action_audit, QUARANTINE_SYMBOLS[1 : 1 + payers]
 

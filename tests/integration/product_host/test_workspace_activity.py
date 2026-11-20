@@ -70,7 +70,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.kernel.data_layer import history
-from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import _cli
 from tests.workspace_task_runner.task_control_support import task_log
 
 UNKNOWN_ID = "01a1e448-0000-0000-0000-000000000000"  # an event id's shape no event has

@@ -40,7 +40,7 @@ from alphalattice.interface.local_application.native_setup import (
     strip_product_hooks,
 )
 from alphalattice.kernel.knowledge import model_store
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 
 ROOT = Path(__file__).resolve().parents[3]
 READINESS_KEYS = (

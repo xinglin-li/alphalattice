@@ -389,7 +389,7 @@ def test_a_served_detached_host_expires_only_after_its_held_work_finishes(
 ):
     from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.interface.local_application import cli_contract, dispatcher
-    from tests.portfolio_strategy_lab.local_web_support import _json
+    from tests.portfolio_strategy_lab.host_requests import _json
 
     origin = live.dispatcher._last_needed
     monkeypatch.setattr(IDLE_TIME, "ticks", 0.0)

@@ -54,7 +54,7 @@ from tests.portfolio_strategy_lab.cli_support import (
     _session_cli,
     strategy_readback_operations,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.structural.refusal_support import rerun_refusal_codes
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"

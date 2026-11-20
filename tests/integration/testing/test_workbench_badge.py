@@ -25,6 +25,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab import local_web_support as web
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.workspace_task_runner.task_control_support import digest, task_contract
 
 
@@ -122,7 +124,7 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
         return task
 
     rebuilt = record("badge-unrecoverable", "task_control.ledger_rebuilt")
-    first = web._json(live, "/api/decisions")
+    first = _json(live, "/api/decisions")
     assert first["counts"].get("STOPPED_TASK", 0) == 0
     peer = record("badge-normal-stop", "study_verification_sweep.not_admitted")
     source = record("badge-exact-plan", "study_verification_sweep.not_admitted")
@@ -130,7 +132,7 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     assert source.admitted_at == successor.admitted_at
     assert source.plan.plan_hash == successor.plan.plan_hash
     assert successor.lifecycle is TaskLifecycle.SUCCEEDED
-    listing = web._json(live, "/api/tasks")
+    listing = _json(live, "/api/tasks")
     tasks = {row["task_id"]: row for row in listing["tasks"]}
     expected_ids = {str(row.task_id) for row in (rebuilt, peer, source, successor)}
     assert expected_ids <= tasks.keys(), {
@@ -142,18 +144,18 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     }
     assert tasks[str(rebuilt.task_id)]["attention"]["resolution"] == "UNRECOVERABLE"
     assert tasks[str(source.task_id)]["attention"]["successor_task_hash"] == successor.record_hash
-    decisions = web._json(live, "/api/decisions")
+    decisions = _json(live, "/api/decisions")
     stopped = [row for row in decisions["decisions"] if row["kind"] == "STOPPED_TASK"]
     assert [row["task_id"] for row in stopped] == [str(peer.task_id)]
     assert stopped[0]["waits_on"] == "AGENT"
     assert decisions["counts"]["STOPPED_TASK"] == 1
     assert not [row for row in decisions["decisions"] if row["waits_on"] == "PERSON"]
-    history = {row["task_id"]: row for row in web._json(live, "/api/research-history")["entries"]}
+    history = {row["task_id"]: row for row in _json(live, "/api/research-history")["entries"]}
     assert {str(row.task_id) for row in (rebuilt, peer, source, successor)} <= history.keys()
     assert history[str(rebuilt.task_id)]["failure_code"] == "task_control.ledger_rebuilt"
     assert history[str(source.task_id)]["status"] == "BLOCKED"
     assert history[str(successor.task_id)]["status"] == "SUCCEEDED"
-    context = web._json(live, "/api/session?context=1")["research_context"]["tasks"]["tasks"]
+    context = _json(live, "/api/session?context=1")["research_context"]["tasks"]["tasks"]
     context_versions = {row["task_id"]: row["task_record_hash"] for row in context}
     assert context_versions == {
         str(row.task_id): row.record_hash for row in (rebuilt, peer, source, successor)
@@ -191,7 +193,7 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     assert registry.task(agent_stop.task_id).failure_code == "task_control.ledger_rebuilt"
     # An existing table-less database cannot prove that no decisions are pending.
     duckdb.connect(str(live.workspace / "market-data.duckdb")).close()
-    status, _headers, body = web._request(live, "/api/decisions")
+    status, _headers, body = _request(live, "/api/decisions")
     refusal = json.loads(body)
     unavailable = "feature_input.case_store_unavailable"
     assert (status, refusal["failure_code"]) == (400, unavailable)
@@ -259,7 +261,7 @@ assert.equal(D.taskSuccessor(D.taskOf('source')), null,
   'a changed successor version invalidates the relation');
 assert.equal(grouped().length, 2, 'successor identity remains exact after an activity merge');
 """
-    web.run_node(
+    run_node(
         [
             "-e",
             code,

@@ -78,12 +78,11 @@ from alphalattice.kernel.data_layer.log import COMMIT_TIMER, HostLog
 from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     _agent,
-    _json,
     _manifest,
     _raw,
-    _request,
     _resolved,
     _Resolver,
     _run_to_completion,
@@ -1862,7 +1861,7 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
 
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
-    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.portfolio_strategy_lab.node_runner import read_in_chinese
 
     with LocalPortfolioWebSession.from_workspace(tmp_path) as live:
         plan = _json(live, "/api/workspace/storage/plan", method="POST", payload={})
@@ -2378,7 +2377,6 @@ def test_bad_requests_admit_no_task_and_do_not_affect_portfolio(inputs: Path) ->
         WorkspaceResearchAuthorityResolver,
     )
     from alphalattice.protocols.research_authoring.contracts import ResearchExperimentEnvelope
-    from tests.portfolio_strategy_lab.local_web_support import _request
 
     with _session(inputs) as session:
         controls = _json(session, "/api/experiments/controls")

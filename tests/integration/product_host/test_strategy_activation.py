@@ -57,7 +57,7 @@ from tests.portfolio_strategy_lab.activation_review_support import (
     activation_cli,
     publish_activation_review,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.pytest_environment import upgraded
 from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
 from u0_probe import _copy

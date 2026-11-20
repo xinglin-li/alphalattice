@@ -55,7 +55,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     delivered_aliases,
     start_service,
 )
-from tests.portfolio_strategy_lab.local_web_support import _request
+from tests.portfolio_strategy_lab.host_requests import _request
 
 MATTER_COUNT = 2 * MAXIMUM_ISSUED_MATTER_WINDOWS + 6
 """A hundred and thirty-four named matters in one note, each longer than a

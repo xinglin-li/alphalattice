@@ -18,7 +18,9 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.interface.local_application.client import LocalResearchClient
-from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request, run_node
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import _cli
+from tests.portfolio_strategy_lab.node_runner import run_node
 
 MODULES = (
     Path(__file__).resolve().parents[3]

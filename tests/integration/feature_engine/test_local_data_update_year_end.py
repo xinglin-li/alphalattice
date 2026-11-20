@@ -22,9 +22,9 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from tests._support import development_universe
 from tests.feature_engine.panel_workspace import capture_panel_closure, clipping_evidence
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _manifest,
     _resolved,
     _Resolver,

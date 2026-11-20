@@ -58,7 +58,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     build_workspace,
     start_service,
 )
-from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
 
 MODULES = (

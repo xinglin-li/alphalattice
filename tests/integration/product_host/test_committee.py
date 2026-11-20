@@ -58,7 +58,7 @@ from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSur
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
-from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
     build_numerical,

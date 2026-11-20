@@ -15,7 +15,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import r
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
 from tests._support import development_universe
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
 
