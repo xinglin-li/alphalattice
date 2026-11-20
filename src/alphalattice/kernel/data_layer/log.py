@@ -52,6 +52,7 @@ from alphalattice.kernel.data_layer.chain import (
     fold_segments,
 )
 from alphalattice.kernel.data_layer.project import (
+    ARTIFACT_PROFILE_TEXT_VERSION,
     ENDED,
     definition_names,
     lineage,
@@ -526,24 +527,36 @@ def attach(root: Path, *, shared: bool = False) -> sqlite3.Connection:
 
 
 def verify_from_checkpoint(con: sqlite3.Connection) -> bool:
-    """Whether the events after the last checkpoint fold from its head to the stored head."""
+    """Whether the tail folds to the stored head and its machine profiles match their digests."""
     stored = con.execute("SELECT head, chain_version FROM chain_head WHERE id = 1").fetchone()
     if stored is None:
         return con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None
     last = con.execute("SELECT seq, head FROM chain_checkpoint ORDER BY seq DESC LIMIT 1")
     start, head = last.fetchone() or (0, "")
     events = con.execute("SELECT * FROM event WHERE seq > ? ORDER BY seq", (start,))
-    return bool(fold(head, events, stored[1]) == stored[0])
+    return fold(head, events, stored[1]) == stored[0] and _verify_profile_text(con, start)
 
 
 def verify_whole(con: sqlite3.Connection) -> bool:
-    """Whether the whole log, each segment under its checkpoint's encoding, folds to the head."""
+    """Whether the chain folds to the head and its machine profiles match their digests."""
     stored = con.execute("SELECT head, chain_version FROM chain_head WHERE id = 1").fetchone()
     if stored is None:
         return con.execute("SELECT 1 FROM event LIMIT 1").fetchone() is None
     bounds = con.execute("SELECT seq, chain_version FROM chain_checkpoint ORDER BY seq").fetchall()
     events = con.execute("SELECT * FROM event ORDER BY seq")
-    return bool(fold_segments(events, [(b[0], b[1]) for b in bounds], stored[1]) == stored[0])
+    folded = fold_segments(events, [(b[0], b[1]) for b in bounds], stored[1])
+    return folded == stored[0] and _verify_profile_text(con, 0)
+
+
+def _verify_profile_text(con: sqlite3.Connection, after: int) -> bool:
+    """Whether each bound artifact profile in the verified range kept its named text."""
+    rows = con.execute(
+        "SELECT e.text_digest, t.text FROM event e LEFT JOIN event_text t USING (seq)"
+        " WHERE e.seq > ? AND e.type = 'artifact.produced' AND e.type_version = ?"
+        " AND e.text_digest IS NOT NULL",
+        (after, ARTIFACT_PROFILE_TEXT_VERSION),
+    )
+    return all(text is not None and digest(text.encode()) == expected for expected, text in rows)
 
 
 def hold(path: Path) -> IO[bytes] | None:

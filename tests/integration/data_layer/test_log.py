@@ -130,20 +130,82 @@ def test_an_accepted_definition_writes_its_event_text_head_and_row_together(root
 
 @pytest.mark.proves("data_layer.host_append_is_all_or_nothing")
 def test_an_inline_artifact_writes_its_profile_and_body_together(root):
-    """An inline artifact's event, its profile and its body are written in one unit, so the
-    body's foreign key finds its profile."""
-    report = {"type": "report", "meaning": "the study's report", "storage": "inline"}
+    """The log projects both profile forms in the event unit, independently of the inline body."""
+    report = {
+        "type": "report",
+        "meaning": "the study's report",
+        "storage": "inline",
+        "identity_kind": "content",
+        "type_version": 1,
+        "content_digest": "blake3:r1",
+    }
+    small = {"columns": ["value"]}
+    large = {"listings": [f"listing-development-{i:04d}" for i in range(200)]}
+    text = json.dumps(large)
+    assert len(text) > host.ATTRS_CHARACTERS
+    expected = {}
     with HostLog.open(root, now_us=T0) as log:
-        seq = log.record(
-            "artifact.produced",
-            ("artifact", "r1"),
-            report | {"identity_kind": "content", "type_version": 1, "content_digest": "blake3:r1"},
-            body=b"# Report\n",
+        prior = log.read(
+            "SELECT spec FROM definition WHERE family = 'event_type'"
+            " AND name = 'artifact.produced' AND version = 1"
+        )[0][0]
+        key = {"family": "event_type", "name": "artifact.produced", "version": 2}
+        log.record(
+            "definition.registered",
+            ("definition", "event_type/artifact.produced"),
+            key,
+            text=json.dumps(
+                key
+                | {
+                    "relation": "equal",
+                    "text": "An artifact profile may carry its shape as machine text.",
+                    "spec": json.loads(prior) | {"text": "optional"},
+                }
+            ),
         )
-    with closing(attach(root)) as con:
-        profile = con.execute("SELECT produced_seq, body_state FROM artifact").fetchone()
-        body = con.execute("SELECT body FROM artifact_body WHERE artifact_id = 'r1'").fetchone()
-    assert (tuple(profile), body[0]) == ((seq, "present"), b"# Report\n")
+        for name, version, attrs, shape, profile in (
+            ("legacy", 1, report | {"shape": small}, small, None),
+            ("attrs", 2, report | {"shape": small}, small, None),
+            ("text", 2, report, large, text),
+        ):
+            seq = log.record(
+                "artifact.produced",
+                ("artifact", name),
+                attrs,
+                text=profile,
+                body=b"# Report\n",
+                version=version,
+            )
+            expected[name] = (seq, "present", shape, b"# Report\n")
+        projected = log.read("SELECT shape FROM artifact WHERE artifact_id = 'text'")[0][0]
+        assert json.loads(projected or "null") == large
+        log.record("record.forgotten", attrs={"seq": expected["legacy"][0]})
+        with pytest.raises(DataError) as protected:
+            log.record("record.forgotten", attrs={"seq": seq})
+        assert protected.value.failure.code == "data_layer.record_unforgettable"
+
+    query = (
+        "SELECT a.artifact_id, a.produced_seq, a.body_state, a.shape, b.body"
+        " FROM artifact a JOIN artifact_body b USING (artifact_id)"
+    )
+    with (
+        closing(attach(root)) as con,
+        closing(host.replay(con, root.parent / "profiles-replay.sqlite")) as rebuilt,
+    ):
+        for ledger in (con, rebuilt):
+            assert {
+                row[0]: (row[1], row[2], json.loads(row[3]), row[4])
+                for row in ledger.execute(query)
+            } == expected
+            assert verify_whole(ledger) and verify_from_checkpoint(ledger)
+
+    with closing(sqlite3.connect(root / "machine" / "log.sqlite")) as con:
+        con.row_factory = sqlite3.Row
+        con.execute("DELETE FROM event_text WHERE seq = ?", (seq,))
+        assert not verify_whole(con) and not verify_from_checkpoint(con)
+        with pytest.raises(DataError) as missing:
+            host.replay(con, root.parent / "missing-profile.sqlite")
+        assert missing.value.failure.code == "data_layer.artifact_profile_invalid"
 
 
 @pytest.mark.proves("data_layer.chain_catches_a_rewritten_event")

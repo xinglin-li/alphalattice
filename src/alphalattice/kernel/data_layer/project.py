@@ -1,6 +1,6 @@
 """Each event type's projection: the rows of log.sqlite that derive from the event log.
 
-A projection reads the event's own fields, its attributes and, for a definition, its text; never a
+A projection reads the event's own fields, its attributes and its machine text; never a
 clock, a file or another store. `log.replay` also supplies the retained IDs for historical
 registrations. `differences` names any projected table that
 does not. The meaning of each type is the 0.2.8 reference's (tools/records/2026-11/2026-11-14/
@@ -23,9 +23,12 @@ from datetime import datetime, timedelta
 from typing import Any, Final
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, digest
 
 ENDED: Final = ("completed", "failed", "cancelled")
+ARTIFACT_PROFILE_TEXT_VERSION: Final = 2
+"""The artifact.produced version whose optional machine text is the profile's JSON shape."""
 RECIPE_ENCODING: Final = 1
 """The version of recipe_key's typed binary encoding, its first byte; a new encoding is a new
 version, so a key never changes meaning."""
@@ -1107,7 +1110,7 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     kind = require_lineage(con, "artifact_type", a["type"])
     values = [e["subject_id"], a["identity_kind"], kind, a["type_version"]]
     values += [a["meaning"], a.get("recipe_key"), a.get("selection_id"), trial]
-    values += [_json(a.get("shape")), a.get("valid_from"), a.get("valid_to")]
+    values += [_json(_artifact_shape(e, a, text)), a.get("valid_from"), a.get("valid_to")]
     values += [a.get("row_count"), a.get("size_bytes"), a.get("content_digest")]
     state = "never_stored" if a["storage"] == "none" else "present"
     con.execute(
@@ -1125,6 +1128,24 @@ def _artifact(con: Con, e: Row, a: Attrs, text: str | None) -> None:
         )
     if a.get("held"):  # the workspace that keeps it holds it from its first write
         _hold(con, e)
+
+
+def _artifact_shape(e: Row, a: Attrs, text: str | None) -> Any:
+    """Project the v2 shape from bound machine text and preserve historical shapes."""
+    if e["type_version"] != ARTIFACT_PROFILE_TEXT_VERSION or e["text_digest"] is None:
+        # contract: keep the attribute form while logs can replay producers without profile text.
+        return a.get("shape")
+    try:
+        shape = json.loads(text) if text is not None else None
+    except json.JSONDecodeError as exc:
+        raise _refuse("artifact_profile_invalid", "artifact profile text is not JSON") from exc
+    if not isinstance(shape, dict) or "shape" in a:
+        raise _refuse(
+            "artifact_profile_invalid", "an artifact profile needs one JSON shape in its bound text"
+        )
+    if hits := secrets_in(shape):
+        raise _refuse("event_secret", f"{', '.join(hits)} would make a credential permanent")
+    return shape
 
 
 @on("result.recorded")
@@ -1357,11 +1378,19 @@ def _tag_removed(con: Con, e: Row, a: Attrs, text: str | None) -> None:
 
 @on("record.forgotten")
 def _forgotten(con: Con, e: Row, a: Attrs, text: str | None) -> None:
-    target = con.execute("SELECT type FROM event WHERE seq = ?", (a["seq"],)).fetchone()
-    if target is None or target[0] in MACHINE_TEXT:
+    """Forget an event's text only when replay does not need the text to rebuild it."""
+    target = con.execute(
+        "SELECT type, type_version, text_digest FROM event WHERE seq = ?", (a["seq"],)
+    ).fetchone()
+    profile_text = ("artifact.produced", ARTIFACT_PROFILE_TEXT_VERSION)
+    if (
+        target is None
+        or target[0] in MACHINE_TEXT
+        or (tuple(target)[:2] == profile_text and target[2])
+    ):
         raise _refuse(
             "record_unforgettable",
-            "a definition's text rebuilds the registry, and a Task's records are their texts",
+            "machine text rebuilds definitions, Task records and artifact profiles",
         )
     con.execute("DELETE FROM event_text WHERE seq = ?", (a["seq"],))  # the event and digest stay
 
