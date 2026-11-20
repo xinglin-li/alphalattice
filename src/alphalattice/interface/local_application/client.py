@@ -32,6 +32,7 @@ from alphalattice.interface.local_application.cli_contract import (
     EXIT_CODES,
     INSTANCE_HEADER,
     MAXIMUM_REQUEST_BODY_BYTES,
+    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     WAIT_EXITS,
     WORKSPACE_FROM,
     WORKSPACE_HEADER,
@@ -262,6 +263,10 @@ class LocalResearchClient:
             if (path := codex_command()[0]) is not None:
                 document = {**document, "wake_codex_path": path}
         return self._exchange("/api/client/operations", document, timeout=timeout)
+
+    def publish_sector_development(self, document: dict[str, Any]) -> dict[str, Any]:
+        """Ask the served workspace to publish a Sector development experiment."""
+        return self._exchange(SECTOR_DEVELOPMENT_PUBLISH_PATH, document)[0]
 
     def activity(
         self,

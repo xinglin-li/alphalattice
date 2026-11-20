@@ -21,7 +21,7 @@ from typing import Any, Final, cast, get_args
 from urllib.parse import urlencode
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from alphalattice.control.data_platform.readiness import SourceLoader
 from alphalattice.control.product_host.composition.application_session import (
@@ -147,6 +147,7 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
 from alphalattice.evidence.alternative_evidence.publication.analysis import (
     AlternativeEvidenceAnalysisPublicationService,
@@ -178,6 +179,7 @@ from alphalattice.interface.local_application.activity import (
 from alphalattice.interface.local_application.call_span import CALL_PATH
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
+    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     RequestProvenance,
     agent_session,
     refusal_words,
@@ -1530,6 +1532,66 @@ def read_workbench_portfolio(
     return body
 
 
+def mount_sector_development_publish(
+    web: LocalWebApplication, workspace: Path, mutation_gate: WorkspaceMutationGate
+) -> None:
+    """Publish and verify through the served workspace's existing Host writer."""
+
+    @web.route("POST", SECTOR_DEVELOPMENT_PUBLISH_PATH, mutates=True, external_client=True)
+    def publish(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+        from alphalattice.control.workspace_runtime.artifacts import (  # lazy: publish
+            ArtifactResolver,
+        )
+        from alphalattice.foundation.causal_outcomes.execution.readers import (  # lazy: publish
+            CausalExecutionOutcomeDevelopmentReader,
+        )
+        from alphalattice.investment.sector_research.experiments.service import (  # lazy: publish
+            SectorExperimentRequest,
+            SectorResearchDevelopmentService,
+        )
+
+        try:
+            request = TypeAdapter(SectorExperimentRequest).validate_python(payload, extra="forbid")
+        except ValidationError as error:
+            raise LocalWebError("local_client.request_invalid") from error
+
+        artifacts = workspace / "artifacts"
+        service = SectorResearchDevelopmentService(
+            artifact_root=artifacts,
+            outcome_reader=CausalExecutionOutcomeDevelopmentReader(artifacts),
+            resolver=ArtifactResolver(artifacts),
+        )
+        try:
+            with mutation_gate.hold():
+                published = service.publish(request)
+                lineage = service.verify(experiment_hash=published.experiment.experiment_hash)
+        except FileNotFoundError as error:
+            if owner_failure_code(error) is not None:
+                raise
+            return {
+                "action": "UNRESOLVED",
+                "failure_code": "sector_research.evidence_not_published",
+                "current_pointer_writes": 0,
+            }
+
+        return {
+            "action": "PUBLISHED",
+            "experiment_hash": published.experiment.experiment_hash,
+            "sector_target_evidence_hash": published.target_evidence.evidence_hash,
+            "forecast_surface_hash": published.surface.surface_hash,
+            "evaluation_hash": published.evaluation.evaluation_hash,
+            "causal_outcome_snapshot_hash": lineage.outcome_snapshot_hash,
+            "outcome_method_binding_hash": lineage.outcome_method_binding_hash,
+            "maturity_lag_sessions": lineage.maturity_lag_sessions,
+            "method_id": published.surface.recipe.method_id,
+            "formation_count": len(published.formation_sessions),
+            "forecast_formation_count": len(published.forecast_formation_sessions),
+            "sector_count": len(published.ordered_sectors),
+            "current_pointer_writes": 0,
+            "alpha_model_fits": 0,
+        }
+
+
 def build_local_web_application(
     *,
     service: LocalPortfolioResearchService | None,
@@ -1543,6 +1605,8 @@ def build_local_web_application(
     if activity is not None:
         _activity_routes(web, activity)
     _native_session_routes(web, operations)
+    session = operations.workspace_session
+    mount_sector_development_publish(web, session.workspace, session.mutation_gate)
 
     # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)

@@ -17365,6 +17365,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Required installed, stored, or bound evidence state cannot satisfy _verify_child_lineage; repair/setup/replan before retry. IF experiment.method_id != surface.recipe.method_id"
 },
+"sector_research.evidence_not_published": {
+"owner": "sector_research",
+"category": "NOT_FOUND",
+"classification_note": "The outcome or Sector evidence named by the request has not been published in this workspace."
+},
 "sector_research.evidence_outcome_clock_mismatch": {
 "owner": "sector_research",
 "category": "FAILED_PRECONDITION"

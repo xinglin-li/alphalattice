@@ -19,8 +19,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import date, timedelta
+from functools import wraps
 from pathlib import Path
+from threading import current_thread
 
 import numpy as np
 import pyarrow as pa
@@ -46,6 +50,7 @@ from alphalattice.investment.sector_research.experiments.development_artifacts i
     SECTOR_FORECAST_EVALUATION_CATEGORY,
     SECTOR_FORECAST_SURFACE_CATEGORY,
     SECTOR_TARGET_EVIDENCE_CATEGORY,
+    SectorDevelopmentArtifactStore,
     SectorExperimentEvidence,
     sector_artifact_uri,
 )
@@ -562,7 +567,10 @@ def sector_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_r
 
 
 def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type: ignore[no-untyped-def]
-    sector_publication, real_risk_workspace: RealRiskWorkspace, monkeypatch: pytest.MonkeyPatch
+    sector_publication,
+    real_risk_workspace: RealRiskWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Host derives every identity and the verifier walks to the seal."""
 
@@ -583,7 +591,7 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     assert lineage.outcome_method_binding_hash == seal.method_bound.binding_hash
     assert lineage.surface.surface_hash == ewma.surface.surface_hash
 
-    # Upgrade the real workspace's old results, then compare both reader settings.
+    # Seed a legacy workspace before comparing its two readers across upgrade.
     from types import SimpleNamespace
 
     from alphalattice.investment.sector_research.experiments.development_artifacts import (
@@ -592,16 +600,21 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     from alphalattice.kernel.data_layer import history
 
     family = sector_results_upgrade_family()
+    legacy_workspace = tmp_path / "legacy-workspace"
+    store = SectorDevelopmentArtifactStore(legacy_workspace / "artifacts")
     monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "legacy")
+    store.publish_experiment_results(
+        ewma.target_evidence, ewma.surface, ewma.evaluation, ewma.experiment
+    )
     reads = (
         (
             ewma.target_evidence,
             ewma.target_evidence.evidence_hash,
-            service.store.load_target_evidence,
+            store.load_target_evidence,
         ),
-        (ewma.surface, ewma.surface.surface_hash, service.store.load_forecast_surface),
-        (ewma.evaluation, ewma.evaluation.evaluation_hash, service.store.load_evaluation),
-        (ewma.experiment, ewma.experiment.experiment_hash, service.store.load_experiment_evidence),
+        (ewma.surface, ewma.surface.surface_hash, store.load_forecast_surface),
+        (ewma.evaluation, ewma.evaluation.evaluation_hash, store.load_evaluation),
+        (ewma.experiment, ewma.experiment.experiment_hash, store.load_experiment_evidence),
     )
     old = tuple(read(digest) for _, digest, read in reads)
     categories = (
@@ -610,21 +623,21 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
         "development/sector-forecast-evaluations",
         "development/sector-experiment-evidence",
     )
-    old_lists = tuple(service.store.list_category(category) for category in categories)
+    old_lists = tuple(store.list_category(category) for category in categories)
     runner = SimpleNamespace(
-        workspaces=(real_risk_workspace.workspace,),
+        workspaces=(legacy_workspace,),
         log=history._open["log"],
         root=history._open["root"],
         map_id=lambda _family, _digest, artifact: artifact,
     )
-    assert family.holds(real_risk_workspace.workspace)
+    assert family.holds(legacy_workspace)
     family.step(runner)
     assert family.verify(runner)
     monkeypatch.setenv("ALPHALATTICE_SECTOR_RESULTS_STORE", "catalog")
     assert tuple(read(digest) for _, digest, read in reads) == old
-    assert tuple(service.store.list_category(category) for category in categories) == old_lists
+    assert tuple(store.list_category(category) for category in categories) == old_lists
     with pytest.raises(FileNotFoundError, match="sector artifact is missing"):
-        service.store.load_target_evidence("0" * 64)
+        store.load_target_evidence("0" * 64)
     for value, digest, read in reads[:2]:
         profile, rows = history.read_sector_result(digest)
         assert profile == {"descriptor": digest}
@@ -673,7 +686,10 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
     store = service.store
 
     surface_path = (
-        store.root / SECTOR_FORECAST_SURFACE_CATEGORY / f"{ewma.surface.surface_hash}.json"
+        store.root
+        / "result-descriptors"
+        / SECTOR_FORECAST_SURFACE_CATEGORY
+        / f"{ewma.surface.surface_hash}.json"
     )
     original = surface_path.read_bytes()
     try:
@@ -686,16 +702,27 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
         surface_path.write_bytes(original)
     service.verify(experiment_hash=ewma.experiment.experiment_hash)
 
-    evaluation_path = (
-        store.root / SECTOR_FORECAST_EVALUATION_CATEGORY / f"{ewma.evaluation.evaluation_hash}.json"
+    from alphalattice.kernel.data_layer import history
+
+    log = history.held()
+    profile = history._sector_result_profile(
+        log.read,
+        ewma.evaluation.evaluation_hash,
+        "sector_evaluation",
+        ewma.experiment.experiment_hash,
     )
-    saved = evaluation_path.read_bytes()
-    try:
-        evaluation_path.unlink()
-        with pytest.raises(SectorResearchError, match="evidence_child_missing"):
-            service.verify(experiment_hash=ewma.experiment.experiment_hash)
-    finally:
-        evaluation_path.write_bytes(saved)
+    assert profile is not None
+    artifact = profile[0]
+
+    @contextmanager
+    def collect_evaluation() -> Iterator[None]:
+        # The refusal rolls back the collection event before the next read.
+        with log.unit():
+            log.record("artifact.collected", ("artifact", artifact))
+            yield
+
+    with pytest.raises(SectorResearchError, match="evidence_child_missing"), collect_evaluation():
+        service.verify(experiment_hash=ewma.experiment.experiment_hash)
     service.verify(experiment_hash=ewma.experiment.experiment_hash)
 
     # Reordered children cannot even be sealed: order is part of the contract.
@@ -752,7 +779,9 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
         store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY / f"{forged.experiment_hash}.json"
     )
     try:
-        store.publish_experiment_evidence(forged)
+        store.publish_experiment_results(
+            ewma.target_evidence, ewma.surface, zero.evaluation, forged
+        )
         with pytest.raises(SectorResearchError, match="evaluation_not_this_surface"):
             service.verify(experiment_hash=forged.experiment_hash)
     finally:
@@ -844,7 +873,9 @@ def test_selection_resolution_is_owned_by_sector_and_refuses_wrong_axes(  # type
 
 
 def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-def]
-    sector_publication, real_risk_workspace: RealRiskWorkspace
+    sector_publication,
+    real_risk_workspace: RealRiskWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The installed sector CLI publishes and inspects the same sealed evidence with identical
     hashes."""
@@ -854,34 +885,76 @@ def test_the_installed_cli_publishes_and_inspects(  # type: ignore[no-untyped-de
     environment = dict(os.environ)
     environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
 
-    published = spawn.run(
-        [
-            sys.executable,
-            str(script),
-            "--workspace",
-            str(real_risk_workspace.workspace),
-            "--publish",
-            "--snapshot-hash",
-            snapshot_hash,
-            "--sector-revision",
-            revision,
-            "--method",
-            "ZERO_SECTOR_FORECAST",
-            "--training-start",
-            first.isoformat(),
-            "--training-end",
-            last.isoformat(),
-            "--forecast-start",
-            first.isoformat(),
-            "--forecast-end",
-            (last + timedelta(days=30)).isoformat(),
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=environment,
-        check=True,
+    from alphalattice.control.product_host.composition.local_web_connection import (
+        publish_client_connection,
+        remove_client_connection,
+        workspace_web,
     )
+    from alphalattice.control.product_host.composition.local_web_session import (
+        mount_sector_development_publish,
+    )
+    from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+    from alphalattice.interface.local_application.client import LocalResearchConnection
+    from alphalattice.interface.local_application.web import LocalWebService
+
+    mutation_gate = WorkspaceMutationGate()
+
+    def while_held[**P, R](operation: Callable[P, R]) -> Callable[P, R]:
+        @wraps(operation)
+        def checked(*args: P.args, **kwargs: P.kwargs) -> R:
+            holder = mutation_gate.holder()
+            assert holder is not None and holder["thread"] == current_thread().name
+            return operation(*args, **kwargs)
+
+        return checked
+
+    for operation in ("publish", "verify"):
+        method = getattr(SectorResearchDevelopmentService, operation)
+        monkeypatch.setattr(SectorResearchDevelopmentService, operation, while_held(method))
+
+    workspace = real_risk_workspace.workspace
+    web = workspace_web(workspace, None)
+    mount_sector_development_publish(web, workspace, mutation_gate)
+    with LocalWebService(application=web) as host:
+        connection = LocalResearchConnection(
+            workspace=str(workspace.resolve()),
+            workspace_id="methodology-outcomes",
+            url=host.url,
+            instance=web.external_instance,
+            token=web.external_token,
+        )
+        publish_client_connection(connection)
+        try:
+            published = spawn.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--workspace",
+                    str(real_risk_workspace.workspace),
+                    "--publish",
+                    "--snapshot-hash",
+                    snapshot_hash,
+                    "--sector-revision",
+                    revision,
+                    "--method",
+                    "ZERO_SECTOR_FORECAST",
+                    "--training-start",
+                    first.isoformat(),
+                    "--training-end",
+                    last.isoformat(),
+                    "--forecast-start",
+                    first.isoformat(),
+                    "--forecast-end",
+                    (last + timedelta(days=30)).isoformat(),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+                check=True,
+            )
+        finally:
+            remove_client_connection(connection)
     result = json.loads(published.stdout)
     assert result["action"] == "PUBLISHED"
     assert result["experiment_hash"] == zero.experiment.experiment_hash
@@ -994,22 +1067,17 @@ def _reseal_forged_experiment(  # type: ignore[no-untyped-def]
             sector_artifact_uri(SECTOR_FORECAST_EVALUATION_CATEGORY, evaluation.evaluation_hash),
         ),
     )
-    written = []
-    if target_evidence is not None:
-        store.publish_target_evidence(target)
-        written.append(
-            store.root / SECTOR_TARGET_EVIDENCE_CATEGORY / f"{target.evidence_hash}.json"
-        )
-    store.publish_forecast_surface(surface)
-    store.publish_evaluation(evaluation)
-    store.publish_experiment_evidence(root)
-    written.extend(
-        (
-            store.root / SECTOR_FORECAST_SURFACE_CATEGORY / f"{surface.surface_hash}.json",
-            store.root / SECTOR_FORECAST_EVALUATION_CATEGORY / f"{evaluation.evaluation_hash}.json",
-            store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY / f"{root.experiment_hash}.json",
-        )
+    descriptors = store.root / "result-descriptors"
+    children = (
+        descriptors / SECTOR_TARGET_EVIDENCE_CATEGORY / f"{target.evidence_hash}.json",
+        descriptors / SECTOR_FORECAST_SURFACE_CATEGORY / f"{surface.surface_hash}.json",
+        descriptors / SECTOR_FORECAST_EVALUATION_CATEGORY / f"{evaluation.evaluation_hash}.json",
     )
+    written = [path for path in children if not path.exists()]
+    written.append(
+        store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY / f"{root.experiment_hash}.json"
+    )
+    store.publish_experiment_results(target, surface, evaluation, root)
     return root.experiment_hash, written
 
 

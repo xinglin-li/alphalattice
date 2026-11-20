@@ -83,7 +83,7 @@ A workspace's market data enters the data root's world when the Host opens it. I
 
 Execution outcomes are kept in the machine's data-root catalog. `ALPHALATTICE_EXECUTION_OUTCOME_STORE=legacy` reads retained pre-upgrade outcome files for rollback; `catalog` selects the catalog and is the default. Newly published outcomes have catalog bodies only, so the legacy setting can read them only when their earlier files remain. Other setting values are refused.
 
-At the first 0.2.8 start, the upgrade copies and verifies Sector development target values, forecast series and evaluation measures in the data-root catalog and leaves their workspace files in place. `ALPHALATTICE_SECTOR_RESULTS_STORE=legacy` reads the retained files for rollback. `catalog` is the data-root default. New results written to the catalog have no legacy file. Other values are refused with `sector_research.results_store_invalid`.
+At the first 0.2.8 start, the upgrade copies and verifies Sector development target values, forecast series and evaluation measures in the data-root catalog and leaves their workspace files in place. `ALPHALATTICE_SECTOR_RESULTS_STORE=legacy` reads the retained files for rollback. `catalog` is the data-root default. New results written to the catalog have no legacy file. Other values are refused with `sector_research.results_store_invalid`. Start the workspace's Host before using `scripts/run_sector_research_development.py --publish`. The command sends publication to that Host.
 
 Alpha development publishes its validation and score rows to the data-root catalog
 and records candidate summary measures in the log. A workspace on a data root

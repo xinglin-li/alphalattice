@@ -188,6 +188,8 @@ INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
 """The client's wire to the Host: the connection's token, the workspace's key and the Host
 instance, one header each, checked by the Host's boundary (`web.py`)."""
 
+SECTOR_DEVELOPMENT_PUBLISH_PATH: Final = "/api/client/sector-development/publish"
+
 AGENT_VENDOR_HEADER: Final = "X-Alphalattice-Agent-Vendor"
 AGENT_SESSION_HEADER: Final = "X-Alphalattice-Agent-Session"
 GOAL_HEADER: Final = "X-Alphalattice-Goal"

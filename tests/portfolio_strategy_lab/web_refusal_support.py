@@ -27,6 +27,7 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_VENDOR_HEADER,
     CLIENT_HEADER,
     INSTANCE_HEADER,
+    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     WORKSPACE_HEADER,
     command_table,
     refusal_words,
@@ -202,6 +203,7 @@ PUBLIC_SEAMS = frozenset(
         "admitted_session_project",
         "record",
         "receive",
+        "publish",
     }
 )
 ACTIVATION_OPERATIONS = frozenset({"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"})
@@ -349,6 +351,19 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
                 None,
             ),
             ("POST", call_span.CALL_PATH): ({"ended_us": 2, "exit_code": 0}, "record", None),
+            ("POST", SECTOR_DEVELOPMENT_PUBLISH_PATH): (
+                {
+                    "causal_outcome_snapshot_hash": HASH,
+                    "sector_revision": HASH,
+                    "method_id": "sector_persistence",
+                    "training_start": "2024-08-01",
+                    "training_end": "2024-08-02",
+                    "forecast_start": "2024-08-05",
+                    "forecast_end": "2024-08-09",
+                },
+                "publish",
+                None,
+            ),
         }
     )
     for signal in ("logs", "traces", "metrics"):
@@ -368,6 +383,13 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
 
 
 def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
+    """Find the public method a route calls, with its owner when one instance is held."""
+    if seam == "publish":
+        from alphalattice.investment.sector_research.experiments.service import (
+            SectorResearchDevelopmentService,
+        )
+
+        return SectorResearchDevelopmentService, seam, None
     if seam == "load_authoring_document":
         return authoring_document, seam, None
     if seam == "admitted_session_project":

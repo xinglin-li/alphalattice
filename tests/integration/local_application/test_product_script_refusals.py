@@ -821,7 +821,7 @@ def test_a_denied_store_reports_the_os_cause_before_any_download(
     assert "NEVER-PRINT-ME" not in json.dumps(payload) and fetched == []
 
 
-def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsys):
+def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsys, tmp_path):
     """regression: missing host declarations, native binding refusals and a failed node/check
     step are worded too, not just OS writes covered by the original writer pin."""
     from scripts import build_local_web_ui as assets
@@ -860,6 +860,32 @@ def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsy
     assert payload["causes"][0]["exit_code"] == 1
     assert payload["detail"] and payload["next_action"]
     assert "NEVER-PRINT-ME" not in json.dumps(payload)
+
+    from scripts import run_sector_research_development as sector
+
+    required = {
+        "workspace": str(tmp_path),
+        "snapshot-hash": "a" * 64,
+        "sector-revision": "b" * 64,
+        "method": "sector_persistence",
+        "training-start": "2024-08-01",
+        "training-end": "2024-08-02",
+        "forecast-start": "2024-08-05",
+        "forecast-end": "2024-08-09",
+    }
+    assert (
+        sector.main(
+            [
+                "--publish",
+                *(part for name, value in required.items() for part in ("--" + name, value)),
+            ]
+        )
+        == 2
+    )
+    answer = _refusal(capsys)
+    assert answer["failure_code"] == "local_client.service_not_running"
+    assert answer["current_pointer_writes"] == 0 and list(tmp_path.iterdir()) == []
+    assert "Start one" in answer["detail"]
 
 
 # The setup entry is exercised only against synthetic offline installations.
