@@ -320,6 +320,36 @@
       "layer": "unit",
       "seconds": 1
     },
+    "composition.a_book_is_sealed_at_the_product_floors": {
+      "description": "The product's own recipe seals the sufficient set's strategy book on Alpha's 1,260-session window, over at least 100 listings, with calibration's 80-member rule and a top-k inside its range.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 900,
+      "lower_layer": "Only the whole road of Data, Alpha, Risk, strategy preparation and the book shows the floors the product's recipe actually reached together.",
+      "exception": {
+        "kinds": [
+          "large",
+          "over_budget"
+        ],
+        "why": "It builds the strategy-book road once at the floors' scale: the nightly's one holder of the floors the book's journeys stand on.",
+        "decided": "2026-11-19: admitted nightly-only as the floors' single holder."
+      }
+    },
+    "composition.a_network_stopped_update_resumes_by_its_stop": {
+      "description": "An activated book's update stopped on the network resumes by the way its stop names, whichever switch holds it.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 900,
+      "lower_layer": "Only a whole Host serving an activated book through its real Task, data and update stages shows this behaviour end to end.",
+      "exception": {
+        "kinds": [
+          "large",
+          "over_budget"
+        ],
+        "why": "It copies the strategy-book road at the floors' scale, replacing a journey that copied the private QA store.",
+        "decided": "2026-11-20: a journey moved from the QA-store copy to the private strategy-book road."
+      }
+    },
     "composition.achieved_goal_has_a_deliverable": {
       "description": "An achieved Goal must deliver a verified reference even when the original declaration named no deliverable slot.",
       "owner": "alphalattice.control.product_host.composition",
@@ -339,6 +369,21 @@
       "layer": "integration",
       "seconds": 30,
       "lower_layer": "The refusal, Task registry and Portfolio controls are read together through the running Host."
+    },
+    "composition.book_controls_round_trip_their_flat_declaration": {
+      "description": "The installed book's controls give its editable declaration, saving and loading it keeps the defaults, and the named preview accepts that flat document.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 900,
+      "lower_layer": "Only a whole Host serving an activated book through its real Task, data and update stages shows this behaviour end to end.",
+      "exception": {
+        "kinds": [
+          "large",
+          "over_budget"
+        ],
+        "why": "It copies the strategy-book road at the floors' scale, replacing a journey that copied the private QA store.",
+        "decided": "2026-11-20: a journey moved from the QA-store copy to the private strategy-book road."
+      }
     },
     "composition.capacity_blocked_study_resumes": {
       "description": "A study stopped by a storage cap resumes its same confirmed Task only after capacity and unchanged input are restored.",

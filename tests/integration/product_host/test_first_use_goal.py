@@ -69,6 +69,8 @@ decision_hash = research_requests.decision_hash
 SESSION = "00000000-0000-4000-8000-0000000000f1"
 OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
 ELSEWHERE = ("1" * 32, "2" * 16)  # a call the same session made in another workspace
+PLANTED = ("3" * 32, "4" * 16)  # its next call there, after the planted gap
+PLANTED_GAP_US = 5_000_000
 PASSED = ("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331")
 """A caller's own trace and span, passed as its TRACEPARENT."""
 RELAY = ("--person-said", "Yes, go ahead.", "--asked", "May I widen the SEC budget?")
@@ -286,24 +288,36 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
             conversation=SESSION,
             ended=(now + 1, 0),
         )
+        # The gap the split is proved on is the test's own: the session's next call there five
+        # seconds on, so a fast machine's microsecond gaps between real calls decide nothing.
+        resumed = now + 1 + PLANTED_GAP_US
+        history.call(
+            (PLANTED[0], PLANTED[1], None),
+            resumed,
+            {"command": "goal show", "gen_ai.conversation.id": SESSION},
+            caller=("agent", SESSION),
+            conversation=SESSION,
+            ended=(resumed + 1, 0),
+        )
     goal = history.goal_trace(opened["goal_id"], [SESSION])  # the session that worked for it
-    assert ELSEWHERE[1] not in {call["span_id"] for call in goal["calls"]}
-    gap = goal["agent"][0]  # the spike's native records laid over the session's first gap
-    native = native_first_use(SESSION, gap["started_us"], gap["ended_us"])
-    split = history.goal_trace(opened["goal_id"], [SESSION], native)
+    assert not {ELSEWHERE[1], PLANTED[1]} & {call["span_id"] for call in goal["calls"]}
+    native = native_first_use(SESSION, now + 1, resumed)  # the spike's records over that gap
+    split = history.goal_trace(opened["goal_id"], [SESSION], native, workspace=elsewhere)
     _assert_each_command_is_one_call(log, before, goal)
-    first, breakdown = split["agent"][0], split["breakdown"]
+    first = split["agent"][0]
+    assert (first["started_us"], first["ended_us"]) == (now + 1, resumed)
     shares = {
         kind: first[f"{kind}_seconds"] / first["seconds"]
         for kind in ("person", "tool", "model", "unattributed")
     }
     planted = {"person": 0.18, "tool": 0.14, "model": 0.46, "unattributed": 0.22}
     assert shares == pytest.approx(planted, abs=1e-3)
-    assert breakdown["agent_split"] == "NATIVE_EVENTS"
+    assert split["breakdown"]["agent_split"] == "NATIVE_EVENTS"
+    breakdown = goal["breakdown"]  # the Host's own calls
     # The share is wall time, so its size moves with the machine's load (the bound itself is proved
     # on a planted gap); the run reads it as the untraced part of its calls, each over the bound
     # flagged on its own.
-    calls = split["calls"]
+    calls = goal["calls"]
     walls = [c["ended_us"] - c["started_us"] for c in calls]
     assert breakdown["untraced_share"] == pytest.approx(
         breakdown["untraced_seconds"] / breakdown["call_seconds"], abs=1e-5

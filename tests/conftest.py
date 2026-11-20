@@ -777,6 +777,24 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 base = base.parent
             with environment.project_scope(base, base):
                 builder.session_fresh_seed(factory)
+    # A collected module whose cases read a shared world too slow to build inside a case's
+    # bound names its warm (`WARM_BEFORE_TESTS`): published here, under the same golden run
+    # `golden_cache` binds, so it is the keyed entry its cases read.
+    warms = {
+        warm: None
+        for item in session.items
+        for warm in getattr(getattr(item, "module", None), "WARM_BEFORE_TESTS", ())
+    }
+    if warms and not session.config.option.collectonly:
+        temporary = session.config._tmp_path_factory.getbasetemp()
+        base = temporary.parent if os.environ.get("PYTEST_XDIST_WORKER") else temporary
+        kwargs = {}
+        if hasattr(evaluation, "GoldenRuntime"):
+            kwargs.update(runtime=environment.golden_runtime(), controller=False)
+        run = getattr(evaluation, "golden_run", nullcontext)(temporary, **kwargs)
+        with environment.project_scope(base, base), run:
+            for warm in warms:
+                warm(base)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

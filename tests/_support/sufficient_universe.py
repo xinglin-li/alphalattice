@@ -68,9 +68,9 @@ LISTINGS: tuple[Listing, ...] = (*development.LISTINGS, *map(_generated, range(G
 SYMBOLS = tuple(item.symbol for item in LISTINGS)
 
 
-def calendar_sessions() -> tuple[date, ...]:
-    """The US sessions from eight years before `AS_OF` through `THROUGH`."""
-    return development.calendar_sessions(end=THROUGH, standard=STANDARD)
+def calendar_sessions(end: date = THROUGH) -> tuple[date, ...]:
+    """The US sessions from eight years before `AS_OF` through `end`."""
+    return development.calendar_sessions(end=end, standard=STANDARD)
 
 
 def bootstrap(observed_at: datetime = OBSERVED_AT) -> CurrentUniverseBootstrap:
@@ -89,13 +89,15 @@ def sufficient_provider(
     clock: Callable[[], datetime] = lambda: OBSERVED_AT,
     moved: Sequence[str] = (),
     moved_sessions: int = 1,
+    through: date = THROUGH,
 ) -> DevelopmentProvider:
-    """The sufficient set's provider: the development provider over these listings and years."""
+    """The sufficient set's provider: the development provider over these listings and years,
+    served through `through` (a dated journey's own last session)."""
     return DevelopmentProvider(
         clock=clock,
         moved=moved,
         moved_sessions=moved_sessions,
-        sessions=calendar_sessions(),
+        sessions=calendar_sessions(through),
         listings=LISTINGS,
         row_cap=ROW_CAP,
     )

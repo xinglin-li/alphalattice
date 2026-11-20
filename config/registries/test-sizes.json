@@ -2032,23 +2032,9 @@
       "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "The network-stop journey writes the activated strategy's market and resumes the same Task under operator and workspace network controls; the installed whole book requires over 521 formations.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due*",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "The owning update starts from the admitted checkpoint of an installed whole book with over 521 formations and resumes on its own working membership.",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
-      "size_contract": "nightly_only"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_installed_book_controls_saves_the_flat_declaration_its_preview_reads*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "The existing installed-book replay stays nightly while its development fixture cannot seal a kept payload with a hard link outside the workspace.",
       "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
       "size_contract": "nightly_only"
     },
