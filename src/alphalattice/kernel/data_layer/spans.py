@@ -54,22 +54,32 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import NUMERIC, secrets_in
 from alphalattice.kernel.data_layer.log import HostLog, envelope
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import offline
 
-PREFIX: Final = "alphalattice."
-BAGGAGE_KEYS: Final = (
-    "workspace_id",
-    "trial_id",
-    "selection_id",
-    "goal_id",
-    "actor_kind",
-    "actor_id",
+PREFIX: Final = telemetry.ALPHALATTICE_ATTRIBUTE_PREFIX
+_BAGGAGE_ATTRIBUTES: Final = (
+    telemetry.ALPHALATTICE_WORKSPACE_ID,
+    telemetry.ALPHALATTICE_TRIAL_ID,
+    telemetry.ALPHALATTICE_SELECTION_ID,
+    telemetry.ALPHALATTICE_GOAL_ID,
+    telemetry.ALPHALATTICE_ACTOR_KIND,
+    telemetry.ALPHALATTICE_ACTOR_ID,
 )
+BAGGAGE_KEYS: Final = tuple(key.removeprefix(PREFIX) for key in _BAGGAGE_ATTRIBUTES)
 """What a step works for and who it acts for, carried as baggage under PREFIX into every span and
 log record below it."""
-_STAMPED: Final = frozenset(PREFIX + key for key in BAGGAGE_KEYS)
+_STAMPED: Final = frozenset(_BAGGAGE_ATTRIBUTES)
 _ENVELOPE: Final = frozenset(
-    {"subject_kind", "subject_id", "workspace_id", "actor_kind", "actor_id", "node"}
+    key.removeprefix(PREFIX)
+    for key in (
+        telemetry.ALPHALATTICE_SUBJECT_KIND,
+        telemetry.ALPHALATTICE_SUBJECT_ID,
+        telemetry.ALPHALATTICE_WORKSPACE_ID,
+        telemetry.ALPHALATTICE_ACTOR_KIND,
+        telemetry.ALPHALATTICE_ACTOR_ID,
+        telemetry.ALPHALATTICE_NODE,
+    )
 )
 """The PREFIX attributes the step event's envelope takes; any other stays an attribute."""
 _PROPAGATORS: Final = (TraceContextTextMapPropagator(), W3CBaggagePropagator())

@@ -1,0 +1,27 @@
+templates:
+  - template: telemetry_names.py.j2
+    filter: >
+      ([.registry.attributes[], .registry.spans[].attributes[], .refinements.spans[].attributes[]] |
+        unique_by(.key)) as $attrs |
+      {
+        attributes: $attrs,
+        prefix: (($attrs[] | select(.key == "alphalattice.workspace_id") | .key | split(".") | first) + "."),
+        spans: [.refinements.spans[].type] | unique,
+        events: [.registry.events[].name] | sort,
+        operations: [$attrs[] | select(.key == "gen_ai.operation.name") | .type.members[] |
+          .id | select(. == "retrieval" or . == "search_memory" or . == "create_memory" or
+                      . == "invoke_agent" or . == "execute_tool")]
+      }
+    application_mode: single
+    file_name: "telemetry_names.py"
+  - template: telemetry.md.j2
+    filter: >
+      {
+        attributes: .registry.attributes,
+        spans: ([.registry.spans[], (.refinements.spans[] | select(.id != .type))]
+          | map({key: .type, value: .}) | from_entries | [.[]] | sort_by(.type)),
+        events: .registry.events,
+        dependencies: (.dependencies | keys)
+      }
+    application_mode: single
+    file_name: "telemetry.md"

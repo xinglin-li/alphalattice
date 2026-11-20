@@ -191,9 +191,10 @@ step under the delegation, then run the same command again. The network setting 
 when an answer refuses for them. Never restart the Host or serve a second one for
 network access, and never ask the person to.
 
-Optional trace export is the person's separate choice. Do not set `ALPHALATTICE_OTLP_ENDPOINT`
-or enable `ALPHALATTICE_OTLP_INCLUDE_CONTENT` without their explicit decision. The workspace
-network control and offline switch still apply.
+Optional trace export is the person's separate choice. Do not set
+`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or enable
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`, without their explicit decision.
+The workspace network control and offline switch still apply.
 
 Follow the wait and first-use wake procedure in [operating](.agents/skills/alphalattice-research/references/operating.md).
 On Codex, a wake registration that answers `local_client.codex_unreachable` means no wake

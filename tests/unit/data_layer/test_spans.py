@@ -49,6 +49,7 @@ def test_the_external_exporter_scrubs_secrets_and_respects_content_choice(
             "note": secret,
             "prompt": "private prompt",
             "gen_ai.input.messages": "private messages",
+            "gen_ai.retrieval.query.text": secret,
             "gen_ai.usage.input_tokens": 7,
             secret: "safe value",
         },
@@ -60,9 +61,11 @@ def test_the_external_exporter_scrubs_secrets_and_respects_content_choice(
     assert sent.attributes["[redacted]"] == "safe value"
     assert ("prompt" in sent.attributes) is include_content
     assert ("gen_ai.input.messages" in sent.attributes) is include_content
+    assert ("gen_ai.retrieval.query.text" in sent.attributes) is include_content
     assert sent.attributes["gen_ai.usage.input_tokens"] == 7
     if include_content:
         assert sent.attributes["prompt"] == "private prompt"
+        assert sent.attributes["gen_ai.retrieval.query.text"] == "[redacted]"
     assert sent.events[0].attributes["credential"] == "[redacted]"
     assert json.loads(local.rows[0]["attrs"])["note"] == "[redacted]"
     assert json.loads(local.rows[0]["attrs"])["prompt"] == "private prompt"

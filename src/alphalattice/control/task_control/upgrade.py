@@ -25,6 +25,7 @@ from alphalattice.kernel.data_layer.history import data_root, held, holding
 from alphalattice.kernel.data_layer.log import attach, uuid7
 from alphalattice.kernel.data_layer.project import registry_us
 from alphalattice.kernel.data_layer.upgrade import Family
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
@@ -285,8 +286,8 @@ def _carry_telemetry(workspace: Path, copy: Path, root: Path | None) -> None:
             return
         rows = connection.execute(
             "SELECT json_extract(e.attrs, '$.source'), t.text FROM event e JOIN event_text t"
-            " ON t.seq = e.seq WHERE e.type = 'task.telemetry' AND e.workspace_id = ?"
-            " ORDER BY e.seq",
+            f" ON t.seq = e.seq WHERE e.type = '{telemetry.SPAN_TASK_TELEMETRY}'"
+            " AND e.workspace_id = ? ORDER BY e.seq",
             [workspace_id],
         ).fetchall()
     held, base = {}, workspace.resolve()
@@ -808,7 +809,7 @@ def read_task_telemetry(
         order = " ORDER BY e.seq DESC LIMIT 1" if latest else " ORDER BY e.seq"
         rows = connection.execute(
             "SELECT t.text FROM event e JOIN event_text t USING (seq)"
-            " WHERE e.type = 'task.telemetry' AND e.subject_id = ?"
+            f" WHERE e.type = '{telemetry.SPAN_TASK_TELEMETRY}' AND e.subject_id = ?"
             " AND json_extract(e.attrs, '$.source') = ?" + order,
             [str(task_id), str(path.resolve())],
         ).fetchall()
@@ -831,7 +832,6 @@ def record_task_telemetry(path: Path, row: Mapping[str, Any]) -> None:
     )
 
     from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, only while recording
-        PREFIX,
         step_event,
     )
 
@@ -862,16 +862,16 @@ def record_task_telemetry(path: Path, row: Mapping[str, Any]) -> None:
         TraceFlags(TraceFlags.SAMPLED),
     )
     span = ReadableSpan(
-        "task.telemetry",
+        telemetry.SPAN_TASK_TELEMETRY,
         context=context,
         parent=parent if parent.is_valid else None,
         attributes={
-            PREFIX + "subject_kind": "task",
-            PREFIX + "subject_id": task_id,
-            PREFIX + "workspace_id": str(found[0][0]),
-            PREFIX + "node": "task_control",
-            "source": str(path.resolve()),
-            "channel": path.stem if path.suffix != ".jsonl" else "stage.phase",
+            telemetry.ALPHALATTICE_SUBJECT_KIND: "task",
+            telemetry.ALPHALATTICE_SUBJECT_ID: task_id,
+            telemetry.ALPHALATTICE_WORKSPACE_ID: str(found[0][0]),
+            telemetry.ALPHALATTICE_NODE: "task_control",
+            telemetry.SOURCE: str(path.resolve()),
+            telemetry.CHANNEL: path.stem if path.suffix != ".jsonl" else "stage.phase",
         },
         start_time=int(start.timestamp() * 1_000_000) * 1000,
         end_time=int(end.timestamp() * 1_000_000) * 1000,
@@ -883,12 +883,13 @@ def record_task_telemetry(path: Path, row: Mapping[str, Any]) -> None:
 def _register_telemetry(log: Any) -> None:
     """Register once in the caller's log unit, including concurrent first phase completions."""
     if not log.read(
-        "SELECT 1 FROM definition WHERE family = 'event_type' AND name = 'task.telemetry'"
+        "SELECT 1 FROM definition WHERE family = 'event_type' AND name = ?",
+        (telemetry.SPAN_TASK_TELEMETRY,),
     ):
-        definition = {"family": "event_type", "name": "task.telemetry", "version": 1}
+        definition = {"family": "event_type", "name": telemetry.SPAN_TASK_TELEMETRY, "version": 1}
         log.record(
             "definition.registered",
-            ("definition", "event_type/task.telemetry"),
+            ("definition", f"event_type/{telemetry.SPAN_TASK_TELEMETRY}"),
             definition,
             text=canonical(
                 definition
@@ -898,7 +899,7 @@ def _register_telemetry(log: Any) -> None:
                     "spec": {
                         "work": True,
                         "subject": "task",
-                        "required": ["channel", "source"],
+                        "required": [telemetry.CHANNEL, telemetry.SOURCE],
                         "text": "required",
                         "durable": False,
                     },

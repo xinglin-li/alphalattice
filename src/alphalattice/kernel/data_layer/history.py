@@ -68,14 +68,16 @@ from alphalattice.kernel.data_layer.root import (
     seed_rows,
     statements,
 )
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import offline
 
 if TYPE_CHECKING:
     from alphalattice.kernel.data_layer.knowledge import Retrieved
     from alphalattice.kernel.data_layer.store import StorePort
 
-OTLP_ENDPOINT_ENV: Final = "ALPHALATTICE_OTLP_ENDPOINT"
-OTLP_CONTENT_ENV: Final = "ALPHALATTICE_OTLP_INCLUDE_CONTENT"
+OTLP_ENDPOINT_ENV: Final = "OTEL_EXPORTER_OTLP_ENDPOINT"
+OTLP_TRACES_ENDPOINT_ENV: Final = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+OTLP_CONTENT_ENV: Final = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 EVIDENCE_TYPE: Final = "research_evidence"
 """The artifact type of a trial's execution evidence, registered by the Host as its own."""
 
@@ -94,29 +96,33 @@ _EVIDENCE_TEXT: Final = "What one research trial's Desk run did: its program, in
 _RETURN_SERIES_TEXT: Final = "A trial's headline monthly return series, kept with its profile."
 _CONDITION_TEXT: Final = "A market's condition at a selection's cutoff, as registered metrics."
 STEPS: Final = {
-    "gen_ai.retrieval": (
+    telemetry.SPAN_GEN_AI_RETRIEVAL: (
         [],
         "none",
         "One source-scoped hybrid retrieval.",
     ),
-    "host.request": (
-        ["operation"],
+    telemetry.SPAN_HOST_REQUEST: (
+        [telemetry.OPERATION],
         "none",
         "One request a client sent the Host: its operation and route.",
     ),
-    "worker.call": (["call"], "none", "One call a Host worker ran for the step that sent it."),
-    "product.operation": (
-        ["operation", "caller"],
+    telemetry.SPAN_WORKER_CALL: (
+        [telemetry.CALL],
+        "none",
+        "One call a Host worker ran for the step that sent it.",
+    ),
+    telemetry.SPAN_PRODUCT_OPERATION: (
+        [telemetry.OPERATION, telemetry.CALLER],
         "optional",
         "One product operation the Host served; a record past the attributes' bound is the text.",
     ),
-    "cli.call": (
-        ["command"],
+    telemetry.SPAN_CLI_CALL: (
+        [telemetry.COMMAND],
         "none",
         "One CLI invocation: the command an agent or the person ran.",
     ),
-    "search_memory": (
-        ["gen_ai.operation.name", "gen_ai.memory.store.id"],
+    telemetry.GEN_AI_OPERATION_SEARCH_MEMORY: (
+        [telemetry.GEN_AI_OPERATION_NAME, telemetry.GEN_AI_MEMORY_STORE_ID],
         "none",
         "One read of an agent memory store, as the gen_ai conventions name it.",
     ),
@@ -124,34 +130,39 @@ STEPS: Final = {
 """The Host's own step types, by required attributes and text: each span `step`, `begin` and a
 worker open is one of these events."""
 FACTS: Final = {
-    "task.transition": (
+    telemetry.EVENT_TASK_TRANSITION: (
         "task",
         [],
         "optional",
         "A Task Control transition: a wake or a command's return.",
     ),
-    "artifact.verified": ("artifact", [], "optional", "A result's artifact, verified."),
-    "agent.activity": (
+    telemetry.EVENT_ARTIFACT_VERIFIED: (
+        "artifact",
+        [],
+        "optional",
+        "A result's artifact, verified.",
+    ),
+    telemetry.EVENT_AGENT_ACTIVITY: (
         "agent_event",
-        ["event_kind"],
+        [telemetry.EVENT_KIND],
         "optional",
         "What an agent's client reported; its summary is the text.",
     ),
-    "person.question": (
+    telemetry.EVENT_PERSON_QUESTION: (
         None,
-        ["code", "state"],
+        [telemetry.CODE, telemetry.STATE],
         "none",
         "A question asked of the person, or answered.",
     ),
-    "clock.correlated": (
+    telemetry.EVENT_CLOCK_CORRELATED: (
         None,
         [],
         "optional",
         "One correlation of a source's clock with the Host's.",
     ),
-    "request.refused": (
+    telemetry.EVENT_REQUEST_REFUSED: (
         None,
-        ["operation", "failure_code", "caller"],
+        [telemetry.OPERATION, telemetry.FAILURE_CODE, telemetry.CALLER],
         "none",
         "A request the Host refused.",
     ),
@@ -418,12 +429,19 @@ def open_history(
     threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
 
 
+def _capture_message_content() -> bool:
+    """Whether the OpenTelemetry GenAI capture mode permits content on spans."""
+    return os.environ.get(OTLP_CONTENT_ENV, "").strip().lower() in {"span_only", "span_and_event"}
+
+
 def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
-    """The opted-in OTLP export (`ALPHALATTICE_OTLP_ENDPOINT`), scrubbed by `processor` and sent
-    only while the workspace's network control allows it; None when it is off, with why logged."""
-    endpoint = os.environ.get(OTLP_ENDPOINT_ENV, "").strip()
+    """Scrub and send opted-in OTLP traces while the workspace's network control allows it."""
+    endpoint = os.environ.get(OTLP_TRACES_ENDPOINT_ENV, "").strip()
     if not endpoint:
-        return None
+        base_endpoint = os.environ.get(OTLP_ENDPOINT_ENV, "").strip()
+        if not base_endpoint:
+            return None
+        endpoint = f"{base_endpoint.removesuffix('/')}/v1/traces"
     try:
         address = urlsplit(endpoint)
         if (
@@ -463,8 +481,7 @@ def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
                 return super().export(spans)
 
         return processor(
-            NetworkBoundExporter(endpoint=endpoint),
-            include_content=os.environ.get(OTLP_CONTENT_ENV) == "1",
+            NetworkBoundExporter(endpoint=endpoint), include_content=_capture_message_content()
         )
     except (OSError, ValueError) as error:
         logging.getLogger(__name__).warning(
@@ -3150,14 +3167,14 @@ def _search_memory(
         from opentelemetry.trace import SpanKind  # lazy: the SDK, once open
 
         attributes = {
-            "gen_ai.operation.name": "search_memory",
-            "gen_ai.memory.store.id": "experience",
+            telemetry.GEN_AI_OPERATION_NAME: telemetry.GEN_AI_OPERATION_SEARCH_MEMORY,
+            telemetry.GEN_AI_MEMORY_STORE_ID: "experience",
         }
         with provider.get_tracer("host").start_as_current_span(
-            "search_memory", kind=SpanKind.CLIENT, attributes=attributes
+            telemetry.GEN_AI_OPERATION_SEARCH_MEMORY, kind=SpanKind.CLIENT, attributes=attributes
         ) as span:
             found = reading.read(name, **filters)
-            span.set_attribute("gen_ai.memory.record.count", count(found))
+            span.set_attribute(telemetry.GEN_AI_MEMORY_RECORD_COUNT, count(found))
         _open["log"].flush()
         return found
 
@@ -3231,13 +3248,13 @@ def call(
         if ended is None:
             _calls[span] = links
             _bound(_calls)
-    attrs = _attributes(attributes) | ({"links": links} if links else {})
-    attrs |= {} if caller else {"unattributed": True}
+    attrs = _attributes(attributes) | ({telemetry.LINKS: links} if links else {})
+    attrs |= {} if caller else {telemetry.UNATTRIBUTED: True}
     if ended is not None:
-        attrs["exit_code"] = ended[1]
+        attrs[telemetry.EXIT_CODE] = ended[1]
     exporter.append(
         envelope(
-            "cli.call",
+            telemetry.SPAN_CLI_CALL,
             attrs=attrs,
             phase="started" if ended is None else "completed",
             workspace=_open["workspace"],
@@ -3341,15 +3358,21 @@ def fact(
     provider = _open.get("logger")
     if provider is None:
         return None
-    own = {"workspace_id": workspace or _open["workspace"]}
+    own = {telemetry.ALPHALATTICE_WORKSPACE_ID: workspace or _open["workspace"]}
     if subject is not None:
-        own |= {"subject_kind": subject[0], "subject_id": subject[1]}
+        own |= {
+            telemetry.ALPHALATTICE_SUBJECT_KIND: subject[0],
+            telemetry.ALPHALATTICE_SUBJECT_ID: subject[1],
+        }
     if actor is not None:
-        own |= {"actor_kind": actor[0], "actor_id": actor[1]}
+        own |= {
+            telemetry.ALPHALATTICE_ACTOR_KIND: actor[0],
+            telemetry.ALPHALATTICE_ACTOR_ID: actor[1],
+        }
     provider.get_logger("host").emit(
         event_name=name,
         body=text,
-        attributes={**attributes, **{f"alphalattice.{key}": value for key, value in own.items()}},
+        attributes={**attributes, **own},
         timestamp=None if at is None else (at - _EPOCH) // timedelta(microseconds=1) * 1000,
     )
     if (refused := _open["facts"].refusal()) is not None:
@@ -3397,10 +3420,10 @@ def goal_trace(
     calls = [
         dict(row)
         for row in log.read(
-            f"SELECT {columns} FROM event WHERE type = 'cli.call' AND workspace_id = ?"
-            " AND (json_extract(attrs, '$.goal_id') = ?"
-            " OR json_extract(attrs, '$.goal_id') IS NULL"  # its sessions' calls naming no goal
-            " AND json_extract(attrs, '$.\"gen_ai.conversation.id\"') IN"
+            f"SELECT {columns} FROM event WHERE type = '{telemetry.SPAN_CLI_CALL}'"
+            f" AND workspace_id = ? AND (json_extract(attrs, '$.\"{telemetry.GOAL_ID}\"') = ?"
+            f" OR json_extract(attrs, '$.\"{telemetry.GOAL_ID}\"') IS NULL"
+            f" AND json_extract(attrs, '$.\"{telemetry.GEN_AI_CONVERSATION_ID}\"') IN"
             f" ({', '.join('?' * len(named))})) ORDER BY seq",
             (where, goal_id, *named),
         )
@@ -3413,8 +3436,9 @@ def goal_trace(
         steps += map(
             dict,
             log.read(
-                f"SELECT {columns} FROM event WHERE workspace_id = ? AND trace_id IN ({marks})"
-                " AND phase IS NOT NULL AND type <> 'cli.call' ORDER BY seq",
+                f"SELECT {columns} FROM event WHERE workspace_id = ?"
+                f" AND trace_id IN ({marks}) AND phase IS NOT NULL"
+                f" AND type <> '{telemetry.SPAN_CLI_CALL}' ORDER BY seq",
                 (where, *chunk),
             ),
         )
@@ -3457,10 +3481,10 @@ def trace_carrier() -> dict[str, str]:
 @contextmanager
 def _retrieval_span(query: str) -> Iterator[None]:
     """One store retrieval's span; the query text rides on it only where content is admitted."""
-    attributes = {"gen_ai.operation.name": "retrieval"}
-    if os.environ.get(OTLP_CONTENT_ENV) == "1":
-        attributes["gen_ai.input.messages"] = query
-    with step("gen_ai.retrieval", {}, **attributes):
+    attributes = {telemetry.GEN_AI_OPERATION_NAME: telemetry.GEN_AI_OPERATION_RETRIEVAL}
+    if _capture_message_content():
+        attributes[telemetry.GEN_AI_RETRIEVAL_QUERY_TEXT] = query
+    with step(telemetry.SPAN_GEN_AI_RETRIEVAL, {}, **attributes):
         yield
 
 

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import os
 import threading
 import urllib.request
+from contextvars import copy_context
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import Status, StatusCode
 
 from alphalattice.control.product_host.composition.application_session import (
@@ -20,7 +24,17 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.workspace_runtime.network_access import set_network_access
-from alphalattice.interface.local_application.cli_contract import agent_provenance_headers
+from alphalattice.interface.local_application import call_span
+from alphalattice.interface.local_application.cli_contract import (
+    CLIENT_HEADER,
+    INSTANCE_HEADER,
+    WORKSPACE_HEADER,
+    agent_provenance_headers,
+)
+from alphalattice.interface.local_application.client import (
+    LocalResearchConnection,
+    workspace_connection_key,
+)
 from alphalattice.interface.local_application.web import (
     SESSION_HEADER,
     LocalWebApplication,
@@ -28,7 +42,11 @@ from alphalattice.interface.local_application.web import (
 )
 from alphalattice.kernel.data_layer import create_data_root, history
 from alphalattice.kernel.data_layer.log import HostLog, envelope
-from alphalattice.kernel.data_layer.spans import LogSpanExporter, tracer_provider
+from alphalattice.kernel.data_layer.spans import (
+    ExternalSpanProcessor,
+    LogSpanExporter,
+    tracer_provider,
+)
 from devtools.testing import child_targets
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
@@ -71,10 +89,9 @@ def otlp_receiver(monkeypatch):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-    monkeypatch.delenv("ALPHALATTICE_OTLP_INCLUDE_CONTENT", raising=False)
-    monkeypatch.setenv(
-        "ALPHALATTICE_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}/v1/traces"
-    )
+    monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}")
     try:
         yield received
     finally:
@@ -137,9 +154,114 @@ TRACE, CLIENT_SPAN = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"
 _TARGET = f"{child_targets.__name__}:file_size"  # a worker's data read
 
 
+@pytest.fixture
+def weaver_capture(monkeypatch):
+    """Capture the real SDK export in memory as well as at the loopback receiver."""
+    if not (kit := os.environ.get("ALPHALATTICE_WEAVER_KIT")):
+        return None
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+    memory = InMemorySpanExporter()
+    send = OTLPSpanExporter.export
+
+    def export(exporter, spans):
+        memory.export(spans)
+        return send(exporter, spans)
+
+    monkeypatch.setattr(OTLPSpanExporter, "export", export)
+    return Path(kit), memory
+
+
+def _read_through_cli(opener, service, workspace, environ):
+    """Send a request and end its actual CLI call over the Host's authenticated routes."""
+    web = service.application
+    web.external_workspace_id = workspace_connection_key(workspace)
+    connection = LocalResearchConnection(
+        str(workspace), "w1", service.url, web.external_instance, web.external_token
+    )
+    descriptor = LocalResearchConnection.path(workspace)
+    descriptor.parent.mkdir(parents=True, exist_ok=True)
+    descriptor.write_text(connection.to_json(), encoding="utf-8")
+    call_span.begin(environ, "data read")
+    call_span.at(workspace)
+    client_span = environ["TRACEPARENT"].split("-")[2]
+    headers = {
+        CLIENT_HEADER: connection.token,
+        INSTANCE_HEADER: connection.instance,
+        WORKSPACE_HEADER: web.external_workspace_id,
+        "Content-Type": "application/json",
+        **agent_provenance_headers(environ),
+    }
+    sent = urllib.request.Request(f"{service.url}api/read", b"{}", headers, method="POST")
+    with opener.open(sent, timeout=120) as response:
+        answer = json.load(response)
+    call_span.end(environ, 0)
+    return answer, client_span
+
+
+def _assert_weaver_trace(capture, rows, client_span, host_span, worker_span):
+    """Check the captured trace and independent name and type mistakes in the same attribute."""
+    from devtools.testing.telemetry import live_check
+
+    kit, memory = capture
+    cli = dict(
+        next(row for row in rows if row["span_id"] == client_span and row["phase"] == "completed")
+    )
+    # The completed CLI span is stored locally. Exclude the ledger's definition metadata
+    # before using the same row conversion that exports returned worker spans.
+    attrs = json.loads(cli["attrs"])
+    attrs.pop("definition_ids", None)
+    cli["attrs"] = json.dumps(attrs)
+    remote = ExternalSpanProcessor(memory)
+    try:
+        remote.worker_rows([cli])
+    finally:
+        remote.shutdown()
+    samples = []
+    for span in memory.get_finished_spans():
+        context = span.get_span_context()
+        assert context is not None
+        if f"{context.trace_id:032x}" != TRACE:
+            continue
+        samples.append(
+            {
+                "span": {
+                    "name": span.name,
+                    "kind": span.kind.name.lower(),
+                    "trace_id": TRACE,
+                    "span_id": f"{context.span_id:016x}",
+                    "parent_span_id": f"{span.parent.span_id:016x}" if span.parent else None,
+                    "attributes": [
+                        {"name": name, "value": value}
+                        for name, value in (span.attributes or {}).items()
+                    ],
+                }
+            }
+        )
+    by_id = {sample["span"]["span_id"]: sample["span"] for sample in samples}
+    assert len(samples) == 3
+    assert {key: (value["name"], value["parent_span_id"]) for key, value in by_id.items()} == {
+        client_span: ("cli.call", CLIENT_SPAN),
+        host_span: ("host.request", client_span),
+        worker_span: ("worker.call", host_span),
+    }
+    good = live_check(kit, samples)
+    assert good.returncode == 0, good.stdout + good.stderr
+    operation = next(attr for attr in by_id[host_span]["attributes"] if attr["name"] == "operation")
+    original = dict(operation)
+    for change, finding in (
+        ({"name": "operatlon"}, "missing_attribute"),
+        ({"value": 42}, "type_mismatch"),
+    ):
+        operation.update(original | change)
+        rejected = live_check(kit, samples)
+        assert rejected.returncode != 0, rejected.stdout + rejected.stderr
+        assert f'"id": "{finding}"' in rejected.stdout, rejected.stdout + rejected.stderr
+
+
 @pytest.mark.proves("data_layer.a_clients_trace_reaches_its_workers")
 def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
-    tmp_path, otlp_receiver, monkeypatch
+    tmp_path, otlp_receiver, monkeypatch, weaver_capture
 ):
     """A request whose environment names a trace is one Host step in that trace, and the worker
     call it makes is the step's child, attributed to the Host's workspace and the baggage's
@@ -148,7 +270,7 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
     web = LocalWebApplication()
     web.add_asset("/workbench.html", b"page", "text/html")  # where the launch sends a browser
 
-    @web.route("POST", "/api/read", mutates=True)
+    @web.route("POST", "/api/read", mutates=True, external_client=weaver_capture is not None)
     def read(_query, _payload):
         return {"bytes": run_in_child(_TARGET, {"path": str(tmp_path / "bars")})}
 
@@ -186,10 +308,16 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
             base = service.url.rstrip("/")
             opener.open(service.launch_url, timeout=10).read()
             opener.open(f"{base}/api/poll", timeout=10).read()
-            headers = {SESSION_HEADER: web.session_token, "Origin": base}
-            headers |= agent_provenance_headers(environ) | {"Content-Type": "application/json"}
-            sent = urllib.request.Request(f"{base}/api/read", b"{}", headers, method="POST")
-            answer = json.loads(opener.open(sent, timeout=120).read())
+            if weaver_capture is None:
+                headers = {SESSION_HEADER: web.session_token, "Origin": base}
+                headers |= agent_provenance_headers(environ) | {"Content-Type": "application/json"}
+                sent = urllib.request.Request(f"{base}/api/read", b"{}", headers, method="POST")
+                answer = json.loads(opener.open(sent, timeout=120).read())
+                client_span = CLIENT_SPAN
+            else:
+                answer, client_span = copy_context().run(
+                    _read_through_cli, opener, service, tmp_path, environ
+                )
     finally:
         history.close_history()
     sent_before_stop = len(otlp_receiver)
@@ -202,10 +330,7 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
         history.close_history()
     assert len(otlp_receiver) == sent_before_stop
     with HostLog.open(tmp_path / "data") as log:
-        rows = log.read(
-            "SELECT type, trace_id, span_id, parent_span_id, workspace_id, attrs FROM event"
-            " WHERE phase IS NOT NULL ORDER BY started_us"
-        )
+        rows = log.read("SELECT * FROM event WHERE phase IS NOT NULL ORDER BY started_us")
     assert answer == {"bytes": 300}
     assert any(
         json.loads(row["attrs"]).get("note") == "[redacted]"
@@ -215,11 +340,13 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
     recorded_worker = next(row for row in rows if row["span_id"] == worker_probe["span_id"])
     assert json.loads(recorded_worker["attrs"])["note"] == "[redacted]"
     assert json.loads(recorded_worker["attrs"])["prompt"] == "private prompt"
-    step, call = [dict(row) for row in rows if row["trace_id"] == TRACE]
+    step, call = [
+        dict(row) for row in rows if row["trace_id"] == TRACE and row["type"] != "cli.call"
+    ]
     assert (step["type"], step["trace_id"], step["parent_span_id"]) == (
         "host.request",
         TRACE,
-        CLIENT_SPAN,
+        client_span,
     )
     assert (call["type"], call["trace_id"], call["parent_span_id"]) == (
         "worker.call",
@@ -248,3 +375,5 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
     )
     assert worker.trace_id.hex() == TRACE
     assert worker.parent_span_id.hex() == step["span_id"]
+    if weaver_capture is not None:
+        _assert_weaver_trace(weaver_capture, rows, client_span, step["span_id"], call["span_id"])

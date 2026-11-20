@@ -18,6 +18,8 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal, Protocol
 
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
+
 from .contracts import (
     ObservationReadCursor,
     ObservationReadItem,
@@ -28,11 +30,11 @@ from .contracts import (
 MAXIMUM_READ_PAGE: Final = 500
 """The most observations one read returns."""
 KINDS: Final = {
-    "product.operation": "ProductOperationObserved",
-    "agent.activity": "ExternalActivityObserved",
-    "task.transition": "TaskControlTransition",
-    "artifact.verified": "ArtifactVerificationObserved",
-    "clock.correlated": "ClockCorrelationRecorded",
+    telemetry.SPAN_PRODUCT_OPERATION: "ProductOperationObserved",
+    telemetry.EVENT_AGENT_ACTIVITY: "ExternalActivityObserved",
+    telemetry.EVENT_TASK_TRANSITION: "TaskControlTransition",
+    telemetry.EVENT_ARTIFACT_VERIFIED: "ArtifactVerificationObserved",
+    telemetry.EVENT_CLOCK_CORRELATED: "ClockCorrelationRecorded",
 }
 """The event types an observation is written as, and the kind each is."""
 TYPES: Final = tuple(KINDS)
@@ -42,8 +44,8 @@ OBSERVATION_ID: Final = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 its shape is checked before it is looked up."""
 GENAI_IDS: Final = ("native_session_id", "native_agent_id", "model")
 GENAI: Final = {
-    "native_session_id": "gen_ai.conversation.id",
-    "native_agent_id": "gen_ai.agent.id",
+    "native_session_id": telemetry.GEN_AI_CONVERSATION_ID,
+    "native_agent_id": telemetry.GEN_AI_AGENT_ID,
     "model": "gen_ai.response.model",
     "input_tokens": "gen_ai.usage.input_tokens",
     "output_tokens": "gen_ai.usage.output_tokens",
@@ -70,14 +72,14 @@ OBSERVATION_INDEXED: Final = (
 own fields', kept as attributes when the whole is the event's text (`observation.in_text`)."""
 _OBSERVATIONS: Final = f"type IN ({', '.join(repr(name) for name in TYPES)}) AND workspace_id = ?"
 _NATIVE_SESSION: Final = (
-    "COALESCE(json_extract(attrs, '$.\"gen_ai.conversation.id\"'), "
+    f"COALESCE(json_extract(attrs, '$.\"{telemetry.GEN_AI_CONVERSATION_ID}\"'), "
     "json_extract(attrs, '$.subject.native_session_id'))"
 )
 """The subject's native session: an agent's event names it under its GenAI name."""
 _SESSION: Final = f"COALESCE({_NATIVE_SESSION}, json_extract(attrs, '$.subject.agent_session'))"
 """The Session an exchange or an agent's operation belongs to."""
 _EVENT_KIND: Final = "json_extract(attrs, '$.event_kind')"
-_SNAPSHOT_GROUP: Final = f"""{_EVENT_KIND}, json_extract(attrs, '$."gen_ai.agent.id"'),
+_SNAPSHOT_GROUP: Final = f"""{_EVENT_KIND}, json_extract(attrs, '$."{telemetry.GEN_AI_AGENT_ID}"'),
     CASE {_EVENT_KIND}
         WHEN 'NATIVE_AGENT_USAGE' THEN json_extract(attrs, '$."gen_ai.response.model"')
         ELSE json_extract(attrs, '$.subject.role') END"""
@@ -126,7 +128,7 @@ def payload_of(event_type: str, attributes: Mapping[str, Any], text: str | None)
     agent's event (its counts strings again, as the session files give them), whose summary is the
     text; any other event's attributes as they are. The `observation` attribute is set aside."""
     payload = {key: value for key, value in attributes.items() if key != "observation"}
-    if event_type != "agent.activity":
+    if event_type != telemetry.EVENT_AGENT_ACTIVITY:
         return payload
     subject = dict(payload.pop("subject", None) or {})
     counts = {key: payload.pop(GENAI[key], None) for key in GENAI if key not in GENAI_IDS}
@@ -209,8 +211,9 @@ class LogObservations:
         session = schema_kind == "ExternalActivityObserved" and not snapshots
         if native_session_id is not None and session:
             # Operations belong to the Session span; its last message is not its endpoint.
-            where = f"""{_OBSERVATIONS} AND {_SESSION} = ? AND (type = 'agent.activity'
-                OR (type = 'product.operation'
+            where = f"""{_OBSERVATIONS} AND {_SESSION} = ? AND (
+                type = '{telemetry.EVENT_AGENT_ACTIVITY}'
+                OR (type = '{telemetry.SPAN_PRODUCT_OPERATION}'
                     AND json_extract(attrs, '$.observation.source_kind') = 'PRODUCT_OPERATION'
                     AND json_extract(attrs, '$.observation.authority') = 'OPERATIONAL_ASSERTION'
                     AND json_extract(attrs, '$.subject.agent_vendor')
@@ -245,8 +248,8 @@ class LogObservations:
     def replayed(self, source_id: str, source_sequence: int) -> ObservationRecord | None:
         """The agent's event already kept for this producer source and sequence, if any."""
         rows = self._events(
-            "workspace_id = ? AND type = 'agent.activity' AND subject_kind = 'agent_event'"
-            " AND subject_id = ? LIMIT 1",
+            f"workspace_id = ? AND type = '{telemetry.EVENT_AGENT_ACTIVITY}'"
+            " AND subject_kind = 'agent_event' AND subject_id = ? LIMIT 1",
             (agent_event(source_id, source_sequence),),
         )
         return rows[0].record if rows else None
@@ -283,7 +286,7 @@ class LogObservations:
             chunk = named[at : at + MAXIMUM_READ_PAGE]
             rows = self._rows(
                 f"""SELECT trace_id, span_id, phase, started_us, occurred_us, attrs FROM event
-                WHERE type = 'cli.call' AND workspace_id = ?
+                WHERE type = '{telemetry.SPAN_CLI_CALL}' AND workspace_id = ?
                 AND trace_id IN ({", ".join("?" * len(chunk))}) ORDER BY seq""",
                 (self._workspace, *chunk),
             )
@@ -294,7 +297,7 @@ class LogObservations:
                     {
                         "span_id": span,
                         "command": values.get("command"),
-                        "conversation": values.get("gen_ai.conversation.id"),
+                        "conversation": values.get(telemetry.GEN_AI_CONVERSATION_ID),
                         "unattributed": bool(values.get("unattributed")),
                         "started_at": _moment(occurred if phase == "started" else started),
                         "ended_at": None,
@@ -316,7 +319,8 @@ class LogObservations:
         rows = self._rows(
             f"""SELECT date(occurred_us / 1000000, 'unixepoch') AS day, {columns},
                 COUNT(*) AS count, MIN(occurred_us), MAX(occurred_us) FROM event
-            WHERE type = 'request.refused' AND workspace_id = ? AND occurred_us >= ?
+            WHERE type = '{telemetry.EVENT_REQUEST_REFUSED}'
+            AND workspace_id = ? AND occurred_us >= ?
             GROUP BY day, {", ".join(fields)}
             ORDER BY count DESC, day DESC, {", ".join(fields)} LIMIT ?""",
             (self._workspace, since, MAXIMUM_READ_PAGE),

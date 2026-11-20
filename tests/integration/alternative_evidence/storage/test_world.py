@@ -441,7 +441,7 @@ def test_knowledge_retrieves_the_world_body_by_document_version_and_cutoff(
         assert (hit.hit.source_id, hit.hit.version, hit.hit.ordinal) == (doc_id, version_id, 0)
         assert hit.text == original.decode()
         assert not search.retrieve("annual", language="en", workspace="other", cutoff_us=known).hits
-        monkeypatch.setenv(history.OTLP_CONTENT_ENV, "1")
+        monkeypatch.setenv(history.OTLP_CONTENT_ENV, "span_only")
         assert search.retrieve("market", language="en", workspace="w1", cutoff_us=known).hits
         revised = b"<html>revised annual evidence and market risk</html>"
         revised_at = ACCEPTED + timedelta(days=1)
@@ -494,5 +494,6 @@ def test_knowledge_retrieves_the_world_body_by_document_version_and_cutoff(
         )
     ]
     assert len(spans) == 8
-    assert all("gen_ai.input.messages" not in attrs for attrs in spans[:3])
-    assert spans[3]["gen_ai.input.messages"] == "market"
+    assert all("gen_ai.input.messages" not in attrs for attrs in spans)
+    assert all("gen_ai.retrieval.query.text" not in attrs for attrs in spans[:3])
+    assert spans[3]["gen_ai.retrieval.query.text"] == "market"

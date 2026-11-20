@@ -25,6 +25,7 @@ from typing import Any, Final
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, digest
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 
 ENDED: Final = ("completed", "failed", "cancelled")
 ARTIFACT_PROFILE_TEXT_VERSION: Final = 2
@@ -84,7 +85,7 @@ MACHINE_TEXT: Final = frozenset(
         "task.saved",
         "work_item.saved",
         "task.noted",
-        "task.telemetry",
+        telemetry.SPAN_TASK_TELEMETRY,
         "execution.started",
         "stage.verified",
         "command.accepted",

@@ -82,6 +82,7 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
@@ -253,12 +254,11 @@ def _step(
     named = operation if isinstance(operation, str) else route.path
     who = admitted.provenance or RequestProvenance()
     with step(
-        "host.request",
+        telemetry.SPAN_HOST_REQUEST,
         dict(admitted.trace),
         caller=None if who.session is None else ("agent", who.session),
         goal=who.goal_id,
-        operation=named,
-        route=f"{route.method} {route.path}",
+        **{telemetry.OPERATION: named, telemetry.ROUTE: f"{route.method} {route.path}"},
     ):
         yield
 

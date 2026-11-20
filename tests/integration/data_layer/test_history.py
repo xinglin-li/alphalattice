@@ -45,7 +45,8 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     root = tmp_path / "o'brien" / "data"  # a quote in the path is text in DuckDB's ATTACH
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the data root this process names
     folder = tmp_path / "workspace"
-    monkeypatch.delenv("ALPHALATTICE_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
     with monkeypatch.context() as no_network:
 
         def no_socket(*args, **kwargs):

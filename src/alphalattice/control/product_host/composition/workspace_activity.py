@@ -136,6 +136,7 @@ from alphalattice.kernel.data_layer.admit import SECRET_NAME
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.clocks import clock_metadata
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
@@ -617,7 +618,9 @@ class WorkspaceActivity:
             refusal = {"operation": operation, "failure_code": code, "caller": caller}
             refused = refusal | {"vendor": vendor}
             self._isolated(
-                lambda: history.fact("request.refused", refused, at=at, workspace=self.workspace_id)
+                lambda: history.fact(
+                    telemetry.EVENT_REQUEST_REFUSED, refused, at=at, workspace=self.workspace_id
+                )
             )
 
     def refusals(self, *, days: int) -> dict[str, object]:
@@ -1772,7 +1775,9 @@ def _own(record: ObservationDraft | ObservationRecord) -> dict[str, Any]:
     own: dict[str, Any] = record.model_dump(mode="json", include=set(OWN))
     payload = dict(record.inline_safe_payload or {})
     return own | {
-        "payload": payload_of("agent.activity", agent_attributes(payload), payload.get("summary"))
+        "payload": payload_of(
+            telemetry.EVENT_AGENT_ACTIVITY, agent_attributes(payload), payload.get("summary")
+        )
     }
 
 
@@ -1806,21 +1811,28 @@ def trace_record(
             bounded(payload | observation, None),
         )
         if payload["phase"] == "REQUESTED":
-            step = history.begin("product.operation", attributes, text, workspace=workspace)
+            step = history.begin(
+                telemetry.SPAN_PRODUCT_OPERATION, attributes, text, workspace=workspace
+            )
             spans[ref], event_id = step, None if step is None else str(step["event_id"])
         else:
             step, failed = spans.pop(ref, None), payload["phase"] == "FAILED"
             event_id = history.finish(
-                step, "product.operation", attributes, text, failed=failed, workspace=workspace
+                step,
+                telemetry.SPAN_PRODUCT_OPERATION,
+                attributes,
+                text,
+                failed=failed,
+                workspace=workspace,
             )
         for question in (payload.get("subject") or {}).get("person_questions") or ():
             asked = {"operation": payload["operation"], **question}
-            history.fact("person.question", asked, workspace=workspace)
+            history.fact(telemetry.EVENT_PERSON_QUESTION, asked, workspace=workspace)
         return event_id
     if kind == EXTERNAL_ACTIVITY_SCHEMA:
         attributes, text = bounded(agent_attributes(payload) | observation, payload.get("summary"))
         heard: str | None = history.fact(
-            "agent.activity",
+            telemetry.EVENT_AGENT_ACTIVITY,
             attributes,
             subject=("agent_event", agent_event(kept.source_id, kept.source_sequence)),
             text=text,
@@ -1872,9 +1884,9 @@ def _credential_named(value: Any, name: str = "") -> bool:
 
 
 _FACTS = {
-    "TaskControlTransition": "task.transition",
-    "ArtifactVerificationObserved": "artifact.verified",
-    "ClockCorrelationRecorded": "clock.correlated",
+    "TaskControlTransition": telemetry.EVENT_TASK_TRANSITION,
+    "ArtifactVerificationObserved": telemetry.EVENT_ARTIFACT_VERIFIED,
+    "ClockCorrelationRecorded": telemetry.EVENT_CLOCK_CORRELATED,
 }
 """The record kinds kept as facts, by their event type."""
 

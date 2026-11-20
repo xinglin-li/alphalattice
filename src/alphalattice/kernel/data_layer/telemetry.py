@@ -16,22 +16,23 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from alphalattice.kernel.data_layer.chain import canonical, digest
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 
 FIELDS: Final = {
-    "conversation_id": ("conversation.id", "gen_ai.conversation.id"),
+    "conversation_id": ("conversation.id", telemetry.GEN_AI_CONVERSATION_ID),
     "session_id": ("session.id",),
-    "agent_id": ("agent_id", "agent.id", "gen_ai.agent.id"),
+    "agent_id": ("agent_id", "agent.id", telemetry.GEN_AI_AGENT_ID),
     "agent_role": ("agent_role", "agent.role", "agent_type"),
     "parent_agent_id": ("parent_agent_id", "parent.agent.id"),
-    "goal_id": ("alphalattice.goal_id",),
-    "trial_id": ("alphalattice.trial_id",),
-    "model": ("gen_ai.response.model", "gen_ai.request.model", "model"),
+    "goal_id": (telemetry.ALPHALATTICE_GOAL_ID,),
+    "trial_id": (telemetry.ALPHALATTICE_TRIAL_ID,),
+    "model": ("gen_ai.response.model", telemetry.GEN_AI_REQUEST_MODEL, "model"),
     "effort": ("gen_ai.request.reasoning_effort", "reasoning_effort"),
     "response_id": ("gen_ai.response.id", "request_id", "request.id"),
-    "input_tokens": ("gen_ai.usage.input_tokens", "input_tokens"),
+    "input_tokens": (telemetry.GEN_AI_USAGE_INPUT_TOKENS, "input_tokens"),
     "cache_read_tokens": ("gen_ai.usage.cache_read.input_tokens", "cache_read_tokens"),
     "cache_write_tokens": ("gen_ai.usage.cache_write.input_tokens", "cache_creation_tokens"),
-    "output_tokens": ("gen_ai.usage.output_tokens", "output_tokens"),
+    "output_tokens": (telemetry.GEN_AI_USAGE_OUTPUT_TOKENS, "output_tokens"),
 }
 """The entire attribute allowlist; opt-in attributes have no entry."""
 COUNTS: Final = frozenset(

@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
     SpanLedger,
@@ -543,7 +544,7 @@ def _worker_span(
     tracer = provider.get_tracer("worker")
     try:
         with tracer.start_as_current_span(
-            "worker.call", context_of(trace), attributes={"call": target}
+            telemetry.SPAN_WORKER_CALL, context_of(trace), attributes={telemetry.CALL: target}
         ):
             yield
     finally:

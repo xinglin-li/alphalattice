@@ -149,6 +149,17 @@ jobs:
           else
             npx --no-install playwright install chromium
           fi
+      - name: Prepare the pinned Weaver kit
+        env:
+          PYTHONPATH: src
+        run: uv run --no-sync python -m devtools.testing.telemetry prepare "$RUNNER_TEMP/weaver"
+      - name: Check telemetry conventions and trace
+        env:
+          PYTHONPATH: src
+        run: |
+          export ALPHALATTICE_WEAVER_KIT="$RUNNER_TEMP/weaver"
+          uv run --no-sync python -m devtools.testing.telemetry check "$ALPHALATTICE_WEAVER_KIT"
+          uv run --no-sync python -m pytest tests/integration/data_layer/test_spans.py::test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree
       - name: Run the offline first-use scenario
         run: >-
           uv run python -m pytest

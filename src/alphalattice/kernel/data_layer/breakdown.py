@@ -19,6 +19,8 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Final
 
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
+
 UNTRACED_BOUND: Final = 0.2
 """The share of a call's wall its direct steps may leave untraced before the call is flagged."""
 SCHEMA: Final = "alphalattice.goal-trace.v1"
@@ -120,11 +122,11 @@ def goal_trace(
     for call in called:
         attrs, lo, hi = call["attrs"], call["started_us"], call["ended_us"]
         row = {
-            "type": "cli.call",
+            "type": telemetry.SPAN_CLI_CALL,
             "span_id": call["span_id"],
             "trace_id": call["trace_id"],
             "name": _name(call),
-            "conversation": attrs.get("gen_ai.conversation.id"),
+            "conversation": attrs.get(telemetry.GEN_AI_CONVERSATION_ID),
             "unattributed": bool(attrs.get("unattributed")),
             "started_us": lo,
             "ended_us": hi,
@@ -202,15 +204,15 @@ def _agent_gaps(
     last: dict[str, Mapping[str, Any]] = {}
     gaps = []
     for call in called:
-        conversation = call["attrs"].get("gen_ai.conversation.id")
+        conversation = call["attrs"].get(telemetry.GEN_AI_CONVERSATION_ID)
         if conversation is None:
             continue
         before = last.get(conversation)
         ended = None if before is None else before["ended_us"]
         if ended is not None and call["started_us"] > ended:
             gap = {
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.conversation.id": conversation,
+                telemetry.GEN_AI_OPERATION_NAME: telemetry.GEN_AI_OPERATION_INVOKE_AGENT,
+                telemetry.GEN_AI_CONVERSATION_ID: conversation,
                 "inferred": True,
                 "started_us": ended,
                 "ended_us": call["started_us"],
@@ -242,7 +244,11 @@ def _split(records: Iterable[Mapping[str, Any]], lo: int, hi: int) -> dict[str, 
                     "name": name,
                     "started_us": max(lo, start),
                     "ended_us": at,
-                    **({"gen_ai.agent.id": record["agent_id"]} if record.get("agent_id") else {}),
+                    **(
+                        {telemetry.GEN_AI_AGENT_ID: record["agent_id"]}
+                        if record.get("agent_id")
+                        else {}
+                    ),
                 }
             )
         previous = at

@@ -1,0 +1,9 @@
+file_format: definition_manifest/2.0
+name: alphalattice
+description: AlphaLattice observation conventions.
+schema_url: https://alphalattice.org/schemas/0.2.8
+dependencies:
+- schema_url: https://opentelemetry.io/schemas/1.45.0
+  registry_path: https://github.com/open-telemetry/semantic-conventions.git@v1.45.0[model]
+- schema_url: https://opentelemetry.io/schemas/semconv-genai-dev/0.1.0-unreleased
+  registry_path: https://github.com/open-telemetry/semantic-conventions-genai.git@622b2b6073b15e5ed886c3c12a65a892b9cd5c70[model]

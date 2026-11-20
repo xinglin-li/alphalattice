@@ -24,9 +24,9 @@ Say "Turn AlphaLattice's network off" to your agent, or turn it off in **Setting
 
 ## Optional trace export
 
-The Host keeps its history locally. To also send traces to an OTLP/HTTP backend, set `ALPHALATTICE_OTLP_ENDPOINT` in the Host process environment to its full trace URL, including `/v1/traces`, before starting the Host. Use an HTTP or HTTPS URL without credentials or a query string. With no endpoint, the Host opens no export connection. The workspace network control and the operator's offline switch still apply, including when the network is turned off after startup.
+The Host keeps its history locally. To also send traces to an OTLP/HTTP backend, set `OTEL_EXPORTER_OTLP_ENDPOINT` to the collector's base URL in the Host process environment before starting the Host. The Host appends `/v1/traces` to that base. To use a specific trace URL, set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to the full URL. It takes precedence over the base URL. Use an HTTP or HTTPS URL without credentials or a query string. With no endpoint, the Host opens no export connection. The workspace network control and the operator's offline switch still apply, including when the network is turned off after startup.
 
-Exported span attributes are checked for credentials and redacted. Prompt, message and result content is left out by default; set `ALPHALATTICE_OTLP_INCLUDE_CONTENT=1` in the Host environment only if you choose to send it. Credential redaction still applies when content is enabled. Restart the Host to change either setting. The local history remains the record of truth.
+Exported span attributes are checked for credentials and redacted. Prompt, message and result content is left out by default. Set `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=span_only` in the Host environment only if you choose to include content in exported spans. Credential redaction still applies when content is enabled. Restart the Host to apply changes to export settings. The local history remains the record of truth.
 
 ## Native export and readings
 

@@ -29,13 +29,18 @@ from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
     agent_provenance_headers,
 )
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 
 CALL_PATH: Final = "/api/client/call"
 """Where a command ends its span at the Host its requests reached."""
 VENDOR_PROVIDERS: Final = {"claude-code": "anthropic", "codex": "openai"}
 """Each agent vendor's provider, by its OpenTelemetry GenAI name (`gen_ai.provider.name`)."""
 _TRACEPARENT = re.compile(r"^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
-_KEYS: Final = ("alphalattice.call_started_us", "alphalattice.call_parent", "alphalattice.command")
+_KEYS: Final = (
+    telemetry.ALPHALATTICE_CALL_STARTED_US,
+    telemetry.ALPHALATTICE_CALL_PARENT,
+    telemetry.ALPHALATTICE_COMMAND,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,14 +161,14 @@ def record(
     from alphalattice.kernel.data_layer.history import call as recorded  # lazy: the Host's
 
     who = provenance or RequestProvenance()
-    ids: dict[str, Any] = {"command": call.command}
+    ids: dict[str, Any] = {telemetry.COMMAND: call.command}
     if who.vendor is not None and who.session is not None:
-        ids["gen_ai.conversation.id"] = who.session
-        ids["gen_ai.provider.name"] = VENDOR_PROVIDERS.get(who.vendor, who.vendor)
+        ids[telemetry.GEN_AI_CONVERSATION_ID] = who.session
+        ids[telemetry.GEN_AI_PROVIDER_NAME] = VENDOR_PROVIDERS.get(who.vendor, who.vendor)
         if who.vendor == "codex":  # its thread is one agent's; Claude Code names no subagent
-            ids["gen_ai.agent.id"] = who.session
+            ids[telemetry.GEN_AI_AGENT_ID] = who.session
     if who.goal_id is not None:
-        ids["goal_id"] = who.goal_id
+        ids[telemetry.GOAL_ID] = who.goal_id
     recorded(
         (call.trace, call.span, call.parent),
         call.started_us,
