@@ -484,6 +484,51 @@ class StorePort:
             self._repaired = int(found[0][0])  # the repair closed every gap up to this commit
             return Committed(self._repaired, count, dropped, rewritten)
 
+    def commit_unheld(
+        self, table: str, provider_id: str, rows: Any, lag: tuple[str, int] | None = None
+    ) -> Committed:
+        """Stage and commit only the rows of a world batch that `commit` would admit, in one hold of
+        the writer. The batch is judged unstaged by `commit`'s own rules (`_known`'s fates and
+        `_in_order`'s refusals); a row every version of which is `same` or `held_opening` would be
+        admitted as nothing, so it takes no staging, and a batch of such rows no catalog commit.
+        A table world holds no row of has nothing to judge: its batch is staged whole. Not for a
+        TIMED table, where a held value written later is a rewrite."""
+        if table in TIMED:
+            raise ValueError(f"{table} is TIMED: a held value written later is a rewrite to record")
+        import pyarrow as pa  # lazy: the optional data extra, as DuckDB
+
+        with self._writer:
+            if not self.lake.execute(f"SELECT EXISTS (FROM lake.world.{table})").fetchall()[0][0]:
+                with stage(self.root, table, provider_id, rows, lag=lag) as staged:
+                    return self.commit(staged)
+            data = admissible(table, provider_id, rows, legacy=lag is not None)
+            numbered = data.append_column("_row", pa.array(range(data.num_rows), pa.int64()))
+            rule = None if lag is None else (*lag, self._lag_seconds(*lag))
+            run = self.lake.execute
+            self.lake.register("unheld_batch", numbered)
+            try:
+                judged = self._known(
+                    table, "unheld_batch", set(data.column_names), self.log.clock(), rule, "_row"
+                )
+                run(f"CREATE OR REPLACE TEMP TABLE admitting AS {judged}").complete()
+                kept = [
+                    row[0]
+                    for row in run(
+                        "SELECT DISTINCT _row FROM temp.admitting"
+                        " WHERE fate NOT IN ('same', 'held_opening') ORDER BY _row"
+                    ).fetchall()
+                ]
+                if kept or lag is not None:  # as `_catalog_commit` checks a batch
+                    same = " AND ".join(f"t.{k} = n.{k}" for k in WORLD_KEYS[table])
+                    self._in_order(table, f"lake.world.{table}", same, lag)
+            finally:
+                run("DROP TABLE IF EXISTS temp.admitting").complete()
+                self.lake.unregister("unheld_batch")
+            if not kept:
+                return Committed(None, 0, {}, 0)
+            with stage(self.root, table, provider_id, rows.take(kept), lag=lag) as staged:
+                return self.commit(staged)
+
     def derive(
         self,
         table: str,
@@ -1088,8 +1133,10 @@ class StorePort:
         columns: set[str],
         known: int,
         rule: tuple[str, int, int] | None,
+        carry: str = "",
     ) -> str:
-        """Every staged row, conformed to its table's catalog types, with its version_id (a UUIDv7
+        """Every staged row (with its `carry` column, if named), conformed to its table's catalog
+        types, with its version_id (a UUIDv7
         the engine mints), its known_at, its known_asof and its fate, as a query: `admit`, `same`
         (its content equals its key's newest version's, column by column, so however a writer
         stages one fact it is one version), `held_opening` (the open version of an interval world
@@ -1124,7 +1171,8 @@ class StorePort:
             else f"{'false' if name == 'retracted' else 'NULL'}::{kind} AS {name}"
             for name, kind in declared.items()
         )
-        rows = f"SELECT {conformed}, false AS _opening FROM {source}"
+        carried = f", {carry}" if carry else ""
+        rows = f"SELECT {conformed}{carried}, false AS _opening FROM {source}"
         interval = LEGACY_VALID[table] if rule is not None else ()
         if len(interval) == 2 and interval[0] in columns:  # an interval's open version, beside
             end = interval[0]  # its closing one

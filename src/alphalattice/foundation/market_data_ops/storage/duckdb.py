@@ -4450,7 +4450,7 @@ class MarketDataRepository(WorkspaceRepository):
         rows = connection.execute(
             f"""
             SELECT provider_symbol, effective_from, effective_to, lifecycle_state
-            FROM {tables["mappings"]} WHERE listing_id = ? AND provider = ?
+            FROM {tables["current_mappings"]} WHERE listing_id = ? AND provider = ?
             ORDER BY effective_from
             """,
             [listing_id, provider],

@@ -56,6 +56,7 @@ WORKSPACE: Final = {
     "actions": "corporate_action_current",
     "action_evidence": "corporate_action_current",
     "mappings": "provider_symbol_mapping",
+    "current_mappings": "provider_symbol_mapping",
     "bar_revisions": "bar_revision",
     "action_revisions": "corporate_action_revision",
 }
@@ -401,7 +402,10 @@ def relations(
     time is derived from its valid date, so a row admitted later can be known earlier. Of
     `listings` only when the read names them (`scope`), else of every listing world holds.
     Revision observations and payload references belong to `workspace_id`; no identity gives
-    no journal observations."""
+    no journal observations. `current_mappings` is `mappings` as world knows them now, whatever
+    the cutoff, for an action-audit receipt alone: the receipt binds the current-only
+    manifest's mapping as it was written (`mapping_in_force`), so a mapping first written today,
+    known at a later close, binds it before then. Every other read takes `mappings`."""
     named = scope(listings)
     return {
         "bars": bars(cutoff_us, held_us, named, workspace_id=workspace_id),
@@ -411,6 +415,7 @@ def relations(
             cutoff_us, held_us, named, evidence=True, workspace_id=workspace_id
         ),
         "mappings": mappings(cutoff_us, held_us, named),
+        "current_mappings": mappings(LATEST, held_us, named),
         "bar_revisions": revisions("bar_revision", cutoff_us, held_us, workspace_id=workspace_id),
         "action_revisions": revisions(
             "corporate_action_revision", cutoff_us, held_us, workspace_id=workspace_id

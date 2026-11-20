@@ -146,6 +146,10 @@ TABLES: Final = (
 its rows' hashes: a content fingerprint, which no write time can leave unchanged."""
 WORKSPACE: Final = "market_workspace"
 """The name the workspace's database is attached under, read-only, for one admission."""
+UNHELD: Final = frozenset({"session", "listing", "provider_symbol"})
+"""The world tables an admission rebuilds whole from the workspace's tables, so each holds mostly
+rows world already holds; StorePort stages only their rows it lacks (`commit_unheld`). The bars'
+and actions' own queries already take only the rows world lacks or holds older."""
 DROPS: Final = (
     "DROP TABLE IF EXISTS temp.market_ids",
     "DROP TABLE IF EXISTS temp.market_providers",
@@ -821,18 +825,22 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
             return None
         marks = table_marks(run, f"{WORKSPACE}.")
         last = port.log.read(
-            "SELECT json_extract(attrs, '$.marks') FROM event WHERE type = 'admission'"
-            " AND subject_id = ? AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC"
-            " LIMIT 1",
+            "SELECT seq, json_extract(attrs, '$.marks'),"
+            " json_extract(attrs, '$.dropped.equal_time') FROM event WHERE type = 'admission'"
+            " AND subject_id = ?"
+            " AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC LIMIT 1",
             (workspace_id, DATASET),
         )
-        if last and json.loads(last[0][0]) == marks:
+        if last and json.loads(last[0][1]) == marks:
             return None
+        changed = _changed(port, workspace_id, last[0] if last else None, marks)
         started = port.log.clock()
         providers = _register(run)
-        admitted = _admit(port, providers)
-        _admit_universe_contents(database, workspace_id, port.lake)
-        _revisions(port, workspace_id)
+        admitted = _admit(port, providers) if changed & SOURCES["market"] else {"rows": {}}
+        if changed & SOURCES["universe"]:
+            _admit_universe_contents(database, workspace_id, port.lake)
+        if changed & SOURCES["revisions"]:
+            _revisions(port, workspace_id)
         _record_admission_summary(
             workspace_id,
             sorted(providers),
@@ -845,6 +853,57 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
         for drop in DROPS:
             run(drop).complete()
         run(f"DETACH {WORKSPACE}").complete()
+
+
+SOURCES: Final = {
+    "market": frozenset(
+        {
+            "listing",
+            "provider_symbol_mapping",
+            "market_profile",
+            "raw_daily_bar_current",
+            "provider_adjusted_close_current",
+            "corporate_action_current",
+        }
+    ),
+    "universe": frozenset(
+        {
+            "universe_manifest",
+            "universe_manifest_listing",
+            "universe_bootstrap",
+            "universe_membership_event",
+            "listing",
+            "market_profile",
+            "provider_symbol_mapping",
+        }
+    ),
+    "revisions": frozenset(REVISIONS),
+}
+"""The workspace tables each part of an admission reads: the market tables' batches (`_admit`), the
+universe's manifests, bootstrap and journal (`_admit_universe_contents`, whose reader joins the
+listings, profiles and mappings), and the original journal rows (`_revisions`)."""
+
+
+def _changed(
+    port: Any, workspace_id: str, last: Sequence[Any] | None, marks: dict[str, Any]
+) -> set[str]:
+    """The tables an admission must read again: those whose marks moved since this workspace's last
+    market admission, when that admission took every row and no other workspace's market admission
+    came after it. World's market tables are written by market admissions alone, so a table whose
+    rows are unchanged still holds in world what that admission left there, and admitting it again
+    would stage nothing. Every table otherwise: the first admission, one after another workspace's,
+    and one after a drop of an equal time's value, which a new admission must meet again."""
+    if last is None or last[2] is not None:
+        return set(TABLES)
+    other = port.log.read(
+        "SELECT 1 FROM event WHERE type = 'admission' AND seq > ? AND subject_id <> ?"
+        " AND json_extract(attrs, '$.dataset') = ? LIMIT 1",
+        (last[0], workspace_id, DATASET),
+    )
+    if other:
+        return set(TABLES)
+    before = json.loads(last[1])
+    return {table for table in TABLES if before.get(table) != marks[table]}
 
 
 def sector_marks(database: Path) -> dict[str, Any]:
@@ -1196,8 +1255,11 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
     def commit(table: str, provider: str, batch: Any, lag: Any) -> None:
         if not batch.num_rows:
             return
-        with stage(port.root, table, provider_ids[provider], batch, lag=lag) as staged:
-            done = port.commit(staged)
+        if table in UNHELD:  # rebuilt whole each time, mostly held: only what world lacks is staged
+            done = port.commit_unheld(table, provider_ids[provider], batch, lag)
+        else:
+            with stage(port.root, table, provider_ids[provider], batch, lag=lag) as staged:
+                done = port.commit(staged)
         if done.rows:
             rows[table] = rows.get(table, 0) + done.rows
         for reason, count in done.dropped.items():

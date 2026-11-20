@@ -1061,6 +1061,53 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
     assert (unseen[0][0] == unseen[1][0], unseen[1][1]) == (True, 0)
 
 
+@pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
+def test_a_receipt_verifies_at_once_though_world_knows_its_mapping_at_a_later_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A first use on a Sunday writes its mapping from that day, which world knows at Monday's
+    close; the receipt written then binds the current mapping, as written, so it verifies at
+    once, though a read as of that moment sees no mapping."""
+    now = datetime(2026, 8, 2, tzinfo=UTC)
+    fixture = acquisition_manifest()
+    manifest = replace(fixture, profile=replace(fixture.profile, manifest_as_of=now.date()))
+    store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
+    store.bootstrap(manifest)
+    bars(store, manifest, DAYS, 101.0, 0)
+    audit_one(
+        store,
+        manifest,
+        listing_id="listing-aapl",
+        provider="fixture",
+        actions=(),
+        adjusted_closes=tuple(
+            ProviderAdjustedClosePoint("listing-aapl", "fixture", d, 100.5) for d in DAYS
+        ),
+        history_start=DAYS[0],
+        history_end=DAYS[-1],
+        observed_at=now,
+    )
+    receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
+    monkeypatch.setenv(world_reads.SETTING, "world")
+    history.open_history("w1", "workspace", tmp_path / "workspace", root=tmp_path / "data")
+    try:
+        world.admit(store.workspace / "market-data.duckdb", "w1")
+        with store.market_reads(cutoff_us=world_reads.cutoff(now)) as (cursor, tables):
+            assert tables != world_reads.WORKSPACE
+            known = cursor.execute(f"SELECT count(*) FROM {tables['mappings']}").fetchone()[0]
+        verified = store.verified_action_audit_receipt(
+            manifest,
+            receipt_hash=receipt.receipt_hash,
+            listing_id="listing-aapl",
+            provider="fixture",
+            requested_as_of=DAYS[-1],
+            now=now,
+        )
+    finally:
+        history.release_history()
+    assert (known, verified) == (0, receipt)
+
+
 @pytest.mark.proves("market_data_ops.a_research_copy_reads_world_at_its_selection")
 def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_without_one(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],

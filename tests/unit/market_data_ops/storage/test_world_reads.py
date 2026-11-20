@@ -54,6 +54,8 @@ def test_each_workspace_table_has_a_world_relation_read_as_of_the_cutoff():
     held = world_reads.relations(1_700_000_000_000_000, 1_600_000_000_000_000, workspace_id="w1")
     assert set(named) == set(world_reads.WORKSPACE)
     for name, relation in named.items():
+        if name == "current_mappings":  # a receipt's mapping, current whatever the cutoff
+            continue
         if name in {"bar_revisions", "action_revisions"}:
             assert "occurred_us <= 1700000000000000" in relation
             assert "recorded_us <= 1600000000000000" in held[name]
@@ -67,6 +69,18 @@ def test_each_workspace_table_has_a_world_relation_read_as_of_the_cutoff():
             assert "workspace_id = 'w1'" in relation
     assert "c.known_asof <= make_timestamptz(1700000000000000)" in named["action_evidence"]
     assert "c.visible_to > make_timestamptz(1700000000000000)" in named["action_evidence"]
+
+
+@pytest.mark.proves("market_data_ops.world_relations_read_as_of_their_cutoff")
+def test_a_receipts_mapping_relation_reads_world_current_whatever_the_cutoff():
+    """An action-audit receipt binds the current-only manifest's mapping as it was written, so its
+    relation reads all world knows, still only the admissions a selection held; `mappings`, which
+    every other read takes, stays as of the cutoff."""
+    named = world_reads.relations(1_700_000_000_000_000, 1_600_000_000_000_000, workspace_id="w1")
+    assert named["current_mappings"] == world_reads.mappings(
+        world_reads.LATEST, 1_600_000_000_000_000
+    )
+    assert named["mappings"] == world_reads.mappings(1_700_000_000_000_000, 1_600_000_000_000_000)
 
 
 BINDING = "0123456789abcdef" * 4
