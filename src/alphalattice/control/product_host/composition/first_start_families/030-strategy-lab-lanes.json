@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.investment.portfolio_strategy_lab.publication.artifacts:lane_upgrade_family",
+ "mode": "workspace"
+}

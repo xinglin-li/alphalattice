@@ -1,0 +1,64 @@
+{
+ "world": [
+  {
+   "order": 1,
+   "table": "market",
+   "key": [
+    "market_id"
+   ]
+  },
+  {
+   "order": 2,
+   "table": "listing",
+   "key": [
+    "listing_id"
+   ]
+  },
+  {
+   "order": 3,
+   "table": "provider_symbol",
+   "key": [
+    "provider_id",
+    "symbol",
+    "valid_from"
+   ]
+  },
+  {
+   "order": 4,
+   "table": "universe_member",
+   "key": [
+    "universe_id",
+    "listing_id",
+    "valid_from"
+   ]
+  },
+  {
+   "order": 6,
+   "table": "raw_bar",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "session_date"
+   ]
+  },
+  {
+   "order": 7,
+   "table": "corporate_action",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "effective_date",
+    "kind",
+    "action_id"
+   ]
+  },
+  {
+   "order": 8,
+   "table": "session",
+   "key": [
+    "market_id",
+    "session_date"
+   ]
+  }
+ ]
+}

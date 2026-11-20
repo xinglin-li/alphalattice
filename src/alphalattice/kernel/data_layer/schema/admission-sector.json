@@ -1,0 +1,23 @@
+{
+ "world": [
+  {
+   "order": 5,
+   "table": "sector",
+   "key": [
+    "scheme_id",
+    "listing_id",
+    "valid_from"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "order": 4,
+   "table": "sector_evaluation",
+   "key": [
+    "artifact_id",
+    "sector_index"
+   ]
+  }
+ ]
+}

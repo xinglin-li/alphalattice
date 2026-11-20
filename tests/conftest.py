@@ -100,7 +100,7 @@ def _one_machine_per_test(request: pytest.FixtureRequest) -> Iterator[None]:
     if contract is not None and contract.layer == "unit":
         yield
         return
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer import history_runtime as history
 
     if history.recording():
         yield

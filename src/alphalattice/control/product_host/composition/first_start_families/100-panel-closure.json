@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.foundation.feature_engine.panels.closure_files:closure_upgrade_family",
+ "mode": "workspace"
+}

@@ -54,18 +54,12 @@ from alphalattice.control.product_host.composition.workspace import WorkspaceRun
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-from alphalattice.foundation.causal_outcomes.execution.publication import (
-    CausalExecutionOutcomePublisher,
-)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.inputs.closure_source import (
     FeatureClosureSourceRepository,
 )
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
-)
-from alphalattice.foundation.feature_engine.producers.factors.open_intraday import (
-    overnight_return_factor_spec,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
@@ -114,6 +108,13 @@ from devtools.architecture.structural import (
 from devtools.evaluation.golden_workspaces import remove_tree
 from tests._support import development_universe, sufficient_universe
 
+# Compatibility imports for existing tests. New family helpers are used from their owners.
+from tests.researcher_methodology_surface.real_workspace_features import development_feature_catalog
+from tests.researcher_methodology_surface.real_workspace_outcomes import publish_causal_outcomes
+from tests.researcher_methodology_surface.real_workspace_sector import (
+    _sector_revision as _sector_revision,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "config" / "market-profiles" / "us-current-index-research.yaml"
 MARKET_PROFILE_ID = "us-current-index-research"
@@ -138,7 +139,7 @@ FACTOR_SCALE = sufficient_universe.STANDARD
 training, three 252-session folds, a 252-session holdout) after the catalog's 252-session lookback,
 so eight years of history; at seven the walk cannot fill its folds. The sufficient set's standard,
 never the full ten years; its tests are large, nightly only."""
-OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)
+OBSERVED_AT = development_universe.OBSERVED_AT
 
 # Two sectors of five, which is the smallest shape that satisfies the
 # five-member sector floor on both sides of the sector-balanced weighting.
@@ -350,87 +351,6 @@ def _source_loader_for(  # type: ignore[no-untyped-def]
         return _bootstrap(symbols, standard)
 
     return load
-
-
-def _sector_revision(workspace: RealRiskWorkspace) -> str:
-    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-        PanelClosureArtifactStore,
-    )
-    from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-
-    store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
-    paths = sorted((store.root / "sector-maps").glob("*.json"))
-    assert paths, "the shared workspace publishes a sector revision map"
-    return store.load_model(
-        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
-    ).sector_revision
-
-
-def publish_causal_outcomes(
-    workspace: RealRiskWorkspace, *, at: datetime = OBSERVED_AT, recipe_id: str | None = None
-) -> tuple[str, str]:
-    """Publish the causal execution outcomes a Factor program reads, for real.
-
-    Kept out of ``build_real_risk_workspace`` deliberately. Risk needs a return
-    surface and never touches execution outcomes, so publishing them in the
-    shared builder would slow every Risk case for an artifact none of them reads.
-
-    Returns ``(snapshot_hash, manifest_ref)`` because a Factor program binds both
-    and the reader resolves a manifest by hash rather than by URI -- the two are
-    handed back together so a caller cannot pair a hash with someone else's ref.
-    """
-
-    store = MarketDataRepository(workspace.workspace)
-    opened = not history.recording()
-    if opened:
-        history.open_history("outcomes-fixture", "Outcome fixture", workspace.workspace)
-    try:
-        published = CausalExecutionOutcomePublisher(
-            # Annotated ``PanelStateRepository`` on the publisher, but every method it
-            # reaches for -- the research manifest, the source watermark, raw bars and
-            # actions -- belongs to the market store. The annotation is stale; the
-            # market repository is what the code actually requires.
-            store=store,  # type: ignore[arg-type]
-            resolver=ArtifactResolver(workspace.artifact_root),
-            artifact_root=workspace.artifact_root,
-            mutation_gate=WorkspaceMutationGate(),
-        ).publish_daily(
-            panel_manifest_ref=workspace.panel_manifest_ref,
-            completed_at=at,
-            **({} if recipe_id is None else {"recipe_id": recipe_id}),
-        )
-    finally:
-        if opened:
-            history.close_history()
-    return str(published.manifest.snapshot_hash), str(published.manifest_artifact.uri)
-
-
-def development_feature_catalog() -> FeatureCatalog:
-    """The shipped catalog plus the one persistent extension under test.
-
-    This is the whole of "a researcher installs a method": take the governed
-    catalog, add the typed recipe the Feature capability already declares, and
-    hand the revision to the writers. The mathematics, the recipe and its
-    implementation identity are all product-owned -- ``overnight_return_factor_spec``
-    lives beside its kernel in ``feature_engine/producers``. Nothing is invented
-    here, and a spec assembled here instead would make "add a method in the
-    domain directory" false.
-
-    ``from_payload`` requires the factor axis sorted, so the merge sorts rather
-    than appends: the axis is positional in everything downstream that quotes it.
-
-    The shipped ``desktop-feature-catalog.json`` is not written to. This revision
-    exists only in the workspace that installs it, which is why no published
-    manifest and no current pointer moves.
-    """
-
-    shipped = FeatureCatalog.load()
-    payload = shipped.to_payload()
-    payload["factors"] = sorted(
-        [*payload["factors"], overnight_return_factor_spec().model_dump(mode="json")],
-        key=lambda factor: str(factor["factor_id"]),
-    )
-    return FeatureCatalog.from_payload(payload)
 
 
 @dataclass(frozen=True, slots=True)

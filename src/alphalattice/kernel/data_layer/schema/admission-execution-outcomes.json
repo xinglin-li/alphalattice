@@ -1,0 +1,13 @@
+{
+ "results": [
+  {
+   "order": 1,
+   "table": "execution_outcome",
+   "key": [
+    "artifact_id",
+    "listing_id",
+    "formation_session"
+   ]
+  }
+ ]
+}

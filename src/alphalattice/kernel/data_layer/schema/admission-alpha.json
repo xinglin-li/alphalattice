@@ -1,0 +1,14 @@
+{
+ "derived": [
+  {
+   "order": 2,
+   "table": "training_sample",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "row_no"
+   ],
+   "part": "CAST(year(CAST(session_date AS DATE)) AS VARCHAR)"
+  }
+ ]
+}

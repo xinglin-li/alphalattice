@@ -21,23 +21,17 @@ from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from functools import partial
+from importlib import import_module, resources
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Final, Literal
 
-from alphalattice.capabilities.portfolio_inputs.benchmark import (
-    portfolio_benchmark_upgrade_family,
-)
 from alphalattice.control.product_host.composition.application_session import (
     verify_upgrade_backups,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     RESEARCH_WORKSPACE_MANIFEST_NAME,
     named_workspace_id,
-)
-from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    research_input_copies_family,
-    research_input_upgrade_family,
 )
 from alphalattice.control.product_host.storage.backup import (
     WorkspaceBackupError,
@@ -50,30 +44,12 @@ from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterL
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     execution_outcome_upgrade_family,
 )
-from alphalattice.foundation.feature_engine.panels.closure_files import closure_upgrade_family
-from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
-from alphalattice.investment.alpha_research.experiments.development_artifacts import (
-    alpha_array_upgrade_family,
-)
-from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
-    lane_upgrade_family,
-)
-from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
-    portfolio_results_upgrade_family,
-)
-from alphalattice.investment.risk_research.experiments.development_artifacts import (
-    risk_covariance_upgrade_family,
-)
-from alphalattice.investment.sector_research.experiments.development_artifacts import (
-    sector_results_upgrade_family,
-)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.oversight.model_validation.protected_gate import validation_upgrade_family
 
 UNHELD: Final = ("data_layer.outcome_missing",)
 """The refusal that says only that the catalog holds no body for a chunk: no profile for its
@@ -98,16 +74,6 @@ def execution_outcomes() -> Family:
     return replace(family, holds=holds)
 
 
-def strategy_lab_lanes() -> Family:
-    """The Strategy Lab's lanes into the array door, each held by the workspace it lies in."""
-    return lane_upgrade_family(named_workspace_id)
-
-
-def alpha_arrays() -> Family:
-    """Alpha's old array bodies and score chunks into the array door."""
-    return alpha_array_upgrade_family(named_workspace_id)
-
-
 def _portfolio_holds(family: Family, workspace: Path) -> bool:
     """Ask the family's catalog comparison about one workspace."""
     try:
@@ -127,50 +93,49 @@ def _host_portfolio_family(family: Family) -> Family:
     return replace(family, switch=lambda _mode: None, holds=partial(_portfolio_holds, family))
 
 
-def portfolio_benchmarks() -> Family:
-    """Migrate benchmarks first, before Portfolio's results."""
-    return _host_portfolio_family(portfolio_benchmark_upgrade_family(named_workspace_id))
+def _declared_family(declaration: dict[str, str]) -> Callable[[], Family]:
+    """Bind one registered owner to the Host's workspace and verification adapters."""
+    target = declaration["factory"]
+    if target == ":execution_outcomes":
+        return execution_outcomes
+    module, _, name = target.partition(":")
+    if not module.startswith("alphalattice.") or not name.isidentifier():
+        raise ValueError(f"invalid first-start factory {target}")
+    factory = getattr(import_module(module), name)
+    mode = declaration["mode"]
+    if mode == "direct":
+        return factory
+    if mode == "machine-backup":
+        return lambda: factory(default_backup_root("machine"))
+    scoped = partial(factory, named_workspace_id)
+    if mode == "workspace":
+        return scoped
+    if mode == "portfolio":
+        return lambda: _host_portfolio_family(scoped())
+    raise ValueError(f"unknown first-start adapter {mode} for {name}")
 
 
-def portfolio_results() -> Family:
-    """Hold a workspace's dated series and holdings until the catalog matches."""
-    return _host_portfolio_family(portfolio_results_upgrade_family(named_workspace_id))
+def _families() -> tuple[Callable[[], Family], ...]:
+    """Read the family registrations in their numbered migration order."""
+    directory = resources.files(__package__).joinpath("first_start_families")
+    factories = []
+    for path in sorted(directory.iterdir(), key=lambda item: item.name):
+        if not path.name.endswith(".json"):
+            continue
+        try:
+            factories.append(_declared_family(json.loads(path.read_text(encoding="utf-8"))))
+        except (AttributeError, ImportError, KeyError, OSError, TypeError, ValueError) as error:
+            raise DataError(
+                f"cannot read first-start family registration {path.name}",
+                code="data_layer.schema_mismatch",
+            ) from error
+    return tuple(factories)
 
 
-def protected_validation() -> Family:
-    """The protected gate's receipts and permit claims, held by their original workspace."""
-    return validation_upgrade_family(named_workspace_id)
+FAMILIES: Final = _families()
+"""Every upgrade family in migration order. Research-input copies go last, after the families
+that read them. The Task store and its telemetry move at first use by their own seams."""
 
-
-def risk_covariance() -> Family:
-    """Move Risk's sealed covariance history to the catalog under the workspace that owns it."""
-    return risk_covariance_upgrade_family(named_workspace_id)
-
-
-def panel_closure() -> Family:
-    """Each workspace's Panel closure folder (the closure store, the Feature ledger and the
-    logical identity's pointers) onto the log, byte for byte, held by its workspace."""
-    return closure_upgrade_family(named_workspace_id)
-
-
-FAMILIES: Final[tuple[Callable[[], Family], ...]] = (
-    partial(market_upgrade_family, named_workspace_id),
-    execution_outcomes,
-    strategy_lab_lanes,
-    alpha_arrays,
-    protected_validation,
-    risk_covariance,
-    sector_results_upgrade_family,
-    portfolio_benchmarks,
-    portfolio_results,
-    panel_closure,
-    partial(research_input_upgrade_family, named_workspace_id),
-    lambda: research_input_copies_family(default_backup_root("machine")),
-)
-"""Every upgrade family a merged card declares, in its migration order: a family card adds its
-factory here. The research-input copies go last: they are removed only once every family that
-reads them (the execution outcomes in their artifacts) is done. The Task store, its telemetry and
-heartbeats move at first use by their own seams."""
 
 State = Literal["PENDING", "RUNNING", "FAILED", "COMPLETED"]
 

@@ -1,0 +1,41 @@
+{
+ "tables": {
+  "catalog.derived.training_sample": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "row_no"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "row_no": "value: the sample's row in its partition"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "session_date": "market_date"
+   }
+  },
+  "catalog.results.alpha_score": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "session_date",
+    "listing_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "session_date": "value: the scored session",
+    "listing_id": "link"
+   },
+   "up": "artifact_id",
+   "times": {
+    "session_date": "market_date"
+   }
+  }
+ },
+ "known": {}
+}

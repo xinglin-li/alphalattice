@@ -1,4 +1,4 @@
-"""The data model's contract: kernel/data_layer/schema/contract.json against the DDL beside it.
+"""The data model's family contracts against the DDL beside them.
 
 The registry declares, for every table in log.sql and catalog.sql, its key and where
 each key part comes from, its one upward link, its home, each time column's clock, each status
@@ -56,7 +56,16 @@ def _texts() -> dict[str, str]:
 
 
 def _registry() -> dict[str, Any]:
-    return json.loads((SCHEMA / "contract.json").read_text(encoding="utf-8"))
+    contract = json.loads((SCHEMA / "contract.json").read_text(encoding="utf-8"))
+    contract.update(tables={}, known={})
+    for path in sorted(SCHEMA.glob("contract-*.json")):
+        family = json.loads(path.read_text(encoding="utf-8"))
+        for section in ("tables", "known"):
+            entries = family[section]
+            if overlap := contract[section].keys() & entries.keys():
+                raise ValueError(f"{path.name} repeats {section}: {sorted(overlap)}")
+            contract[section].update(entries)
+    return contract
 
 
 def _statements(text: str) -> list[str]:
@@ -462,6 +471,9 @@ def test_the_schema_meets_its_registry_with_only_its_known_breaks() -> None:
         pytest.param("src/alphalattice/kernel/data_layer/schema/log.sql", True, id="ddl"),
         pytest.param(
             "src/alphalattice/kernel/data_layer/schema/contract.json", True, id="registry"
+        ),
+        pytest.param(
+            "src/alphalattice/kernel/data_layer/schema/contract-market.json", True, id="family"
         ),
         pytest.param("src/alphalattice/kernel/data_layer/log.py", False, id="data-layer-code"),
         pytest.param("README.md", False, id="elsewhere"),

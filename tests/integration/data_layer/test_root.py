@@ -7,6 +7,7 @@ import json
 import sqlite3
 import uuid
 from contextlib import closing
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,10 @@ from alphalattice.kernel.data_layer.root import (
     catalog,
     duckdb_session,
     seed_rows,
+)
+from tests.integration.data_layer.root_knowledge import assert_knowledge_tables
+from tests.integration.data_layer.root_protected_validation import (
+    assert_old_receipt_catalog_opens,
 )
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
@@ -247,19 +252,13 @@ def test_a_new_log_holds_the_seed_registry_whole(log):
     }
     later = {(f, n) for f, n, version, *_ in rows if version > 1}
     assert (len(rows), {row[3:5] for row in rows}) == (123, {(1, 1)})  # with the knowledge events
-    assert "market" in named["world_table"]
     # A row the first log did not record names the count it came in at (first_seed_count), so a
     # history seeded before it replays without it: the rows naming none are the first log's 106.
     assert len(seed_rows(historical_count=0)) == 106, "a seed row added later names its first count"
-    # The eleven Alpha development rows came in at 119, the market row at 120 and the three
-    # knowledge events at 123: a log replays each set from its count on, never before it.
-    assert [len(seed_rows(historical_count=n)) for n in (118, 119, 120, 122, 123)] == [
-        108,
-        119,
-        120,
-        120,
-        123,
-    ]
+    for path in sorted(Path(__file__).parent.glob("root_*.py")):
+        family = import_module(f"{__package__}.{path.stem}")
+        if (check := getattr(family, "assert_seed_history", None)) is not None:
+            check(named)
     assert later == {("event_type", "task.requested"), ("event_type", "registry.seeded")}
     assert named["tag"] == {"instrument", "theme", "regime", "quality"}
     assert set(named) - {"family"} <= named["family"]
@@ -406,39 +405,13 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
         assert reading.execute("SELECT count(*) FROM corporate_action_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM universe_member_asof(1)").fetchall() == [(0,)]
         assert reading.execute("SELECT count(*) FROM experience").fetchall() == [(0,)]
-    # A catalog predating validation receipts is extended when the Host opens its writer.
-    with closing(duckdb_session(tmp_path)) as previous:
-        path = (tmp_path / "machine" / "catalog.sqlite").as_posix()
-        previous.execute(
-            f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{tmp_path.as_posix()}/data/')"
-        )
-        previous.execute("DROP TABLE lake.results.validation_receipt")
-    from alphalattice.kernel.data_layer.log import HostLog
-    from alphalattice.kernel.data_layer.store import StorePort
-
-    with HostLog.open(tmp_path) as log:
-        port = StorePort.open(tmp_path, log)
-        assert port.lake.execute(
-            "SELECT count(*) FROM lake.results.validation_receipt"
-        ).fetchone() == (0,)
-        port.close()
+    assert_old_receipt_catalog_opens(tmp_path)
     files = _files(tmp_path)
     second = create_data_root(tmp_path)
     made = ("machine", "data", "blobs", "staging", "extensions")
     made += ("machine/log.sqlite",)
     assert (first.created, second.created, _files(tmp_path)) == (made, (), files)
-    assert _tables(tmp_path / "machine" / "log.sqlite") >= {
-        "knowledge_source",
-        "knowledge_source_version",
-        "knowledge_workspace_source",
-        "knowledge_recipe",
-        "knowledge_model",
-        "knowledge_chunk",
-        "knowledge_embedding",
-        "knowledge_embedding_batch",
-        "knowledge_snapshot",
-        "knowledge_snapshot_revision",
-    }
+    assert_knowledge_tables(_tables(tmp_path / "machine" / "log.sqlite"))
     old = reading_session(tmp_path)  # a catalog an earlier schema made: an old column name
     with closing(old):
         old.execute("DETACH lake")

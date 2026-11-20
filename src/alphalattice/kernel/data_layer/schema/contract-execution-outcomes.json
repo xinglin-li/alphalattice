@@ -1,0 +1,27 @@
+{
+ "tables": {
+  "catalog.results.execution_outcome": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "listing_id",
+    "formation_session"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "listing_id": "link",
+    "formation_session": "value: the formation session"
+   },
+   "up": "artifact_id",
+   "times": {
+    "formation_session": "market_date",
+    "formation_close_at": "utc_timestamp",
+    "entry_session": "market_date",
+    "entry_open_at": "utc_timestamp",
+    "holding_end_session": "market_date",
+    "holding_end_open_at": "utc_timestamp"
+   }
+  }
+ },
+ "known": {}
+}

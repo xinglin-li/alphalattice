@@ -1,0 +1,235 @@
+{
+ "tables": {
+  "catalog.world.corporate_action": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "effective_date",
+    "kind",
+    "action_id",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "listing_id": "link",
+    "effective_date": "value: the action's effective date",
+    "kind": "value: the action's kind",
+    "action_id": "external: the provider's own id for the action",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "effective_date": "market_date",
+    "pay_date": "market_date",
+    "published_at": "utc_timestamp",
+    "source_observed_at": "source_clock",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.listing": {
+   "home": "world",
+   "key": [
+    "listing_id",
+    "version_id"
+   ],
+   "id": {
+    "listing_id": "uuid7",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "first_session": "market_date",
+    "last_session": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   },
+   "links": [
+    "market_id"
+   ]
+  },
+  "catalog.world.market": {
+   "home": "world",
+   "key": [
+    "market_id",
+    "version_id"
+   ],
+   "id": {
+    "market_id": "uuid7",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "valid_from": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   }
+  },
+  "catalog.world.provider_symbol": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "symbol",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "symbol": "value: the provider's own code for the listing",
+    "valid_from": "value: the alias's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.raw_bar": {
+   "home": "world",
+   "key": [
+    "provider_id",
+    "listing_id",
+    "session_date",
+    "version_id"
+   ],
+   "id": {
+    "provider_id": "link",
+    "listing_id": "link",
+    "session_date": "value: the market session the bar is for",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "listing_id"
+   ],
+   "times": {
+    "session_date": "market_date",
+    "published_at": "utc_timestamp",
+    "source_observed_at": "source_clock",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  },
+  "catalog.world.rewritten": {
+   "home": "world",
+   "key": [
+    "table_id",
+    "version_id",
+    "source_observed_at"
+   ],
+   "id": {
+    "table_id": "link",
+    "version_id": "link",
+    "source_observed_at": "value: each later source write of the version is its own row"
+   },
+   "links": [
+    "table_id",
+    "version_id",
+    "by_admission_id"
+   ],
+   "times": {
+    "source_observed_at": "source_clock"
+   }
+  },
+  "catalog.world.session": {
+   "home": "world",
+   "key": [
+    "market_id",
+    "session_date",
+    "version_id"
+   ],
+   "id": {
+    "market_id": "link",
+    "session_date": "value: the session's date",
+    "version_id": "uuid7"
+   },
+   "times": {
+    "session_date": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp",
+    "source_observed_at": "source_clock"
+   },
+   "links": [
+    "market_id"
+   ],
+   "versions": {
+    "calendar_version": "own: the pinned calendar_origin rule engine release that generated this session, recorded from its installed distribution"
+   }
+  },
+  "catalog.world.superseded": {
+   "home": "world",
+   "key": [
+    "table_id",
+    "version_id"
+   ],
+   "id": {
+    "table_id": "link",
+    "version_id": "link"
+   },
+   "links": [
+    "table_id",
+    "version_id",
+    "by_admission_id"
+   ],
+   "times": {
+    "superseded_asof": "utc_timestamp"
+   }
+  },
+  "catalog.world.universe_member": {
+   "home": "world",
+   "key": [
+    "universe_id",
+    "listing_id",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "universe_id": "link",
+    "listing_id": "link",
+    "valid_from": "value: the membership's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "universe_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  }
+ },
+ "known": {
+  "provider-action-id-external": {
+   "says": "The provider's corporate-action identifier still keys its source fact without proof that the outside identifier never changes; this remains an unresolved identity break.",
+   "problems": [
+    "id: catalog.world.corporate_action.action_id: an outside code has no proof that it never changes"
+   ]
+  }
+ }
+}

@@ -27,7 +27,14 @@ from alphalattice.interface.local_application.answers import (
     ExperienceRecordAnswer,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import encoders, experiences, history, recall
+from alphalattice.kernel.data_layer import (
+    encoders,
+    experiences,
+    history,
+    history_runtime,
+    history_startup,
+    recall,
+)
 from alphalattice.kernel.data_layer.log import HostLog
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
@@ -235,7 +242,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     from alphalattice.kernel.data_layer.root import catalog
 
     assert catalog(root) is not None
-    monkeypatch.setattr(history, "data_root", lambda: root)
+    monkeypatch.setattr(history_runtime, "data_root", lambda: root)
     surfaces = []
     try:
         for _ in range(2):
@@ -341,7 +348,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     assert unopened.value.failure.code == "data_layer.log_unavailable"
     assert not history.recording()
     assert history.read_experience(limit=1) is None
-    monkeypatch.setattr(history, "reading_session", lambda where: 1 / 0)  # views that fail
+    monkeypatch.setattr(history_startup, "reading_session", lambda where: 1 / 0)
     with pytest.raises(DataError) as views:
         history.open_history("w1", "one", folder, root)
     assert views.value.failure.code == "data_layer.history_unavailable"

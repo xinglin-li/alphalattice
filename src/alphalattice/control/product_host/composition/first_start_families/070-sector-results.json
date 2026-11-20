@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.investment.sector_research.experiments.development_artifacts:sector_results_upgrade_family",
+ "mode": "direct"
+}

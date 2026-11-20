@@ -1,0 +1,18 @@
+{
+ "tables": {
+  "catalog.results.validation_receipt": {
+   "home": "results",
+   "key": [
+    "artifact_id"
+   ],
+   "id": {
+    "artifact_id": "link"
+   },
+   "up": "artifact_id",
+   "times": {
+    "sealed_at": "utc_timestamp"
+   }
+  }
+ },
+ "known": {}
+}

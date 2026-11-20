@@ -1,0 +1,15 @@
+{
+ "derived": [
+  {
+   "order": 1,
+   "table": "feature_set_",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "session_date",
+    "listing_id"
+   ],
+   "part": "strftime(CAST(session_date AS DATE), '%Y-%m') || '/' || CAST(listing_id AS VARCHAR)"
+  }
+ ]
+}

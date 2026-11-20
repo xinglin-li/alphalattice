@@ -1,0 +1,14 @@
+{
+ "results": [
+  {
+   "order": 5,
+   "table": "breakdown",
+   "key": [
+    "artifact_id",
+    "metric_id",
+    "metric_version",
+    "dims"
+   ]
+  }
+ ]
+}

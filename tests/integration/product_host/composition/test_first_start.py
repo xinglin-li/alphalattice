@@ -22,7 +22,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
-from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer import history, history_execution_outcomes
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family
 from tests.portfolio_strategy_lab.local_web_support import _json, _request
 
@@ -369,9 +369,11 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
             def fault(_digest: str) -> str:
                 raise DataError("named twice", code="data_layer.outcome_incomplete")
 
-            monkeypatch.setattr(history, "execution_outcome_artifact_id", fault)
+            monkeypatch.setattr(history_execution_outcomes, "execution_outcome_artifact_id", fault)
         if case == "no catalog reader":  # DuckDB, the data extra, is absent
-            monkeypatch.setattr(history, "reading_session", lambda *_args, **_kwargs: None)
+            monkeypatch.setattr(
+                history_execution_outcomes, "reading_session", lambda *_args, **_kwargs: None
+            )
         family = first_start.execution_outcomes()
         unheld = case in ("nowhere", "its profile without rows")
         if case == "the catalog is created after discovery":

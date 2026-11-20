@@ -467,14 +467,14 @@ def closure_on_log(workspace: Path) -> Path:
     in folder form (a folder no Host had put on the log) moved onto this process's data root as a
     first start moves it: a seed then carries it with its arrays, and the Host serving a copy
     opens with no upgrade to run. A workspace holding no such closure is left as it is."""
-    from alphalattice.control.product_host.composition.first_start import panel_closure
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
     )
+    from alphalattice.foundation.feature_engine.panels.closure_files import closure_upgrade_family
     from alphalattice.kernel.data_layer import history
     from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 
-    copy, family = workspace.resolve(), panel_closure()
+    copy, family = workspace.resolve(), closure_upgrade_family(named_workspace_id)
     if not family.holds(copy):
         return workspace
     opened = history.holding() is None

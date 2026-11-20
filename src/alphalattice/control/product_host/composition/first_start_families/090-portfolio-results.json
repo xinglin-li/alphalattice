@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger:portfolio_results_upgrade_family",
+ "mode": "portfolio"
+}

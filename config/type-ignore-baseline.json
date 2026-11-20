@@ -652,7 +652,6 @@
     "tests/researcher_methodology_surface/alternate_capability.py::type-ignore[misc]": 1,
     "tests/researcher_methodology_surface/alternate_capability.py::type-ignore[untyped-decorator]": 1,
     "tests/researcher_methodology_surface/factor_web_support.py::type-ignore[type-arg]": 1,
-    "tests/researcher_methodology_surface/real_workspace.py::type-ignore[arg-type]": 1,
     "tests/researcher_methodology_surface/real_workspace.py::type-ignore[no-untyped-def]": 4,
     "tests/researcher_methodology_surface/risk_development_support.py::type-ignore[arg-type]": 1,
     "tests/researcher_methodology_surface/risk_web_support.py::type-ignore[no-untyped-def]": 2,

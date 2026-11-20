@@ -1,0 +1,58 @@
+{
+ "results": [
+  {
+   "order": 7,
+   "table": "risk_covariance_cell",
+   "key": [
+    "artifact_id",
+    "listing_i",
+    "listing_j"
+   ]
+  },
+  {
+   "order": 8,
+   "table": "risk_covariance_order",
+   "key": [
+    "artifact_id",
+    "position"
+   ]
+  }
+ ],
+ "derived": [
+  {
+   "order": 3,
+   "table": "factor_cov",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "factor_i",
+    "factor_j"
+   ],
+   "part": "CAST(CAST(as_of AS DATE) AS VARCHAR)"
+  },
+  {
+   "order": 4,
+   "table": "factor_loading",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id",
+    "factor"
+   ],
+   "part": "CAST(CAST(as_of AS DATE) AS VARCHAR)"
+  },
+  {
+   "order": 5,
+   "table": "specific_risk",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id"
+   ],
+   "part": "CAST(CAST(as_of AS DATE) AS VARCHAR)"
+  }
+ ]
+}

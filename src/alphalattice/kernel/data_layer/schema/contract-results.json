@@ -1,0 +1,27 @@
+{
+ "tables": {
+  "catalog.results.breakdown": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "metric_id",
+    "metric_version",
+    "dims"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "metric_id": "link",
+    "metric_version": "link",
+    "dims": "value: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
+   },
+   "up": "artifact_id",
+   "links": [
+    "metric_id"
+   ],
+   "versions": {
+    "metric_version": "definition"
+   }
+  }
+ },
+ "known": {}
+}

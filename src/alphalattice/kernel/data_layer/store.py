@@ -34,6 +34,7 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
+from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final, NamedTuple
@@ -68,17 +69,35 @@ if find_spec("pyarrow") is not None:
 
 KINDS: Final = {"staging": "staging", "blobs": "blob", "data": "file"}
 """The deletion queue's kind for each top folder a deleted file may live in."""
-WORLD_KEYS: Final = {
-    "market": ("market_id",),
-    "listing": ("listing_id",),
-    "provider_symbol": ("provider_id", "symbol", "valid_from"),
-    "universe_member": ("universe_id", "listing_id", "valid_from"),
-    "sector": ("scheme_id", "listing_id", "valid_from"),
-    "raw_bar": ("provider_id", "listing_id", "session_date"),
-    "corporate_action": ("provider_id", "listing_id", "effective_date", "kind", "action_id"),
-    "session": ("market_id", "session_date"),
-    "evidence_doc": ("doc_id",),
-}
+
+
+def _admission_rules() -> dict[str, list[dict[str, Any]]]:
+    """Load each family's table registrations in the existing admission order."""
+    groups: dict[str, list[dict[str, Any]]] = {"world": [], "results": [], "derived": []}
+    schema = resources.files(__package__).joinpath("schema")
+    for path in sorted(schema.iterdir(), key=lambda item: item.name):
+        if path.name.startswith("admission-") and path.name.endswith(".json"):
+            try:
+                for group, entries in json.loads(path.read_text(encoding="utf-8")).items():
+                    groups[group].extend(entries)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                raise DataError(
+                    f"cannot read StorePort admission registrations in {path.name}",
+                    code="data_layer.schema_mismatch",
+                ) from error
+    for group, entries in groups.items():
+        entries.sort(key=lambda entry: (entry["order"], entry["table"]))
+        if len({entry["table"] for entry in entries}) != len(entries):
+            raise DataError(
+                f"duplicate StorePort admission registration in {group}",
+                code="data_layer.schema_mismatch",
+            )
+    return groups
+
+
+_ADMISSION_RULES: Final = _admission_rules()
+
+WORLD_KEYS: Final = {rule["table"]: tuple(rule["key"]) for rule in _ADMISSION_RULES["world"]}
 """Each world table catalog.sql defines, with its key. An observed row is known from its
 admission's moment: known_at and known_asof are both the log's clock."""
 ADMITTED: Final = (
@@ -101,38 +120,15 @@ LINEAGES: Final = {
     "universe_id": "universe",
 }
 """The world columns that name a lineage, with its family: a row names a registered one."""
-RESULTS_KEYS: Final = {
-    "execution_outcome": ("artifact_id", "listing_id", "formation_session"),
-    "holding": ("artifact_id", "as_of", "listing_id"),
-    "series": ("artifact_id", "name", "session_date"),
-    "sector_evaluation": ("artifact_id", "sector_index"),
-    "breakdown": ("artifact_id", "metric_id", "metric_version", "dims"),
-    "validation_receipt": ("artifact_id",),
-    "risk_covariance_cell": ("artifact_id", "listing_i", "listing_j"),
-    "risk_covariance_order": ("artifact_id", "position"),
-}
+RESULTS_KEYS: Final = {rule["table"]: tuple(rule["key"]) for rule in _ADMISSION_RULES["results"]}
 """The results tables StorePort admits, with their keys. A results row is an artifact's body,
 written once: a key already in the catalog is refused. Its lineage is its artifact_id, not an
 outside provider: its admission names no provider and lists the artifacts it holds."""
-DERIVED_KEYS: Final = {
-    "feature_set_": ("recipe_key", "input_digest", "session_date", "listing_id"),
-    "training_sample": ("recipe_key", "input_digest", "row_no"),
-    "factor_cov": ("recipe_key", "input_digest", "as_of", "factor_i", "factor_j"),
-    "factor_loading": ("recipe_key", "input_digest", "as_of", "listing_id", "factor"),
-    "specific_risk": ("recipe_key", "input_digest", "as_of", "listing_id"),
-}
+DERIVED_KEYS: Final = {rule["table"]: tuple(rule["key"]) for rule in _ADMISSION_RULES["derived"]}
 """The derived caches StorePort admits, with their keys: a feature set's table by its prefix
 (feature_table). A cache is rebuildable and no row references it, so its key may hold a digest;
 its rows are written only by `StorePort.derive`, and the log's cache_entry says which are valid."""
-DERIVED_PARTS: Final = {
-    "feature_set_": (
-        "strftime(CAST(session_date AS DATE), '%Y-%m') || '/' || CAST(listing_id AS VARCHAR)"
-    ),
-    "training_sample": "CAST(year(CAST(session_date AS DATE)) AS VARCHAR)",
-    "factor_cov": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
-    "factor_loading": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
-    "specific_risk": "CAST(CAST(as_of AS DATE) AS VARCHAR)",
-}
+DERIVED_PARTS: Final = {rule["table"]: rule["part"] for rule in _ADMISSION_RULES["derived"]}
 """Each derived table's partition of a row, as cache_entry's `part` names it: a year, a month and
 listing (a feature set's: a build's batch writes whole listings, and a day's append moves one
 month of each), or an as-of date."""

@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.foundation.market_data_ops.storage.world_upgrade:market_upgrade_family",
+ "mode": "workspace"
+}

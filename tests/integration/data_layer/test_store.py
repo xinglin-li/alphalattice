@@ -461,7 +461,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     if batch == "results":
         from datetime import datetime
 
-        from alphalattice.kernel.data_layer import history
+        from alphalattice.kernel.data_layer import history, history_execution_outcomes
 
         records = [{k: v for k, v in row.items() if k != "artifact_id"} for row in given]
         for row in records:
@@ -483,7 +483,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
                 from threading import Event
 
                 unit_held, opening = Event(), Event()
-                store = history.store
+                store = history_execution_outcomes.store
 
                 def first_store():
                     opening.set()
@@ -498,7 +498,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
                             history._lock.release()
                         return acquired
 
-                monkeypatch.setattr(history, "store", first_store)
+                monkeypatch.setattr(history_execution_outcomes, "store", first_store)
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     unit = pool.submit(log_unit)
                     assert unit_held.wait(5)

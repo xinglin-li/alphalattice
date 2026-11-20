@@ -1,0 +1,108 @@
+{
+ "tables": {
+  "catalog.derived.factor_cov": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "factor_i",
+    "factor_j"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "value: the as-of date",
+    "factor_i": "link",
+    "factor_j": "link"
+   },
+   "links": [
+    "recipe_key",
+    "factor_i",
+    "factor_j"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.derived.factor_loading": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id",
+    "factor"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "value: the as-of date",
+    "listing_id": "link",
+    "factor": "link"
+   },
+   "links": [
+    "recipe_key",
+    "factor"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.derived.specific_risk": {
+   "home": "derived",
+   "key": [
+    "recipe_key",
+    "input_digest",
+    "as_of",
+    "listing_id"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read",
+    "as_of": "value: the as-of date",
+    "listing_id": "link"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.results.risk_covariance_cell": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "listing_i",
+    "listing_j"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "listing_i": "link",
+    "listing_j": "link"
+   },
+   "up": "artifact_id",
+   "links": [
+    "listing_i",
+    "listing_j"
+   ]
+  },
+  "catalog.results.risk_covariance_order": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "position"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "position": "value: zero-based position in the sealed formation's original listing order"
+   },
+   "up": "artifact_id",
+   "links": [
+    "listing_id"
+   ]
+  }
+ },
+ "known": {}
+}
