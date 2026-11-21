@@ -2661,12 +2661,22 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         return ended
     if pending and chain.followed_answer is not None:
         prepared = chain.followed_answer
+    current = prepared
+    if not resuming and pending:
+        current = chain.send("evidence_prepared", prepare)
+        pending = outcome_of(current) == "PENDING"
+        if (ended := chain.followed("evidence_prepared", current)) is not None:
+            return ended
+        if pending:
+            prepared = chain.followed_answer or prepared
+    resuming = resuming or pending
     if resuming:
+        # Read the followed Task's packets. Preparing again can admit a new run
+        # when the Task succeeded with some units still failed.
         prepared, current, stopped = read_resumed(chain, prepared, prepare, preview_request, False)
         if stopped is not None:
             return stopped
-    else:
-        current = chain.send("evidence_prepared", prepare) if pending else prepared
+        preview = current
     return review_prepared(
         chain,
         root=root,
