@@ -171,12 +171,16 @@ def risk_development_run(
 def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
     """The exact original real input build, once per run, including its bind/reuse assertions."""
 
-    development = getattr(request, "param", None) == "development"
+    variant = getattr(request, "param", None)
+    development = variant == "development"
+    symbols = DEVELOPMENT_SYMBOLS if development else SUFFICIENT_SYMBOLS
+    if variant == "f120":
+        symbols = tuple(f"F{index:03d}" for index in range(120))
 
     def build(root: Path) -> dict:
         data = build_real_risk_workspace(
             tmp_path_factory.mktemp("factor-input-source"),
-            symbols=DEVELOPMENT_SYMBOLS if development else SUFFICIENT_SYMBOLS,
+            symbols=symbols,
             standard=development_universe.STANDARD if development else FACTOR_SCALE,
         )
         # The Portfolio artifact is deliberately not consumed by this Factor-only
@@ -220,7 +224,7 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixture
         return {}
 
     name = "development_factor_input" if development else "factor_input"
-    return session_workspace(tmp_path_factory, name, build)[0]
+    return session_workspace(tmp_path_factory, name, build, inputs=symbols)[0]
 
 
 SEEDS = (  # most derived first
@@ -274,19 +278,27 @@ def alpha_seed(factor_seed, tmp_path_factory):
     """The same bound input and curated Factor study, published once across workers."""
 
     def build(root: Path) -> dict:
+        from alphalattice.kernel.data_layer import history
+
         restore_seed(factor_seed[0])
         copy_workspace(factor_seed[0], root)
         factor_task, report, _export = factor_seed[1:]
-        source = root / report["document"]["experiment"]["baseline_workspace"]
-        original = read_factor_bundle(root, source.parent.name)
-        enhanced = bind_factor_inputs(
-            workspace=root,
-            source=source,
-            input_id="alpha-development",
-            panel_snapshot_hash=original.panel_snapshot_hash,
-            outcome_snapshot_hash=original.outcome_snapshot_hash,
-            include_alpha_handoff=True,
-        )
+        baseline = Path(report["document"]["experiment"]["baseline_workspace"])
+        original = read_factor_bundle(root, baseline.parent.name)
+        source, _ = factor_input_paths(root, original.binding_hash)
+        manifest = read_research_workspace_manifest(root)
+        history.open_history(manifest.workspace_id, manifest.workspace_id, root)
+        try:
+            enhanced = bind_factor_inputs(
+                workspace=root,
+                source=source,
+                input_id="alpha-development",
+                panel_snapshot_hash=original.panel_snapshot_hash,
+                outcome_snapshot_hash=original.outcome_snapshot_hash,
+                include_alpha_handoff=True,
+            )
+        finally:
+            history.release_history()
         with _session(root) as live:
             choices = _json(live, f"/api/experiments/curation?task_id={factor_task}")
             choice = next(v for v in choices["choices"] if v["roles"])
@@ -330,7 +342,9 @@ def alpha_seed(factor_seed, tmp_path_factory):
             "draft": draft["document"],
         }
 
-    root, metadata = session_workspace(tmp_path_factory, "alpha_seed", build)
+    root, metadata = session_workspace(
+        tmp_path_factory, "alpha_seed", build, inputs=factor_seed[0].parent.name
+    )
     enhanced = next(
         value
         for value in read_research_workspace_manifest(root).experiment_inputs
@@ -356,7 +370,9 @@ def factor_seed(input_seed: Path, tmp_path_factory):
         task_id, report, exported = _publish_factor(root)
         return {"task_id": task_id, "report": report, "exported": exported}
 
-    root, metadata = session_workspace(tmp_path_factory, "factor_publication", build)
+    root, metadata = session_workspace(
+        tmp_path_factory, "factor_publication", build, inputs=input_seed.parent.name
+    )
     return root, metadata["task_id"], metadata["report"], metadata["exported"]
 
 
@@ -377,7 +393,7 @@ def sampled_alpha_seed(alpha_seed, tmp_path_factory):
             sampled = _alpha_payload(case)
             document = sampled["experiment_document"]
             universe = document["experiment"]["universe_handle"]
-            document["experiment"]["universe_handle"] = f"{universe}.sample-110"
+            document["experiment"]["universe_handle"] = f"{universe}.sample-102"
             plan = _json(live, "/api/experiments/plan", method="POST", payload=sampled)
             assert plan["status"] == "PLANNED", plan
             sent = _json(

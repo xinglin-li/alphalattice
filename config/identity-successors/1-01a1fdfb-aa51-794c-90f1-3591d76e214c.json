@@ -1,0 +1,83 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "3caaf92d4f2c11dd738fcf5dea194fd0917fffc3c2f03a0f23c9be92c6f1e98f",
+   "successor": "0c20a89edb490d52ea9e1560b6e9fafe977f25c2ad83fcb1a2c2c2769d0a13db",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "60a924508c5c6a219a05ca9f387c47a0b50c0b49e4c296cb850a354286809258",
+   "successor": "9d2e0d7907ba0d85e8852708f5794cbdb3ec2eedc2a8c82fc6711d6ed28fdae4",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "8abf7cd32a2ad8fa14e0607937c8173468fe2a612fa75c00ca47ea470e2cf7a3",
+   "successor": "de0bd59b5bbc7f6abae44389702de431e87e98a450b72c638b254bbed2f96b43",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "da34a05b811a5be61f966cd9f108e33fde12df54ddc1a5fd10e5bd2f0572283d",
+   "successor": "d329da945f54a285b74ed4f0d51a345d72a18f63bf7992129c7078eb0afb87f2",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "259ed24fa659740a7e5bfac6022a688f77ee4167a2da8833d243b52f4f0e18e6",
+   "successor": "a40d5d1ac02b25d27774d82ed1c04aa24f2a26db2ce88d30d85103feca8885ca",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "020d638a5d2b9b8e5250d4498b7bc90b7157986fe4efc634abe75a53078073eb",
+   "successor": "839e92a0bd7506d2f34c43348001978ed24568067ddc0c8ebb2b8b9c3b976d8c",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "efd3656957e946d9d54f0072ebafb632a2fa589472db6c4fc06491e2042f87e1",
+   "successor": "10d2455c4632ca141b7f6260e829e4dec226a135e3dc65d549b06f50afc83643",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "908c45d954cf51a7b7f875d4e6504c9ab45f07beb5265925231c5ffa9b930bc2",
+   "successor": "e26c184e35bfc84a42343af824bdf4dc3869bea9d7f1a8597a629838e0d98448",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "908c45d954cf51a7b7f875d4e6504c9ab45f07beb5265925231c5ffa9b930bc2",
+   "successor": "e26c184e35bfc84a42343af824bdf4dc3869bea9d7f1a8597a629838e0d98448",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "fcd474f96c5776ad950cfd32686b1ad074abd62c9f4aa774908a230b0724d184",
+   "successor": "ed67adf753df75606dbb69919a7947e9af84088cc7d3e0d526e99d8b263c82f2",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "3280fd42becdf07356bbd3c14a11651f3bc844655a4b65045bc4a428ab5bb7cc",
+   "successor": "c6f8d1ecd89bb4f7ca93c802ded57323b7783258979f3e6627ffdaf547f8abb8",
+   "change": "Read Alpha study documents from the active worker stage",
+   "reason": "Two read paths change and no computation: the Alpha document reader takes the active child's staged copy of the same hash-verified bytes, and the Feature plan listing enumerates the closure store's file names; the eleven implementation roles that include those modules move by recorded successors, so sealed values stay current; no published number moves"
+  }
+ ]
+}

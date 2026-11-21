@@ -184,19 +184,19 @@ class FeatureExtensions:
         definitions = self.trials.feature_builds.definitions()
         plans: list[ResearchFeaturePlan] = []
         refused_plans: list[dict[str, Any]] = []
-        for path in sorted((definitions.store.root / CATEGORY).glob("*.json")):
+        for filename in definitions.store.files.names(CATEGORY):
             # A filename that is not a content identity was ignored by `find_models`; keep that
             # boundary while isolating each actual record read from its neighbours.
-            if len(path.stem) != 64:
+            plan_hash, _, suffix = filename.rpartition(".")
+            if suffix != "json" or len(plan_hash) != 64:
                 continue
-            plan_hash = path.stem
             try:
                 name = definitions.store.load_model(
-                    category=CATEGORY, content_hash=path.stem, model=_PlanName
+                    category=CATEGORY, content_hash=plan_hash, model=_PlanName
                 )
-                if name.plan_hash != path.stem:
+                if name.plan_hash != plan_hash:
                     raise ValueError("feature_research.plan_reference_mismatch")
-                plan = definitions.read(path.stem)
+                plan = definitions.read(plan_hash)
             except (OSError, ValueError) as error:
                 code = (
                     "feature_extension.plan_unreadable"

@@ -12,6 +12,7 @@ from alphalattice.control.product_host.composition.local_web_session import Loca
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
+from alphalattice.kernel.data_layer.history import move_carried
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
@@ -47,9 +48,12 @@ def refused_at_the_edges(
 
 @contextmanager
 def _session(root: Path) -> Iterator[LocalPortfolioWebSession]:
+    root = root.resolve()
+    manifest = read_research_workspace_manifest(root)
+    move_carried(root, manifest.workspace_id)
     session = LocalPortfolioWebSession(
         workspace=root,
-        workspace_manifest=read_research_workspace_manifest(root),
+        workspace_manifest=manifest,
         resolver=_Resolver(_resolved()),
     )
     with session as live:

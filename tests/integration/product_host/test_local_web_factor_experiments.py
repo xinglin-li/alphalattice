@@ -38,10 +38,14 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer import inputs as kept_inputs
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
@@ -103,7 +107,9 @@ def completed_alpha_seed(alpha_seed, tmp_path_factory):
             assert report["status"] == "EXPERIMENT_PUBLISHED", report
         return {}
 
-    source, _metadata = session_workspace(tmp_path_factory, "completed_alpha", build)
+    source, _metadata = session_workspace(
+        tmp_path_factory, "completed_alpha", build, inputs=alpha_seed[0].parent.name
+    )
     return source, *alpha_seed[1:]
 
 
@@ -126,6 +132,9 @@ def _lightgbm_parameters(seed=1729):
     )
 
 
+# The fixed F120 book supplies exact zero turnover on the embargo HOLDs.
+@pytest.mark.parametrize("input_seed", ["f120"], indirect=True)
+@pytest.mark.usefixtures("review_on_the_store")
 def test_completed_alpha_hands_off_to_portfolio_without_refitting(
     completed_alpha_case, monkeypatch, tmp_path
 ):
@@ -137,7 +146,6 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         AlphaExperimentExecutor,
     )
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
-        LANES,
         SEGMENTS,
         PortfolioExperimentCancelled,
         PortfolioReplaySegment,
@@ -265,10 +273,10 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
             model=PortfolioReplaySegment,
             identity_field="segment_hash",
         )
-        path = next((store.root / LANES).glob(f"{segment.lanes['executed']}.*"))
+        path = history.array_body_path(segment.lanes["executed"])
         content = path.read_bytes()
         try:
-            path.write_bytes(bytes([content[0] ^ 1]) + content[1:])
+            path.write_bytes(content[:-1])
             refused_at_the_edges(live, task_id, body)
         finally:
             path.write_bytes(content)
@@ -294,8 +302,8 @@ def _exercise_authored_review(root, selected, tmp_path):
     from urllib.parse import urlencode
     from uuid import UUID
 
+    from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
-        LANES,
         SEGMENTS,
         PortfolioReplaySegment,
     )
@@ -308,6 +316,7 @@ def _exercise_authored_review(root, selected, tmp_path):
 
     workspace = tmp_path / "authored-review"
     shutil.copytree(root, workspace, copy_function=keep_seed_links)
+    carry_copy(root, workspace)
     original = read_research_workspace_manifest(workspace)
     manifest = ResearchWorkspaceManifest.research_only(original.workspace_id).with_bindings(
         experiment_inputs=original.experiment_inputs,
@@ -421,10 +430,10 @@ def _exercise_authored_review(root, selected, tmp_path):
                 model=PortfolioReplaySegment,
                 identity_field="segment_hash",
             )
-            path = next((store.root / LANES).glob(f"{segment.lanes['executed']}.*"))
+            path = history.array_body_path(segment.lanes["executed"])
             saved = path.read_bytes()
             try:
-                path.write_bytes(bytes([saved[0] ^ 1]) + saved[1:])
+                path.write_bytes(saved[:-1])
                 code, _ = service.request("/api/evidence-cro/export?" + urlencode(export_selector))
                 assert code == 400
                 assert len(service.registry.tasks()) == tasks
@@ -516,6 +525,18 @@ def test_a_foundation_preview_is_sealed_after_a_restart_within_its_hour(alpha_ca
         sealed = _json(live, "/api/experiments/foundations/seal", method="POST", payload=seal)
         assert sealed["status"] in {"FOUNDATION_SEALED", "REUSED_EXACT"}, sealed
         assert sealed["admission"] == preview["admission"]
+
+
+def _workspace_binding_holds(live: LocalPortfolioWebSession) -> set[str]:
+    rows = history.held().read(
+        "SELECT a.content_digest FROM live_ref r"
+        " JOIN artifact a ON a.artifact_id = r.artifact_id"
+        " JOIN definition_name d ON d.definition_id = a.type_id"
+        " WHERE r.root_kind = 'workspace' AND r.root_id = ?"
+        " AND d.family = 'artifact_type' AND d.name = ?",
+        (live.session.task_control_registry.workspace_id, kept_inputs.BINDING),
+    )
+    return {row[0] for row in rows}
 
 
 def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypatch):
@@ -615,12 +636,10 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
             "curation_receipt_hash": admission["curation_receipt_hash"],
         }
         storage = _json(live, "/api/workspace/storage")
-        # The retention owner, not a UI pin, protects both named inputs.
-        from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-
-        _bundles, roots, _evidence = ResearchInputStorage(live.session)._references()
-        assert "RESEARCH_FOUNDATION" in roots[binding.binding_hash]
-        assert "RESEARCH_FOUNDATION" in roots[admission["factor_input_binding_hash"]]
+        # The workspace's data-layer holds protect both inputs named in the Foundation.
+        retained_bindings = _workspace_binding_holds(live)
+        assert binding.binding_hash in retained_bindings
+        assert admission["factor_input_binding_hash"] in retained_bindings
         assert storage["status"] != "REFUSED", storage
         payload = _alpha_payload(alpha_case)
         reports = []
@@ -1303,15 +1322,13 @@ def test_alpha_cancel_keeps_complete_children_and_explicit_retry_reuses_them(
                 )
                 assert reused["status"] == "REUSED_IN_FLIGHT", reused
                 assert reused["task_id"] == str(current.task_id)
-                storage = _json(live, "/api/workspace/storage")
                 refs = current.input.payload["plan"]
                 bound_inputs = {
                     refs["binding"]["binding_hash"],
                     refs["alpha_source"]["factor_binding"]["binding_hash"],
                 }
-                rows = {r["binding_hash"]: r for r in storage["inputs"]}
                 assert len(bound_inputs) == 2
-                assert all("IN_FLIGHT_RECOVERY" in rows[h]["roots"] for h in bound_inputs)
+                assert bound_inputs <= _workspace_binding_holds(live)
                 assert _json(
                     live,
                     "/api/cancel",
@@ -2056,7 +2073,11 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
         again = _json(restarted, readback)
         assert again["verification_basis"] == f"SEALED {first_check}", again
         assert _facts(again) == _facts(first)
-    monkeypatch.setattr(owner, "plan_implementation_hash", lambda _plan: "0" * 64)
+    monkeypatch.setattr(
+        owner.ResearchExperimentApplication,
+        "installed_implementation",
+        lambda _self, _kind, **_options: "0" * 64,
+    )
     with _session(root) as upgraded:
         assert _json(upgraded, readback)["verification_basis"] == "FULL"
 
@@ -2615,6 +2636,8 @@ def test_a_trial_refused_its_study_names_the_studies_it_can_run_against(complete
 
 def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_case):
     """A formula factor is reviewed and a person activates it."""
+    from alphalattice.control.product_host.research_authoring.feature_research import CATEGORY
+
     alpha_case = completed_alpha_case
 
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -2745,15 +2768,14 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
         assert "refused_plans" not in listed
         healthy_shape = set(listed)
 
-        # A broken unrelated definition must be named beside this readable plan. Exercise the
-        # actual on-disk JSON and the stored-name/address identity check through the owner route.
-        plan_store = root / "artifacts/feature-panel/closure/research-feature-plans"
+        # Plant two malformed neighbours in the same closure store as the readable plan.
+        plan_files = ops.trials.feature_builds.definitions().store.files
         corrupt_hash = "0" * 64 if plan_hash != "0" * 64 else "1" * 64
         mismatch_hash = "f" * 64 if plan_hash != "f" * 64 else "e" * 64
         mismatch_target = "d" * 64 if mismatch_hash != "d" * 64 else "c" * 64
-        (plan_store / f"{corrupt_hash}.json").write_bytes(b"{")
-        (plan_store / f"{mismatch_target}.json").write_text(
-            json.dumps({"plan_hash": mismatch_hash}), encoding="utf-8", newline="\n"
+        plan_files.write(f"{CATEGORY}/{corrupt_hash}.json", b"{")
+        plan_files.write(
+            f"{CATEGORY}/{mismatch_target}.json", json.dumps({"plan_hash": mismatch_hash}).encode()
         )
         mixed = _json(live, "/api/feature-research")
         assert set(mixed) == healthy_shape | {"refused_plans"}

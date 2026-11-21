@@ -101,10 +101,13 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
         FeatureExtensions,
     )
+    from alphalattice.control.product_host.research_authoring.feature_research import (
+        ResearchFeatureDefinitions,
+    )
 
     class Builds:
         def definitions(self):
-            return SimpleNamespace(store=SimpleNamespace(root=tmp_path / "plans"))
+            return ResearchFeatureDefinitions(tmp_path)
 
     trials = FeatureTrials(
         workspace=tmp_path,

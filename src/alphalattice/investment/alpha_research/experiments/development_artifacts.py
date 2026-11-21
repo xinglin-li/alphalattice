@@ -710,10 +710,16 @@ class AlphaDevelopmentArtifactStore:
     ) -> tuple[bytes, tuple[str, ...]]:
         """The exact verified bytes of one JSON file snapshot and its descriptor identity."""
         content_hash = self._hash_from_uri(uri, category)
-        target = self._path(category, content_hash, "json")
+        target = self.root / category / f"{content_hash}.json"
         resolved = target.resolve()
         if not resolved.is_relative_to(self.root.parent):
             raise AlphaDevelopmentArtifactReadbackError("Alpha JSON artifact is outside root")
+        staged = _STAGED_DEVELOPMENT.get()
+        if staged is not None and (source := staged[0].documents.get(target)) is not None:
+            target = source
+            resolved = target.resolve()
+            if resolved != target or not resolved.is_relative_to(staged[0].folder):
+                raise AlphaDevelopmentArtifactReadbackError("Alpha JSON artifact is outside root")
 
         def verify() -> tuple[bytes, tuple[str, ...]]:
             try:

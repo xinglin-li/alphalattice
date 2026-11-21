@@ -27,7 +27,7 @@ import pytest
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
-from alphalattice.kernel.data_layer.history import carry_arrays, own_root
+from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs, own_root
 from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
@@ -294,6 +294,7 @@ def session_workspace(
                     # so the seed, outliving the data root it was built on, carries it; its Tasks,
                     carry_tasks(target / "workspace", target / "workspace")
                     carry_arrays(target / "workspace", target / "workspace")
+                    carry_research_inputs(target / "workspace", target / "workspace")
                 # and its machine, whose catalog alone holds the outcome bodies it names.
                 if (machine / "machine/log.sqlite").is_file():
                     carried = backup_data_root(machine, target / "machine").relative_to(target)
@@ -488,6 +489,7 @@ def copy_workspace(
     shutil.copytree(source, target, copy_function=copy_file)
     carry_tasks(Path(source), target)  # the copy opens with its source's Tasks
     carry_arrays(Path(source), target)  # and its lanes
+    carry_research_inputs(Path(source), target)
     return target
 
 
