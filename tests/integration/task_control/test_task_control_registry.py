@@ -1189,6 +1189,9 @@ def test_a_stage_raising_on_every_attempt_is_blocked_with_its_type_not_resumed_a
     assert item.failure_cause is not None
     assert item.failure_cause.exception_type == "KeyError"
     assert "a database error the owner does not classify" in item.failure_cause.detail
+    assert item.failure_cause.step is not None
+    file, _, line = item.failure_cause.step.rpartition(":")
+    assert file == Path(__file__).name and line.isdecimal()
 
 
 class _DeferringThenRaisingAdapter(_FixtureTaskAdapter):
@@ -1799,6 +1802,7 @@ class _ChainsAdapter:
         self.registry = registry
         self.width = width
         self.fail = fail
+        self.fail_verification = False
         self.block = block
         self.lock = Lock()
         self.running = 0
@@ -1832,7 +1836,7 @@ class _ChainsAdapter:
                 for item in self.registry.work_items(task.task_id)
                 if item.lifecycle is WorkItemLifecycle.VERIFIED
             }
-            if stage == self.fail:
+            if stage == self.fail and not self.fail_verification:
                 raise RuntimeError("simulated failure of one item")
             if stage == self.block:
                 return StageExecutionResult(
@@ -1854,7 +1858,9 @@ class _ChainsAdapter:
                 self.order.append(stage)
 
     def verify_stage(self, *, task, execution, work_item, evidence):
-        del task, execution, work_item
+        del task, execution
+        if work_item.stage_id == self.fail and self.fail_verification:
+            raise RuntimeError("simulated failure of one item")
         return evidence
 
 
@@ -1939,8 +1945,10 @@ def test_an_adapter_that_declares_no_width_runs_one_item_inline(tmp_path: Path) 
     ]
 
 
+@pytest.mark.parametrize("fail_verification", [False, True], ids=["execute", "verify"])
 def test_a_failing_item_waits_for_the_others_and_leaves_the_task_to_recovery(
     tmp_path: Path,
+    fail_verification: bool,
 ) -> None:
     """requirement: an item that raises stops the run only after every item
     running beside it finished -- no worker outlives the execution -- and the
@@ -1952,11 +1960,30 @@ def test_a_failing_item_waits_for_the_others_and_leaves_the_task_to_recovery(
         chains=2,
         salt="width-failure",
     )
+    adapter.fail_verification = fail_verification
     try:
         with pytest.raises(RuntimeError, match="simulated failure of one item"):
             runner.run_next()
         assert adapter.running == 0, "the item beside the failure finished first"
-        assert registry.task(task.task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        snapshot = registry.board(task.task_id)
+        assert snapshot.task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        view = build_task_recovery_view(
+            snapshot=snapshot,
+            running=False,
+            worker_failure=None,
+            heartbeats=TaskHeartbeatReadout(signals=(), unreadable=()),
+            recoverable_kinds=(),
+            observed_at=snapshot.task.updated_at,
+            replans={},
+        )
+        assert view.stop is not None and view.stop.stage_id == "c0_first"
+        assert view.stop.cause is not None and view.stop.cause.exception_type == "RuntimeError"
+        assert (view.stop.cause.step or "").startswith(f"{Path(__file__).name}:")
+        assert {
+            item.stage_id: item.failure_cause
+            for item in snapshot.work_items
+            if item.failure_cause is not None
+        } == {"c0_first": view.stop.cause}
         adapter.fail = None
         recovered = runner.recover(task.task_id)
     finally:

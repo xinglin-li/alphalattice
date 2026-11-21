@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7b9ad7bba10dc38cde91ef5720e30a47c0aded6107ca2e43f3366e96ecc8f602",
+   "successor": "60a924508c5c6a219a05ca9f387c47a0b50c0b49e4c296cb850a354286809258",
+   "change": "Keep Daily updates on their verified data checkpoint",
+   "reason": "A Daily whose own data update made the checkpoint it reads now continues instead of stopping, so the decision advancement code moved; every result that completed before reads back equal in the development replay, and only the stopped Daily now finishes."
+  }
+ ]
+}

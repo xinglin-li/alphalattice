@@ -140,6 +140,21 @@ class TaskDomainAdapter(Protocol):
         ...
 
 
+def _untyped_stage_cause(error: BaseException, *, detail: str = "") -> StageFailureCause:
+    """Name the raising source site without retaining its absolute path or arguments."""
+    trace = error.__traceback__
+    while trace is not None and trace.tb_next is not None:
+        trace = trace.tb_next
+    site = None
+    if trace is not None:
+        name = Path(trace.tb_frame.f_code.co_filename).name
+        suffix = f":{trace.tb_lineno}"
+        site = name[: 120 - len(suffix)] + suffix
+    return StageFailureCause(
+        exception_type=type(error).__name__[:120], detail=" ".join(detail.split())[:400], step=site
+    )
+
+
 def _bounded_raise(
     attempt: int,
     call: Callable[[], StageExecutionResult],
@@ -162,9 +177,7 @@ def _bounded_raise(
             StageDisposition.BLOCKED,
             failure_code=f"TASK_STAGE_RAISED:{type(error).__name__}",
             # What was raised rides beside the code, as an owner's cause does.
-            failure_cause=StageFailureCause.from_facts(
-                {"exception_type": type(error).__name__, "detail": str(error)}
-            ),
+            failure_cause=_untyped_stage_cause(error, detail=str(error)),
         )
 
 
@@ -221,6 +234,7 @@ class _WorkPool:
         self._running: dict[Future[StageExecutionResult], WorkItemDefinition] = {}
         self._finished: list[tuple[WorkItemDefinition, StageExecutionResult]] = []
         self.digests: dict[str, StageDigests] = {}
+        self.failed_stage_id: str | None = None
 
     def __len__(self) -> int:
         return len(self._running) + len(self._finished)
@@ -237,7 +251,9 @@ class _WorkPool:
         self, definition: WorkItemDefinition, call: Callable[[], StageExecutionResult]
     ) -> None:
         if self._executor is None:
+            self.failed_stage_id = definition.stage_id
             self._finished.append((definition, call()))
+            self.failed_stage_id = None
         else:
             self._running[self._executor.submit(carry_background(call))] = definition
 
@@ -254,6 +270,7 @@ class _WorkPool:
         try:
             return definition, future.result()
         except BaseException:
+            self.failed_stage_id = definition.stage_id
             self.drain()
             raise
 
@@ -527,6 +544,7 @@ class TaskControlRunner:
         *,
         verify_prefix: bool,
     ) -> TaskRecord:
+        pool: _WorkPool | None = None
         try:
             if verify_prefix:
                 definitions = {item.stage_id: item for item in task.plan.work_items}
@@ -597,6 +615,10 @@ class TaskControlRunner:
             self.registry.mark_recovery_required(
                 task_id=task.task_id,
                 failure_code=failure_code,
+                failure_cause=_untyped_stage_cause(error)
+                if failure_code == "TASK_EXECUTION_INTERRUPTED"
+                else None,
+                failed_stage_id=pool.failed_stage_id if pool is not None else None,
                 observed_at=self._now(),
             )
             self._publish_projection(task.task_id)
@@ -886,6 +908,7 @@ class TaskControlRunner:
         result: StageExecutionResult,
     ) -> TaskRecord:
         registry = context.registry
+        context.pool.failed_stage_id = definition.stage_id
         registry.mark_ready(
             task_id=task_id,
             execution_id=execution.execution_id,
@@ -924,6 +947,7 @@ class TaskControlRunner:
                 observed_at=self._now(),
             )
         )
+        context.pool.failed_stage_id = None
         self._publish_projection(task_id)
         return task
 

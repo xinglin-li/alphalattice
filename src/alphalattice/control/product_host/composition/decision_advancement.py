@@ -22,7 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
-from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
+from alphalattice.control.data_platform.maintenance.contracts import (
+    WorkspaceDataUpdatePlan,
+    WorkspaceDataUpdateReceipt,
+)
 from alphalattice.control.data_platform.readiness import _latest_common_us_session
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PLAN_FIELDS as DECISION_PLAN_FIELDS,
@@ -163,6 +166,7 @@ STAGES = (
 
 _IMPLEMENTATION_ROLE = "product_host.conditional_decision_advancement"
 RESUMED_OWN_MOVE = "research_update.resumed_own_move"
+_COMPLETED_OWN_MOVE = "completed_data_update"
 
 
 def latest_per_recipe(
@@ -354,7 +358,7 @@ _DECISION_CANDIDATES = CommittedKind(
 
 
 class OwnMoveSuccessor(_Sealed):
-    """The ledger row naming the checkpoint a stopped update resumes on, its own move's."""
+    """The ledger row naming the successor made by an update's own Data cycle."""
 
     purpose: Literal["OWN_MOVE_SUCCESSOR"] = "OWN_MOVE_SUCCESSOR"
     plan_hash: str
@@ -757,7 +761,10 @@ class DecisionAdvancementApplication:
             ):
                 prior = self._plan_of(task, current=False)
                 if prior.package_id == package_id:
-                    if self._own_move(prior) is None:
+                    if (
+                        self._stopped(task.input, matched=task) is None
+                        or self._own_move(prior, task) is None
+                    ):
                         self._require(prior)
                     owner = {"task_id": str(task.task_id), "lifecycle": task.lifecycle.value}
                     return {**self._plan_body(prior, False), "in_flight": owner}
@@ -920,15 +927,17 @@ class DecisionAdvancementApplication:
         """
         self._waiting.pop(identity, None)
         plan = self.prepare(identity)
+        stopped = self._stopped(task_contract(plan)[0])
+        if stopped is None:
+            return plan
         moved = self.index.open(_OWN_MOVES, plan.content_hash)
-        if moved is not None and self._stopped(plan) is not None:
+        if moved is not None:
             # Each stopped resume revalidates the recorded move: no writer bound after its own.
             last = self.data._registry().working_binds()[-1]
             if (last.cycle_id, last.owner_task) != (moved.cycle_id, moved.owner_task):
                 raise ValueError("research_update.binding_changed")
-        if (found := self._own_move(plan)) is None:
+        if (record := self._own_move(plan, stopped)) is None:
             return plan
-        stopped, record = found
         retry = self.data.retry_after(plan.data_plan)
         if stopped.lifecycle is TaskLifecycle.DEFERRED and retry and retry > self.clock():
             self._waiting[plan.content_hash] = (stopped.task_id, stopped.record_hash, retry)
@@ -949,9 +958,11 @@ class DecisionAdvancementApplication:
             held and self.clock() < held[2] and registry.task(held[0]).record_hash == held[1]
         )
 
-    def _stopped(self, plan: DecisionAdvancementPlan) -> TaskRecord | None:
+    def _stopped(
+        self, envelope: TaskInputEnvelope, *, matched: TaskRecord | None = None
+    ) -> TaskRecord | None:
         """The plan's stopped Task a rerun takes up as itself, if any."""
-        envelope, tasks = task_contract(plan)[0], self.session.task_control_registry.tasks()
+        tasks = (matched,) if matched is not None else self.session.task_control_registry.tasks()
         stops = {TaskLifecycle.DEFERRED, TaskLifecycle.RECOVERY_REQUIRED}
         return next((t for t in tasks if t.input == envelope and t.lifecycle in stops), None)
 
@@ -975,38 +986,48 @@ class DecisionAdvancementApplication:
         return str(held[-1].task_id) if held else None
 
     def _own_move(
-        self, plan: DecisionAdvancementPlan
-    ) -> tuple[TaskRecord, OwnMoveSuccessor] | None:
-        """The stopped Task and its row when only its own cycle moved the universe: one transition
-        onto the revision it last bound, no bind after it, every other binding held."""
-        stopped = self._stopped(plan)
+        self,
+        plan: DecisionAdvancementPlan,
+        task: TaskRecord,
+        *,
+        completed: WorkspaceDataUpdateReceipt | None = None,
+    ) -> OwnMoveSuccessor | None:
+        """One direct successor made by this Task's latest bind, with all other bindings held."""
         # A plan whose checkpoint is captured, or already moved, reads what it holds.
-        if (
-            stopped is None
-            or self._step(plan, STAGES[2])
-            or self._input(plan) != plan.checkpoint_hash
-        ):
+        if self._step(plan, STAGES[2]) or self._input(plan) != plan.checkpoint_hash:
             return None
         current = self.updates._checkpoint(plan.package_id)
+        if current.previous_checkpoint_hash != plan.checkpoint_hash:
+            return None
         binds, cycle = self.data._registry().working_binds(), self.data._cycle_id(plan.data_plan)
         if (
-            current.previous_checkpoint_hash != plan.checkpoint_hash
-            or not binds
-            or (binds[-1].cycle_id, binds[-1].owner_task) != (cycle, str(stopped.task_id))
-            or binds[-1].authority != "candidate_preparation"
+            not binds
+            or (binds[-1].cycle_id, binds[-1].owner_task) != (cycle, str(task.task_id))
             or current.source_hashes[-1] != binds[-1].manifest_revision
         ):
+            return None
+        if binds[-1].authority == "feature_input_gateway":
+            receipt = completed or self.data._receipt(plan.data_plan.content_hash)
+            if (
+                receipt is None
+                or receipt.plan_hash != plan.data_plan.content_hash
+                or receipt.cycle_id != cycle
+                or receipt.before != plan.data_plan.before
+                or receipt.after.manifest_revision != binds[-1].manifest_revision
+            ):
+                return None
+        elif binds[-1].authority != "candidate_preparation":
             return None
         self._require(plan, current.content_hash)
         before = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
         added = set(current.ordered_listing_ids) - set(before.ordered_listing_ids)
-        return stopped, OwnMoveSuccessor.create(
+        return OwnMoveSuccessor.create(
             plan_hash=plan.content_hash,
             from_checkpoint_hash=plan.checkpoint_hash,
             to_checkpoint_hash=current.content_hash,
-            reason=RESUMED_OWN_MOVE,
+            reason=_COMPLETED_OWN_MOVE if completed is not None else RESUMED_OWN_MOVE,
             cycle_id=cycle,
-            owner_task=str(stopped.task_id),
+            owner_task=str(task.task_id),
             added_listing_ids=tuple(sorted(added)),
         )
 
@@ -1016,7 +1037,7 @@ class DecisionAdvancementApplication:
         if task.input.input_schema_id != SCHEMA:
             return {}
         moved = self.index.open(_OWN_MOVES, self._plan_of(task, current=False).content_hash)
-        if moved is None:
+        if moved is None or moved.reason != RESUMED_OWN_MOVE:
             return {}
         words = runtime_json("config/registries/messages.json")["entries"][moved.reason]["words"]
         return {"resumed_on_own_move": {**moved.model_dump(mode="json"), "words": words}}
@@ -1171,6 +1192,13 @@ class DecisionAdvancementApplication:
                         )
                     raise ValueError(result.failure_code or "research_update.inputs_incomplete")
                 self.data.verify_step(plan.data_plan, s, result.evidence)
+            completed = self.data._receipt(plan.data_plan.content_hash)
+            if (
+                completed is not None
+                and completed.before.manifest_revision != completed.after.manifest_revision
+                and (move := self._own_move(plan, task, completed=completed)) is not None
+            ):
+                self.index.commit(_OWN_MOVES, plan.content_hash, move)
             return self._commit(
                 plan,
                 stage,

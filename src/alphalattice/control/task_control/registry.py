@@ -1635,6 +1635,8 @@ class DuckDbTaskControlRegistry:
         observed_at: datetime,
         allow_blocked: bool = False,
         expected_task_hash: str | None = None,
+        failure_cause: StageFailureCause | None = None,
+        failed_stage_id: str | None = None,
     ) -> TaskRecord:
         """Owe the Task a recovery; reopen a BLOCKED one only on its confirmed version.
 
@@ -1661,10 +1663,27 @@ class DuckDbTaskControlRegistry:
                 and current.failure_code == failure_code
             ):
                 return current
+            active_work_item_id = current.active_work_item_id
+            if failure_cause is not None and failed_stage_id is not None:
+                item = self._work_item_row(connection, task_id, failed_stage_id)
+                if item.lifecycle in {
+                    WorkItemLifecycle.IN_PROGRESS,
+                    WorkItemLifecycle.READY_FOR_VERIFICATION,
+                }:
+                    item = self._replace_work_item(
+                        item,
+                        observed_at=observed_at,
+                        lifecycle=item.lifecycle,
+                        failure_code=failure_code,
+                        failure_cause=failure_cause,
+                    )
+                    self._save_work_item(connection, item)
+                    active_work_item_id = failed_stage_id
             task = self._replace_task(
                 current,
                 observed_at=observed_at,
                 lifecycle=TaskLifecycle.RECOVERY_REQUIRED,
+                active_work_item_id=active_work_item_id,
                 failure_code=failure_code,
             )
             self._save_task(connection, task)

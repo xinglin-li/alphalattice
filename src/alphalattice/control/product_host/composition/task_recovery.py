@@ -1212,6 +1212,7 @@ def build_task_recovery_view(
                 item
                 for item in items
                 if item.lifecycle in {WorkItemLifecycle.BLOCKED, WorkItemLifecycle.CANCELLED}
+                or (item.stage_id == task.active_work_item_id and item.failure_cause is not None)
             ),
             None,
         )

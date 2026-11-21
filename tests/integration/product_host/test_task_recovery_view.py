@@ -143,6 +143,8 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert code == expected_exit and not captured.err
         assert body["task_record_hash"] == expected["task_record_hash"]
         assert body["status"]["lifecycle"] == body["lifecycle"] == expected["lifecycle"]
+        if expected["stop"] is not None:
+            assert body["stop"]["cause"] == expected["stop"]["cause"]
 
     try:
         admitted = _json(live, "/api/run", method="POST", payload={})
@@ -165,6 +167,11 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert stopped["cancellation"] == "NOT_REQUESTED"
         # What stopped: Task Control's own code, explained, marked resumable by Task Control.
         assert stopped["stop"]["code"] == "TASK_EXECUTION_INTERRUPTED"
+        cause = stopped["stop"]["cause"]
+        assert cause["exception_type"] == "RuntimeError"
+        file, _, line = cause["step"].rpartition(":")
+        assert file == "local_web_support.py" and line.isdecimal()
+        assert cause["detail"] == ""
         status = _json(live, f"/api/status?task_id={task_id}")
         assert status["lifecycle"] == "RECOVERY_REQUIRED"
         assert status["attention"]["unresolved"] is True
