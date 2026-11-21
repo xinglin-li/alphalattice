@@ -601,7 +601,7 @@ def resolved_read(body: dict[str, object], fact: TaskAttentionFact | None) -> No
     """
     if fact is None or fact.resolution != "SUCCESSOR_SUCCEEDED":
         return
-    for key in ("failure_code", "network_access"):
+    for key in ("failure_code", "network_access", "next_commands", "pack"):
         body.pop(key, None)
     successor = fact.successor_task_id
     # Only the fields each read already carries, so a typed read keeps its shape.
@@ -1308,6 +1308,9 @@ def way_on(
     requests = {**owned, **offered, **subject}
     if requests:
         body["next_requests"] = requests
+    for key in ("next_commands", "pack"):
+        if key in way:
+            body[key] = way[key]
     if "detail" in body and body.get("lifecycle") == "CANCELLED":
         body["detail"] = CANCELLATION_REPLAN
     lead = (

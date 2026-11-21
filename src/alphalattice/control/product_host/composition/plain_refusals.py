@@ -465,6 +465,11 @@ def explain(
     """
     task = {"task_id": task_id} if task_id else {}
     base, _sep, subject = code.partition(":")
+    if base.startswith(("evidence_review.", "model_store.")):
+        from .retrieval_pack_setup import setup_guidance  # lazy: retrieval refusal
+
+        if guidance := setup_guidance(code):
+            return {**refusal_words(code, workspace=workspace, now=now), **guidance}
     if base in _READBACK_WAY:
         return {
             **refusal_words(code, workspace=workspace, now=now),

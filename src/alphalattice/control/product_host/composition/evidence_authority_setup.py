@@ -121,7 +121,6 @@ from alphalattice.interface.local_application.cli_contract import join, refusal_
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.retrieval_environment import (
-    fill_command,
     load,
 )
 from alphalattice.kernel.knowledge import model_store
@@ -736,18 +735,14 @@ class _Setup:
 
         A retrieval runtime filled after this process started is read first (`load`).
         """
-        runtime_ready = load()
         arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
         if _model_store(arguments) != model_store.default_store_root().resolve():
             # The Host's review verifies and searches with the application model store alone:
             # packs sealed from another store would be refused at the review's first check.
             raise OptionRefused("evidence_review.model_store_not_the_hosts", "model_store")
-        try:
-            semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
-        except ValueError as error:
-            if not runtime_ready and str(error).startswith("model_store.pack_not_installed:"):
-                raise RuntimeError("evidence_review.semantic_capability_not_ready") from error
-            raise
+        if not load():
+            raise RuntimeError("evidence_review.semantic_capability_not_ready")
+        semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
         try:
             semantic_relative = semantic_root.relative_to(workspace).as_posix()
         except ValueError as error:
@@ -1863,13 +1858,6 @@ def _typed(arguments: argparse.Namespace, options: list[str], host: bool) -> str
     return join([*_setup_entry(), "--workspace", str(arguments.workspace), *options], shell())
 
 
-_RUNTIME_REFUSALS = (
-    "evidence_review.semantic_capability_not_ready",
-    "evidence_review.retrieval_environment_not_loaded",
-)
-"""The retrieval runtime or its packs are not ready: filling them is the way on."""
-
-
 def setup_refusal(
     arguments: argparse.Namespace, error: Exception, *, now: datetime, script: bool = False
 ) -> dict[str, Any]:
@@ -1894,7 +1882,12 @@ def setup_refusal(
     host = not script or str(error) == "workspace_runtime.writer_already_owned"
     if arguments.acquire_sec:
         payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
-    payload["next_commands"] = _ways_on(arguments, error, host)
+    from .retrieval_pack_setup import setup_guidance  # lazy: Evidence setup refusal
+
+    payload.update(
+        setup_guidance(str(error), store=arguments.model_store)
+        or {"next_commands": _ways_on(arguments, error, host)}
+    )
     if isinstance(error, OptionRefused):
         # The option it refused on and what that option must hold, as the offer states it;
         # a file under a root option, by its place there.
@@ -1938,20 +1931,7 @@ def setup_refusal(
 
 
 def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dict[str, str]:
-    """A refusal's commands: what fills a retrieval runtime that is not ready, else the mode's
-    check. An acquisition's read-only preflight keeps its exact binding, scope and
-    explicit consent; a recorded import's way on is its own check, offline."""
-    if str(error) in _RUNTIME_REFUSALS:
-        # Refusal guidance opens runtime and pack commands only on this path.
-        from .retrieval_pack_setup import (  # lazy: on use
-            pack_command,
-        )
-
-        # Never the same check again: the runtime's fill and the packs' status come first.
-        return {
-            "environment": join(fill_command(), shell()),
-            "packs": join(pack_command("--status", "--view", "summary"), shell()),
-        }
+    """The source check an acquisition or recorded import can offer after a refusal."""
     if arguments.acquire_sec:
         cutoff, entities = arguments.evidence_as_of, arguments.entities or ()
         return {

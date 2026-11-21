@@ -30,7 +30,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from alphalattice.interface.local_application.cli_contract import worded
+from alphalattice.interface.local_application.cli_contract import join, shell, worded
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.kernel.knowledge import model_store
@@ -133,6 +133,39 @@ def pack_command(*arguments: str) -> list[str]:
         return [sys.executable, "scripts/install_retrieval_pack.py", *arguments]
     module = "alphalattice.control.product_host.composition.retrieval_pack_setup"
     return [sys.executable, "-m", module, *arguments]
+
+
+def setup_guidance(code: str, *, store: Path | None = None) -> dict[str, object]:
+    """The runtime fill or the model pack setup that an Evidence refusal needs."""
+    if code in (
+        "evidence_review.semantic_capability_not_ready",
+        "evidence_review.retrieval_environment_not_loaded",
+    ):
+        from alphalattice.interface.local_application.retrieval_environment import (  # lazy: fill
+            fill_command,
+        )
+
+        return {
+            "next_commands": {
+                "environment": join(fill_command(), shell()),
+                "packs": join(pack_command("--status", "--view", "summary"), shell()),
+            }
+        }
+    if code.partition(":")[0] != "model_store.pack_not_installed":
+        return {}
+    store = Path(store or model_store.default_store_root()).resolve()
+    install = pack_command(
+        "--install", model_store.RETRIEVAL_STORE, "--network", "--store", str(store)
+    )
+    return {
+        "next_commands": {"packs": join(_status_command(store), shell())},
+        "pack": {
+            "store": str(store),
+            "install": join(install, shell()),
+            "before": "Run this command under the open first-use Goal's model download delegation "
+            "or with the person's explicit consent. --network authorizes the pack download.",
+        },
+    }
 
 
 def _status_command(store: Path) -> list[str]:

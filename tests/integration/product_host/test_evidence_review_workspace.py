@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
 import re
 import shlex
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -280,6 +282,7 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     """requirement: a Host without the retrieval runtime blocks its install by name, the package
     bound before stays bound, and the declared environment filled afterwards is read in place;
     the same request sent again continues the blocked Task, which then reads as resolved."""
+    from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.interface.local_application import retrieval_environment
 
     environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
@@ -313,6 +316,7 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     from alphalattice.control.product_host.composition.task_recovery import (
         resolved_read,
         task_attention,
+        way_on,
     )
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
@@ -328,14 +332,23 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
         )
     assert (fact.resolution, fact.successor_task_id) == ("SUCCESSOR_SUCCEEDED", str(again.task_id))
     read: dict[str, object] = {"lifecycle": "BLOCKED", "next_requests": {}}
+    way_on(read, explain(task.failure_code, lifecycle="BLOCKED"), {}, {}, True)
+    commands = read["next_commands"]
+    assert isinstance(commands, dict) and set(commands) == {"environment", "packs"}
     resolved_read(read, fact)  # what the Tasks page and a status read show for the stop
+    assert "next_commands" not in read
     assert read["next_requests"] == {
         "successor": {"operation": "STATUS", "task_id": str(again.task_id)}
     }
 
 
-def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
+def test_source_setup_preflights_acquires_and_preserves_prior_authority(
+    tmp_path,
+    tmp_path_factory,
+    monkeypatch,
+):
     """Build a real Evidence package to verify installed scope, capture time and prior authority."""
+    from scripts import install_retrieval_pack as installer
     from scripts import materialize_evidence_cro_authority as setup
 
     from alphalattice.control.product_host.composition import portfolio_result_context
@@ -422,6 +435,7 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
         "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
+    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -477,20 +491,64 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path
     args.entities = ["AAPL"]
     with monkeypatch.context() as missing_runtime:
         missing_runtime.setattr(setup, "load", lambda: False)
+        with pytest.raises(RuntimeError, match=r"evidence_review\.semantic_capability_not_ready"):
+            setup.materialize(args)
 
-        def missing_pack(*_args):
-            raise setup.model_store.ModelStoreError("model_store.pack_not_installed:fixture:ABSENT")
-
-        missing_runtime.setattr(setup.model_store, "bind_recipe", missing_pack)
+        store_root = tmp_path_factory.mktemp("evidence-model-store").resolve()
+        default_store = tmp_path_factory.mktemp("default-model-store").resolve()
+        model_store = setup.model_store
+        held = tmp_path / "held-pack-files"
+        held.mkdir()
+        data = b"pinned fixture bytes"
+        (held / "fixture.bin").write_bytes(data)
+        packs = tuple(
+            replace(pack, files=(("fixture.bin", hashlib.sha256(data).hexdigest()),))
+            for pack in model_store.RETRIEVAL_STORE_PACKS
+        )
+        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(store_root))
+        missing_runtime.setenv("ALPHALATTICE_SHELL", "posix")
+        missing_runtime.setattr(model_store, "RETRIEVAL_STORE_PACKS", packs)
+        missing_runtime.setitem(model_store.INSTALLABLE, model_store.RETRIEVAL_STORE, packs)
+        missing_runtime.setattr(Path, "home", classmethod(lambda _: tmp_path))
+        missing_runtime.setattr(
+            model_store, "hub_fetcher", lambda **_: model_store.local_directory_fetcher(held)
+        )
         missing_runtime.setattr(args, "semantic_model", None)
+        missing_runtime.setattr(args, "model_store", store_root)
         with pytest.raises(
             (RuntimeError, ValueError), match=r"semantic_capability_not_ready|pack_not_installed"
         ) as refused:
             setup.materialize(args)
         assert str(refused.value) == "evidence_review.semantic_capability_not_ready"
         missing_runtime.setattr(setup, "load", lambda: True)
-        with pytest.raises(ValueError, match=r"model_store\.pack_not_installed:fixture:ABSENT"):
+        with pytest.raises(
+            ValueError, match=r"model_store\.pack_not_installed:.*:ABSENT"
+        ) as absent:
             setup.materialize(args)
+        # The explicit input survives a different application default during recovery.
+        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(default_store))
+        refused = setup.setup_refusal(args, absent.value, now=datetime.now(UTC))
+        assert set(refused["next_commands"]) == {"packs"}
+        status = shlex.split(refused["next_commands"]["packs"])[-5:]
+        assert status == ["--status", "--view", "summary", "--store", str(store_root)]
+        pack = refused["pack"]
+        assert pack["store"] == str(store_root) and pack["before"]
+        command = shlex.split(pack["install"])[-5:]
+        assert command == [
+            "--install",
+            model_store.RETRIEVAL_STORE,
+            "--network",
+            "--store",
+            str(store_root),
+        ]
+        without_consent = [part for part in command if part != "--network"]
+        with pytest.raises(SystemExit, match="admitted download"):
+            installer.main(without_consent)
+        assert not any(store_root.iterdir())
+        assert installer.main(command) == 0
+        assert not any(default_store.iterdir())
+        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(store_root))
+        assert setup.materialize(args)["status"] == "EVIDENCE_SOURCE_PREFLIGHT"
     with monkeypatch.context() as unavailable:
         unavailable.setattr(
             setup,
@@ -641,6 +699,7 @@ def test_recorded_source_conversion_does_not_claim_a_new_sec_capture(
         "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
+    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -753,6 +812,7 @@ def _rr5f_book(
         "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
+    monkeypatch.setattr(setup, "load", lambda: True)
     monkeypatch.setattr(
         setup,
         "admit_official_source",
@@ -1013,6 +1073,7 @@ def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offe
         "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
+    monkeypatch.setattr(setup, "load", lambda: True)
     pack = tmp_path / "outside" if option == "semantic_model" else workspace / "authority/pack"
     roots = ("--source-artifact-root", str(tmp_path / "artifacts")) if "source" in option else ()
     argv = ["--workspace", str(workspace), "--semantic-model", str(pack), *roots]
@@ -1080,6 +1141,7 @@ def test_listing_authority_admits_the_universe_and_rebinds_offline(
         "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
+    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",

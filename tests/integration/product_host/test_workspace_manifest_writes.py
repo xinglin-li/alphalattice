@@ -256,6 +256,7 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
             entries=(SimpleNamespace(provider_symbol="ACME", listing_id="US-ACME"),),
         ),
     )
+    monkeypatch.setattr(evidence_authority_setup, "load", lambda: True)
     monkeypatch.setattr(
         evidence_authority_setup,
         "store_capability",
