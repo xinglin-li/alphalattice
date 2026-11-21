@@ -207,7 +207,10 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
         try:
             if case == "workspace":
                 first, second = batch("conversation-1"), batch("conversation-1", "w2")
+                # The catalog's idle check can precede an incoming observation.
+                port.maintain_idle()
                 assert port.telemetry_batch(first) == 1
+                assert port.unplaced_telemetry(workspace_id="w1") == 0
                 assert port.telemetry_batch(second) == 1
                 assert port.telemetry_batch(second) == 0
                 assert port.telemetry_batch(batch(None, "w2")) == 1

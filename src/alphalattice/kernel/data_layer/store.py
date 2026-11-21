@@ -432,12 +432,11 @@ class StorePort:
     def unplaced_telemetry(self, *, workspace_id: str) -> int:
         """Count only this workspace's observations without a conversation or session."""
         with self._writer:
-            return int(
-                self.lake.execute(
-                    "SELECT count(*) FROM agent_telemetry WHERE workspace_id = ? AND unplaced",
-                    [workspace_id],
-                ).fetchone()[0]
-            )
+            ((count,),) = self.lake.execute(
+                "SELECT count(*) FROM agent_telemetry WHERE workspace_id = ? AND unplaced",
+                [workspace_id],
+            ).fetchall()
+            return int(count)
 
     def trial_agent_usage(self, trial: str, *, workspace_id: str) -> dict[str, Any]:
         """The observed native sums a trial closes with, with no invented zero on absence."""
@@ -914,9 +913,9 @@ class StorePort:
                 if self._block is not None:
                     return
                 run = self.lake.execute
-                snapshot, oldest = run(
+                ((snapshot, oldest),) = run(
                     "SELECT max(snapshot_id), min(snapshot_time) FROM lake.snapshots()"
-                ).fetchone()
+                ).fetchall()
                 if snapshot is None:
                     return
                 prior, checked = self._maintained or (0, oldest)
@@ -925,13 +924,13 @@ class StorePort:
                     and now - checked < IDLE_MAINTENANCE_AGE
                 ):
                     return
-                threads = int(run("SELECT current_setting('threads')").fetchone()[0])
+                ((threads,),) = run("SELECT current_setting('threads')").fetchall()
                 limited = threads > IDLE_MAINTENANCE_THREADS
                 if limited:
                     run("SET threads TO ?", (IDLE_MAINTENANCE_THREADS,)).complete()
                 try:
                     self.maintain(now)
-                    latest = run("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()[0]
+                    ((latest,),) = run("SELECT max(snapshot_id) FROM lake.snapshots()").fetchall()
                     self._maintained = latest, now
                 finally:
                     if limited:

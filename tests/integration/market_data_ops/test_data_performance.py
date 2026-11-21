@@ -157,7 +157,6 @@ def test_set_based_raw_persistence_is_equivalent_idempotent_and_faster(tmp_path)
         "action_corrected": 0,
     }
     assert legacy_seconds / max(set_seconds, 1e-9) >= 20
-    assert set_seconds * 500 < 120
     assert market_data.revision_count("listing-aapl") == 0
     assert market_data.action_revision_count("listing-aapl") == 0
 

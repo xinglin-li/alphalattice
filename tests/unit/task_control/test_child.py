@@ -62,15 +62,23 @@ def test_a_worker_that_makes_no_progress_is_ended_and_its_call_interrupted(
                 return {"status": "OK"}
             raise child.FutureTimeout
 
+    class _Pool:
+        def __init__(self) -> None:
+            self._processes = {
+                7: SimpleNamespace(pid=7, terminate=lambda: ends.append("terminated"))
+            }
+
+        def shutdown(self, *, wait: bool, cancel_futures: bool) -> None:
+            ends.append("shut down")
+
     polls = count()
-    pool = SimpleNamespace(
-        _processes={7: SimpleNamespace(pid=7, terminate=lambda: ends.append("terminated"))},
-        shutdown=lambda **_: ends.append("shut down"),
-    )
-    submitted = child._Submitted(2, cast("ProcessPoolExecutor", pool), cast("Future", _Running()))
+    pool = cast("ProcessPoolExecutor", _Pool())
+    monkeypatch.setitem(child._BUSY, pool, 1)
+    submitted = child._Submitted(2, pool, cast("Future", _Running()))
     if ended:
         with pytest.raises(child.ChildInterrupted, match=r"task_control\.child_wedged"):
             child._waited(submitted, tmp_path / "cancel", None)
     else:
         assert child._waited(submitted, tmp_path / "cancel", None) == {"status": "OK"}
     assert ends == ended
+    assert (pool in child._BUSY) == (not ended)
