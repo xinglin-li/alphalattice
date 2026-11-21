@@ -250,8 +250,10 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 def __init__(self, _pack: Path) -> None:
                     pass
 
-                def score(self, query, passages):
-                    return tuple(float(len(passage)) for passage in passages)
+                def score(self, query, passages, *, deadline):
+                    return encoders.RerankScores(
+                        tuple(float(len(passage)) for passage in passages), timed_out=False
+                    )
 
             history.render_experiences()  # the note's experience, unless its renderer wrote it
             ask = SimpleNamespace(

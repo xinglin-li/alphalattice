@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.evidence.alternative_evidence.analysis import packet
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     CONTEXT_COMPLETE_SELECTION_RULES_ID,
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -406,6 +407,8 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
 ) -> None:
     """The integrated selection seals one receipt with its routing."""
 
+    # Leave real in-scope candidates for the continuation in this compact book.
+    monkeypatch.setattr(packet, "SPANS_PER_ISSUER", 4)
     request = _request(("AAPL", "MSFT"), selection=INTEGRATED)
     runtime, document_set, generation = _open(tmp_path, request)
     try:

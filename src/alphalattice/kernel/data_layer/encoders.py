@@ -3,8 +3,8 @@
 bekko-static 512 int8 encodes passages and queries alike. Ettin17 int8 scores an English shortlist
 of at most 20 (query, passage) pairs at 256 tokens, one pair a run: its published backbone graph,
 then its published head (the first token, Dense, GELU, LayerNorm, Dense) in NumPy from the pack's
-safetensors, as the retrieval measurement ran it. A shortlist that takes longer than one
-second returns no scores, and the caller keeps the hybrid order.
+safetensors, as the retrieval measurement ran it. The scorer reports the completed pairs and
+whether the search deadline expired.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import math
 import os
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 from typing import Any, Final
@@ -135,6 +136,14 @@ class StaticEncoder:
         return self.embed_passages((text,))[0]
 
 
+@dataclass(frozen=True, slots=True)
+class RerankScores:
+    """The scores actually computed and whether their search deadline expired."""
+
+    scores: tuple[float, ...]
+    timed_out: bool
+
+
 class Reranker:
     """Ettin17 int8: the published backbone, then its head in NumPy."""
 
@@ -159,28 +168,25 @@ class Reranker:
     def _head(self, hidden: np.ndarray) -> np.ndarray:
         return head(hidden, self._first, self._scale, self._shift, self._last, self._bias)
 
-    def score(self, query: str, passages: Sequence[str]) -> tuple[float, ...] | None:
-        """One logit per passage, each pair run alone: the backbone quantizes its activations over
-        the whole batch, so a pair batched with others would score by its neighbours. None once
-        the shortlist passes the deadline."""
+    def score(self, query: str, passages: Sequence[str], *, deadline: float) -> RerankScores:
+        """Score each pair alone so its neighbours never change its quantized logit."""
         if len(passages) > SHORTLIST:
             raise DataError(
                 f"the reranker scores at most {SHORTLIST} passages",
                 code="data_layer.knowledge_query_invalid",
             )
-        started = time.monotonic()
-        scores = []
+        scores: list[float] = []
         with self._lock:
-            for item in self._tokenizer.encode_batch([(query, passage) for passage in passages]):
-                if time.monotonic() - started > DEADLINE_SECONDS:
-                    return None
-                ids, mask = _padded((item,), self._pad)
-                (hidden,) = self._session.run(
-                    ["last_hidden_state"], {"input_ids": ids, "attention_mask": mask}
-                )
-                scores.append(self._head(np.asarray(hidden, dtype=np.float32))[0])
-        if time.monotonic() - started > DEADLINE_SECONDS:
-            return None
+            if time.monotonic() < deadline:
+                pairs = self._tokenizer.encode_batch([(query, passage) for passage in passages])
+                for item in pairs:
+                    if time.monotonic() >= deadline:
+                        break
+                    ids, mask = _padded((item,), self._pad)
+                    (hidden,) = self._session.run(
+                        ["last_hidden_state"], {"input_ids": ids, "attention_mask": mask}
+                    )
+                    scores.append(float(self._head(np.asarray(hidden, dtype=np.float32))[0]))
         if not np.isfinite(scores).all():
             raise _refuse("the reranker returned an invalid score")
-        return tuple(float(value) for value in scores)
+        return RerankScores(tuple(scores), time.monotonic() >= deadline)

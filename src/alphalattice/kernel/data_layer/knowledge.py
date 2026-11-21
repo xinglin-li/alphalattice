@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 import zipfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
@@ -24,6 +25,7 @@ from numpy.typing import NDArray
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
+from alphalattice.kernel.data_layer.encoders import DEADLINE_SECONDS, SHORTLIST
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
 
 type Precision = Literal["float16", "int8"]
@@ -171,7 +173,9 @@ class Retrieved:
     hits: tuple[RetrievedHit, ...]
     score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"]
     reranked: int = 0
-    """(query, passage) pairs the cross-encoder scored, a shortlist past its deadline included."""
+    """Distinct (query, passage) pairs actually scored, including completed pairs on timeout."""
+
+    rerank_fallback: Literal["DEADLINE_EXCEEDED"] | None = None
 
 
 def fuse(
@@ -1440,10 +1444,9 @@ class NumpyVectorIndex:
 
 
 WINDOW: Final = 32
-"""Candidates each source supplies per channel when a search reads per document: the window
-the per-document rerank depth is bounded by."""
-SHORTLIST: Final = 20
-"""Pairs the cross-encoder reads under one deadline (encoders.SHORTLIST)."""
+"""Candidates each source supplies per channel in a precise search."""
+FUSED_CANDIDATES_PER_SOURCE: Final = 12
+"""A filing's candidate quota before the search's single shortlist is chosen."""
 
 
 def _no_span(_query: str) -> AbstractContextManager[None]:
@@ -1494,12 +1497,9 @@ class HybridSearch:
         (a `depth`) and in a sealed read (`SEALED_KIND`, its best `SHORTLIST` without a depth), and
         any other answer is the fused order.
 
-        `ranges` limits the search to those (source, first ordinal, last ordinal) ranges. With a
-        `depth` (the precise mode), each source supplies its own candidate window and its best
-        `depth` fused candidates are reranked in English (in shortlists, each under the deadline;
-        past any deadline the fused order stands). With `groups`, each group of source ids takes
-        its own `limit` of the final order, and sources in no group share one trailing group;
-        ranks stay global.
+        The ordinal ranges restrict both channels. In precise mode each source contributes to
+        one fused shortlist, whose English pairs are scored once under the search deadline.
+        The fused order stands on timeout. Each group takes its own limit of the final order.
         """
         if language not in ("en", "zh"):
             raise DataError(
@@ -1514,6 +1514,7 @@ class HybridSearch:
             raise DataError(
                 "the query or result limit is invalid", code="data_layer.knowledge_query_invalid"
             )
+        deadline = time.monotonic() + DEADLINE_SECONDS
         with RETRIEVAL_SPAN(query):
             query_vector = self.encoder.embed_query(query)
             scope = replace(
@@ -1532,16 +1533,17 @@ class HybridSearch:
             )
             dense = self.vector.search(query_vector, scope, limit=window, per_source=per_source)
             ranked = list(fuse(lexical, dense, limit=len(lexical) + len(dense)))
-            if depth:  # each source's best `depth` fused candidates
-                taken: dict[str, int] = {}
-                considered = []
-                for hit in ranked:
-                    if taken.get(hit.source_id, 0) < depth:
-                        taken[hit.source_id] = taken.get(hit.source_id, 0) + 1
-                        considered.append(hit)
-                ranked = considered
-            else:
+            if depth is None:
                 ranked = ranked[:50]
+            else:
+                taken: dict[str, int] = {}
+                candidates = []
+                for hit in ranked:
+                    count = taken.get(hit.source_id, 0)
+                    if count < FUSED_CANDIDATES_PER_SOURCE:
+                        taken[hit.source_id] = count + 1
+                        candidates.append(hit)
+                ranked = candidates
             score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"] = "LINEAR_FUSION"
             bodies: dict[tuple[str, str], str] = {}
             texts: dict[str, str] = {}
@@ -1560,35 +1562,44 @@ class HybridSearch:
                 return text
 
             reranked = 0
+            logits: dict[int, float] = {}
+            fallback: Literal["DEADLINE_EXCEEDED"] | None = None
             if language == "en" and ranked and (depth or kind == SEALED_KIND):
-                first = ranked if depth else ranked[:SHORTLIST]
-                scores: list[float] = []
-                for start in range(0, len(first), SHORTLIST):
-                    batch = first[start : start + SHORTLIST]
-                    scored = self.reranker.score(query, tuple(read(hit) for hit in batch))
-                    reranked += len(batch)
-                    if scored is None:  # past a deadline: the fused order stands
-                        break
-                    if len(scored) != len(batch) or not np.isfinite(scored).all():
+                first = ranked[: min(depth or SHORTLIST, SHORTLIST)]
+                passages = [read(hit) for hit in first]
+                unique = tuple(dict.fromkeys(passages))
+                result = self.reranker.score(query, unique, deadline=deadline)
+                reranked = len(result.scores)
+                if result.timed_out:
+                    fallback = "DEADLINE_EXCEEDED"
+                else:
+                    if reranked != len(unique) or not np.isfinite(result.scores).all():
                         raise DataError(
                             "the reranker returned invalid scores",
                             code="data_layer.knowledge_embedding_invalid",
                         )
-                    scores.extend(scored)
-                else:
-                    rescored = [
-                        replace(hit, score=float(score))
-                        for hit, score in zip(first, scores, strict=True)
-                    ]
-                    ranked = sorted(rescored, key=lambda hit: (-hit.score, hit.rowid))
-                    score_type = "CROSS_ENCODER_LOGIT"
+                    scores = dict(zip(unique, result.scores, strict=True))
+                    logits = {
+                        hit.rowid: scores[passage]
+                        for hit, passage in zip(first, passages, strict=True)
+                    }
+                    ranked[: len(first)] = sorted(
+                        first, key=lambda hit: (-logits[hit.rowid], hit.rowid)
+                    )
+            selected = _cut(ranked, limit, groups)
+            # The fused tail keeps each issuer's candidates available. A result set
+            # exposes one score scale, even when its shortlist was reordered.
+            if logits and all(hit.rowid in logits for hit in selected):
+                selected = [replace(hit, score=logits[hit.rowid]) for hit in selected]
+                score_type = "CROSS_ENCODER_LOGIT"
             return Retrieved(
                 tuple(
                     RetrievedHit(hit, texts.get(hit.chunk.chunk_id) or read(hit))
-                    for hit in _cut(ranked, limit, groups)
+                    for hit in selected
                 ),
                 score_type,
                 reranked,
+                fallback,
             )
 
 

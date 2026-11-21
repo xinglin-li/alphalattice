@@ -283,8 +283,7 @@ def search_references(
     limit: int,
 ) -> Retrieved:
     """The reference chunks of `workspace` known at `cutoff_us` most like `query`, within `ranges`
-    when given, each group of sources taking its own `limit`, each source reranked to `depth`
-    (`HybridSearch.retrieve`); English reranked and Chinese not."""
+    when given. Each group takes its own limit after the English shortlist is reranked."""
     with _guard:
         held = _hold(log)
         store = held["store"]

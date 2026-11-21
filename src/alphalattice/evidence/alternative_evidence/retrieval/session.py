@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from alphalattice.kernel.live_evidence.online_sources import not_carried_tables
 
@@ -263,6 +263,15 @@ def _is_abbreviation(window: str, period: int) -> bool:
     return bool(word) and (word in _ABBREVIATIONS or (len(word) == 1 and word.isalpha()))
 
 
+class ScopedChunks(NamedTuple):
+    """One document's contiguous chunk ordinals and the character ranges that named them."""
+
+    document_id: str
+    first: int
+    last: int
+    character_ranges: tuple[tuple[int, int], ...]
+
+
 class AlternativeEvidenceRetrievalSession:
     """Keep physical citations Host-side and expose only semantic handles."""
 
@@ -309,10 +318,6 @@ class AlternativeEvidenceRetrievalSession:
             for document, held in chunks.items()
         }
         """Each document's chunks as `(ordinal, character_start, character_end)`."""
-        self._scope_ranges: dict[tuple[str, int, int], tuple[tuple[int, int], ...]] = {}
-        """The character ranges each `scope_for` entry was named from: a scoped chunk with no
-        matched line delivers its leading sentence from inside them, though the chunk may begin
-        before them."""
         self.reranked_pairs = 0
         """Pairs the cross-encoder scored over this session's searches."""
         self.score_types: list[str] = []
@@ -332,9 +337,7 @@ class AlternativeEvidenceRetrievalSession:
             self._closed = True
             self._worker.shutdown(wait=True)
 
-    def _open_ranges(
-        self, scope: tuple[tuple[str, int, int], ...]
-    ) -> tuple[tuple[str, int, int], ...]:
+    def _open_ranges(self, scope: tuple[ScopedChunks, ...]) -> tuple[tuple[str, int, int], ...]:
         """What a search may read, before it ranks: the open generation's documents and chunk
         ranges, cut to `scope` when one is given. The workspace's other references (a previous
         review's included) are never candidates."""
@@ -347,7 +350,7 @@ class AlternativeEvidenceRetrievalSession:
             return tuple((document, *held[document]) for document in sorted(held))
         return tuple(
             (document, max(first, held[document][0]), min(last, held[document][1]))
-            for document, first, last in scope
+            for document, first, last, _characters in scope
             if document in held and max(first, held[document][0]) <= min(last, held[document][1])
         )
 
@@ -422,7 +425,7 @@ class AlternativeEvidenceRetrievalSession:
         query: str,
         top_k: int = 5,
         reranker_depth: int | None = None,
-        scope: tuple[tuple[str, int, int], ...] = (),
+        scope: tuple[ScopedChunks, ...] = (),
     ) -> AlternativeEvidenceSearchResult:
         """Search the open generation within an optional proved scope.
 
@@ -440,15 +443,12 @@ class AlternativeEvidenceRetrievalSession:
 
     def scope_for(
         self, ranges: Mapping[str, Sequence[tuple[int, int]]]
-    ) -> tuple[tuple[str, int, int], ...]:
+    ) -> tuple[ScopedChunks, ...]:
         """Find proved retrieval chunks overlapping source ranges.
 
-        The retrieval scope covering exact character ranges of inspected
-        documents: for each document, the proved chunks that overlap any of
-        its ranges, as merged `(document id, first ordinal, last ordinal)`
-        entries in the kernel's order. A document with no overlapping chunk
-        contributes nothing (and is then outside the scope). No query, no
-        model work; the chunk inventory is read once per session.
+        Keep the exact character ranges beside the merged chunk ordinals.
+        A document with no overlapping chunk contributes nothing. No query
+        or model work runs here.
         """
         if self._closed:
             raise ValueError("alternative_evidence.retrieval_session_closed")
@@ -456,18 +456,21 @@ class AlternativeEvidenceRetrievalSession:
 
     def _scope_for(
         self, *, ranges: Mapping[str, Sequence[tuple[int, int]]]
-    ) -> tuple[tuple[str, int, int], ...]:
+    ) -> tuple[ScopedChunks, ...]:
         index = self._chunks_by_document()
-        entries: list[tuple[str, int, int]] = []
+        entries: list[ScopedChunks] = []
         for document_id in sorted(ranges, key=str):
             chunks = index.get(document_id, ())
             if not chunks:
                 continue
+            characters = tuple(
+                sorted({(first, last) for first, last in ranges[document_id] if first < last})
+            )
             ordinals = sorted(
                 {
                     ordinal
                     for ordinal, start, end in chunks
-                    for range_start, range_end in ranges[document_id]
+                    for range_start, range_end in characters
                     if start < range_end and range_start < end
                 }
             )
@@ -480,12 +483,10 @@ class AlternativeEvidenceRetrievalSession:
                     previous = ordinal
                 else:
                     assert previous is not None
-                    entries.append((document_id, first, previous))
+                    entries.append(ScopedChunks(document_id, first, previous, characters))
                     first = previous = ordinal
             if first is not None and previous is not None:
-                entries.append((document_id, first, previous))
-        for entry in entries:
-            self._scope_ranges[entry] = tuple(ranges[entry[0]])
+                entries.append(ScopedChunks(document_id, first, previous, characters))
         return tuple(sorted(entries))
 
     def _chunks_by_document(self) -> dict[str, tuple[tuple[int, int, int], ...]]:
@@ -960,7 +961,7 @@ class AlternativeEvidenceRetrievalSession:
         query: str,
         top_k: int,
         reranker_depth: int | None,
-        scope: tuple[tuple[str, int, int], ...] = (),
+        scope: tuple[ScopedChunks, ...] = (),
     ) -> AlternativeEvidenceSearchResult:
         if self.search_count >= MAXIMUM_SEARCHES:
             raise ValueError("alternative_evidence.search_budget_exhausted")
@@ -988,24 +989,26 @@ class AlternativeEvidenceRetrievalSession:
         self.score_types.append(found.score_type)
         hits: list[AlternativeEvidenceSearchHit] = []
         taken: dict[str, int] = {}  # each issuer's group keeps its own top_k, as the store's cut
-        named: dict[str, list[tuple[int, int]]] = {}
+        named: dict[str, set[tuple[int, int]]] = {}
         for entry in scope:
-            named.setdefault(entry[0], []).extend(self._scope_ranges.get(entry, ()))
+            named.setdefault(entry.document_id, set()).update(entry.character_ranges)
+        admitted = {document: tuple(sorted(windows)) for document, windows in named.items()}
         for item in found.hits:
             hit = item.hit
             reference = self._references.get(hit.source_id)
             if reference is None or int(hit.version) != reference.workspace_revision:
                 raise ValueError("alternative_evidence.retrieval_document_lineage_invalid")
             _revision, text = self._document(hit.source_id)
-            lead = min(
-                (
-                    max(hit.chunk.start, first)
-                    for first, last in named.get(hit.source_id, ())
+            bounds = (
+                tuple(
+                    (max(first, hit.chunk.start), min(last, hit.chunk.end))
+                    for first, last in admitted.get(hit.source_id, ())
                     if first < hit.chunk.end and hit.chunk.start < last
-                ),
-                default=hit.chunk.start,
+                )
+                if scope
+                else ((hit.chunk.start, hit.chunk.end),)
             )
-            for start, end in _matched_lines(text, hit.chunk.start, hit.chunk.end, query, lead):
+            for start, end in _matched_lines(text, bounds, query):
                 if taken.get(reference.entity_id, 0) >= top_k:
                     break
                 taken[reference.entity_id] = taken.get(reference.entity_id, 0) + 1
@@ -1032,6 +1035,7 @@ class AlternativeEvidenceRetrievalSession:
             hits=tuple(hits),
             remaining_searches=MAXIMUM_SEARCHES - self.search_count,
             reranked_pairs=found.reranked,
+            rerank_fallback=found.rerank_fallback,
             score_type=found.score_type,
         )
 
@@ -1227,51 +1231,42 @@ def _sentence_end(text: str, end: int, budget: int) -> int:
 _QUERY_WORD = re.compile(r"\w+")
 
 
-def _matched_lines(text: str, start: int, end: int, query: str, lead: int) -> list[tuple[int, int]]:
-    """The lines of a retrieved chunk that its query matches, as ranges of the source text.
+def _matched_lines(
+    text: str, bounds: Sequence[tuple[int, int]], query: str
+) -> list[tuple[int, int]]:
+    """Choose matching lines inside the named ranges before delivery widens them.
 
-    The store retrieves a chunk, offsets into the source; a chunk can hold a whole short filing,
-    so delivering it whole would hand every question that retrieves the filing the same passage.
-    A query word counts by its five-letter stem, so an inflection still counts, and only where it
-    locates something: a word most of a chunk's several lines state (its boilerplate) does not. The
-    lines stating the most counted words are each a candidate of their own, by position, so a
-    question whose best line another question already holds keeps its next equal one, as when
-    each line was a chunk. `_readable_source_span` widens a delivered range to whole sentences. A
-    chunk no line of which states a counted word (a vector-only match, boilerplate alone, or a
-    query in another language) is one candidate, its leading sentence: the chunk's first text
-    (at or after `lead`, where a scope's named range begins inside the chunk) to the first
-    sentence edge after it, which the delivery widens back to where that sentence began, so
-    every delivered passage is sentence-sized.
+    A word counts by its five-letter stem, except boilerplate present on most
+    lines. Ties stay in source order. Without a match, use the first sentence
+    that starts in the admitted ranges, clipped to the end of its range.
     """
     stems = {word[:5] for word in _QUERY_WORD.findall(query.casefold()) if len(word) > 3}
     lines: list[tuple[int, int, set[str]]] = []
-    line_start = start
-    for line in text[start:end].split("\n"):
-        line_end = line_start + len(line)
-        first, last = line_start, line_end
-        while first < last and text[first].isspace():
-            first += 1
-        while last > first and text[last - 1].isspace():
-            last -= 1
-        if first < last:
-            words = _QUERY_WORD.findall(line.casefold())
-            stated = {stem for stem in stems if any(word.startswith(stem) for word in words)}
-            lines.append((first, last, stated))
-        line_start = line_end + 1
-    common = {stem for stem in stems if 2 * sum(stem in held for *_, held in lines) > len(lines)}
-    if len(lines) == 1:  # a chunk of one line has no boilerplate: that line is all it states
-        common = set()
+    for start, end in bounds:
+        line_start = start
+        for line in text[start:end].split("\n"):
+            first = line_start + len(line) - len(line.lstrip())
+            last = line_start + len(line.rstrip())
+            if first < last:
+                words = _QUERY_WORD.findall(line.casefold())
+                stated = {stem for stem in stems if any(word.startswith(stem) for word in words)}
+                lines.append((first, last, stated))
+            line_start += len(line) + 1
+    if not lines:
+        return []
+    common = {
+        stem
+        for stem in stems
+        if len(lines) > 1 and 2 * sum(stem in held for *_, held in lines) > len(lines)
+    }
     counted = [(len(held - common), first, last) for first, last, held in lines]
-    best = max((stated for stated, _first, _last in counted), default=0)
-    if not best:
-        opening = next((max(line, lead) for line, last, _held in lines if last > lead), None)
-        if opening is None:
-            return [(start, end)]
-        while opening < end and text[opening].isspace():
-            opening += 1
-        edge = _sentence_end(text, opening, SPAN_CONTEXT_BUDGET)
-        return [(opening, max(opening + 1, min(end, edge)))]
-    return [(first, last) for stated, first, last in counted if stated == best]
+    best = max(stated for stated, _first, _last in counted)
+    if best:
+        return [(first, last) for stated, first, last in counted if stated == best]
+    opening = lines[0][0]
+    end = next(last for first, last in bounds if first <= opening < last)
+    edge = _sentence_end(text, opening, SPAN_CONTEXT_BUDGET)
+    return [(opening, max(opening + 1, min(end, edge)))]
 
 
 def _readable_source_span(

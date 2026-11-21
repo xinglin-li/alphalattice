@@ -15,7 +15,7 @@ import pytest
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, knowledge, recall
 from alphalattice.kernel.data_layer.chain import digest
-from alphalattice.kernel.data_layer.encoders import Reranker, StaticEncoder
+from alphalattice.kernel.data_layer.encoders import Reranker, RerankScores, StaticEncoder
 from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
 
@@ -403,10 +403,13 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
                 calls = 0
                 deadline = True
 
-                def score(self, _: str, passages: tuple[str, ...]) -> list[float] | None:
+                def score(
+                    self, _: str, passages: tuple[str, ...], *, deadline: float
+                ) -> RerankScores:
                     self.calls += 1
-                    assert passages
-                    return None if self.deadline else [0.25] * len(passages)
+                    assert passages and len(passages) == len(set(passages))
+                    scores = (0.25,) if self.deadline else (0.25,) * len(passages)
+                    return RerankScores(scores, timed_out=self.deadline)
 
             bodies = {
                 origin.version: body,
@@ -447,7 +450,9 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
             # A `depth` asks for the precise mode: English reranked, the fused order standing
             # past the deadline.
             precise = {"language": "en", "workspace": "w1", "cutoff_us": 123, "depth": 5}
-            assert search.retrieve("evidence", **precise).score_type == "LINEAR_FUSION"
+            expired = search.retrieve("evidence", **precise)
+            assert expired.score_type == "LINEAR_FUSION"
+            assert (expired.reranked, expired.rerank_fallback) == (1, "DEADLINE_EXCEEDED")
             assert reranker.calls == 1
             reranker.deadline = False
             english = search.retrieve("evidence", **precise)
@@ -461,8 +466,7 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
             assert sealed_read.score_type == "CROSS_ENCODER_LOGIT"
             assert [hit.hit.source_id for hit in sealed_read.hits] == [sealed.source_id]
             assert reranker.calls == calls + 1
-            # Read per document: each source's best `depth` candidates are reranked, and each
-            # group of sources takes its own `limit` of that order.
+            # A bounded shortlist across the documents; each source group takes its own limit.
             calls = reranker.calls
             deep = search.retrieve(
                 "evidence",
@@ -485,6 +489,28 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
             assert scoped.hits == ()
             with pytest.raises(DataError, match="query"):
                 search.retrieve("x" * 513, language="en", workspace="w1", cutoff_us=123)
+            # Exact text can have separate source identities. Both are read back, but
+            # the cross-encoder sees one pair for their shared text.
+            alias_origin = SourceOrigin(uuid7(), uuid7(), knowledge.SEALED_KIND, 123)
+            alias_id = store.publish_revision(
+                workspace_id="w2",
+                metadata={"document": {"document_id": "filing.alias"}, "revision": 1},
+                content=sealed_body,
+                origin=alias_origin,
+            )
+            store.index_chunks(version_id=alias_id, recipe_id=recipe, content=sealed_body)
+            assert index.refresh()
+            bodies[alias_origin.version] = sealed_body
+            calls = reranker.calls
+            shared = search.retrieve(
+                "evidence", language="en", kind=knowledge.SEALED_KIND, limit=2, **reading
+            )
+            assert {item.hit.source_id for item in shared.hits} == {
+                sealed.source_id,
+                alias_origin.source_id,
+            }
+            assert shared.reranked == 1 and reranker.calls == calls + 1
+            assert shared.score_type == "CROSS_ENCODER_LOGIT"
             retirement = store.retire(origin.source_id, known_us=500)
             assert index.refresh()
             assert index.search(query_vector, store.scope(workspace="w1", cutoff_us=500)) == ()

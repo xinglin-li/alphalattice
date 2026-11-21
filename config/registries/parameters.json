@@ -1529,19 +1529,12 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANKER_DEPTH_PER_DOCUMENT::12": {
+"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANK_SHORTLIST_DEPTH::3": {
 "class": "METHOD",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::2": {
-"class": "LIMIT",
-"count": 1
+"count": 1,
+"description": "Cap each Evidence search at three fused candidates for cross-encoder scoring."
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::20": {
-"class": "LIMIT",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::24": {
 "class": "LIMIT",
 "count": 1
 },

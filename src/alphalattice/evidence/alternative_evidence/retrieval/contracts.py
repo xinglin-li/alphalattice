@@ -209,10 +209,12 @@ class AlternativeEvidenceSearchResult(AlternativeEvidenceContract):
     reranked_pairs: int = Field(default=0, ge=0)
     """Pairs the cross-encoder scored for this search: what a pair budget
     is charged; a shortlist past its deadline included."""
+    rerank_fallback: Literal["DEADLINE_EXCEEDED"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"]
-    """What `retrieval_score` means for every hit of this search: the cross-encoder's logit, or
-    the store's linear fusion of its lexical and vector scores (a Chinese query, or a rerank past
-    its deadline)."""
+    """The common scale for all returned scores. If the result includes the fused tail,
+    every score stays on the fusion scale, including the reranked shortlist."""
 
 
 class SourceUnitDeclaration(AlternativeEvidenceContract):

@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.evidence.alternative_evidence.analysis import packet
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     RetrievalSupersessionRecord,
 )
@@ -27,6 +28,7 @@ from alphalattice.evidence.alternative_evidence.runtime.reuse import (
     SPAN_SET_CATEGORY,
 )
 from alphalattice.evidence.alternative_evidence.runtime.service import SUPERSESSION_CATEGORY
+from alphalattice.kernel.data_layer.encoders import RerankScores
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
     _counted_runtime,
@@ -244,6 +246,8 @@ def test_a_selection_under_an_earlier_retrieval_binding_is_kept_or_recorded_besi
     def select(folder: Path, *, binding: str | None, rerank: str, stop: bool = False) -> Any:
         runtime, _passes = _counted_runtime(folder)
         with monkeypatch.context() as patch:
+            # This publication case compares a fully scored result with its fused fallback.
+            patch.setattr(packet, "QUERY_TOP_K", 2)
             if binding is not None:
                 for owner in (runtime, runtime.retrieval):
                     patch.setattr(owner, "retrieval_binding_hash", binding)
@@ -259,14 +263,21 @@ def test_a_selection_under_an_earlier_retrieval_binding_is_kept_or_recorded_besi
 
                 patch.setattr(runtime.artifacts, "place", refused)
             if rerank == "past the deadline":  # as the cross-encoder answers past its deadline
-                patch.setattr(_FakeReranker, "score", lambda self, query, passages: None)
-            if rerank == "reversed":
-                score = _FakeReranker.score
                 patch.setattr(
                     _FakeReranker,
                     "score",
-                    lambda self, query, passages: tuple(-v for v in score(self, query, passages)),
+                    lambda self, query, passages, *, deadline: RerankScores((), timed_out=True),
                 )
+            if rerank == "reversed":
+                score = _FakeReranker.score
+
+                def reversed_scores(
+                    self: _FakeReranker, query: str, passages: tuple[str, ...], *, deadline: float
+                ) -> RerankScores:
+                    result = score(self, query, passages, deadline=deadline)
+                    return RerankScores(tuple(-v for v in result.scores), result.timed_out)
+
+                patch.setattr(_FakeReranker, "score", reversed_scores)
             request, document_set, generation = _built(runtime)
             receipt, _spans = runtime.select_evidence(
                 request=request, document_set=document_set, generation=generation

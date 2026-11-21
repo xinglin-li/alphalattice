@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "6997f4b24ca8cecb006c3dc75811a07c3f8f3ae8ac0ed99d2c12b4ffc09a10cb",
+   "successor": "8b7669d42128c6d306f738b1b04cc0b39234f873b054b601137cafa94dbc5905",
+   "change": "Rerank Evidence once and keep passage leads in scope",
+   "reason": "A lawful change: Evidence reranks one fused shortlist once, so selected spans may differ; the casebooks hold recall (grounded 46 to 47 of 96, experience 97 of 100 in both arms, no question lost); the analysis policy moves to bind the new choice and the retrieval binding follows the merged incremental index's successor; sealed receipts keep their stored identities; no Feature, Factor or Panel closure is touched"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "ce11982a3f56036bb4c52a565c11e6b1751bf3a0e033586bc0e954148a738335",
+   "successor": "de2ab54ff10533aa0bd6c66fc6b839339d322ecf96af47b58369e14902450f98",
+   "change": "Rerank Evidence once and keep passage leads in scope",
+   "reason": "A lawful change: Evidence reranks one fused shortlist once, so selected spans may differ; the casebooks hold recall (grounded 46 to 47 of 96, experience 97 of 100 in both arms, no question lost); the analysis policy moves to bind the new choice and the retrieval binding follows the merged incremental index's successor; sealed receipts keep their stored identities; no Feature, Factor or Panel closure is touched"
+  }
+ ]
+}

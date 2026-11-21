@@ -151,12 +151,14 @@ class EvidenceQueryRecord(AlternativeEvidenceContract):
     reranked_pairs: int | None = Field(default=None, ge=0, exclude_if=lambda v: v is None)
     """How many (question, passage) pairs the cross-encoder scored for this
     question, as the search reported; None when not recorded."""
+    rerank_fallback: Literal["DEADLINE_EXCEEDED"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
-    """What `hit_scores` mean: the cross-encoder's logit, or the store's linear fusion (a
-    Chinese question, or a rerank past its deadline). None for a receipt sealed before the
-    store, which keeps its hash."""
+    """The common scale of the returned scores. Candidates from the fused tail keep
+    every score on the fusion scale. Older receipts keep their original hashes."""
     hit_scores: tuple[float, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
     """Each hit's score, in `hit_span_handles` order, so a replay that ranks the same passages
     differently is seen by its scores as well as its order."""

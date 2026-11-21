@@ -488,9 +488,11 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
         def __init__(self, _pack: Path) -> None:
             pass
 
-        def score(self, query, passages):
+        def score(self, query, passages, *, deadline):
             reranked.append(query)
-            return tuple(float(len(passage)) for passage in passages)
+            return encoders.RerankScores(
+                tuple(float(len(passage)) for passage in passages), timed_out=False
+            )
 
     monkeypatch.setattr(encoders, "StaticEncoder", Encoder)
     monkeypatch.setattr(encoders, "Reranker", Reranker)

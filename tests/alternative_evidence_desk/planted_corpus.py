@@ -128,13 +128,16 @@ class _FakeReranker:
     def __init__(self, _pack: Path | None = None) -> None:
         pass
 
-    def score(self, query: str, passages: list[str]) -> tuple[float, ...]:
+    def score(
+        self, query: str, passages: tuple[str, ...], *, deadline: float
+    ) -> encoders.RerankScores:
         # Five-letter stems, so "interrupted" credits "interruption" the way a
         # real reranker would.
         wanted = {word.strip("?,.")[:5] for word in query.casefold().split() if len(word) > 4}
-        return tuple(
+        scores = tuple(
             float(sum(1 for stem in wanted if stem in passage.casefold())) for passage in passages
         )
+        return encoders.RerankScores(scores, timed_out=False)
 
 
 @contextmanager
