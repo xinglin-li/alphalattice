@@ -26,6 +26,7 @@ from blake3 import blake3
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.governance import COPYING
+from alphalattice.kernel.data_layer.history_runtime import host_duckdb
 from alphalattice.kernel.data_layer.log import HostLog, verify_whole
 from alphalattice.kernel.data_layer.root import (
     FOLDERS,
@@ -315,7 +316,7 @@ def _catalog_paths(catalog: Path) -> set[str]:
     return found
 
 
-def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]:
+def _owners(machine: Path, data: Path, owner: Any = None) -> dict[str, str | dict[str, str] | None]:
     """The copied catalog's file/body references and copied log's retained blob proofs."""
     import duckdb  # lazy: the optional data extra reads catalog Evidence body references
 
@@ -338,9 +339,12 @@ def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]
     collected = {name for name, _, state, _ in profiles if state == "collected"}
     catalog = sql_path(_real(machine / "catalog.sqlite"))
     location = sql_path(_real(data)) + "/"
+    alias = f"backup_{uuid.uuid4().hex}"
     try:
         with closing(
-            duckdb.connect(
+            owner.cursor()
+            if owner is not None
+            else duckdb.connect(
                 ":memory:",
                 config={
                     "autoinstall_known_extensions": False,
@@ -349,17 +353,22 @@ def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]
                 },
             )
         ) as lake:
-            load_extensions(lake)
-            bound_reads(lake)
+            if owner is None:
+                load_extensions(lake)
+                bound_reads(lake)
             lake.execute(
-                f"ATTACH 'ducklake:sqlite:{catalog}' AS lake "
+                f"ATTACH 'ducklake:sqlite:{catalog}' AS {alias} "
                 f"(READ_ONLY, DATA_PATH '{location}', OVERRIDE_DATA_PATH true)"
-            )
-            for (name,) in lake.execute(
-                "SELECT DISTINCT doc_digest FROM lake.world.evidence_doc"
-            ).fetchall():
-                if name not in collected:
-                    found.setdefault("blobs/" + name, None)
+            ).complete()
+            try:
+                for (name,) in lake.execute(
+                    f"SELECT DISTINCT doc_digest FROM {alias}.world.evidence_doc"
+                ).fetchall():
+                    if name not in collected:
+                        found.setdefault("blobs/" + name, None)
+            finally:
+                if owner is not None:
+                    lake.execute(f"DETACH {alias}").complete()
     except duckdb.Error as error:
         raise _refuse(
             "backup_unreadable", f"{machine} cannot read its body owners; use an intact backup"
@@ -383,9 +392,9 @@ def _owners(machine: Path, data: Path) -> dict[str, str | dict[str, str] | None]
     return found
 
 
-def _files(root: Path, machine: Path) -> list[dict[str, Any]]:
+def _files(root: Path, machine: Path, owner: Any) -> list[dict[str, Any]]:
     """Seal the owners' required files and the admitted blob store without changing identities."""
-    owners = _owners(machine, root / "data")
+    owners = _owners(machine, root / "data", owner)
     handles = set(owners) | {path.relative_to(root).as_posix() for path in _walk(root / "blobs")}
     files = []
     for handle in sorted(handles):
@@ -409,7 +418,8 @@ def backup_data_root(root: Path, repository: Path) -> Path:
                 "backup_overlaps_root",
                 f"{repository} is inside {root}; choose an external backup repository",
             )
-        catalog(root)  # a backup is a use of the catalog, which a root makes at its first use
+        owner = host_duckdb(root)
+        catalog(root, owner=owner)  # a backup is a use of the catalog
         generations, pool = repository / "generations", repository / "files"
         name = uuid.uuid4().hex
         partial, generation = generations / ("." + name + ".partial"), generations / name
@@ -422,7 +432,7 @@ def backup_data_root(root: Path, repository: Path) -> Path:
                 _snapshot(root / "machine" / database, partial / "machine" / database)
             head = _head(partial / "machine/log.sqlite")
             _consistent(partial / "machine")
-            files = _files(root, partial / "machine")
+            files = _files(root, partial / "machine", owner)
             with closing(
                 sqlite3.connect(sqlite_read_only_uri(partial / "machine/log.sqlite"), uri=True)
             ) as saved_log:
@@ -470,7 +480,7 @@ def _relocate_catalog(catalog: Path, data: Path) -> None:
         con.commit()
 
 
-def _verified_manifest(generation: Path) -> dict[str, Any]:
+def _verified_manifest(generation: Path, owner: Any = None) -> dict[str, Any]:
     """The saved chain and owner-derived file set, shared by verification and restoration."""
     generation = generation.resolve()
     manifest = read_manifest(generation)
@@ -482,7 +492,7 @@ def _verified_manifest(generation: Path) -> dict[str, Any]:
             )
         _consistent(generation / "machine")
         pool = generation.parent.parent / "files"
-        owners = _owners(generation / "machine", pool / "data")
+        owners = _owners(generation / "machine", pool / "data", owner)
         listed = {entry["path"]: entry for entry in manifest["files"]}
         if missing := owners.keys() - listed.keys():
             raise _refuse(
@@ -530,7 +540,7 @@ def verify_data_root(
     it is the exact pre-upgrade head already recorded by the upgrade's progress owner.
     """
     generation = generation.resolve()
-    manifest = _verified_manifest(generation)
+    manifest = _verified_manifest(generation, None if source is None else host_duckdb(source))
     try:
         pool = generation.parent.parent / "files"
         with closing(

@@ -223,6 +223,15 @@ def holding() -> HostLog | None:
         return log if log is not None and Path(_open["root"]) == data_root() else None
 
 
+def host_duckdb(root: Path) -> Any | None:
+    """The loaded DuckDB instance held by this root's open Host history."""
+    with _lock:
+        active = _open.get("root")
+        if active is not None and active.resolve() == root.resolve():
+            return _open.get("duckdb")
+        return None
+
+
 def store() -> StorePort | None:
     """The Host's StorePort over its data root, opened at the first call and kept until the history
     closes; None outside a Host whose history is open, and without the data extra. Its opening
@@ -245,7 +254,7 @@ def store() -> StorePort | None:
             root = Path(_open["root"])
         from alphalattice.kernel.data_layer.store import StorePort  # lazy: the data extra
 
-        port = StorePort.open(root, log)
+        port = StorePort.open(root, log, owner=host_duckdb(root))
         with _lock:
             _open["store"] = port
     # The collector takes the backup's lock first, so run it outside the log guard.
@@ -464,6 +473,7 @@ def _close_history() -> None:
             with _catalog_lock:
                 catalog_reader = _open.pop("catalog_reader", None)
             reading = _open.pop("reading", None)
+            duckdb = _open.pop("duckdb", None)
             _open.pop("log", None)
             _open.pop("workspace", None)
             _open.pop("portfolio_catalog_workspaces", None)
@@ -480,13 +490,12 @@ def _close_history() -> None:
         catalog_reader.close()
     if port is not None:
         port.close()
+    if duckdb is not None:
+        duckdb.close()
     recall.close()
     with _read_lock:
         if reading is not None:
             reading.close()
-        outcome_reading = _open.pop("outcome_reading", None)
-        if outcome_reading is not None:
-            outcome_reading.close()
     if log is not None:
         log.close()
 

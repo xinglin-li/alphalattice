@@ -292,6 +292,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             operations,
             "experiments",
             SimpleNamespace(
+                installed_implementation=operations.experiments.installed_implementation,
                 awaiting=lambda _: {
                     "curation": [str(study.task_id)],
                     "promotion": [str(study.task_id)],

@@ -14,8 +14,8 @@ from alphalattice.kernel.data_layer.history_runtime import (
     _lock,
     _once,
     _open,
-    _read_lock,
     _record_result_count,
+    catalog_projection,
     recording,
     store,
 )
@@ -177,35 +177,35 @@ def execution_outcome_artifact_id(content_hash: str) -> str:
 
 def read_execution_outcome(content_hash: str, columns: list[str] | None = None) -> Any:
     """Read the outcome body through the data root's catalog, including from non-Host processes."""
-    with _read_lock:
-        # The Host's general reader can predate its catalog. Open this reader on first
-        # outcome access, then retain it for the Host's lifetime.
-        connection = _open.get("outcome_reading")
-        owned = not recording()
-        if connection is None:
-            connection = reading_session(_open.get("root") or data_root(), log=False)
-        if connection is None:
-            raise DataError(
-                "the outcome catalog is unavailable", code="data_layer.history_unavailable"
-            )
-        try:
+    selected = (
+        "* EXCLUDE (artifact_id)"
+        if columns is None
+        else ", ".join('"' + name.replace('"', '""') + '"' for name in columns)
+    )
+    query = (
+        f"SELECT {selected} FROM lake.results.execution_outcome "
+        "WHERE artifact_id = ? ORDER BY formation_session, listing_id"
+    )
+    in_host = recording()
+    connection = (
+        _open.get("duckdb")
+        if in_host
+        else reading_session(_open.get("root") or data_root(), log=False)
+    )
+    if connection is None:
+        raise DataError("the outcome catalog is unavailable", code="data_layer.history_unavailable")
+    if in_host:
+        artifact = execution_outcome_artifact_id(content_hash)
+        with catalog_projection("execution_outcome", query, (artifact,)) as result:
+            if result is None:
+                raise DataError(
+                    "the outcome catalog is unavailable", code="data_layer.history_unavailable"
+                )
+            table = result.to_arrow_table()
+    else:
+        with closing(connection):
             artifact = execution_outcome_artifact_id(content_hash)
-            # Discovery can precede the catalog: retain a reader only for a held outcome.
-            if not owned:
-                _open["outcome_reading"] = connection
-            selected = (
-                "* EXCLUDE (artifact_id)"
-                if columns is None
-                else ", ".join('"' + name.replace('"', '""') + '"' for name in columns)
-            )
-            table = connection.execute(
-                f"SELECT {selected} FROM lake.results.execution_outcome "
-                "WHERE artifact_id = ? ORDER BY formation_session, listing_id",
-                (artifact,),
-            ).to_arrow_table()
-        finally:
-            if owned or connection is not _open.get("outcome_reading"):
-                connection.close()
+            table = connection.execute(query, (artifact,)).to_arrow_table()
     if table.num_rows == 0:
         raise DataError("the outcome body is not in the catalog", code="data_layer.outcome_missing")
     return table if columns is None else table.select(columns)

@@ -268,7 +268,7 @@ def duckdb_session(root: Path) -> Any | None:
     return connection
 
 
-def catalog(root: Path) -> bool | None:
+def catalog(root: Path, *, owner: Any = None) -> bool | None:
     """Create the SQLite-backed DuckLake catalog from installed wheels at its first use: True when
     made, False when present, None (CATALOG_DEFERRED) without the data extra. A root is made
     without it, since making it takes most of a root's creation and a root that never stores a
@@ -278,14 +278,16 @@ def catalog(root: Path) -> bool | None:
     path = root / "machine" / "catalog.sqlite"
     if path.exists():
         return False
-    connection = duckdb_session(root)  # in memory: the catalog lives in the attached SQLite file
+    connection = duckdb_session(root) if owner is None else owner.cursor()
     if connection is None:
         return None
+    attached = False
     try:
         data = sql_path(root / "data")
         connection.execute(
             f"ATTACH 'ducklake:sqlite:{sql_path(path)}' AS lake (DATA_PATH '{data}/')"
         ).complete()
+        attached = True
         connection.execute("USE lake").complete()
         # Each run of DDL commits once, in file order: a DuckLake commit per statement made a
         # catalog in two seconds. An option call stands alone, after its schema or table commits.
@@ -304,10 +306,13 @@ def catalog(root: Path) -> bool | None:
                 connection.execute(statement).complete()
     finally:
         connection.close()
+        if owner is not None and attached:
+            with closing(owner.cursor()) as detach:
+                detach.execute("DETACH lake").complete()
     return True
 
 
-def catalog_matches(lake: Any) -> None:
+def catalog_matches(lake: Any, *, name: str = "lake") -> None:
     """Refuse catalog tables whose columns differ from catalog.sql.
 
     Older 0.2.8 roots may lack an additive results table until its writer opens it.
@@ -322,7 +327,8 @@ def catalog_matches(lake: Any) -> None:
     held: dict[str, list[str]] = {}
     for schema, table, column in lake.execute(
         "SELECT schema_name, table_name, column_name FROM duckdb_columns()"
-        " WHERE database_name = 'lake' ORDER BY schema_name, table_name, column_index"
+        " WHERE database_name = ? ORDER BY schema_name, table_name, column_index",
+        (name,),
     ).fetchall():
         held.setdefault(f"{schema}.{table}", []).append(column)
     moved = sorted(

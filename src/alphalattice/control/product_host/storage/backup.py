@@ -27,7 +27,7 @@ import json
 import os
 import tempfile
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self
@@ -46,6 +46,7 @@ from alphalattice.control.task_control.upgrade import create_0_2_7_store, task_r
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
+    hold_workspace_database,
     open_workspace_database,
 )
 from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
@@ -443,31 +444,32 @@ class WorkspaceBackups:
                 ("market", self.workspace / MARKET_DATABASE, MARKET_TABLES),
                 ("task-control", unmoved, TASK_CONTROL_TABLES),
             ):
-                if database is None:
-                    present = set(tables)
-                else:
-                    present = _existing_tables(database) if database.is_file() else set()
-                for table in tables:
-                    if stop():
-                        raise _Stopped
-                    if table not in present:
-                        absent.append(f"{store}/{table}")
-                        continue
-                    exported, rows = (
-                        _export_rows(tasks[table], table, staging)
-                        if database is None
-                        else _export_table(database, table, staging)
-                    )
-                    digest, size = read_file(exported)
-                    entries.append(
-                        BackupEntry(
-                            kind="TABLE",
-                            path=f"{store}/{table}",
-                            digest=digest,
-                            size=size,
-                            rows=rows,
+                with hold_workspace_database(database) if database is not None else nullcontext():
+                    if database is None:
+                        present = set(tables)
+                    else:
+                        present = _existing_tables(database) if database.is_file() else set()
+                    for table in tables:
+                        if stop():
+                            raise _Stopped
+                        if table not in present:
+                            absent.append(f"{store}/{table}")
+                            continue
+                        exported, rows = (
+                            _export_rows(tasks[table], table, staging)
+                            if database is None
+                            else _export_table(database, table, staging)
                         )
-                    )
+                        digest, size = read_file(exported)
+                        entries.append(
+                            BackupEntry(
+                                kind="TABLE",
+                                path=f"{store}/{table}",
+                                digest=digest,
+                                size=size,
+                                rows=rows,
+                            )
+                        )
             # The lanes the machine holds for the workspace go as a copy carries them: a restore
             # writes them back there, and the Host that opens it moves them onto its log.
             history.carry_arrays(self.workspace, staging)

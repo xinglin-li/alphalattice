@@ -22,7 +22,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
-from alphalattice.kernel.data_layer import history, history_execution_outcomes
+from alphalattice.kernel.data_layer import history, history_execution_outcomes, history_startup
 from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 
@@ -341,8 +341,16 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
     marker = CausalExecutionOutcomeMarker(**fields, marker_hash=canonical_hash(fields))
     publish("markers", marker.model_dump(mode="json"), "marker_hash")
 
+    if case == "no catalog reader":
+        monkeypatch.setattr(history_startup, "duckdb_session", lambda _root: None)
     history.open_history("first-start", "first start", tmp_path, tmp_path / "data-root")
     try:
+        family = first_start.execution_outcomes()
+        if case == "no catalog reader":
+            with pytest.raises(DataError) as refusal:
+                family.holds(tmp_path)
+            assert refusal.value.failure.code == "data_layer.history_unavailable"
+            return
         if case == "the catalog is created after discovery":
             with pytest.raises(DataError, match="outcome body is not in the catalog"):
                 history.read_execution_outcome(chunks["DEVELOPMENT"].content_hash)
@@ -373,11 +381,6 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
                 raise DataError("named twice", code="data_layer.outcome_incomplete")
 
             monkeypatch.setattr(history_execution_outcomes, "execution_outcome_artifact_id", fault)
-        if case == "no catalog reader":  # DuckDB, the data extra, is absent
-            monkeypatch.setattr(
-                history_execution_outcomes, "reading_session", lambda *_args, **_kwargs: None
-            )
-        family = first_start.execution_outcomes()
         unheld = case in ("nowhere", "its profile without rows")
         if case == "the catalog is created after discovery":
             import duckdb
@@ -392,7 +395,7 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
             with pytest.raises(DataError, match="not in the catalog"):
                 family.verify(SimpleNamespace(workspaces=(tmp_path,)))
         stops = {"more rows than its manifest": ValueError, "a folder in its place": OSError}
-        if case in (*stops, "a catalog fault", "no catalog reader"):
+        if case in (*stops, "a catalog fault"):
             with pytest.raises(stops.get(case, DataError)):
                 family.holds(tmp_path)
     finally:

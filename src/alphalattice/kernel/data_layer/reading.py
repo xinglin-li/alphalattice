@@ -47,16 +47,17 @@ so its caller, which holds the history's lock, never waits on it for ever. The e
 of a 200,000-event log answers in 0.2 s and a cold reader starts in 0.4 s."""
 
 
-def reading_session(root: Path, *, log: bool = True) -> Any | None:
+def reading_session(root: Path, *, log: bool = True, owner: Any = None) -> Any | None:
     """DuckDB with `root`'s log attached read-only and views.sql defined, in UTC; None when
     `duckdb_session` defers (READING_DEFERRED). The caller closes it. Without `log`, only the
     catalog and the views that read no log: a process that opens the log through Python's
     sqlite3 opens it with no second SQLite library, whose closing descriptor would release the
     process's locks on the file."""
-    connection = duckdb_session(root)
+    connection = duckdb_session(root) if owner is None else owner.cursor()
     if connection is None:
         return None
     machine = root / "machine"
+    alias = "lake" if owner is None else "read_lake"
     try:
         configure_read_cache(connection)
         connection.execute("SET TimeZone = 'UTC'").complete()
@@ -67,18 +68,22 @@ def reading_session(root: Path, *, log: bool = True) -> Any | None:
         if lake:
             data, catalog = sql_path(root / "data"), sql_path(machine / "catalog.sqlite")
             connection.execute(
-                f"ATTACH 'ducklake:sqlite:{catalog}' AS lake (DATA_PATH '{data}/', READ_ONLY)"
+                f"ATTACH 'ducklake:sqlite:{catalog}' AS {alias} (DATA_PATH '{data}/', READ_ONLY)"
             ).complete()
-            catalog_matches(connection)
+            catalog_matches(connection, name=alias)
         table_ids = {}
         if lake and log:
             table_ids = world_table_ids(connection, attached=True)
         elif lake:
             with closing(attach(root)) as con:
                 table_ids = world_table_ids(con)
+        if owner is not None:
+            # The read-only views and writer macros have their own in-memory namespaces.
+            connection.execute("ATTACH ':memory:' AS read_views").complete()
+            connection.execute("USE read_views").complete()
         for statement in view_statements(table_ids):
             if (lake or "lake." not in statement) and (log or "log." not in statement):
-                connection.execute(statement).complete()
+                connection.execute(statement.replace("lake.", f"{alias}.")).complete()
     except BaseException:
         connection.close()
         raise
@@ -88,9 +93,11 @@ def reading_session(root: Path, *, log: bool = True) -> Any | None:
 class CatalogReader:
     """Hold the catalog and one prepared SQL shape per named stage for its lifetime."""
 
-    def __init__(self, connection: Any) -> None:
+    def __init__(self, connection: Any, *, catalog: str = "lake") -> None:
         """Take ownership of the catalog connection and its prepared statements."""
         self._connection = connection
+        self._catalog = catalog
+        self._connection.execute("SET TimeZone = 'UTC'").complete()
         self._lock = Lock()
         self._plans: dict[str, tuple[str, str]] = {}
 
@@ -107,7 +114,8 @@ class CatalogReader:
         with self._lock:
             previous, name = self._plans.get(stage, ("", f"result_{len(self._plans)}"))
             if previous != query:
-                self._connection.execute(f"PREPARE {name} AS {query}").complete()
+                statement = query.replace("lake.", f"{self._catalog}.")
+                self._connection.execute(f"PREPARE {name} AS {statement}").complete()
                 self._plans[stage] = (query, name)
             # DuckDB's SQL EXECUTE cannot itself bind placeholders. Use the engine's typed
             # literal rendering so caller values never enter the statement as SQL.

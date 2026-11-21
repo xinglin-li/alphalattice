@@ -633,7 +633,6 @@ class PortfolioResearchOperations:
     research_strategies: ResearchStrategyPreparation = field(init=False)
     storage: ResearchInputStorage = field(init=False)
     _packages: dict[str, FrozenStrategyPackage] = field(init=False, repr=False)
-    _study_identities: dict[str, str] | None = field(default=None, init=False, repr=False)
     sweep: StudyVerificationSweep = field(init=False)
     evidence_install: EvidenceInstall = field(init=False)
     supervisor: TaskSupervisor = field(init=False)
@@ -4441,15 +4440,11 @@ class PortfolioResearchOperations:
         )
 
     def _installed_study_identities(self) -> dict[str, str]:
-        if self._study_identities is None:
-            # The installed study identities are the code this Host serves: asked once.
-            self._study_identities = installed_study_identities()
-        return self._study_identities
+        return installed_study_identities(self.experiments.installed_implementation)
 
     def _upgrade_overview(
         self, tasks: tuple[TaskRecord, ...], task_refusals: list[dict[str, Any]] | None = None
     ) -> dict[str, object]:
-        self._installed_study_identities()
         return upgrade_overview(
             workspace=self.workspace_session.workspace,
             registry=self.workspace_session.task_control_registry,
@@ -4458,7 +4453,7 @@ class PortfolioResearchOperations:
             command_running=self.dispatcher.command_running,
             tasks=tasks,
             task_refusals=task_refusals or (),
-            study_identities=self._study_identities,
+            study_identities=self._installed_study_identities(),
             failed_studies=self.sweep.failed_studies(),
         )
 

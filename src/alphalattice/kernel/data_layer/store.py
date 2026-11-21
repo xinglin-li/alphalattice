@@ -310,25 +310,30 @@ class StorePort:
         self._block: _Block | None = None  # the open `admitting` block, on the writer's thread
 
     @classmethod
-    def open(cls, root: Path, log: HostLog) -> StorePort:
+    def open(cls, root: Path, log: HostLog, *, owner: Any = None) -> StorePort:
         """Attach the catalog and the reading surface's world macros, then run `start`. The log
         is never attached: this process writes it through Python's sqlite3, and a second SQLite
         library closing its descriptor would release the writer's locks on the file."""
         import duckdb  # lazy: DuckDB is the optional data extra; only a Host with data opens this
 
-        lake = duckdb.connect(  # in memory: the catalog is attached to it
-            ":memory:",
-            config={
-                "autoinstall_known_extensions": False,
-                "autoload_known_extensions": False,
-                **duckdb_thread_config(),
-                "threads": THREADS,
-            },
+        lake = (
+            owner.cursor()
+            if owner is not None
+            else duckdb.connect(
+                ":memory:",
+                config={
+                    "autoinstall_known_extensions": False,
+                    "autoload_known_extensions": False,
+                    **duckdb_thread_config(),
+                    "threads": THREADS,
+                },
+            )
         )
         configure_read_cache(lake)
-        load_extensions(lake)
-        bound_reads(lake)
-        catalog(root)  # made at the store's first open, not with the root
+        if owner is None:
+            load_extensions(lake)
+            bound_reads(lake)
+        catalog(root, owner=lake)  # made at the store's first open, not with the root
         machine, data = sql_path(root / "machine"), sql_path(root / "data")
         for sql in (
             f"ATTACH 'ducklake:sqlite:{machine}/catalog.sqlite' AS lake"

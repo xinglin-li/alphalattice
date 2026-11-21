@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from alphalattice.control.workspace_runtime.database import hold_workspace_database
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.errors import DataError
@@ -19,15 +20,16 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
         repository = MarketDataRepository(workspace, universe_reader="workspace")
         if not repository.path.is_file():
             return None
-        with repository.database.read_transaction() as connection:
-            created = connection.execute(
-                "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
-                " AND schema_name = 'main' AND table_name = 'market_profile'"
-            ).fetchone()
-        if created == (world.WORKSPACE_MARKET_FORMAT,):
-            # A current workspace copied to another machine still uses ordinary market admission.
-            return None
-        marks = repository._market_marks()
+        with hold_workspace_database(repository.path):
+            with repository.database.read_transaction() as connection:
+                created = connection.execute(
+                    "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
+                    " AND schema_name = 'main' AND table_name = 'market_profile'"
+                ).fetchone()
+            if created == (world.WORKSPACE_MARKET_FORMAT,):
+                # A current workspace copied to another machine uses ordinary market admission.
+                return None
+            marks = repository._market_marks()
         if not marks:
             raise DataError(
                 "Restore the older workspace's complete market tables before upgrading.",

@@ -77,13 +77,15 @@ _STUDY_KINDS = (
 )
 
 
-def installed_study_identities() -> dict[str, str]:
+def installed_study_identities(
+    implementation: Callable[[str], str] = _implementation_hash,
+) -> dict[str, str]:
     """Each study kind's installed implementation, as its REPLAY compares it.
 
     Computed from the source tree (about 0.6 s for the four kinds), so a Host asks once:
     the code it serves is the code it imported.
     """
-    return {f"study:{kind}": _implementation_hash(kind) for kind in _STUDY_KINDS}
+    return {f"study:{kind}": implementation(kind) for kind in _STUDY_KINDS}
 
 
 def upgrade_overview(

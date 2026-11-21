@@ -620,7 +620,8 @@ class ResearchExperimentApplication:
         self._ledger: dict[tuple[UUID, bool], _VerifiedStudy] = {}
         self._ledger_lock = Lock()
         # Each study role's installed implementation, asked once: the code this Host serves.
-        self._installed: dict[str, str] = {}
+        self._installed: dict[tuple[str, bool], str] = {}
+        self._installed_lock = Lock()
 
     def _foundation_candidate(
         self,
@@ -1849,10 +1850,8 @@ class ResearchExperimentApplication:
             program=sealed.program,
             authority=authority,
             execution_preview=preview,
-            implementation_hash=(
-                _implementation_hash(sealed.program.kind)
-                if qualification_family is None
-                else _qualification_implementation_hash()
+            implementation_hash=self.installed_implementation(
+                sealed.program.kind, qualification=qualification_family is not None
             ),
             origin_task_id=origin_task_id,
             alpha_source=alpha_source,
@@ -3009,11 +3008,17 @@ class ResearchExperimentApplication:
             scope[key] = (evidence, workflow, stored[0])
         return evidence, workflow, stored[0]
 
-    def _installed_implementation(self, plan: ExperimentPlan) -> str:
-        role = plan_implementation_role(plan)
-        if role not in self._installed:
-            self._installed[role] = plan_implementation_hash(plan)
-        return self._installed[role]
+    def installed_implementation(self, kind: str, *, qualification: bool = False) -> str:
+        """The implementation this Host loaded, shared by planning and study readback."""
+        key = kind, qualification
+        with self._installed_lock:
+            if key not in self._installed:
+                self._installed[key] = (
+                    _qualification_implementation_hash()
+                    if qualification
+                    else _implementation_hash(kind)
+                )
+            return self._installed[key]
 
     def _ledger_path(self, key: tuple[UUID, bool]) -> Path:
         mode = "recorded" if key[1] else "current"
@@ -3097,7 +3102,9 @@ class ResearchExperimentApplication:
         """
 
         key = (task.task_id, recorded_readback)
-        installed = self._installed_implementation(plan)
+        installed = self.installed_implementation(
+            plan.program.kind, qualification=plan.qualification_family is not None
+        )
         # A study the scrub refused is proved in full by every read until a check passes; its
         # mark is read first, so an interrupted refusal holds
         refused = self._refused_path(task.task_id).exists()

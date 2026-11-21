@@ -42,6 +42,7 @@ from alphalattice.kernel.data_layer.reading import (
 )
 from alphalattice.kernel.data_layer.root import (
     data_root,
+    duckdb_session,
 )
 
 
@@ -67,13 +68,16 @@ def open_history(
             where = data_root() if root is None else root
             catalog_reader = None
             try:  # the views' DuckDB, checked here without the log, which only the reader opens
-                session = reading_session(where, log=False)
-                if session is not None:
+                owner = duckdb_session(where)
+                if owner is not None:
+                    with _lock:
+                        _open["duckdb"] = owner
+                    session = reading_session(where, log=False, owner=owner)
                     if (where / "machine" / "catalog.sqlite").is_file():
-                        catalog_reader = CatalogReader(session)
+                        catalog_reader = CatalogReader(session, catalog="read_lake")
                     else:
                         session.close()
-                reading = None if session is None else LogReader(where)
+                reading = None if owner is None else LogReader(where)
             except Exception as error:  # DuckDB raises its own errors too
                 close_history()  # the data root's lock goes with it, so the next start can open it
                 raise DataError(
