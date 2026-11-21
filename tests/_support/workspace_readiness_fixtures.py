@@ -130,7 +130,8 @@ def fresh_prepared(tmp_path_factory):
         assert _json(live, "/api/experiments/controls")["status"] == "READY"
         storage = _json(live, "/api/workspace/storage")
         assert storage["budget"]["active_listing_count"] == 120
-        assert storage["managed_bytes"] < storage["logical_bytes"]
+        # The research inputs stay on the data root, never copied in, so no file is held twice.
+        assert storage["managed_bytes"] == storage["logical_bytes"] > 0, storage["by_root"]
         assert storage["capacity_status"] == "WITHIN_BUDGET"
         # A first use composes its Panel once, for the membership its qualification binds
         # so the plan has nothing to release: no chunk lies outside the published one.

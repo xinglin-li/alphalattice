@@ -39,6 +39,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
+from tests.pytest_environment import upgraded
 from tests.researcher_methodology_surface.real_workspace import (
     FACTOR_SCALE,
     OBSERVED_AT,
@@ -55,7 +56,10 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
     assert manifest.strategy_installation == "NOT_INSTALLED"
     assert manifest.default_strategy_package_id is None
     assert manifest.data_update is not None and len(manifest.experiment_inputs) == 1
-    bundle = read_factor_bundle(root, manifest.experiment_inputs[0].binding_hash)
+    # This test is its own machine: the input goes with the workspace as a carried store, and
+    # the Host composed from it keeps the input here, as it would on another machine.
+    with LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT):
+        bundle = read_factor_bundle(root, manifest.experiment_inputs[0].binding_hash)
     assert bundle.database_snapshot_hash is not None
     with WorkspaceApplicationSession.acquire(root) as session:
         app = WorkspacePreparationApplication(session, clock=lambda: OBSERVED_AT)
@@ -1547,6 +1551,9 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
     assert manifest.data_update is not None and not manifest.experiment_inputs
     assert (root / "market-data.duckdb").read_bytes() == database
     assert bind_existing_data_workspace(root) == manifest
+    # A bound folder this data root has not served owes its first start's upgrade, which the
+    # person acknowledges before the Host composes; this is that acknowledged start.
+    upgraded(root)
 
     class NoSources:
         def __getattribute__(self, name):
