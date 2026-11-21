@@ -684,7 +684,7 @@ _SCHEMA_DISPLAYS = frozenset(
         ),
         (
             "src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
-            "PortfolioResearchRequestDocument",
+            "full_request_document",
         ),
         (
             "src/alphalattice/control/product_host/data_preparation/research_strategy.py",
@@ -700,13 +700,14 @@ _SCHEMA_DISPLAYS = frozenset(
         ("src/alphalattice/interface/local_application/cli.py", "AlphaLifecycleSection"),
         ("src/alphalattice/interface/local_application/cli.py", "FactorSection"),
         ("src/alphalattice/interface/local_application/cli.py", "PortfolioExperimentSpec"),
-        ("src/alphalattice/interface/local_application/cli.py", "PortfolioResearchRequestDocument"),
+        ("src/alphalattice/interface/local_application/cli.py", "full_request_document"),
         ("src/alphalattice/interface/local_application/cli.py", "RiskSection"),
         ("src/alphalattice/interface/local_application/cli.py", "answer"),
         (
             "src/alphalattice/interface/local_application/operations.py",
-            "PortfolioResearchRequestDocument",
+            "full_request_document",
         ),
+        ("src/alphalattice/interface/local_application/portfolio_research.py", "_request_document"),
         ("src/alphalattice/kernel/shared_kernel/identity.py", "cast"),
         ("src/alphalattice/kernel/shared_kernel/identity.py", "schema"),
         (

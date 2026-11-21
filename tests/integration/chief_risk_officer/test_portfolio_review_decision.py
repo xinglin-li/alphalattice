@@ -17,6 +17,7 @@ import ast
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from importlib.util import resolve_name
 from pathlib import Path
 from typing import Any
 
@@ -1289,23 +1290,18 @@ class _ManualClock:
 # ================================================== contraction and closure
 
 
-def _module_scope_imports(tree: ast.Module) -> set[str]:
-    """What importing this module actually loads.
-
-    Only module-scope statements count. An import inside a function body runs
-    when that function is called, and an import under `TYPE_CHECKING` never
-    runs at all, so neither is loaded by importing the module. The Host names
-    the Agent adapters in annotations and constructs them inside the admission
-    function; a reader of this closure must not see either as a load.
-    """
+def _scope_imports(body: list[ast.stmt], *, package: str | None = None) -> set[str]:
+    """Imports executed at this scope, excluding deferred bodies and type-only imports."""
 
     found: set[str] = set()
-    pending: list[ast.stmt] = list(tree.body)
+    pending = list(body)
     while pending:
         node = pending.pop()
         if isinstance(node, ast.ImportFrom):
             if node.module and node.level == 0:
                 found.add(node.module)
+            elif node.module and package is not None:
+                found.add(resolve_name("." * node.level + node.module, package))
         elif isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
         elif isinstance(node, ast.If):
@@ -1323,8 +1319,8 @@ def _module_scope_imports(tree: ast.Module) -> set[str]:
     return found
 
 
-def _internal_import_closure(start: str) -> set[str]:
-    """Every `alphalattice` module importing one entry point actually loads."""
+def _internal_import_closure(start: str, *, entrypoint: str) -> set[str]:
+    """Modules reached by importing the Host and entering its named factory."""
 
     src = REPO_ROOT / "src"
     imports: dict[str, set[str]] = {}
@@ -1333,7 +1329,15 @@ def _internal_import_closure(start: str) -> set[str]:
         if parts[-1] == "__init__":
             parts = parts[:-1]
         tree = ast.parse(path.read_bytes().decode("utf-8"))
-        imports[".".join(parts)] = _module_scope_imports(tree)
+        module = ".".join(parts)
+        imports[module] = _scope_imports(tree.body)
+        if module == start:
+            factory = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == entrypoint
+            )
+            imports[module].update(_scope_imports(factory.body, package=module.rpartition(".")[0]))
 
     seen: set[str] = set()
     stack = [start]
@@ -1349,10 +1353,11 @@ def _internal_import_closure(start: str) -> set[str]:
 
 
 def test_the_local_web_composition_reaches_the_review_seam_and_no_agent_adapter() -> None:
-    """The local web composition reaches the review seam and no agent adapter."""
+    """First use reaches the review seam and no agent adapter."""
 
     closure = _internal_import_closure(
-        "alphalattice.control.product_host.composition.local_web_session"
+        "alphalattice.control.product_host.composition.local_web_session",
+        entrypoint="build_evidence_review_application",
     )
     for owner in (
         "alphalattice.control.product_host.composition.evidence_review_application",

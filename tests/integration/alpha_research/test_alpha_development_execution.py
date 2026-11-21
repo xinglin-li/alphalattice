@@ -404,7 +404,7 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         )
         assert entry.fold_commitment_hash in {value.fold_commitment_hash for value in records}
 
-    # The file reader reads each verified score once and checks its file on each call.
+    # A standalone reader resolves each score once and checks the file again on the next call.
     score_reads: list[str] = []
     resolve = AlphaDevelopmentArtifactStore.resolve_numerical_score_chunk
 
@@ -412,31 +412,34 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         score_reads.append(reference.content_hash)
         return resolve(store, reference)
 
-    monkeypatch.setattr(
-        AlphaDevelopmentArtifactStore, "resolve_numerical_score_chunk", counted_score
-    )
-    projection = reader.projection(receipt.receipt_hash)
-    assert projection["receipt"] == receipt.model_dump(mode="json")
-    assert len(score_reads) == len(receipt.child_lineage)
-    assert [fold["numerical_result_hash"] for fold in projection["fold_results"]] == [
-        entry.numerical_result_hash for entry in receipt.child_lineage
-    ]
-
-    # Call-local reuse must not conceal a changed file on this same reader.
     from alphalattice.kernel.data_layer import history
 
-    layout = "current/numerical-development-score-chunks"
-    target = history.alpha_part_body_path(score_reads[0], layout)
-    original = target.read_bytes()
-    try:
-        target.write_bytes(history.alpha_part_body_path(score_reads[1], layout).read_bytes())
-        with pytest.raises(AuthoringError, match="child_unavailable"):
-            reader.projection(receipt.receipt_hash)
-    finally:
-        target.write_bytes(original)
-    assert reader.projection(receipt.receipt_hash) == projection
+    with monkeypatch.context() as standalone:
+        standalone.setattr(
+            AlphaDevelopmentArtifactStore, "catalog_development_reads", staticmethod(lambda: False)
+        )
+        standalone.setattr(
+            AlphaDevelopmentArtifactStore, "resolve_numerical_score_chunk", counted_score
+        )
+        projection = reader.projection(receipt.receipt_hash)
+        assert projection["receipt"] == receipt.model_dump(mode="json")
+        assert len(score_reads) == len(receipt.child_lineage)
+        assert [fold["numerical_result_hash"] for fold in projection["fold_results"]] == [
+            entry.numerical_result_hash for entry in receipt.child_lineage
+        ]
 
-    monkeypatch.setattr(AlphaDevelopmentArtifactStore, "resolve_numerical_score_chunk", resolve)
+        # Call-local reuse must not conceal a changed file on this same reader.
+        layout = "current/numerical-development-score-chunks"
+        target = history.alpha_part_body_path(score_reads[0], layout)
+        original = target.read_bytes()
+        try:
+            target.write_bytes(history.alpha_part_body_path(score_reads[1], layout).read_bytes())
+            with pytest.raises(AuthoringError, match="child_unavailable"):
+                reader.projection(receipt.receipt_hash)
+        finally:
+            target.write_bytes(original)
+        assert reader.projection(receipt.receipt_hash) == projection
+
     reads: list[tuple[str, ...]] = []
     real_read = history.read_alpha_development_chunks
 
