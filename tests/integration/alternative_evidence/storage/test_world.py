@@ -127,7 +127,7 @@ def acquire(workspace: Path, *documents: AcquiredEvidenceDocument) -> None:
         artifacts.publish(SOURCE_COMMIT_CATEGORY, commit.commit_hash, commit)
 
 
-def plan(workspace: Path) -> None:
+def plan(artifacts: AlternativeEvidenceArtifactStore) -> None:
     """The issuer's sealed selection plan, which links the amendment to its original."""
     entries = tuple(
         SecFilingInventoryEntry(
@@ -156,7 +156,6 @@ def plan(workspace: Path) -> None:
         policy_budget=4,
         unit_capacity=4,
     )
-    artifacts = AlternativeEvidenceArtifactStore(workspace / "runtime" / "artifacts")
     artifacts.publish("sec-selection-plans", sealed.plan_hash, sealed)
 
 
@@ -192,7 +191,8 @@ def test_a_workspace_open_admits_each_document_once_with_its_facts(tmp_path, hos
     )
     acquire(tmp_path / "w2", filing(ORIGINAL, "10-K", bodies["10-K"], ACCEPTED))
     admitted = [admit(tmp_path / "w1", "w1")]
-    plan(tmp_path / "w1")  # the link, published after the amendment's admission
+    # The link is published after the amendment's admission.
+    plan(AlternativeEvidenceArtifactStore(tmp_path / "w1/runtime/artifacts"))
     admitted += [admit(tmp_path / "w1", "w1"), admit(tmp_path / "w1", "w1")]
     admitted.append(admit(tmp_path / "w2", "w2"))  # the original, in another workspace
     admitted += [admit(tmp_path / "w1", "w1"), admit(tmp_path / "w1", "w1")]
@@ -305,12 +305,28 @@ def test_an_acquisition_admits_its_documents_and_they_are_read_through_world(
     the cutoff and none before it, however the body is named or carried, and the workspace's store
     again under the rollback setting."""
     runtime = _runtime(tmp_path / "evidence")
+    plan(runtime.artifacts)
+    load_artifact = AlternativeEvidenceArtifactStore.load
+    sec_reads = []
+
+    def watch(artifacts, category, identity, model):
+        if category in world.LINKS:
+            sec_reads.append(category)
+        return load_artifact(artifacts, category, identity, model)
+
+    monkeypatch.setattr(AlternativeEvidenceArtifactStore, "load", watch)
     request = _request(("AAPL",))
     _, source_set = runtime.acquire_recorded(
         request=request, registry=_registry(("AAPL",)), documents=(_recorded_document(),),
         published_at=_NOW,
     )  # fmt: skip
+    assert sec_reads == []
     (reference,) = source_set.documents
+    (original,) = runtime.resolve_source_documents(source_set, as_of=None)
+    digest = blake3(original.content).hexdigest()
+    locator = runtime.documents.workspace.root / reference.content_object_path
+    assert locator.read_bytes() == world_reads.WORLD_OBJECT + digest.encode("ascii")
+    assert (host / "blobs" / digest).read_bytes() == original.content
     before = reference.available_at - timedelta(microseconds=1)
     (document,) = runtime.resolve_source_documents(source_set, as_of=request.evidence_as_of)
     copy = f"{document.revision}-copy"  # its bytes under another source's id, sealed as 0.2.7 seals

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
+from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
 from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
@@ -171,6 +172,8 @@ def carry_copy(workspace: Path, copy: Path, *, root: Path | None = None) -> None
     carry_research_inputs(workspace, copy, root=root)
     carry_results(workspace, copy, root=root)
     carry_knowledge_snapshots(workspace, copy, root=root)
+    for _ in carry_originals(workspace, copy, root=root):
+        pass
     for _ in carry_risk_covariance(workspace, copy, source_root=root):
         pass
 

@@ -49,6 +49,7 @@ from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.root import (
     THREADS,
+    attach_catalog,
     bound_reads,
     catalog,
     catalog_matches,
@@ -338,14 +339,9 @@ class StorePort:
         if owner is None:
             load_extensions(lake)
             bound_reads(lake)
-        catalog(root, owner=lake)  # made at the store's first open, not with the root
-        machine, data = sql_path(root / "machine"), sql_path(root / "data")
-        for sql in (
-            f"ATTACH 'ducklake:sqlite:{machine}/catalog.sqlite' AS lake"
-            f" (DATA_PATH '{data}/', DATA_INLINING_ROW_LIMIT 1000)",
-            "SET TimeZone = 'UTC'",
-        ):
-            lake.execute(sql).complete()
+        if not catalog(root, owner=lake, keep_attached=True):
+            attach_catalog(lake, root)
+        lake.execute("SET TimeZone = 'UTC'").complete()
         catalog_matches(lake)  # before the views, which name its columns
         if not lake.execute(
             "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
@@ -1636,11 +1632,12 @@ def admissible(table: str, provider_id: str | None, rows: Any, *, legacy: bool =
 
 def _repeated(data: Any, key: tuple[str, ...]) -> tuple[Any, ...] | None:
     """The first key a later row repeats, in row order; None when every key is once."""
-    import pyarrow.acero  # noqa: F401  # lazy: only the admission key check groups Arrow rows
-
     keys = data.select(list(key))
-    if keys.group_by(list(key)).aggregate([]).num_rows == keys.num_rows:
-        return None
+    if key != ("doc_id",):
+        import pyarrow.acero  # noqa: F401  # lazy: the grouping engine for general admissions
+
+        if keys.group_by(list(key)).aggregate([]).num_rows == keys.num_rows:
+            return None
     seen: set[tuple[Any, ...]] = set()
     for values in zip(*(keys.column(name).to_pylist() for name in key), strict=True):
         if values in seen:

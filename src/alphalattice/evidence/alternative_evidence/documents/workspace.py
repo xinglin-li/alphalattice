@@ -19,10 +19,8 @@ from ..contracts import AlternativeEvidenceReadingDepth, seal_contract
 from ..sources.contracts import (
     AcquiredEvidenceDocument,
     AcquiredEvidenceDocumentReference,
-    source_object_bytes,
-    source_object_relative,
 )
-from ..storage import world_reads
+from ..storage import world, world_reads
 from .contracts import (
     AlternativeEvidenceCanonicalDocument,
     AlternativeEvidenceDocumentReference,
@@ -54,7 +52,11 @@ class AlternativeEvidenceDocumentPublisher:
     # ------------------------------------------------------- source objects
 
     def publish_source_object(
-        self, document: AcquiredEvidenceDocument, *, admit: Callable[[int], None] | None = None
+        self,
+        document: AcquiredEvidenceDocument,
+        *,
+        admit: Callable[[int], None] | None = None,
+        world_root: Path | None = None,
     ) -> AcquiredEvidenceDocumentReference:
         """Keep one document's original bytes once, by content address.
 
@@ -67,8 +69,8 @@ class AlternativeEvidenceDocumentPublisher:
         and canonical text are different assets -- a normalization is not
         reversible -- so both are kept, each once.
         """
-        content_sha256 = sha256_hex(document.content)
-        relative = source_object_relative(content_sha256)
+        reference = self.source_reference_of(document)
+        relative = reference.content_object_path
         with self.workspace.lock():
             target = make_confined_parents(self.workspace.root, relative)
             target = resolve_confined(self.workspace.root, relative)
@@ -76,7 +78,7 @@ class AlternativeEvidenceDocumentPublisher:
                 try:
                     if not target.is_file():
                         raise ValueError("not a file")
-                    source_object_bytes(target.read_bytes(), content_sha256, len(document.content))
+                    world_reads.workspace_body(target, reference, root=world_root)
                 except ValueError as error:
                     raise ValueError("alternative_evidence.source_object_integrity") from error
             else:
@@ -84,10 +86,15 @@ class AlternativeEvidenceDocumentPublisher:
                     admit(len(document.content))
                 staged = target.with_name(f".{target.name}.{os.getpid()}.staging")
                 staged.unlink(missing_ok=True)
-                write_new(staged, document.content)
+                stored = (
+                    document.content
+                    if world_root is None
+                    else world.keep_original(world_root, document.content)
+                )
+                write_new(staged, stored)
                 os.replace(staged, target)
                 fsync_directory(target.parent)
-        return AcquiredEvidenceDocumentReference.of(document, content_sha256=content_sha256)
+        return reference
 
     def source_reference_of(
         self, document: AcquiredEvidenceDocument
@@ -116,9 +123,7 @@ class AlternativeEvidenceDocumentPublisher:
         path = resolve_confined(self.workspace.root, reference.content_object_path)
         if port is None or as_of is None or not path.is_file():
             return bool(path.is_file())
-        content = source_object_bytes(
-            path.read_bytes(), reference.content_sha256, reference.content_bytes
-        )
+        content = world_reads.workspace_body(path, reference, root=port.root)
         return world_reads.known(port, content, as_of) is not False
 
     def require_known(self, content: bytes, *, as_of: datetime | None) -> None:
@@ -147,8 +152,8 @@ class AlternativeEvidenceDocumentPublisher:
         path = resolve_confined(self.workspace.root, reference.content_object_path)
         if not path.is_file():
             raise ValueError("alternative_evidence.source_object_missing")
-        content = source_object_bytes(
-            path.read_bytes(), reference.content_sha256, reference.content_bytes
+        content = world_reads.workspace_body(
+            path, reference, root=None if port is None else port.root
         )
         self.require_known(content, as_of=as_of)
         try:

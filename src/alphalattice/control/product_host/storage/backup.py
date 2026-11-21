@@ -29,6 +29,7 @@ import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, nullcontext
 from datetime import UTC, datetime
+from itertools import chain
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self
 
@@ -52,6 +53,7 @@ from alphalattice.control.workspace_runtime.database import (
 from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
+from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
@@ -480,11 +482,12 @@ class WorkspaceBackups:
                 digest, size = read_file(path)
                 relative = (arrays.CARRIED / path.name).as_posix()
                 entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
-            # Carry results and the sealed Evidence snapshots the machine alone keeps.
+            # Carry the results and Evidence the machine alone keeps.
             history.carry_results(self.workspace, staging)
-            for path in (
-                *history.carried_result_files(staging),
-                *history.carry_knowledge_snapshots(self.workspace, staging),
+            for path in chain(
+                history.carried_result_files(staging),
+                history.carry_knowledge_snapshots(self.workspace, staging),
+                carry_originals(self.workspace, staging),
             ):
                 if stop():
                     raise _Stopped

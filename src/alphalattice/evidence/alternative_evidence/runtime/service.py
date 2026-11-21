@@ -99,6 +99,7 @@ from ..sources.contracts import (
 from ..sources.recorded import RecordedEvidenceDocument
 from ..sources.sec_edgar import SecEdgarSource
 from ..storage import world as evidence_world
+from ..storage import world_reads
 from .execution import CpuBudgetStore
 from .history import require_current_selection
 from .identity import (
@@ -751,6 +752,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         admitted through it before it is placed. Unbound, nothing is admitted
         and nothing is refused: a library use without a Host has no budget."""
         self.documents = AlternativeEvidenceDocumentPublisher(workspace_root)
+        self._world_port = world_reads.serving()  # this runtime borrows the Host's writer
         self.record_days = record_days(self.artifacts)
         """The day each record the reuse indexes and the analysis readers
         choose from was sealed, kept beside the records (Z2)."""
@@ -900,6 +902,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             source_snapshot_hash=snapshot.snapshot_hash,
             acquired=acquired,
             acquired_at=published_at,
+            recorded=True,
         )
         return snapshot, source_set
 
@@ -910,10 +913,16 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         source_snapshot_hash: str,
         acquired: tuple[AcquiredEvidenceDocument, ...],
         acquired_at: datetime,
+        recorded: bool = False,
     ) -> AcquiredEvidenceSourceReferenceSet:
         """Keep each document's bytes once and seal this request's references to them."""
+        port = self._world_port or world_reads.serving()
         references = tuple(
-            self.documents.publish_source_object(document, admit=self.storage_admission)
+            self.documents.publish_source_object(
+                document,
+                admit=self.storage_admission,
+                world_root=None if port is None else port.root,
+            )
             for document in acquired
         )
         source_set = seal_contract(
@@ -929,7 +938,11 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             admit=self.admit_storage,
         )
         self.record_days[SOURCE_SET_CATEGORY].note(source_set.source_set_hash, acquired_at)
-        self.admit_to_world()
+        opened = data_history.opened_log()
+        if recorded and port is not None and opened is not None:
+            evidence_world.admit_recorded(port, opened[1], source_set.source_set_hash, acquired)
+        else:
+            self.admit_to_world()
         return source_set
 
     def admit_to_world(self) -> None:
@@ -1005,7 +1018,10 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 additional += len(self.artifacts.serialized(record))
             if additional and self.storage_admission is not None:
                 self.storage_admission(additional)
-            self.documents.publish_source_object(document)
+            port = self._world_port or world_reads.serving()
+            self.documents.publish_source_object(
+                document, world_root=None if port is None else port.root
+            )
             if needs_record:
                 self.artifacts.publish(SOURCE_COMMIT_CATEGORY, record.commit_hash, record)
                 self.record_days[SOURCE_COMMIT_CATEGORY].note(

@@ -268,11 +268,20 @@ def duckdb_session(root: Path) -> Any | None:
     return connection
 
 
-def catalog(root: Path, *, owner: Any = None) -> bool | None:
-    """Create the SQLite-backed DuckLake catalog from installed wheels at its first use: True when
-    made, False when present, None (CATALOG_DEFERRED) without the data extra. A root is made
-    without it, since making it takes most of a root's creation and a root that never stores a
-    world table never needs it."""
+def attach_catalog(connection: Any, root: Path) -> None:
+    """Attach the writable catalog to an instance whose extensions are already loaded."""
+    catalog_path = sql_path(root / "machine" / "catalog.sqlite")
+    data = sql_path(root / "data")
+    connection.execute(
+        f"ATTACH 'ducklake:sqlite:{catalog_path}' AS lake"
+        f" (DATA_PATH '{data}/', DATA_INLINING_ROW_LIMIT 1000)"
+    ).complete()
+
+
+def catalog(root: Path, *, owner: Any = None, keep_attached: bool = False) -> bool | None:
+    """Create the SQLite-backed DuckLake catalog at its first use: True when made, False when
+    present, None without the data extra. A writer with an owner can keep a newly created catalog
+    attached instead of reopening it. A backup only needs it created."""
     if importlib.util.find_spec("duckdb") is None:
         return None
     path = root / "machine" / "catalog.sqlite"
@@ -281,12 +290,9 @@ def catalog(root: Path, *, owner: Any = None) -> bool | None:
     connection = duckdb_session(root) if owner is None else owner.cursor()
     if connection is None:
         return None
-    attached = False
+    attached = created = False
     try:
-        data = sql_path(root / "data")
-        connection.execute(
-            f"ATTACH 'ducklake:sqlite:{sql_path(path)}' AS lake (DATA_PATH '{data}/')"
-        ).complete()
+        attach_catalog(connection, root)
         attached = True
         connection.execute("USE lake").complete()
         # Each run of DDL commits once, in file order: a DuckLake commit per statement made a
@@ -304,9 +310,10 @@ def catalog(root: Path, *, owner: Any = None) -> bool | None:
                 run = []
             if statement is not None:
                 connection.execute(statement).complete()
+        created = True
     finally:
         connection.close()
-        if owner is not None and attached:
+        if owner is not None and attached and not (keep_attached and created):
             with closing(owner.cursor()) as detach:
                 detach.execute("DETACH lake").complete()
     return True

@@ -28,6 +28,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -382,11 +383,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_PACK_CHECK = threading.Lock()
+_verified: dict[tuple[Path, PackDefinition], tuple[tuple[int, ...], ...]] = {}
+
+
+def _file_stamp(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
 def verify_directory(directory: Path, pack: PackDefinition) -> str | None:
     """Verify that a pack directory contains exactly its pinned files and digests.
 
     None when every consumed file is present with its hash and nothing
     else is there; otherwise what is wrong, naming the first file.
+    A process reuses a successful check while the pinned files keep their identity and stamps.
 
     Args:
         directory: Local pack directory to verify.
@@ -405,9 +416,17 @@ def verify_directory(directory: Path, pack: PackDefinition) -> str | None:
     unexpected = sorted(present - expected)
     if unexpected:
         return f"unadmitted file {unexpected[0]}"
-    for name, digest in pack.files:
-        if _sha256(directory / name) != digest:
-            return f"hash differs for {name}"
+    key = directory.resolve(), pack
+    with _PACK_CHECK:
+        stamps = tuple(_file_stamp(directory / name) for name, _ in pack.files)
+        if _verified.get(key) == stamps:
+            return None
+        for name, digest in pack.files:
+            if _sha256(directory / name) != digest:
+                return f"hash differs for {name}"
+        if stamps != tuple(_file_stamp(directory / name) for name, _ in pack.files):
+            return "pack changed during verification"
+        _verified[key] = stamps
     return None
 
 

@@ -38,7 +38,9 @@ def _pack(
     )
 
 
-def test_a_pack_is_installed_whole_or_not_at_all(tmp_path: Path) -> None:
+def test_a_pack_is_installed_whole_or_not_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store = tmp_path / "store"
     pack = _pack(tmp_path, {"onnx/model.onnx": b"graph", "tokenizer.json": b"{}"})
     assert model_store.pack_status(store, pack).status == model_store.PACK_ABSENT
@@ -55,11 +57,40 @@ def test_a_pack_is_installed_whole_or_not_at_all(tmp_path: Path) -> None:
         "model.onnx",
         "tokenizer.json",
     ]
-    # Installed again: no work, the same status.
+    # Installed again: neither fetch nor hash its pinned bytes again.
+    opened: list[Path] = []
+    open_path = Path.open
+
+    def watch(path: Path, *args, **kwargs):
+        if path.is_relative_to(status.directory):
+            opened.append(path)
+        return open_path(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", watch)
     again = model_store.install_pack(
         store, pack, lambda *_args: (_ for _ in ()).throw(AssertionError("must not fetch"))
     )
     assert again.status == model_store.PACK_INSTALLED
+    assert opened == []
+
+    # A file read earlier in this verification changes before the last file is hashed.
+    graph = status.directory / "onnx" / "model.onnx"
+    tokenizer = status.directory / "tokenizer.json"
+    stat = tokenizer.stat()
+    os.utime(tokenizer, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+
+    def change_during_read(path: Path, *args, **kwargs):
+        if path == tokenizer:
+            with open_path(graph, "wb") as handle:
+                handle.write(b"replaced graph")
+        return open_path(path, *args, **kwargs)
+
+    with monkeypatch.context() as changed:
+        changed.setattr(Path, "open", change_during_read)
+        unstable = model_store.pack_status(store, pack)
+    assert unstable.status == model_store.PACK_TAMPERED
+    assert unstable.detail == "pack changed during verification"
+    graph.write_bytes(b"graph")
 
     # Tampering after the install is seen, and named.
     (status.directory / "tokenizer.json").write_bytes(b'{"model_max_length": 16}')

@@ -6,8 +6,8 @@ workspace's source-object store by their SHA-256; a retained inline set carries 
 Host opens the workspace, and when an acquisition ends, `admit` admits each source document into
 world.evidence_doc:
 
-- its body is copied to the data root's blobs/, named by its BLAKE3 (doc_digest); the workspace's
-  object is only read, never moved or rewritten;
+- its body lives in the data root's blobs/, named by its BLAKE3 (doc_digest); an older
+  workspace object is read without moving or rewriting it;
 - a body world already holds is that document: nothing more is admitted for it;
 - the same source document (its source and its own id: an accession and its primary document)
   with other bytes is a new version of its doc_id; any other document gets a new doc_id;
@@ -37,9 +37,14 @@ from typing import Any, Final
 
 from blake3 import blake3
 
+from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import uuid7
+from alphalattice.kernel.data_layer.root import data_root
 from alphalattice.kernel.data_layer.store import as_columns, newest, stage
+from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
+from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
 
 from ..documents.contracts import AlternativeEvidenceDocumentReference
 from ..publication.artifacts import AlternativeEvidenceArtifactStore
@@ -50,9 +55,8 @@ from ..sources.contracts import (
     AcquiredEvidenceSourceCommit,
     SecFilingInventoryRead,
     SecFilingSelectionPlan,
-    source_object_bytes,
 )
-from .world_reads import source_ref
+from .world_reads import WORLD_OBJECT, locator_body, source_ref, workspace_body
 
 DATASET: Final = "evidence"
 AVAILABILITY: Final = ("evidence-availability", 1)
@@ -65,6 +69,8 @@ SETS: Final = "source-document-sets"
 LINKS: Final = ("sec-selection-plans", "sec-inventory-reads")
 """The sealed SEC artifacts whose inventory entries link an amending filing to its original."""
 _ADMITTING: Final = threading.Lock()
+_EVIDENCE_WORKSPACE = "runtime/evidence-knowledge"
+_CARRIED_ORIGINALS = ".system/carried-source-objects"
 MARKS_VERSION: Final = 1
 """The version of the marks' fingerprint encoding; an admission recorded under another reads all."""
 
@@ -99,6 +105,8 @@ def _admission(artifact_root: Path, sources: Path, workspace_id: str) -> dict[st
     port = history.store()
     if port is None:
         return None
+    carried = resolve_confined(sources, _CARRIED_ORIGINALS) if sources.is_dir() else None
+    has_carried = carried is not None and carried.is_dir() and any(carried.iterdir())
     started = port.log.clock()
     listed = _marks(artifacts.root)
     marked = _marked(listed)
@@ -106,13 +114,13 @@ def _admission(artifact_root: Path, sources: Path, workspace_id: str) -> dict[st
         "SELECT json_extract(attrs, '$.marks'), json_extract(attrs, '$.unreadable'),"
         " json_extract(attrs, '$.waiting'), json_extract(attrs, '$.written'),"
         " json_extract(attrs, '$.before'), json_extract(attrs, '$.latest') FROM event"
-        " WHERE type = 'admission'"
+        " WHERE type = 'admission' AND json_extract(attrs, '$.marks') IS NOT NULL"
         " AND subject_id = ? AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC LIMIT 1",
         (workspace_id, DATASET),
     )
     only: set[str] | None = None  # the artifacts to read; None reads every one
     amended: dict[str, str] | None = None
-    if last:
+    if last and not has_carried:
         previous, unreadable, waiting, written, before, latest = last[0]
         if waiting:
             amended = _amended(artifacts)
@@ -127,16 +135,60 @@ def _admission(artifact_root: Path, sources: Path, workspace_id: str) -> dict[st
                 only = {m for m, at in listed.items() if at > written}
                 if _fingerprint(at_last) != latest:  # written in the last one's instant: read again
                     only |= at_last
+    return _settle(
+        port,
+        workspace_id,
+        list(_bodies(artifacts, sources, only, port.root, carried=has_carried)),
+        _amended(artifacts) if amended is None else amended,
+        marked,
+        started,
+    )
+
+
+def admit_recorded(
+    port: Any,
+    workspace_id: str,
+    source_set_hash: str,
+    documents: tuple[AcquiredEvidenceDocument, ...],
+) -> None:
+    """Admit the just-sealed recorded set from its held bytes and the Host's catalog.
+
+    Recorded imports are issuer material. SEC amendment plans belong to the workspace-open
+    recovery and the SEC acquisition path. This event leaves the last full scan's marks intact.
+    """
+    with _ADMITTING:
+        started = port.log.clock()
+        bodies = {
+            (*_resource(document), document.source_content_hash): _Body(document, document.content)
+            for document in documents
+        }
+        _settle(
+            port,
+            workspace_id,
+            list(bodies.values()),
+            {},
+            {"source_set_hash": source_set_hash},
+            started,
+        )
+
+
+def _settle(
+    port: Any,
+    workspace_id: str,
+    bodies: list[_Body],
+    amended: dict[str, str],
+    marks: dict[str, Any],
+    started: int,
+) -> dict[str, Any]:
     for name, text in PROVIDERS.items():
         history.define("provider", name, text)
     text = "A 0.2.7 evidence document is known at its availability: acceptance or capture."
     history.define("lag_rule", AVAILABILITY[0], text, {"lag_seconds": 0})
-    bodies = list(_bodies(artifacts, sources, only))
-    admitted = _admit(port, bodies, _amended(artifacts) if amended is None else amended)
+    admitted = _admit(port, bodies, amended)
     history.record(
         "admission",
         ("workspace", workspace_id),
-        {"provider": sorted(PROVIDERS), "dataset": DATASET, **marked}
+        {"provider": sorted(PROVIDERS), "dataset": DATASET, **marks}
         | {key: admitted[key] for key in ("rows", "unreadable", "held")}
         | {"waiting": len(admitted["waiting"])},
         phase="completed",
@@ -199,24 +251,37 @@ def _identities(directory: Path) -> list[str]:
         return sorted(e.name.removesuffix(".json") for e in entries if e.name.endswith(".json"))
 
 
-def _bodies(
-    artifacts: AlternativeEvidenceArtifactStore, sources: Path, only: set[str] | None
-) -> Iterator[_Body]:
-    """Each acquired document the workspace's commits and source sets name, once per body: of
-    every one, or of the artifacts `only` names."""
+def _references(
+    artifacts: AlternativeEvidenceArtifactStore, only: set[str] | None
+) -> list[AcquiredEvidenceDocumentReference | AcquiredEvidenceDocument]:
+    """Read the acquired references sealed by the requested commits and sets."""
 
     def read(category: str) -> list[str]:
-        names = _identities(artifacts.root / category)
-        return [n for n in names if only is None or f"{category}/{n}" in only]
+        if only is None:
+            return _identities(artifacts.root / category)
+        prefix = f"{category}/"
+        return sorted(mark.removeprefix(prefix) for mark in only if mark.startswith(prefix))
 
-    seen: set[tuple[Any, ...]] = set()
     references: list[AcquiredEvidenceDocumentReference | AcquiredEvidenceDocument] = [
         artifacts.load(SOURCE_COMMIT_CATEGORY, identity, AcquiredEvidenceSourceCommit).reference
         for identity in read(SOURCE_COMMIT_CATEGORY)
     ]
     for identity in read(SETS):
         references.extend(artifacts.load_source_set(identity).documents)
-    for reference in references:
+    return references
+
+
+def _bodies(
+    artifacts: AlternativeEvidenceArtifactStore,
+    sources: Path,
+    only: set[str] | None,
+    root: Path,
+    *,
+    carried: bool = False,
+) -> Iterator[_Body]:
+    """Read each sealed source body once, bringing carried originals into world first."""
+    seen: set[tuple[Any, ...]] = set()
+    for reference in _references(artifacts, only):
         once = (*_resource(reference), reference.source_content_hash)
         if once in seen:
             continue
@@ -224,12 +289,12 @@ def _bodies(
         if isinstance(reference, AcquiredEvidenceDocument):
             yield _Body(reference, reference.content)
             continue
+        if carried:
+            _import_original(sources, root, reference)
         path = sources / reference.content_object_path
         try:
-            content = source_object_bytes(
-                path.read_bytes(), reference.content_sha256, reference.content_bytes
-            )
-        except (OSError, ValueError):  # missing or altered: 0.2.7 refuses to read it too
+            content = workspace_body(path, reference, root=root)
+        except (DataError, OSError, ValueError):  # missing or altered bodies are retried
             content = None
         yield _Body(reference, content)
 
@@ -282,34 +347,44 @@ def _admit(port: Any, bodies: list[_Body], amended: dict[str, str]) -> dict[str,
     its amendments wait for (`waiting`). An amending filing world holds without its link, whose
     link and original are both known now, is admitted again from its own row with the link, its
     next version: no body is read for it."""
+    providers = {name: port.log.require_lineage("provider", name) for name in PROVIDERS}
+    readable = [
+        (body.reference, body.content, blake3(body.content).hexdigest())
+        for body in bodies
+        if body.content is not None
+    ]
+    readable.sort(key=lambda item: str(item[0].retrieved_at or ""))
+    sources = [
+        (providers[reference.source_name], source_ref(reference)) for reference, _, _ in readable
+    ]
     with closing(port.lake.cursor()) as cursor:
         held = cursor.execute(
-            f"SELECT CAST(doc_id AS VARCHAR), provider_id, source_ref, doc_digest,"
-            f" CAST(amends_doc_id AS VARCHAR) FROM {newest('evidence_doc')}"
+            f"SELECT CAST(doc_id AS VARCHAR), provider_id, source_ref, doc_digest"
+            f" FROM {newest('evidence_doc')}"
+            " WHERE doc_digest IN (SELECT unnest(?::VARCHAR[]))"
+            " OR (provider_id, source_ref) IN (SELECT unnest(?::VARCHAR[]), unnest(?::VARCHAR[]))"
+            " OR split_part(source_ref, '/', 1) IN (SELECT unnest(?::VARCHAR[]))",
+            [
+                [digest for _, _, digest in readable],
+                [provider for provider, _ in sources],
+                [ref for _, ref in sources],
+                sorted(set(amended) | set(amended.values())),
+            ],
         ).fetchall()
-    by_digest = {digest: (doc, linked) for doc, _, _, digest, linked in held}
-    by_source = {(provider, ref): doc for doc, provider, ref, _, _ in held}
-    unreadable = sum(body.content is None for body in bodies)
-    readable = sorted(
-        (body for body in bodies if body.content is not None),
-        key=lambda body: str(body.reference.retrieved_at or ""),
-    )
+    by_digest = {digest: doc for doc, _, _, digest in held}
+    by_source = {(provider, ref): doc for doc, provider, ref, _ in held}
     rows: dict[str, list[dict[str, Any]]] = {}
-    providers = {name: port.log.require_lineage("provider", name) for name in PROVIDERS}
     already: set[str] = set()
-    for body in readable:
-        assert body.content is not None
-        digest = blake3(body.content).hexdigest()
+    for (reference, content, digest), source in zip(readable, sources, strict=True):
         if digest in by_digest:
-            already.add(by_digest[digest][0])
+            already.add(by_digest[digest])
             continue
-        provider = providers[body.reference.source_name]
-        source = (provider, source_ref(body.reference))
+        provider, _ = source
         doc_id = by_source.setdefault(source, str(uuid7()))
-        by_digest[digest] = (doc_id, None)
-        _keep(port.root / "blobs", digest, body.content)
-        rows.setdefault(body.reference.source_name, []).append(
-            _row(body.reference, doc_id, provider, digest, len(body.content))
+        by_digest[digest] = doc_id
+        _keep(port.root / "blobs", digest, content)
+        rows.setdefault(reference.source_name, []).append(
+            _row(reference, doc_id, provider, digest, len(content))
         )
     waiting: set[str] = set()
     already -= _link(port, rows, amended, by_source, waiting, providers)
@@ -323,7 +398,7 @@ def _admit(port: Any, bodies: list[_Body], amended: dict[str, str]) -> dict[str,
                 taken[name] = taken.get(name, 0) + port.commit(staged).rows
     return {
         "rows": taken,
-        "unreadable": unreadable,
+        "unreadable": len(bodies) - len(readable),
         "held": len(already),
         "waiting": sorted(waiting),
     }
@@ -340,6 +415,8 @@ def _link(
     """Name each new amending filing's original, and add the next version of each one world holds
     without its link whose original is now known, from its own row; the accessions still unknown
     go to `waiting`. Returns the documents linked so."""
+    if not amended:
+        return set()
     accessions = {ref.split("/")[0]: doc for (_, ref), doc in by_source.items()}
 
     def original(ref: str) -> str | None:
@@ -412,6 +489,7 @@ def _row(
         "title": reference.title,
         "document_type": reference.document_type,
         "entity_id": reference.entity_id,
+        "amends_doc_id": None,
         "published_at": stamp(reference.published_at),
         "published_precision": reference.published_precision,
         "accepted_at": stamp(reference.accepted_at),
@@ -423,6 +501,71 @@ def _row(
     }
 
 
+def carry_originals(workspace: Path, copy: Path, *, root: Path | None = None) -> Iterator[Path]:
+    """Carry bodies addressed by this workspace's world locators into its copy or backup."""
+    artifacts = AlternativeEvidenceArtifactStore(workspace / "runtime/artifacts")
+    sources = workspace / _EVIDENCE_WORKSPACE
+    if not artifacts.root.is_dir() or not sources.is_dir():
+        return
+    where = data_root() if root is None else root
+    seen: set[str] = set()
+    for reference in _references(artifacts, None):
+        if isinstance(reference, AcquiredEvidenceDocument):
+            continue
+        name = reference.content_sha256
+        if name in seen:
+            continue
+        seen.add(name)
+        original = resolve_confined(sources, reference.content_object_path)
+        if not original.is_file():
+            continue
+        stored = original.read_bytes()
+        if not stored.startswith(WORLD_OBJECT) or sha256_hex(stored) == name:
+            continue
+        content = locator_body(stored, where)
+        if len(content) != reference.content_bytes or sha256_hex(content) != name:
+            raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
+        relative = f"{_EVIDENCE_WORKSPACE}/{_CARRIED_ORIGINALS}/{name}"
+        make_confined_parents(copy, relative)
+        target = resolve_confined(copy, relative)
+        _keep(target.parent, name, content)
+        if sha256_hex(target.read_bytes()) != name:
+            raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
+        yield target
+
+
+def _import_original(
+    sources: Path, root: Path, reference: AcquiredEvidenceDocumentReference
+) -> None:
+    """Rehome a verified carried body and remove its transport file when durable."""
+    name = reference.content_sha256
+    member = resolve_confined(sources, f"{_CARRIED_ORIGINALS}/{name}")
+    if not member.is_file():
+        return
+    content = member.read_bytes()
+    if len(content) != reference.content_bytes or sha256_hex(content) != name:
+        raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
+    digest = blake3(content).hexdigest()
+    locator = WORLD_OBJECT + digest.encode("ascii")
+    _keep(root / "blobs", digest, content)
+    locator_body(locator, root)
+    make_confined_parents(sources, reference.content_object_path)
+    target = resolve_confined(sources, reference.content_object_path)
+    _keep(target.parent, name, locator)
+    if target.read_bytes() != locator:
+        raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
+    member.unlink()
+    fsync_directory(member.parent)
+
+
+def keep_original(root: Path, content: bytes) -> bytes:
+    """Durably place a new Host original once and return its workspace locator."""
+    digest = blake3(content).hexdigest()
+    with _ADMITTING:
+        _keep(root / "blobs", digest, content)
+    return WORLD_OBJECT + digest.encode("ascii")
+
+
 def _keep(blobs: Path, digest: str, content: bytes) -> None:
     """Keep `content` under blobs/ at its digest once: written beside it and renamed into place,
     so no reader sees a partial body at a digest."""
@@ -430,8 +573,10 @@ def _keep(blobs: Path, digest: str, content: bytes) -> None:
     if target.is_file():
         return
     staged = blobs / f".{digest}.{os.getpid()}.staging"
-    staged.write_bytes(content)
+    staged.unlink(missing_ok=True)
+    write_new(staged, content)
     os.replace(staged, target)
+    fsync_directory(blobs)
 
 
 def stamp(value: date | None) -> str | None:
@@ -440,6 +585,38 @@ def stamp(value: date | None) -> str | None:
 
 
 def _arrow(rows: list[dict[str, Any]]) -> Any:
+    """Build the world rows' UTF-8 and int64 columns without the dataframe converter."""
     import pyarrow as pa  # lazy: the optional data extra, as DuckDB
 
-    return pa.table(as_columns(rows))
+    columns = as_columns(rows)
+    arrays = [
+        pa.Array.from_buffers(
+            pa.int64(), len(values), [None, pa.py_buffer(struct.pack(f"<{len(values)}q", *values))]
+        )
+        if name == "byte_count"
+        else _text_column(pa, values)
+        for name, values in columns.items()
+    ]
+    return pa.Table.from_arrays(arrays, names=list(columns))
+
+
+def _text_column(pa: Any, values: list[str | None]) -> Any:
+    """An Arrow string column's validity bits, byte offsets and UTF-8 buffer."""
+    bits = pa.uint8().bit_width
+    valid = bytearray((len(values) + bits - 1) // bits)
+    offsets = [0]
+    content = bytearray()
+    for index, value in enumerate(values):
+        if value is not None:
+            valid[index // bits] |= 1 << (index % bits)
+            content.extend(value.encode("utf-8"))
+        offsets.append(len(content))
+    return pa.Array.from_buffers(
+        pa.string(),
+        len(values),
+        [
+            pa.py_buffer(valid),
+            pa.py_buffer(struct.pack(f"<{len(offsets)}i", *offsets)),
+            pa.py_buffer(content),
+        ],
+    )

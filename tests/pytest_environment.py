@@ -321,18 +321,22 @@ def released(root: Path) -> None:
 
 
 def with_its_tasks(workspace: Path) -> Path:
-    """`workspace`, its served Host's Tasks carried into it, so they are sealed with it."""
+    """Carry the served Host's records and Evidence originals into the workspace to seal."""
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a golden seal's only
+    from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
     from alphalattice.kernel.data_layer.history import (
         carry_arrays,
         carry_knowledge_snapshots,
         carry_research_inputs,
     )
 
-    carry_tasks(workspace, workspace, root=served_root(workspace))
-    carry_arrays(workspace, workspace, root=served_root(workspace))
-    carry_research_inputs(workspace, workspace, root=served_root(workspace))
-    carry_knowledge_snapshots(workspace, workspace, root=served_root(workspace))
+    root = served_root(workspace)
+    carry_tasks(workspace, workspace, root=root)
+    carry_arrays(workspace, workspace, root=root)
+    carry_research_inputs(workspace, workspace, root=root)
+    carry_knowledge_snapshots(workspace, workspace, root=root)
+    for _ in carry_originals(workspace, workspace, root=root):
+        pass
     return workspace
 
 

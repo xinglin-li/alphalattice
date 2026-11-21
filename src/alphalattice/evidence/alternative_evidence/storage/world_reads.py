@@ -10,6 +10,7 @@ the workspace's own source-object store answers, as 0.2.7 did.
 
 from __future__ import annotations
 
+import re
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -19,12 +20,44 @@ from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.root import data_root
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 
 from ..sources.contracts import (
     AcquiredEvidenceDocument,
     AcquiredEvidenceDocumentReference,
+    source_object_bytes,
 )
+
+WORLD_OBJECT: Final = b"alphalattice-source-object world 1\n"
+"""A source address pointing at its BLAKE3-addressed body in the machine data root."""
+
+
+def workspace_body(
+    path: Path, reference: AcquiredEvidenceDocumentReference, *, root: Path | None = None
+) -> bytes:
+    """Read a legacy object or its world locator at the same sealed SHA-256 address."""
+    stored = path.read_bytes()
+    if stored.startswith(WORLD_OBJECT) and (
+        len(stored) != reference.content_bytes or sha256_hex(stored) != reference.content_sha256
+    ):
+        if root is None:
+            port = serving()
+            root = data_root() if port is None else port.root
+        stored = locator_body(stored, root)
+    return source_object_bytes(stored, reference.content_sha256, reference.content_bytes)
+
+
+def locator_body(locator: bytes, root: Path) -> bytes:
+    """Read the world body at a locator and verify its content address."""
+    key = locator[len(WORLD_OBJECT) :]
+    if not locator.startswith(WORLD_OBJECT) or re.fullmatch(rb"[0-9a-f]{64}", key) is None:
+        raise ValueError("alternative_evidence.source_object_tampered")
+    digest = key.decode("ascii")
+    body = _blob(root / "blobs" / digest)
+    if blake3(body).hexdigest() != digest:
+        raise ValueError("alternative_evidence.source_object_tampered")
+    return body
 
 
 def serving() -> Any | None:
