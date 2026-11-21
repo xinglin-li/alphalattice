@@ -2443,6 +2443,13 @@
       "seconds": 10,
       "lower_layer": "The proof uses a published Portfolio catalog, its Evidence log, backup and a second data root; the unit layer cannot hold them."
     },
+    "product_host.first_start_asks_a_clean_workspace_once": {
+      "description": "A start asks the upgrade families once of a workspace folder holding no old data; its next start asks nothing, and another folder or a changed declaration is asked again.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The proof starts the Host on a data root whose log records the answer; the unit layer's contract refuses its sqlite3."
+    },
     "product_host.first_start_asks_nothing_of_catalog_held_outcomes": {
       "description": "A fileless outcome chunk asks no upgrade only when the catalog holds its rows; one it lacks is refused by name; other faults stop the start.",
       "owner": "alphalattice.control.product_host",

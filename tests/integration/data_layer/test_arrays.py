@@ -62,10 +62,12 @@ def test_two_workspaces_citing_one_lane_hold_one_body() -> None:
 
 
 @pytest.mark.proves("data_layer.workspace_copy_carries_its_lanes")
-def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(tmp_path: Path) -> None:
+def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A copy carries its source's lanes in the old form; its Host, on a root of its own, moves
-    them onto its log when it opens, held by the copy's workspace. Its kept files come in their
-    write order, once: a write or removal on the copy stands at its next start."""
+    them onto its log when it opens, held by the copy's workspace. Its kept files and Alpha parts
+    come once: a write or removal on the copy stands, and no carried body is read again."""
     source, copy = tmp_path / "source", tmp_path / "copy"
     source.mkdir()
     log, root = history.held(), history.data_root()
@@ -88,8 +90,17 @@ def test_a_workspace_copy_reads_the_lanes_it_carries_on_its_own_root(tmp_path: P
             history.remove_workspace_file("copy", "dir/a")
         finally:
             history.close_history()
+        reads, read_packed = [], arrays.read_packed
+
+        def counted(*args: Any, **kwargs: Any) -> bytes:
+            reads.append(args[2])
+            return read_packed(*args, **kwargs)
+
+        monkeypatch.setattr(arrays, "read_packed", counted)
         history.open_history("copy", "copy", copy)
+        monkeypatch.setattr(arrays, "read_packed", read_packed)
         try:
+            assert reads == []
             assert history.kept_file_names("copy", "dir", by_write=True) == ["b"]
             assert history.read_kept_file("copy", "dir/b") == b"B2"
             assert history.read_array(columns, packed=True) == lane["value"].tobytes()

@@ -257,8 +257,28 @@ def alpha_part_body_path(content_hash: str, layout: str) -> Path:
         return root / "blobs" / str(link[1])
 
 
+def _held_alpha_parts(read: Callable[..., Any], workspace: str) -> dict[tuple[str, str], str]:
+    """The Alpha part relations `workspace` holds with their present, held array bodies, read in
+    one query: each content and layout pair to its body's digest."""
+    rows = read(
+        "SELECT a.content_digest, json_extract(a.shape, '$.layout'), b.content_digest"
+        " FROM live_ref l JOIN artifact a ON a.artifact_id = l.artifact_id"
+        " JOIN definition_name d ON d.definition_id = a.type_id"
+        " JOIN event_artifact u ON u.seq = a.produced_seq AND u.role = 'used'"
+        " JOIN artifact b ON b.artifact_id = u.artifact_id"
+        " JOIN live_ref body ON body.artifact_id = b.artifact_id"
+        " AND body.root_kind = 'workspace' AND body.root_id = l.root_id"
+        " WHERE l.root_kind = 'workspace' AND l.root_id = ?"
+        " AND d.family = 'artifact_type' AND d.name = 'alpha_part' AND b.body_state = 'present'",
+        (workspace,),
+    )
+    return {(str(content), str(layout)): str(digest) for content, layout, digest in rows}
+
+
 def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) -> None:
-    """Restore carried Alpha content/layout relations after the carried arrays are admitted."""
+    """Restore carried Alpha content/layout relations after the carried arrays are admitted. The
+    relations stay in the copy and are read at every start; one `workspace` already holds with
+    the same body is not read again."""
     import alphalattice.kernel.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
 
     source = folder / arrays.CARRIED / "alpha-parts.json"
@@ -276,6 +296,7 @@ def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) 
         rows = json.loads(payload)
         if not isinstance(rows, list):
             raise ValueError("not a list")
+        held = _held_alpha_parts(log.read, workspace)
         seen: set[tuple[str, str]] = set()
         for row in rows:
             if not isinstance(row, list) or len(row) != 3:
@@ -294,6 +315,8 @@ def _import_alpha_parts(root: Path, log: HostLog, folder: Path, workspace: str) 
             ):
                 raise ValueError("invalid or duplicate part relation")
             seen.add((content, layout))
+            if held.get((content, layout)) == digest:
+                continue  # admitted at an earlier start: this workspace holds it and its body
             body = arrays.read_packed(root, log.read, digest, packed_only=True)
             if (
                 keep_alpha_part(content, layout, body, upgrade_owner=(log, root, workspace))

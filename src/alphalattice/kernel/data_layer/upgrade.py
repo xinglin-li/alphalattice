@@ -100,6 +100,7 @@ class UpgradeRunner:
         self._plan: list[str] | None = None
         self._backups: dict[str, Any] | None = None
         self._complete = False
+        self._none_due: set[tuple[str, str]] = set()
         for row in log.read(
             "SELECT attrs FROM event WHERE type = ? AND subject_id = ? ORDER BY seq",
             (PROGRESS, subject),
@@ -114,6 +115,8 @@ class UpgradeRunner:
                 self._ids[event["family"], event["old_id"]] = event["new_id"]
             elif event["kind"] == "completed":
                 self._complete = True
+            elif event["kind"] == "none_due":
+                self._none_due.add((event["folder"], event["examined"]))
 
     def run(self) -> bool:
         """Verify backups, migrate and verify in order, then permit the Host to serve.
@@ -221,6 +224,22 @@ class UpgradeRunner:
     def id_map(self) -> Mapping[tuple[str, str], str]:
         """The one event-backed mapping, read-only; family steps write through map_id."""
         return MappingProxyType(self._ids)
+
+    def none_due(self, workspace: Path, examined: str) -> bool:
+        """Whether this subject recorded that the workspace folder held no family's old data
+        in the state `examined` names (the caller's: what the families asked and what they
+        asked of); another state of the folder is asked again."""
+        return (str(workspace.resolve()), examined) in self._none_due
+
+    def record_none_due(self, workspace: Path, examined: str) -> None:
+        """Record that the workspace folder held no family's old data in the state `examined`:
+        only an older version writes old data, and its way back is a restored backup."""
+        if self.none_due(workspace, examined):
+            return
+        self._register()
+        folder = str(workspace.resolve())
+        self._record("none_due", folder=folder, examined=examined)
+        self._none_due.add((folder, examined))
 
     def _record(self, kind: str, **attrs: object) -> None:
         """Append progress through the one log writer; its durable type commits on return."""

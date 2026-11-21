@@ -19,7 +19,9 @@ from alphalattice.control.product_host.composition.local_web_session import (
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     initialize_research_workspace,
+    named_workspace_id,
 )
+from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
 from alphalattice.kernel.data_layer import history, history_execution_outcomes, history_startup
@@ -255,6 +257,58 @@ def _upgrades_on_one_plan(
         assert host.first_start is None and _request(host, "/api/tasks")[0] == 200
     finally:
         host.stop()
+
+
+@pytest.mark.proves("product_host.first_start_asks_a_clean_workspace_once")
+def test_a_workspace_holding_no_old_data_is_asked_once_per_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start asks the families once of a workspace holding no old data and its next start
+    asks nothing; another folder, a backup restored into a clean one's emptied folder, and any
+    workspace after a declaration changes are asked."""
+    monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
+    asked: list[str] = []
+
+    def make() -> Family:
+        def holds(workspace: Path) -> bool:
+            asked.append(workspace.name)
+            return False
+
+        return Family("held", lambda _runner: None, lambda _runner: True, holds)
+
+    monkeypatch.setattr(first_start, "FAMILIES", (make,))
+    plain, other = tmp_path / "plain", tmp_path / "other"
+    initialize_research_workspace(plain)
+    initialize_research_workspace(other)
+
+    def opened(workspace: Path) -> None:
+        host = _started(workspace)
+        try:
+            assert host.first_start is None and _request(host, "/api/tasks")[0] == 200
+        finally:
+            host.stop()
+
+    opened(plain)
+    opened(plain)
+    assert asked == ["plain"]
+    opened(other)
+    assert asked == ["plain", "other"]
+    # The supported restore writes another workspace's backup into plain's emptied folder.
+    backups = WorkspaceBackups(
+        other, workspace_id=named_workspace_id(other), root=tmp_path / "vault"
+    )
+    backups.create(reason="REQUEST")
+    shutil.rmtree(plain)
+    plain.mkdir()
+    backups.restore(plain)
+    opened(plain)
+    assert asked == ["plain", "other", "plain"]
+    opened(plain)
+    assert asked == ["plain", "other", "plain"]
+    monkeypatch.setattr(first_start, "DECLARATIONS", first_start.DECLARATIONS + " 130-added.json")
+    opened(plain)
+    assert asked == ["plain", "other", "plain", "plain"]
+    assert [e["kind"] for e in _progress("0.2.8")] == ["none_due"] * 4
 
 
 @pytest.mark.proves("product_host.first_start_asks_nothing_of_catalog_held_outcomes")

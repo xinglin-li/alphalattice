@@ -128,26 +128,46 @@ def _registered_family(path: Traversable) -> Family:
     return factory()
 
 
-def _families() -> tuple[Callable[[], Family], ...]:
-    """List the registered family factories in their numbered migration order."""
+def _declarations() -> list[Traversable]:
+    """The registered family declarations in their numbered migration order."""
     directory = resources.files(__package__).joinpath("first_start_families")
-    return tuple(
-        partial(_registered_family, path)
+    return [
+        path
         for path in sorted(directory.iterdir(), key=lambda item: item.name)
         if path.name.endswith(".json")
-    )
+    ]
 
 
-FAMILIES: Final = _families()
+FAMILIES: Final = tuple(partial(_registered_family, path) for path in _declarations())
 """Every upgrade family in migration order. Research-input copies go last, after the families
 that read them. The Task store and its telemetry move at first use by their own seams."""
+
+DECLARATIONS: Final = " ".join(path.name for path in _declarations())
+"""The numbered declarations in order: a workspace recorded as holding no family's old data is
+asked again when a family is added, removed or renumbered."""
+
+
+def _examined(workspace: Path) -> str | None:
+    """What a clean answer for `workspace` covers: the declarations asked, and its manifest as
+    the file it is now. A restore writes every file of a workspace anew, into a fresh folder or
+    an empty one another workspace held, so its manifest is another file and it is asked again;
+    so is a workspace whose manifest the Host rewrote. The device, file number, change time and
+    write time together tell two files apart where any one of them can repeat. None when no
+    manifest file names the workspace (a Host given its manifest in memory): it is asked at
+    every start and nothing is recorded."""
+    try:
+        written = (workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).stat()
+    except FileNotFoundError:
+        return None
+    file = (written.st_dev, written.st_ino, written.st_ctime_ns, written.st_mtime_ns)
+    return f"{DECLARATIONS}|{':'.join(map(str, (*file, written.st_size)))}"
 
 
 State = Literal["PENDING", "RUNNING", "FAILED", "COMPLETED"]
 
 
-def discover(workspace: Path, families: tuple[Family, ...]) -> tuple[Path, ...]:
-    """The started workspace and its project's `workspaces/*`, those holding a family's old data."""
+def candidates(workspace: Path) -> tuple[Path, ...]:
+    """The started workspace and its project's `workspaces/*`, whose old data a plan may name."""
     started = workspace.resolve()
     found = {started}
     if started.parent.name == "workspaces":
@@ -158,7 +178,12 @@ def discover(workspace: Path, families: tuple[Family, ...]) -> tuple[Path, ...]:
             and not path.is_symlink()
             and (path / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
         }
-    return tuple(sorted(path for path in found if any(f.holds(path) for f in families)))
+    return tuple(sorted(found))
+
+
+def discover(workspaces: tuple[Path, ...], families: tuple[Family, ...]) -> tuple[Path, ...]:
+    """Those of `workspaces` holding a family's old data."""
+    return tuple(path for path in workspaces if any(f.holds(path) for f in families))
 
 
 @dataclass(frozen=True)
@@ -359,8 +384,21 @@ class FirstStart:
         if not machine.complete:
             if started is not None:
                 return recorded(TARGET, started)
-            found = discover(self.workspace, self.families)
-            return self._new_plan(TARGET, found) if found else None
+            # a workspace asked once and holding nothing is not asked again in the same state:
+            # only an older version writes old data, and its way back is a restore
+            examined = {path: _examined(path) for path in candidates(self.workspace)}
+            asked = tuple(
+                path
+                for path, state in examined.items()
+                if state is None or not machine.none_due(path, state)
+            )
+            found = discover(asked, self.families) if asked else ()
+            if found:
+                return self._new_plan(TARGET, found)
+            for path in asked:
+                if (state := examined[path]) is not None:
+                    machine.record_none_due(path, state)
+            return None
         subject = f"{TARGET}/{named_workspace_id(self.workspace)}"
         if started is not None and any(
             self.workspace == Path(row["workspace"]) for row in started["backups"]["workspaces"]
@@ -372,7 +410,12 @@ class FirstStart:
             if alone.complete:
                 return self._deferred_plan(subject, started)
             return recorded(subject, started)
+        state = _examined(self.workspace)
+        if state is not None and alone.none_due(self.workspace, state):
+            return None
         if not any(f.holds(self.workspace) for f in self.families):
+            if state is not None:
+                alone.record_none_due(self.workspace, state)
             return None
         return self._new_plan(subject, (self.workspace,))
 
