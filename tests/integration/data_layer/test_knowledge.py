@@ -76,8 +76,12 @@ def test_another_reader_reuses_the_encoded_chunks(tmp_path: Path, precision: str
             assert len(ids) == 5 and all(UUID(row[0]).version == 7 for row in ids)
 
 
+@pytest.mark.proves("data_layer.knowledge_index_projects_scopes_on_their_events")
+@pytest.mark.proves("data_layer.knowledge_index_reopens_from_its_derived_files")
 @pytest.mark.proves("data_layer.knowledge_publications_replay_with_their_sources")
-def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Path) -> None:
+def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Replay crosses the real SQLite log and its source projections.
 
     An in-memory double cannot prove the publication transaction or its reconstruction.
@@ -248,10 +252,65 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
             model_id=model,
             encode=lambda missing: np.asarray([(1.0, 0.0, 0.0)] * len(missing), dtype=np.float32),
         )
+        monkeypatch.setattr(knowledge, "DELTA", 2)
+        query_vector = np.asarray([1, 0, 0], dtype=np.float32)
+        first_scope = store.scope(workspace="w1", cutoff_us=123)
+        batches = log.read(
+            "SELECT count(DISTINCT e.batch_id) FROM knowledge_chunk c JOIN knowledge_embedding e"
+            " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
+            " WHERE c.recipe_id = ? AND e.model_id = ?",
+            (recipe, model),
+        )[0][0]
+        opening: list[str] = []
+        with log.reading() as con:
+            con.set_trace_callback(opening.append)
+            try:
+                built = store.vector_index(recipe_id=recipe, model_id=model, directory=tmp_path)
+            finally:
+                con.set_trace_callback(None)
+        with built:  # the files are written reading each encoded batch once
+            assert sum("knowledge_embedding_batch" in sql for sql in opening) == batches
+            assert not built.matrix.flags.writeable
+            first_hits = built.search(query_vector, first_scope)
+        stamp = tmp_path / "knowledge-index.npz"
+        assert stamp.is_file()
+        statements: list[str] = []
+        with log.reading() as con:
+            con.set_trace_callback(statements.append)
+            try:
+                with store.vector_index(
+                    recipe_id=recipe, model_id=model, directory=tmp_path
+                ) as mapped:
+                    assert mapped.search(query_vector, first_scope) == first_hits
+            finally:
+                con.set_trace_callback(None)
+        assert not any("knowledge_embedding_batch" in sql for sql in statements)
+        # a chunk appended after the files joins them at the next open: one matrix, one product
+        log.record("workspace.created", ("workspace", "appended"), {"name": "appended"})
+        appended = store.publish_revision(
+            workspace_id="appended",
+            metadata={"document": {"document_id": "appended"}, "revision": 1},
+            content="Appended evidence.",
+            origin=SourceOrigin(uuid7(), "1", "reference", 123),
+        )
+        tail = store.index_chunks(
+            version_id=appended, recipe_id=recipe, content="Appended evidence."
+        )
+        store.embeddings(
+            tuple(chunk.digest for chunk in tail),
+            recipe_id=recipe,
+            model_id=model,
+            encode=lambda missing: np.asarray([(0.0, 1.0, 0.0)] * len(missing), dtype=np.float32),
+        )
+        held = log.read("SELECT count(*) FROM knowledge_chunk WHERE recipe_id = ?", (recipe,))[0][0]
+        with store.vector_index(recipe_id=recipe, model_id=model, directory=tmp_path) as grown:
+            assert len(tail) <= knowledge.DELTA and grown.matrix.shape[0] == held
+            assert grown.search(query_vector, first_scope) == first_hits
+
+        np.savez(stamp, stamp=np.array(["incomplete"]))
         with store.vector_index(recipe_id=recipe, model_id=model, directory=tmp_path) as index:
-            assert not index.matrix.flags.writeable
-            query_vector = np.asarray([1, 0, 0], dtype=np.float32)
-            first_hit = index.search(query_vector, store.scope(workspace="w1", cutoff_us=123))[0]
+            assert index.search(query_vector, first_scope) == first_hits
+            first_hit = first_hits[0]
             middle_hit = index.search(query_vector, store.scope(workspace="w1", cutoff_us=200))[0]
             later_hit = index.search(query_vector, store.scope(workspace="w1", cutoff_us=300))[0]
             assert middle_hit.version == intermediate.version
@@ -278,19 +337,20 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
             outside = replace(inside, ranges=((origin.source_id, 999, 999),))
             assert [hit.chunk for hit in index.search(query_vector, inside)] == [first_hit.chunk]
             assert index.search(query_vector, outside) == ()
-            assert {hit.ordinal for hit in store.lexical("evidence", inside)} <= {first_hit.ordinal}
+            assert [hit.chunk for hit in store.lexical("evidence", inside)] == [first_hit.chunk]
             assert store.lexical("evidence", outside) == ()
             # A per-source window is each source's best, in one order.
             assert len(index.search(query_vector, inside, limit=1, per_source=True)) == 1
+            newest_body = "市场风险再次增加。"
             newest = SourceOrigin(origin.source_id, uuid7(), "evidence", 400)
             newest_id = store.publish_revision(
                 workspace_id="w1",
                 metadata=later_metadata | {"revision": 4},
-                content="市场风险再次增加。",
+                content=newest_body,
                 origin=newest,
             )
             newest_chunks = store.index_chunks(
-                version_id=newest_id, recipe_id=recipe, content="市场风险再次增加。"
+                version_id=newest_id, recipe_id=recipe, content=newest_body
             )
             store.embeddings(
                 tuple(chunk.digest for chunk in newest_chunks),
@@ -312,6 +372,28 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(tmp_path: Pa
                 )
                 == ()
             )
+            # an event no scope reads projects nothing; a publication into a workspace does
+            projected: list[None] = []
+            project = index.refresh_scopes
+            monkeypatch.setattr(
+                index, "refresh_scopes", lambda: projected.append(None) or project()
+            )
+            log.record("workspace.created", ("workspace", "other"), {"name": "other"})
+            assert index.refresh() and projected == []
+            assert (
+                store.publish_revision(
+                    workspace_id="other",
+                    metadata=later_metadata | {"revision": 4},
+                    content=newest_body,
+                    origin=newest,
+                )
+                == newest_id
+            )
+            assert index.refresh() and len(projected) == 1
+            assert [
+                hit.version
+                for hit in index.search(query_vector, store.scope(workspace="other", cutoff_us=400))
+            ] == [newest.version]
 
             class Encoder:
                 def embed_query(self, _: str) -> np.ndarray:

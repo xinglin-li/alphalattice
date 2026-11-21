@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
+import numpy as np
 import pytest
 
 from alphalattice.kernel.data_layer import knowledge
@@ -80,3 +83,35 @@ def test_a_large_index_leaves_out_the_words_most_chunks_hold(
     assert common("alpha") == {"alpha"} and reads == ["alpha", "gamma"]  # read once
     texts += ["delta zeta", "delta eta"]
     assert common("alpha", "delta") == {"delta"}  # alpha: two of five
+
+
+@pytest.mark.proves("data_layer.knowledge_batches_decode_once")
+def test_writing_the_index_reads_each_batch_once_into_its_exact_vectors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each batch is read once, in steps, and each row is the value a whole-batch decode gives."""
+    encoded = {
+        "a": np.asarray([[1, -2, 3], [127, 0, -127], [5, 6, -7]], dtype="i1"),
+        "b": np.asarray([[-1, 1, 0]], dtype="i1"),
+    }
+    scales = {"a": np.asarray([0.5, 0.25, 0.125], "<f4"), "b": np.asarray([1, 2, 3], "<f4")}
+    reads: list[str] = []
+
+    class Log:
+        @contextmanager
+        def reading(self):
+            yield self
+
+        def execute(self, _sql: str, args: tuple[str]):
+            reads.append(args[0])
+            batch = args[0]
+            values = (encoded[batch].tobytes(), scales[batch].tobytes(), len(encoded[batch]))
+            return type("Found", (), {"fetchone": lambda _: values})()
+
+    monkeypatch.setattr(knowledge, "DECODED", 1)
+    rows = [(None,) * 7 + (batch, ordinal) for batch, ordinal in (("a", 2), ("b", 0), ("a", 0))]
+    into = np.zeros((4, 3), dtype=np.float32)
+    knowledge.decode_batches(Log(), rows, into, 1, 3, "int8")
+    whole = {batch: encoded[batch].astype(np.float32) * scales[batch] for batch in encoded}
+    np.testing.assert_array_equal(into, [[0, 0, 0], whole["a"][2], whole["b"][0], whole["a"][0]])
+    assert sorted(reads) == ["a", "b"]

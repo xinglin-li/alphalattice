@@ -215,7 +215,7 @@ def _index(store: KnowledgeStore, root: Path) -> Any:
         if index is not None:
             index.close()
         index = _held["index"] = store.vector_index(
-            recipe_id=_held["recipe_id"], model_id=_held["model_id"], directory=root / "staging"
+            recipe_id=_held["recipe_id"], model_id=_held["model_id"], directory=root / "machine"
         )
     return index
 

@@ -976,6 +976,12 @@
       "layer": "integration",
       "seconds": 15
     },
+    "data_layer.knowledge_batches_decode_once": {
+      "description": "Writing the vector index reads each encoded batch once and decodes only its requested rows, each the value a whole-batch decode gives.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.knowledge_chunks_preserve_character_offsets": {
       "description": "The chunker honors character capacity, overlap and trimming while preserving offsets into the original text and preferring paragraph, sentence and word boundaries in that order.",
       "owner": "alphalattice.kernel.data_layer",
@@ -994,6 +1000,20 @@
       "owner": "alphalattice.kernel.data_layer",
       "layer": "unit",
       "seconds": 1
+    },
+    "data_layer.knowledge_index_projects_scopes_on_their_events": {
+      "description": "The vector index projects its scopes again only after an event that changes what they admit, and then admits it; any other event projects nothing.",
+      "lower_layer": "The scope events and their projections are real SQLite rows of the Host's log, which a unit double cannot prove.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "data_layer.knowledge_index_reopens_from_its_derived_files": {
+      "description": "The vector index reopens from its derived files without reading a vector from the log, takes only the chunks after them, and rebuilds files it cannot read, answering alike each time.",
+      "lower_layer": "The files' stamp is read against real SQLite chunk rows and the matrix is a real mapped file, which a unit double cannot prove.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 5
     },
     "data_layer.knowledge_publications_replay_with_their_sources": {
       "description": "A knowledge revision and snapshot retain their source identity, known time and workspace membership when the Host replays its log.",

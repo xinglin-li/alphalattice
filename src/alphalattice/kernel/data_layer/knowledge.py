@@ -8,10 +8,12 @@ workspace or rebuild reads that same vector. Each int8 batch has one scale per d
 from __future__ import annotations
 
 import json
+import os
 import re
-import tempfile
+import sqlite3
+import zipfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import RLock
@@ -48,13 +50,6 @@ SEALED_KIND = "reference"
 def _spaced(text: str) -> str:
     """Make Han characters visible to unicode61 without changing the source text."""
     return _HAN.sub(r" \1 ", text)
-
-
-@contextmanager
-def _mapping_file(directory: Path) -> Iterator[Any]:
-    """Hold the matrix file until its owning index closes."""
-    with tempfile.TemporaryFile(dir=directory) as handle:
-        yield handle
 
 
 @dataclass(frozen=True)
@@ -310,11 +305,15 @@ class KnowledgeStore:
         if self.evidence_asof is not None:
             return self.evidence_asof(cutoff_us)
         with self.log.reading() as con:
+            # from the sources: the narrow source table's kinds, then only an evidence source's
+            # versions in the workspace (2.8 ms at 1,000,000 chunks, where walking the
+            # workspace's every version took 30 ms)
             found = con.execute(
-                "SELECT 1 FROM knowledge_workspace_source w"
-                " JOIN knowledge_source_version v USING (version_id)"
-                " JOIN knowledge_source s USING (source_id)"
-                " WHERE w.workspace_id = ? AND s.kind = 'evidence' LIMIT 1",
+                "SELECT 1 FROM knowledge_source s"
+                " CROSS JOIN knowledge_source_version v ON v.source_id = s.source_id"
+                " CROSS JOIN knowledge_workspace_source w"
+                " ON w.version_id = v.version_id AND w.workspace_id = ?"
+                " WHERE s.kind = 'evidence' LIMIT 1",
                 (workspace,),
             ).fetchone()
         if found:
@@ -753,10 +752,28 @@ class KnowledgeStore:
             " AND (? IS NULL OR c.recipe_id = ?)"
             " AND EXISTS (SELECT 1 FROM knowledge_workspace_source w"
             " WHERE w.workspace_id = ? AND w.version_id = v.version_id)"
-            " AND (? = '[]' OR EXISTS (SELECT 1 FROM json_each(?) r"
-            " WHERE r.value ->> 0 = s.source_id"
-            " AND c.ordinal BETWEEN r.value ->> 1 AND r.value ->> 2))"
         )
+        range_parameters: tuple[Any, ...] = ()
+        if scope.ranges:
+            inside = (
+                " FROM json_each(?) r"
+                " JOIN knowledge_source_version version ON version.source_id = r.value ->> 0"
+                " JOIN knowledge_chunk chunk ON chunk.version_id = version.version_id"
+                " AND chunk.ordinal BETWEEN r.value ->> 1 AND r.value ->> 2"
+            )
+            ranges = json.dumps(scope.ranges)
+            first, last = self.log.read(
+                f"SELECT min(chunk.rowid), max(chunk.rowid){inside}", (ranges,)
+            )[0]
+            if first is None:  # the ranges hold no chunk
+                return ()
+            # FTS5 walks only the rows between the ranges' first and last chunk, in one cursor:
+            # bm25 reads its index-wide statistics once a cursor (22 ms a query at 1,000,000
+            # chunks), so the ranges are never queried one by one. Within that span the rowid is
+            # tested against one set; unary + keeps SQLite from restarting MATCH for each rowid.
+            sql += " AND knowledge_fts.rowid BETWEEN ? AND ?"
+            sql += f" AND +knowledge_fts.rowid IN (SELECT chunk.rowid{inside})"
+            range_parameters = (first, last, ranges)
         sql = (
             "SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY source_id"
             f" ORDER BY rank, rowid) AS place FROM ({sql})) WHERE place <= ?"
@@ -778,8 +795,7 @@ class KnowledgeStore:
             recipe_id,
             recipe_id,
             scope.workspace,
-            ranges := json.dumps(scope.ranges),
-            ranges,
+            *range_parameters,
             limit,
         )
         with self.log.reading() as con:
@@ -925,39 +941,113 @@ class KnowledgeStore:
     def _read(
         self, wanted: str, count: int, dimension: int, recipe: str, model: str, precision: str
     ) -> Matrix:
-        """Decode once per batch in NumPy, then gather the requested rows with array indexing."""
+        """Decode once per batch in NumPy, then gather the requested rows with array indexing.
+        The rows are grouped by batch before each batch's vectors are joined, so a batch's blob is
+        read once rather than carried by every row through the grouping (8x faster a 1,024-row
+        read at 1,000,000 chunks)."""
         result = np.empty((count, dimension), dtype=np.float32)
         with self.log.reading() as con:
             batches = tuple(
                 con.execute(
-                    "SELECT b.vectors, b.scales, b.count, json_group_array(CAST(j.key AS INTEGER)),"
-                    " json_group_array(e.ordinal) FROM json_each(?) j"
+                    "SELECT b.vectors, b.scales, b.count, g.positions, g.ordinals FROM"
+                    " (SELECT e.batch_id, json_group_array(CAST(j.key AS INTEGER)) AS positions,"
+                    " json_group_array(e.ordinal) AS ordinals FROM json_each(?) j"
                     " JOIN knowledge_embedding e ON e.chunk_digest = j.value"
-                    " AND e.recipe_id = ? AND e.model_id = ?"
-                    " JOIN knowledge_embedding_batch b ON b.batch_id = e.batch_id"
-                    " GROUP BY b.batch_id",
+                    " AND e.recipe_id = ? AND e.model_id = ? GROUP BY e.batch_id) g"
+                    " JOIN knowledge_embedding_batch b ON b.batch_id = g.batch_id",
                     (wanted, recipe, model),
                 )
             )
         for blob, scales, rows, positions, ordinals in batches:
-            batch = np.frombuffer(blob, dtype="i1" if precision == "int8" else "<f2")
-            batch = batch.reshape(rows, dimension).astype(np.float32)
-            if precision == "int8":
-                batch *= np.frombuffer(scales, dtype="<f4")
-            result[np.asarray(json.loads(positions), dtype=np.intp)] = batch[
-                np.asarray(json.loads(ordinals), dtype=np.intp)
-            ]
+            result[np.asarray(json.loads(positions), dtype=np.intp)] = _decoded(
+                blob, scales, rows, dimension, precision, np.asarray(json.loads(ordinals))
+            )
         return result
 
 
+def decode_batches(
+    log: HostLog, rows: Sequence[Any], into: Matrix, at: int, dimension: int, precision: str
+) -> None:
+    """Write the vectors of `rows` (`_ROWS`: each carries its batch and ordinal) into `into`
+    from row `at`, reading and decoding each encoded batch of `log` once, in at most `DECODED`
+    rows a step: a whole corpus is often one batch, which a slice-by-slice read decoded again
+    for every slice (40 s to open 100,000 chunks)."""
+    held: dict[str, tuple[list[int], list[int]]] = {}
+    for position, row in enumerate(rows):
+        positions, ordinals = held.setdefault(str(row[7]), ([], []))
+        positions.append(at + position)
+        ordinals.append(int(row[8]))
+    for batch, (positions, ordinals) in held.items():
+        with log.reading() as con:
+            blob, scales, count = con.execute(
+                "SELECT vectors, scales, count FROM knowledge_embedding_batch WHERE batch_id = ?",
+                (batch,),
+            ).fetchone()
+        for start in range(0, len(positions), DECODED):
+            into[np.asarray(positions[start : start + DECODED], dtype=np.intp)] = _decoded(
+                blob,
+                scales,
+                count,
+                dimension,
+                precision,
+                np.asarray(ordinals[start : start + DECODED]),
+            )
+
+
+def _decoded(
+    blob: bytes, scales: bytes | None, count: int, dimension: int, precision: str, rows: Any
+) -> Matrix:
+    """The float32 vectors at `rows` of one encoded batch: only those rows are converted, and
+    each is the value a whole-batch decode gives it (int8 times its dimension's scale)."""
+    encoded = np.frombuffer(blob, dtype="i1" if precision == "int8" else "<f2")
+    vectors = encoded.reshape(count, dimension)[rows.astype(np.intp)].astype(np.float32)
+    if precision == "int8":
+        vectors *= np.frombuffer(scales or b"", dtype="<f4")
+    return vectors
+
+
+INDEX_FILE: Final = "knowledge-index"
+"""The vector index's derived files in its folder, rebuilt from the log and never read for a fact:
+`.npz`, each row's chunk, version, source and ordinal with the stamp of the log they were read
+from, and `.f32`, the float32 matrix, row for row. The stamp names the format, the recipe, the
+model and the last chunk held, by its rowid and id: a chunk row is never deleted, so while the log
+holds that chunk at that rowid, the rows up to it are the same."""
+INDEX_FORMAT: Final = 1
+"""The derived files' layout; files of another format are rebuilt."""
+DELTA: Final = 1024
+"""Chunks a serving index takes after its matrix in memory; past them the Host opens it again,
+which writes them into new derived files."""
+DECODED: Final = 65_536
+"""Vectors decoded at once while derived files are written: 128 MiB of float32 at 512 wide."""
+SCOPE_EVENTS: Final = (
+    "knowledge.revision_published",
+    "knowledge.source_retired",
+    "experience.recorded",
+)
+"""The events whose projections are all a scope reads: a source version's workspace, kind and
+known time, its supersession or retirement, and an experience's replacement."""
+_ROWS: Final = (
+    "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id, v.source_id, c.ordinal,"
+    " c.rowid, e.batch_id, e.ordinal FROM knowledge_chunk c"
+    " JOIN knowledge_source_version v ON v.version_id = c.version_id"
+    " LEFT JOIN knowledge_embedding e"
+    " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
+    " AND e.model_id = ? WHERE c.recipe_id = ? AND c.rowid > ? ORDER BY c.rowid"
+)
+"""A recipe's chunks after a rowid, in order, each with its model's vector if the log holds one."""
+
+
 class NumpyVectorIndex:
-    """A read-only float32 mapped matrix rebuilt from the log's encoded vectors."""
+    """A read-only float32 mapped matrix of the log's encoded vectors, kept as derived files."""
 
     def __init__(self, store: KnowledgeStore, *, recipe_id: str, model_id: str, directory: Path):
-        """Map `model_id`'s vectors for `recipe_id` into a float32 file under `directory`; a model
-        the log does not hold is refused."""
+        """Map `model_id`'s vectors for `recipe_id`: the derived files in `directory` while their
+        stamp holds (`INDEX_FILE`), with the log's chunks after them written into new files, so an
+        open holds every row in one matrix and scores them in one product, as a full build does;
+        a model the log does not hold is refused."""
         self.store, self.recipe_id, self.model_id = store, recipe_id, model_id
         self._guard = RLock()
+        self._stem = directory / INDEX_FILE
         with store.log.reading() as con:
             model = con.execute(
                 "SELECT dimension, precision FROM knowledge_model WHERE model_id = ?", (model_id,)
@@ -966,68 +1056,159 @@ class NumpyVectorIndex:
                 raise DataError(
                     "the vector model is missing", code="data_layer.knowledge_model_missing"
                 )
-            rows = con.execute(
-                "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id, v.source_id,"
-                " c.ordinal FROM knowledge_chunk c"
-                " JOIN knowledge_source_version v ON v.version_id = c.version_id"
-                " LEFT JOIN knowledge_embedding e"
-                " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
-                " AND e.model_id = ? WHERE c.recipe_id = ? ORDER BY c.rowid",
-                (model_id, recipe_id),
-            ).fetchall()
+            self._dimension, self._precision = int(model[0]), str(model[1])
+            self._load(con)
+        self._delta = np.empty((DELTA, self._dimension), dtype=np.float32)
+        self._delta_count = 0
+        self._rebuild_required = False
+        try:
+            rows = self._after()
+            # Any chunk after the files goes into them: a BLAS product's float32 scores depend on
+            # the rows it is given, so a tail scored apart from the matrix could seal other bits.
+            if rows:
+                self._write(rows)
+            else:
+                self._take(rows)
+            self.refresh_scopes()
+        except BaseException:
+            self.close()
+            raise
+
+    def _load(self, con: sqlite3.Connection) -> None:
+        """Take the derived files' rows and map their matrix when their stamp still names this
+        log's chunk at its rowid for this recipe and model; else hold no row."""
+        self._ids: list[str] = []
+        self._versions: list[str] = []
+        self._places: list[tuple[str, int]] = []
+        self._version_codes: dict[str, int] = {}
+        self._source_codes: dict[str, int] = {}
+        self._codes = self._row_sources = self._ordinals = np.empty(0, dtype=np.int32)
+        self._last = 0
+        self.matrix: Matrix = self._none()
+        try:
+            with np.load(self._stem.with_suffix(".npz")) as held:
+                stamp = held["stamp"]
+                if stamp.shape != (5,) or stamp[:3].tolist() != [
+                    str(INDEX_FORMAT),
+                    self.recipe_id,
+                    self.model_id,
+                ]:
+                    return
+                last = int(stamp[3])
+                ids, versions = held["ids"], held["versions"]
+                sources, ordinals = held["sources"], held["ordinals"]
+                if (
+                    ids.ndim != 1
+                    or not ids.size
+                    or any(part.shape != ids.shape for part in (versions, sources, ordinals))
+                    or ids.dtype.kind != "U"
+                    or versions.dtype.kind != "U"
+                    or sources.dtype.kind != "U"
+                    or ordinals.dtype.kind not in {"i", "u"}
+                    or ids[-1] != stamp[4]
+                ):
+                    return
+                matrix = self._stem.with_suffix(".f32")
+                size = matrix.stat().st_size
+                if size != ids.size * self._dimension * np.dtype(np.float32).itemsize:
+                    return
+                found = con.execute(
+                    "SELECT chunk_id FROM knowledge_chunk WHERE rowid = ?", (last,)
+                ).fetchone()
+                if found is None or found[0] != stamp[4]:
+                    return
+                places = list(zip(sources.tolist(), ordinals.tolist(), strict=True))
+                mapped = np.memmap(
+                    matrix, mode="r", dtype=np.float32, shape=(ids.size, self._dimension)
+                )
+        except (OSError, KeyError, ValueError, OverflowError, EOFError, zipfile.BadZipFile):
+            return
+        self.matrix = mapped
+        self._ids, self._versions = ids.tolist(), versions.tolist()
+        self._places = places
+        self._last = last
+
+    def _after(self) -> list[Any]:
+        """The recipe's chunks after the last one held; a chunk without its vector is refused."""
+        with self.store.log.reading() as con:
+            rows = con.execute(_ROWS, (self.model_id, self.recipe_id, self._last)).fetchall()
         if any(row[3] is None for row in rows):
             raise DataError(
                 "a chunk has no cached vector", code="data_layer.knowledge_embedding_missing"
             )
-        self._ids = [str(row[0]) for row in rows]
-        digests = tuple(str(row[1]) for row in rows)
-        versions = [str(row[2]) for row in rows]
-        self._versions = versions
-        self._current = set(self._ids)
-        self._version_codes = {value: index for index, value in enumerate(dict.fromkeys(versions))}
-        self._codes = np.fromiter(
-            (self._version_codes[value] for value in versions), dtype=np.int32
+        return rows
+
+    def _vectors(self, rows: Sequence[Any]) -> Matrix:
+        return self.store._read(
+            json.dumps([str(row[1]) for row in rows]),
+            len(rows),
+            self._dimension,
+            self.recipe_id,
+            self.model_id,
+            self._precision,
         )
-        self._places: list[tuple[str, int]] = [(str(row[4]), int(row[5])) for row in rows]
+
+    def _take(self, rows: Sequence[Any]) -> None:
+        """Hold `rows` after the rows held, and index their versions and places."""
+        self._ids.extend(str(row[0]) for row in rows)
+        self._versions.extend(str(row[2]) for row in rows)
+        self._places.extend((str(row[4]), int(row[5])) for row in rows)
+        if rows:
+            self._last = int(rows[-1][6])
         self._index_places()
-        self._dimension = int(model[0])
-        self._precision = str(model[1])
-        self._delta = np.empty((1024, self._dimension), dtype=np.float32)
-        self._delta_count = 0
-        self._rebuild_required = False
-        self.refresh_scopes()
-        self._stack = ExitStack()
-        self._file = self._stack.enter_context(_mapping_file(directory))
-        try:
-            if not rows:
-                self.matrix = np.empty((0, self._dimension), dtype=np.float32)
-                self.matrix.flags.writeable = False
-                return
-            writable = np.memmap(
-                self._file, mode="w+", dtype=np.float32, shape=(len(rows), self._dimension)
+
+    def _add(self, rows: Sequence[Any]) -> None:
+        """Take `rows` into the delta after the matrix."""
+        if rows:
+            self._delta[self._delta_count : self._delta_count + len(rows)] = self._vectors(rows)
+            self._delta_count += len(rows)
+        self._take(rows)
+
+    def _write(self, rows: Sequence[Any]) -> None:
+        """Write the matrix and `rows` after it into new derived files, then map them. The old
+        files go first, so a crash leaves no stamp naming another matrix."""
+        held = len(self._ids)
+        matrix, staged = self._stem.with_suffix(".f32"), self._stem.with_suffix(".f32.staging")
+        writable = np.memmap(
+            staged, mode="w+", dtype=np.float32, shape=(held + len(rows), self._dimension)
+        )
+        writable[:held] = self.matrix
+        decode_batches(self.store.log, rows, writable, held, self._dimension, self._precision)
+        writable.flush()
+        writable._mmap.close()
+        del writable
+        self._close_matrix()
+        self._take(rows)
+        self._stem.with_suffix(".npz").unlink(missing_ok=True)
+        os.replace(staged, matrix)
+        names = self._stem.with_suffix(".npz.staging")
+        with names.open("wb") as handle:
+            np.savez(
+                handle,
+                stamp=np.array(
+                    [
+                        str(INDEX_FORMAT),
+                        self.recipe_id,
+                        self.model_id,
+                        str(self._last),
+                        self._ids[-1],
+                    ]
+                ),
+                ids=np.array(self._ids),
+                versions=np.array(self._versions),
+                sources=np.array([source for source, _ in self._places]),
+                ordinals=np.array([ordinal for _, ordinal in self._places], dtype=np.int64),
             )
-            for start in range(0, len(rows), 1024):
-                batch = digests[start : start + 1024]
-                writable[start : start + len(batch)] = store._read(
-                    json.dumps(batch),
-                    len(batch),
-                    self._dimension,
-                    recipe_id,
-                    model_id,
-                    str(model[1]),
-                )
-            writable.flush()
-            del writable
-            self.matrix = np.memmap(
-                self._file, mode="r", dtype=np.float32, shape=(len(rows), self._dimension)
-            )
-        except BaseException:
-            self._stack.close()
-            raise
+        os.replace(names, self._stem.with_suffix(".npz"))
+        self.matrix = np.memmap(
+            matrix, mode="r", dtype=np.float32, shape=(len(self._ids), self._dimension)
+        )
 
     def refresh_scopes(self) -> None:
-        """Project workspace, kind and validity into arrays off the query path."""
+        """Project workspace, kind and validity into arrays off the query path, as of the log's
+        last event: every write they read is a projection of a `SCOPE_EVENTS` event."""
         with self.store.log.reading() as con:
+            self._seq = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()[0]
             rows = con.execute(
                 "SELECT DISTINCT w.workspace_id, s.kind, v.version_id, v.known_us,"
                 " CASE WHEN retired.recorded_us IS NULL THEN v.superseded_us"
@@ -1059,58 +1240,38 @@ class NumpyVectorIndex:
             codes.setdefault((workspace, None), set()).add(code)
         self._known, self._end = known, end
         self._experience, self._evidence = experience, evidence
-        active = np.fromiter((key in self._current for key in self._ids), dtype=np.bool_)
-        self._scopes = {
-            scope: np.flatnonzero(active & np.isin(self._codes, list(values)))
-            for scope, values in codes.items()
-        }
+        members, scopes = {}, {}
+        for scope, values in codes.items():
+            member = np.zeros(len(self._version_codes), dtype=np.bool_)
+            member[list(values)] = True
+            members[scope], scopes[scope] = member, np.flatnonzero(member[self._codes])
+        self._members, self._scopes = members, scopes
+
+    def _scopes_moved(self) -> bool:
+        """Whether an event since the scopes were projected changed what they admit: one seek
+        of the log's events after that point (`SCOPE_EVENTS`), none on an unchanged log."""
+        head, moved = self.store.log.read(
+            "SELECT max(seq), coalesce(max(type IN (?, ?, ?)), 0) FROM event WHERE seq > ?",
+            (*SCOPE_EVENTS, self._seq),
+        )[0]
+        if head is not None and not moved:
+            self._seq = head
+        return bool(moved)
 
     def refresh(self) -> bool:
-        """Add newly encoded chunks to the delta; False asks the Host for an off-path rebuild."""
+        """Add the chunks encoded since to the delta, and project the scopes again when chunks
+        were added or a `SCOPE_EVENTS` event was recorded since; on an unchanged log it costs
+        two indexed seeks. False asks the Host for a rebuild, which writes the chunks into new
+        derived files."""
         with self._guard:
-            with self.store.log.reading() as con:
-                rows = con.execute(
-                    "SELECT c.chunk_id, c.chunk_digest, c.version_id, e.embedding_id, v.source_id,"
-                    " c.ordinal FROM knowledge_chunk c"
-                    " JOIN knowledge_source_version v ON v.version_id = c.version_id"
-                    " LEFT JOIN knowledge_embedding e"
-                    " ON e.chunk_digest = c.chunk_digest AND e.recipe_id = c.recipe_id"
-                    " AND e.model_id = ? WHERE c.recipe_id = ? ORDER BY c.rowid",
-                    (self.model_id, self.recipe_id),
-                ).fetchall()
-            if any(row[3] is None for row in rows):
-                raise DataError(
-                    "a chunk has no cached vector", code="data_layer.knowledge_embedding_missing"
-                )
-            held = set(self._ids)
-            new = [row for row in rows if row[0] not in held]
-            if self._delta_count + len(new) > len(self._delta):
+            rows = self._after()
+            if self._delta_count + len(rows) > DELTA:
                 self._rebuild_required = True
                 return False
-            if new:
-                digests = tuple(str(row[1]) for row in new)
-                vectors = self.store._read(
-                    json.dumps(digests),
-                    len(new),
-                    self._dimension,
-                    self.recipe_id,
-                    self.model_id,
-                    self._precision,
-                )
-                self._delta[self._delta_count : self._delta_count + len(new)] = vectors
-                self._delta_count += len(new)
-                self._ids.extend(str(row[0]) for row in new)
-                self._versions.extend(str(row[2]) for row in new)
-                self._version_codes = {
-                    value: index for index, value in enumerate(dict.fromkeys(self._versions))
-                }
-                self._codes = np.fromiter(
-                    (self._version_codes[value] for value in self._versions), dtype=np.int32
-                )
-                self._places.extend((str(row[4]), int(row[5])) for row in new)
-                self._index_places()
-            self._current = {str(row[0]) for row in rows}
-            self.refresh_scopes()
+            if rows:
+                self._add(rows)
+            if rows or self._scopes_moved():
+                self.refresh_scopes()
             self._rebuild_required = False
             return True
 
@@ -1144,7 +1305,12 @@ class NumpyVectorIndex:
         query = query / norm
         if limit < 1 or not len(self._ids):
             return ()
-        scoped = self._scopes.get((scope.workspace, scope.kind), np.empty(0, dtype=np.intp))
+        scoped = self._scopes.get((scope.workspace, scope.kind))
+        if scoped is None:
+            return ()
+        if scope.ranges:  # the rows inside the ranges first, then those the scope holds
+            inside = self._in_ranges(scope.ranges)
+            scoped = inside[self._members[scope.workspace, scope.kind][self._codes[inside]]]
         codes = self._codes[scoped]
         eligible_mask = self._known[codes] <= scope.cutoff_us
         retired = scope.cutoff_us >= self._end[codes]
@@ -1154,12 +1320,11 @@ class NumpyVectorIndex:
             eligible_mask &= ~retired
         else:
             eligible_mask &= ~retired | self._experience[codes]
-        allowed = np.ones(len(self._version_codes), dtype=np.bool_)
-        for code, key in self._evidence.items():
-            allowed[code] = key in scope.evidence
-        eligible_mask &= allowed[codes]
-        if scope.ranges:
-            eligible_mask &= self._in_ranges(scope.ranges)[scoped]
+        if self._evidence:
+            allowed = np.ones(len(self._version_codes), dtype=np.bool_)
+            for code, key in self._evidence.items():
+                allowed[code] = key in scope.evidence
+            eligible_mask &= allowed[codes]
         eligible = scoped[eligible_mask]
         if not len(eligible):
             return ()
@@ -1201,38 +1366,69 @@ class NumpyVectorIndex:
         )
 
     def _index_places(self) -> None:
-        """Each row's source as a code and its chunk ordinal, for range scopes."""
-        self._source_codes: dict[str, int] = {}
-        self._row_sources = np.fromiter(
+        """Code the rows not yet coded: each row's version, for scopes, and its source and chunk
+        ordinal, for range scopes. Rows are only appended, so the rows already coded keep their
+        codes and only the new ones are read."""
+        start = len(self._codes)
+        versions, places = self._versions[start:], self._places[start:]
+        codes, sources = self._version_codes, self._source_codes
+        self._codes = np.concatenate(
             (
-                self._source_codes.setdefault(source, len(self._source_codes))
-                for source, _ in self._places
-            ),
-            dtype=np.int32,
-            count=len(self._places),
+                self._codes,
+                np.fromiter(
+                    (codes.setdefault(value, len(codes)) for value in versions),
+                    dtype=np.int32,
+                    count=len(versions),
+                ),
+            )
         )
-        self._ordinals = np.fromiter(
-            (ordinal for _, ordinal in self._places), dtype=np.int32, count=len(self._places)
+        self._row_sources = np.concatenate(
+            (
+                self._row_sources,
+                np.fromiter(
+                    (sources.setdefault(source, len(sources)) for source, _ in places),
+                    dtype=np.int32,
+                    count=len(places),
+                ),
+            )
         )
+        self._ordinals = np.concatenate(
+            (
+                self._ordinals,
+                np.fromiter((ordinal for _, ordinal in places), dtype=np.int32, count=len(places)),
+            )
+        )
+        self._source_rows = np.argsort(self._row_sources, kind="stable")
+        self._source_offsets = np.r_[0, np.cumsum(np.bincount(self._row_sources))]
 
     def _in_ranges(self, ranges: tuple[tuple[str, int, int], ...]) -> np.ndarray:
-        """Which rows lie inside one of `ranges`: (source id, first ordinal, last ordinal)."""
-        inside = np.zeros(len(self._places), dtype=np.bool_)
+        """The rows inside one of `ranges` (source id, first ordinal, last ordinal), ascending:
+        read from each source's own rows, never a pass over every row."""
+        inside = []
         for source, first, last in ranges:
             code = self._source_codes.get(source)
             if code is not None:
-                inside |= (
-                    (self._row_sources == code)
-                    & (self._ordinals >= first)
-                    & (self._ordinals <= last)
-                )
-        return inside
+                rows = self._source_rows[
+                    self._source_offsets[code] : self._source_offsets[code + 1]
+                ]
+                ordinals = self._ordinals[rows]
+                inside.append(rows[(ordinals >= first) & (ordinals <= last)])
+        return np.unique(np.concatenate(inside)) if inside else np.empty(0, dtype=np.intp)
 
-    def close(self) -> None:
-        """Release the mapping and the temporary file owned by this Host index."""
+    def _none(self) -> Matrix:
+        """A read-only matrix of no row, as the mapped one is read-only."""
+        matrix = np.empty((0, self._dimension), dtype=np.float32)
+        matrix.flags.writeable = False
+        return matrix
+
+    def _close_matrix(self) -> None:
         if isinstance(self.matrix, np.memmap):
             self.matrix._mmap.close()
-        self._stack.close()
+        self.matrix = self._none()
+
+    def close(self) -> None:
+        """Release the mapping of the derived matrix; its files stay for the next open."""
+        self._close_matrix()
 
     def __enter__(self) -> Self:
         """The index itself; leaving the block closes it."""

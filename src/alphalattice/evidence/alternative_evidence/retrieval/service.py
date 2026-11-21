@@ -82,12 +82,24 @@ class AlternativeEvidenceRetrievalService:
         """Builds that encoded nothing: the store held every chunk's vector."""
         self.generation_release_count = 0
         """Selections reused from a sealed receipt, verified without opening a session."""
+        self._verified_sets: set[str] = set()
+        """Document sets verified against their retained content in this process (`_verify`)."""
+        self._indexes: dict[str, recall.ReferenceIndex] = {}
+        """Each generation this service built or opened, by its hash, with the store's index read
+        for it: a later open in this process carries it rather than reading the index again."""
 
     def close(self) -> None:
         """Nothing is held between calls: the Host holds the store's search."""
 
+    def _verify(self, document_set: AlternativeEvidenceDocumentSet) -> None:
+        """Verify a document set against its retained content once in this process: the set is
+        identified by its hash, and its published revisions never change."""
+        if document_set.document_set_hash not in self._verified_sets:
+            self.publisher.verify(document_set)
+            self._verified_sets.add(document_set.document_set_hash)
+
     def _snapshot(self, document_set: AlternativeEvidenceDocumentSet) -> EvidenceSnapshot:
-        self.publisher.verify(document_set)
+        self._verify(document_set)
         return self.publisher.library.read_snapshot(UUID(document_set.workspace_snapshot_id))
 
     def index_id(self, document_set: AlternativeEvidenceDocumentSet) -> str:
@@ -133,7 +145,7 @@ class AlternativeEvidenceRetrievalService:
             self.incremental_build_count += 1
         else:
             self.passage_embedding_pass_count += 1
-        return seal_contract(
+        generation = seal_contract(
             AlternativeEvidenceRetrievalGeneration,
             "generation_hash",
             document_set_hash=document_set.document_set_hash,
@@ -149,6 +161,8 @@ class AlternativeEvidenceRetrievalService:
             chunk_count=sum(len(chunks) for chunks in index.chunks.values()),
             built_at=built_at,
         )
+        self._indexes[generation.generation_hash] = index
+        return generation
 
     def verify_lineage(
         self,
@@ -156,7 +170,7 @@ class AlternativeEvidenceRetrievalService:
         generation: RetrievalGenerationRecord,
     ) -> None:
         """Verify generation lineage against its document set and the current spec."""
-        self.publisher.verify(document_set)
+        self._verify(document_set)
         if (
             generation.document_set_hash != document_set.document_set_hash
             or generation.workspace_snapshot_id != document_set.workspace_snapshot_id
@@ -191,19 +205,23 @@ class AlternativeEvidenceRetrievalService:
     ) -> AlternativeEvidenceRetrievalSession:
         """Open a read session over a verified generation.
 
-        The store's chunks and vectors for the document set are read again and must be the ones
-        the record sealed; a generation sealed before the store is history and is never opened.
+        The store's chunks and vectors for the document set must be the ones the record sealed:
+        read once in this process, by the build that sealed it or by the first open, whose index
+        later opens carry. A generation sealed before the store is history and is never opened.
         With `original_for`, the session renders table views from the retained originals.
         """
         self.verify_lineage(document_set, generation)
         if not isinstance(generation, AlternativeEvidenceRetrievalGeneration):
             raise ValueError("alternative_evidence.retrieval_generation_retired")
-        snapshot, index = self._indexed(document_set)
-        if (_chunk_set_hash(snapshot, index), index.vectors) != (
-            generation.chunk_set_hash,
-            generation.vector_set_hash,
-        ):
-            raise ValueError("alternative_evidence.retrieval_generation_divergent")
+        index = self._indexes.get(generation.generation_hash)
+        if index is None:
+            snapshot, index = self._indexed(document_set)
+            if (_chunk_set_hash(snapshot, index), index.vectors) != (
+                generation.chunk_set_hash,
+                generation.vector_set_hash,
+            ):
+                raise ValueError("alternative_evidence.retrieval_generation_divergent")
+            self._indexes[generation.generation_hash] = index
         return AlternativeEvidenceRetrievalSession(
             library=self.publisher.library,
             search=_searcher(self.publisher.library.workspace_id),

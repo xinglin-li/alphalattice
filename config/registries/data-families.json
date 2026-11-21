@@ -3708,6 +3708,17 @@
         "product_host.composition.native_usage_reader"
       ]
     },
+    "knowledge-vector-index": {
+      "summary": "read-only float32 vector matrix and row metadata for the Host's retrieval index",
+      "class": "derived",
+      "tier": 4,
+      "home": "machine/knowledge-index.f32 and machine/knowledge-index.npz, replaced from adjacent staging files by the Host",
+      "location": "machine-data-root",
+      "bytes": null,
+      "writers": ["data_layer.knowledge:NumpyVectorIndex"],
+      "readers": ["data_layer.knowledge:NumpyVectorIndex", "data_layer.recall"],
+      "placement_reason": "The stamped index is rebuilt from the event log's knowledge rows and embedding cache. The files carry no facts and are excluded from data-root backups."
+    },
     "data-root": {
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
