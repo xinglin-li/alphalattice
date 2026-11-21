@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
+import subprocess
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -101,17 +103,63 @@ INVENTORY: tuple[ScriptModule, ...] = tuple(
 )
 
 
-def _startup_command(module: ScriptModule) -> list[str]:
-    path = SCRIPTS / module.name
-    if module.executable and module.parser:
-        return [sys.executable, str(path), "--help"]
-    # `sys.path[0]` is the scripts directory, exactly as it is when the file is
-    # started directly; the module's own bootstrap is what has to find `src`.
-    return [
-        sys.executable,
-        "-c",
-        f"import sys; sys.path.insert(0, {str(SCRIPTS)!r}); import {path.stem}",
-    ]
+_STARTUP_PROBE = """
+import importlib
+import io
+import json
+import os
+import runpy
+import sys
+import traceback
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+
+scripts = Path(sys.argv[1])
+help_command = sys.argv[2] == "help"
+scratch = Path.cwd()
+path_tail = sys.path[1:]
+environment = os.environ.copy()
+roots = (scripts, scripts.parent / "src")
+requests = sys.stdin
+for request in requests:
+    name = json.loads(request)
+    path = scripts / name
+    directory = scratch / path.stem
+    directory.mkdir()
+    os.chdir(directory)
+    # A direct Python script starts with its own directory on sys.path.
+    sys.path[:] = [str(scripts), *path_tail]
+    sys.argv[:] = [str(path), "--help"] if help_command else ["-c"]
+    stdout, stderr = io.StringIO(), io.StringIO()
+    status = 0
+    sys.stdin = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        try:
+            if help_command:
+                runpy.run_path(str(path), run_name="__main__")
+            else:
+                importlib.import_module(path.stem)
+        except SystemExit as exit:
+            if isinstance(exit.code, int):
+                status = exit.code
+            elif exit.code is not None:
+                status = 1
+                print(exit.code, file=sys.stderr)
+        except Exception:
+            status = 1
+            traceback.print_exc()
+    sys.stdin = requests
+    # Every script runs its own bootstrap. Preserve native dependencies loaded by
+    # Python, while dropping the checkout modules and environment of this case.
+    for module_name, module in tuple(sys.modules.items()):
+        origin = getattr(module, "__file__", None)
+        if origin and any(Path(origin).is_relative_to(root) for root in roots):
+            del sys.modules[module_name]
+    os.environ.clear()
+    os.environ.update(environment)
+    os.chdir(scratch)
+    print(json.dumps([status, stdout.getvalue(), stderr.getvalue()]), flush=True)
+"""
 
 
 def _startup_environment() -> dict[str, str]:
@@ -121,23 +169,51 @@ def _startup_environment() -> dict[str, str]:
     return environment
 
 
-@pytest.mark.parametrize("module", INVENTORY, ids=[module.name for module in INVENTORY])
-def test_every_script_starts_without_an_inherited_import_path(module: ScriptModule) -> None:
-    """requirement: a supported command runs under this workspace and nothing else."""
+@pytest.fixture(scope="module")
+def script_startup(tmp_path_factory):
+    """Start one interpreter per invocation kind and observe a fresh bootstrap per case."""
+    sessions = {}
+    with ExitStack() as owned:
 
-    with TemporaryDirectory(prefix="entry-point-startup-") as directory:
-        completed = spawn.run(
-            _startup_command(module),
-            cwd=directory,
-            env=_startup_environment(),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-    assert completed.returncode == 0, f"{module.name}: {completed.stderr[-2000:]}"
+        def read(module):
+            mode = "help" if module.executable and module.parser else "import"
+            if mode not in sessions:
+                process = owned.enter_context(
+                    spawn.InteractiveSession(timeout=120, stop_scope="tree")
+                )
+                child = process.start(
+                    [sys.executable, "-c", _STARTUP_PROBE, str(SCRIPTS), mode],
+                    cwd=tmp_path_factory.mktemp(f"entry-point-{mode}"),
+                    env=_startup_environment(),
+                    stdout=subprocess.PIPE,
+                    stderr=None,
+                    encoding="utf-8",
+                )
+                sessions[mode] = process, child
+            process, child = sessions[mode]
+            process.send(json.dumps(module.name) + "\n")
+            assert child.stdout is not None
+            reply = child.stdout.readline()
+            process.check()
+            assert reply, f"{module.name}: the startup probe exited without a result"
+            return json.loads(reply)
+
+        yield read
+        for process, child in sessions.values():
+            process.close_input()
+            assert child.wait(timeout=15) == 0
+            process.check()
+
+
+@pytest.mark.parametrize("module", INVENTORY, ids=[module.name for module in INVENTORY])
+def test_every_script_starts_without_an_inherited_import_path(
+    module: ScriptModule, script_startup
+) -> None:
+    """requirement: a supported command runs under this workspace and nothing else."""
+    returncode, stdout, stderr = script_startup(module)
+    assert returncode == 0, f"{module.name}: {stderr[-2000:]}"
     if module.executable and module.parser:
-        assert "usage:" in completed.stdout, module.name
+        assert "usage:" in stdout, module.name
 
 
 def test_every_product_importing_script_binds_this_tree_as_its_import_root() -> None:

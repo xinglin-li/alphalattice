@@ -15,6 +15,7 @@ import threading
 import time
 from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from io import BytesIO, StringIO, TextIOWrapper
 from pathlib import Path
 from types import SimpleNamespace
@@ -300,12 +301,7 @@ raise SystemExit(entry.main(sys.argv[1:]))
             output.close()
 
 
-@WINDOWS
-@pytest.mark.parametrize("method", ["legacy", "attached"])
-@pytest.mark.parametrize("noninheritable", [False, True, "collision"])
-def test_attached_child_preserves_streams_and_refuses_unrelated_handles(
-    tmp_path, method, noninheritable
-):
+def _attached_handle_journey(tmp_path, method, noninheritable):
     stray = tmp_path / "unrelated"
     stray.write_bytes(b"unrelated")
     child = """
@@ -313,16 +309,20 @@ import _winapi, ctypes, json, msvcrt, os, sys
 from ctypes import wintypes
 
 current = _winapi.GetCurrentProcess()
-handle = msvcrt.get_osfhandle(sys.stdin.fileno()) if sys.argv[2] == "stdin" else int(sys.argv[2])
-try:
-    candidate = _winapi.DuplicateHandle(
-        current, handle, current, 0, False, _winapi.DUPLICATE_SAME_ACCESS
-    )
-except OSError as error:
-    if error.winerror not in (6, 50):  # absent or an object that cannot be duplicated
-        raise
-    candidate = None
-# Pin the candidate before opening the parent: opening new handles can reuse its number.
+probes = {"numeric": int(sys.argv[1])}
+if sys.argv[2] == "True":
+    probes["stdin"] = msvcrt.get_osfhandle(sys.stdin.fileno())
+# Pin the candidates before opening the parent: opening new handles can reuse numbers.
+candidates = {}
+for name, handle in probes.items():
+    try:
+        candidates[name] = _winapi.DuplicateHandle(
+            current, handle, current, 0, False, _winapi.DUPLICATE_SAME_ACCESS
+        )
+    except OSError as error:
+        if error.winerror not in (6, 50):  # absent or an object that cannot be duplicated
+            raise
+        candidates[name] = None
 parent = _winapi.OpenProcess(_winapi.PROCESS_DUP_HANDLE, False, int(sys.argv[3]))
 try:
     original = _winapi.DuplicateHandle(
@@ -340,29 +340,32 @@ try:
         assert compare(original, control)  # duplicated original is detected
     finally:
         _winapi.CloseHandle(control)
-    value = bool(candidate is not None and compare(candidate, original))
+    values = {
+        name: bool(candidate is not None and compare(candidate, original))
+        for name, candidate in candidates.items()
+    }
 finally:
     _winapi.CloseHandle(original)
-    if candidate is not None:
-        _winapi.CloseHandle(candidate)
-print(json.dumps(dict(stdin=sys.stdin.read(), stray=value)))
+    for candidate in candidates.values():
+        if candidate is not None:
+            _winapi.CloseHandle(candidate)
+print(json.dumps(dict(stdin=sys.stdin.read(), stray=values)))
 print('stderr-ok', file=sys.stderr)
 """
     program = f"""
 import _winapi, msvcrt, os, subprocess, sys
 from alphalattice.control.product_host.composition.web_launcher import attached_child
-if sys.argv[3] in ('True', 'collision'):
+if sys.argv[3] == 'True':
     for kind in (-10, -11, -12):
         os.set_handle_inheritable(_winapi.GetStdHandle(kind), False)
 call = subprocess.call if sys.argv[2] == 'legacy' else attached_child
 with open(sys.argv[1], 'rb') as stray:
     handle = msvcrt.get_osfhandle(stray.fileno())
     os.set_handle_inheritable(handle, True)
-    probe = 'stdin' if sys.argv[3] == 'collision' else str(handle)
-    command = [sys.executable, '-c', {child!r}, str(handle), probe, str(os.getpid())]
+    command = [sys.executable, '-c', {child!r}, str(handle), sys.argv[3], str(os.getpid())]
     raise SystemExit(call(command, env=dict(os.environ)))
 """
-    result = spawn.run(
+    return spawn.run(
         [sys.executable, "-c", program, str(stray), method, str(noninheritable)],
         input="owned-input\n",
         capture_output=True,
@@ -371,10 +374,34 @@ with open(sys.argv[1], 'rb') as stray:
         timeout=20,
         creationflags=_FLAGS,
     )
+
+
+@pytest.fixture(scope="module")
+def attached_handle_journeys(tmp_path_factory):
+    """Observe each launch method and stream inheritance mode once."""
+
+    @cache
+    def journey(method, noninheritable):
+        return _attached_handle_journey(
+            tmp_path_factory.mktemp("attached-handles"), method, noninheritable
+        )
+
+    return journey
+
+
+@WINDOWS
+@pytest.mark.parametrize("method", ["legacy", "attached"])
+@pytest.mark.parametrize("noninheritable", [False, True, "collision"])
+def test_attached_child_preserves_streams_and_refuses_unrelated_handles(
+    method, noninheritable, attached_handle_journeys
+):
+    """A real Windows launch inherits only its owned input and output streams."""
+    result = attached_handle_journeys(method, bool(noninheritable))
     assert result.returncode == 0, result.stderr
     seen = json.loads(result.stdout)
     assert seen["stdin"] == "owned-input\n"
-    assert seen["stray"] is False
+    probe = "stdin" if noninheritable == "collision" else "numeric"
+    assert seen["stray"][probe] is False
     assert result.stderr == "stderr-ok\n"
 
 

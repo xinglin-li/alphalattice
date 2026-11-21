@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -369,8 +370,16 @@ def test_staged_registry_census_refuses_new_unregistered_items(
 
     if scenario == "import-debt":
         retained({import_key: 1}, covered=True)
+        # The live census above captures the Git snapshot once; invalid values vary only
+        # the hygiene declaration consumed by the census.
+        snapshot = owner.census_inputs(tmp_path, baseline)
         for invalid in (True, 0, -1, "1", None):
-            assert "import-hygiene" in retained({import_key: invalid}, 1, "--update")
+            snapshot.blobs[snapshot.stage + hygiene_path] = json.dumps(
+                {**hygiene, "legacy_lazy_imports": {import_key: invalid}}
+            )
+            assert "import-hygiene" in " ".join(
+                owner.census_check(tmp_path, baseline=baseline, update=True, inputs=snapshot)
+            )
         invented = client + "/invented.py::invented::import json"
         assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
         retained({import_key: 1})
@@ -420,10 +429,23 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         current["undescribed_registry_entries"].append(caches + "::entries:new")
         stage(baseline, current)
         assert "description" in check(1, "--update")
+        # The preceding census is the Git journey. Sentence variants exercise the same
+        # owner with an in-memory census snapshot, without rebuilding that journey per value.
+        inputs = SimpleNamespace(
+            root=tmp_path,
+            stage=":",
+            blobs={},
+            registries=(caches,),
+            pending=None,
+            parents=(),
+            view=lambda _specs: {},
+        )
         for invalid in (None, "", "   ", "Two sentences. More text.", "Two\nlines."):
             cache_rows["entries"]["new"]["description"] = invalid
-            stage(caches, cache_rows)
-            assert "description" in check(1)
+            errors, _ = owner._description_census(
+                inputs, {caches: cache_rows}, {"undescribed_registry_entries": [debt]}, {}
+            )
+            assert "description" in " ".join(errors)
         cache_rows["entries"]["new"]["description"] = (
             "Cache fixture values until the input changes."
         )
@@ -558,12 +580,22 @@ def test_staged_registry_census_refuses_new_unregistered_items(
             word_stage(keys=selectors)  # the words case checks this same reviewed state
         git("-c", "core.longpaths=true", "commit", "-qm", "Reviewed word declarations")
     if part == "words":
+        reviewed_refusals = json.dumps(declared_refusals)
+
+        def word_decision(document=declared_refusals, keys=()):
+            # The committed declaration and staged word keys are the decision's data.
+            blobs = {
+                "HEAD:" + refusals: reviewed_refusals,
+                ":" + words: json.dumps({key: {} for key in ["census.legacy_word", *keys]}),
+            }
+            return "\n".join(owner._refusal_word_problems(":", document, blobs))
+
         for key in ("local_client.problem_report_ready", "alternative_evidence.unit_failed"):
             promoted = json.loads(json.dumps(declared_refusals))
             promoted["classification"]["word_selectors"].pop(key)
             promoted["entries"][key] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
-            assert key in word_check(1, promoted, selectors)
-        assert "census.new_word" in word_check(1, keys=["census.new_word"])
+            assert key in word_decision(promoted, selectors)
+        assert "census.new_word" in word_decision(keys=["census.new_word"])
         for target, key in (
             (declared_refusals, "legacy_unregistered_words"),
             (declared_refusals["classification"], "word_selectors"),
@@ -573,9 +605,9 @@ def test_staged_registry_census_refuses_new_unregistered_items(
                 target[key] = [*before, "census.new_word"]
             else:
                 target[key] = {**before, "census.new_word": selectors["census.selector"]}
-            assert "census.new_word" in word_check(1, keys=["census.new_word"])
+            assert "census.new_word" in word_decision(keys=["census.new_word"])
             target.pop(key)
-            assert "declaration" in word_check(1)
+            assert "declaration" in word_decision()
             target[key] = before
         registered = json.loads(json.dumps(declared_refusals))
         registered["entries"]["census.new_word"] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
@@ -587,22 +619,32 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         word_check(0)
     elif part == "entries":
         word_stage()  # the state the words case ends on, staged over the same commit
+        snapshot = owner.census_inputs(tmp_path, baseline)
+
+        def decide(relative, value):
+            write(relative, value)
+            snapshot.blobs[snapshot.stage + relative] = (
+                value if isinstance(value, str) else json.dumps(value)
+            )
+            snapshot.paths.add(relative)
+            if relative.startswith("src/") and relative.endswith(".py"):
+                snapshot.sources.add(relative)
+            return "\n".join(
+                owner.census_check(tmp_path, baseline=baseline, inputs=snapshot, moves={})
+            )
+
         for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
             invalid = json.loads(json.dumps(registrations[refusals]))
             invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
-            stage(refusals, invalid)
-            assert "refusals:" in check(1)
-        stage(refusals, registrations[refusals])
+            assert "refusals:" in decide(refusals, invalid)
+        decide(refusals, registrations[refusals])
         owners["nouns"].pop("census_registered_alias")
-        stage("config/registries/owners-map.json", owners)
-        assert "census_registered_alias" in check(1)
-        stage(refusals, {"entries": {}})
-        assert "census.unregistered" in check(1)
-        write(refusals, registrations[refusals])
-        stage(legacy, "raise ValueError('census.swap')\n")
-        assert "census.swap" in check(1)
-        stage(legacy, "")
-        assert baseline in check(1)
+        assert "census_registered_alias" in decide("config/registries/owners-map.json", owners)
+        assert "census.unregistered" in decide(refusals, {"entries": {}})
+        decide(refusals, registrations[refusals])
+        assert "census.swap" in decide(legacy, "raise ValueError('census.swap')\n")
+        assert baseline in decide(legacy, "")
+        stage()
         check(0, "--update")
         stage()
         check(0)

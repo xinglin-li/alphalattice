@@ -47,6 +47,32 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
     "a plugin with no PROVIDES": ("workshop", ["X = 1"], "plugin_unloadable"),
     "two plugins of one name": ("workshop", [SHOP + "\nNAME = 'x'"] * 2, "plugin_unloadable"),
 }
+DECISION_CASES = (
+    "a workshop row with no plugin",
+    "two plugins for a row",
+    "a plugin for no row",
+    "a plugin with no PROVIDES",
+    "two plugins of one name",
+)
+
+
+def _assert_provider_refusal(tmp_path, case):
+    """Provider decisions reject each invalid declaration before a journey starts."""
+    host, bodies, wanted = CASES[case]
+    rows = {
+        "ok": stage.Row("ok", "command", "devtools.pipeline", "r", ("workshop", "public")),
+        "red": stage.Row("red", "command", "devtools.pipeline", "r", ("workshop", "public")),
+        "local": stage.Row("local", "workshop", "devtools.pipeline", "r", ("workshop",)),
+        "job": stage.Row("job", "ci-job", "devtools.pipeline", "r", ("public",), job="w"),
+    }
+    pipeline_stage = stage.Stage("commit", 1, "r", "line", "card", 1, tuple(rows))
+    definition = stage.Definition("0" * 64, {"commit": pipeline_stage}, rows)
+    paths = [tmp_path / f"shop{i}.py" for i in range(len(bodies))]
+    for path, body in zip(paths, bodies, strict=True):
+        path.write_text(body, encoding="utf-8")
+    with pytest.raises(DefinitionError) as refused:
+        stage.resolve(definition, pipeline_stage, host, stage.plugins(paths))
+    assert refused.value.code == "pipeline." + wanted
 
 
 @pytest.mark.proves("pipeline.stage_runs_each_row_by_one_provider")
@@ -55,8 +81,12 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
 @pytest.mark.proves("pipeline.slow_guards_run_when_the_change_touches_what_they_read")
 @pytest.mark.parametrize("case", CASES, ids=str)
 def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
-    tmp_path, case, monkeypatch
+    tmp_path, request, case, monkeypatch
 ):
+    if case in DECISION_CASES:
+        _assert_provider_refusal(tmp_path, case)
+        return
+    request.getfixturevalue("synthetic_history")
     host, bodies, wanted = CASES[case]
     if case == "public":
         with monkeypatch.context() as patch:
@@ -364,7 +394,7 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             encoding="utf-8",
         )
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
-    for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
+    for words in (["add", "-A"], ["commit", "-qm", "c"]):
         spawn.run([*git, *words], check=True)
     if case == "size-required":
         before = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
@@ -596,14 +626,15 @@ def test_control():
         for ran, absent in ((tmp_path / "slow", family), (cost, family + "[missing]")):
             with pytest.raises(receipt.ReceiptError, match="missing required tests"):
                 receipt.verify(ran / "receipt.jsonl", required_tests=[absent], within_limits=True)
-        outside = spawn.run(
-            [*argv, "--out", str(tmp_path / "outside"), "--required-tests", "../test_x.py::test_x"],
-            env=env,
-            capture_output=True,
-            timeout=30,
-            creationflags=flags,
-        )
-        assert outside.returncode != 0
+        with pytest.raises(DefinitionError) as outside:
+            stage.run(
+                tmp_path,
+                "commit",
+                out=tmp_path / "outside",
+                required_tests=["../test_x.py::test_x"],
+                **asked,
+            )
+        assert outside.value.code == "pipeline.stage_invalid"
         spawn.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
         refused = spawn.run(
             [*argv, "--out", str(tmp_path / "not-cost"), "--required-tests", family],

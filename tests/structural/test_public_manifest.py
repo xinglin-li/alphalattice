@@ -19,6 +19,7 @@ from devtools.pipeline import definition
 from release.public_manifest import (
     INTERNAL_ID_BASELINE,
     RULES,
+    _carry_refusal,
     attach_reviews,
     classify,
     content_keys,
@@ -488,14 +489,27 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     if part == "moves":
         table.parent.mkdir(parents=True)
         extra = "SYNTHETIC-CARD"
-        for named, occurrences, refusal in (
-            ({moved: owner}, {moved: {label: 1}}, None),
-            ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
-            ({moved: owner}, {moved: {label: 2}}, "labels differ"),
-            ({}, {moved: {label: 1}}, "map does not name it"),
-            ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
-            ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+        for index, (named, occurrences, refusal) in enumerate(
+            (
+                ({moved: owner}, {moved: {label: 1}}, None),
+                ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+                ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+                ({}, {moved: {label: 1}}, "map does not name it"),
+                ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+                ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+            )
         ):
+            reason = _carry_refusal(
+                moved, occurrences[moved], {"occurrences": occurrences}, policy, named
+            )
+            if refusal is None:
+                assert reason is None
+            else:
+                assert reason is not None and re.search(refusal, reason)
+            # One passing and one refusing Git history prove the seam; the other rows
+            # vary the same move decision on the in-memory policies above.
+            if index > 1:
+                continue
             rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
             table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
             baseline.write_text(
@@ -552,6 +566,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
         merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
         check_output, responses = spawn.check_output, {}
+        run, resolved = spawn.run, {}
         popen, sent = subprocess.Popen, bytearray()
 
         def recorded(
@@ -566,9 +581,15 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
                 )
             return process
 
+        def record_run(command, **kwargs):
+            answer = run(command, **kwargs)
+            resolved[tuple(command)] = answer
+            return answer
+
         with monkeypatch.context() as patch:
             starts = Mock(wraps=recorded)
             patch.setattr(subprocess, "Popen", starts)
+            patch.setattr(spawn, "run", record_run)
             patch.setattr(
                 spawn,
                 "check_output",
@@ -596,6 +617,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
         ):
             with monkeypatch.context() as patch:
+                patch.setattr(spawn, "run", lambda command, **_kwargs: resolved[tuple(command)])
                 patch.setattr(
                     spawn,
                     "check_output",
