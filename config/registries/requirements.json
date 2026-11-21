@@ -1974,7 +1974,7 @@
       "lower_layer": "A real DuckDB store and Arrow result are needed to compare the persisted set query with its per-listing readers."
     },
     "market_data_ops.world_holds_the_workspace_market_tables": {
-      "description": "A workspace open admits its 0.2.7 market tables into world once, equal row for row, and a later correction is seen only from its admission.",
+      "description": "A workspace's market rows are published into world equal row for row, and a later correction is known from the time its writer observed it.",
       "lower_layer": "The 0.2.7 tables are written by their own owner, the world tables through a real StorePort, DuckLake catalog and log.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
@@ -1990,11 +1990,12 @@
       "description": "World serves no market read from an admission that dropped a workspace row written at the same time as its own version; the workspace's tables answer.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-20: the read verdict is deleted; world serves every read outside a writing stage"
     },
     "market_data_ops.world_serves_the_workspace_market_reads": {
-      "description": "Market value reads are equal under both settings; world serves them while it holds the workspace's tables, the Host admitting a write first and a child reading the workspace until then.",
-      "lower_layer": "World's read-only attach, the Host's admission and the workspace's marks need a real catalog, log and workspace database.",
+      "description": "World serves every market read outside a writing stage; a stage reads its buffer and publishes once at its end, and a write no Host published is read by no one outside it.",
+      "lower_layer": "World's reads, the Host's publish and the workspace's journal need a real catalog, log and workspace database.",
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "integration",
       "seconds": 10

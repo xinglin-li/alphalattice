@@ -43,7 +43,8 @@
       "location": "workspace-database",
       "bytes": 150208512,
       "covers": [
-        "table:market_profile"
+        "table:market_profile",
+        "table:market_delta"
       ],
       "authority_owners": [
         "market_data_ops.storage.MarketDataRepository"

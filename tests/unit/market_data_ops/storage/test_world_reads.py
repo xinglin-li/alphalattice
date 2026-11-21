@@ -1,4 +1,4 @@
-"""World's read relations, research-copy binding and admission marks."""
+"""World's read relations and research-copy binding."""
 
 from __future__ import annotations
 
@@ -53,6 +53,22 @@ def test_a_relation_names_its_listings_by_their_0_2_7_alias_whatever_the_cutoff(
     assert f"provider_symbol_asof({world_reads.LATEST}) WHERE provider_id" in relation
 
 
+@pytest.mark.proves("market_data_ops.world_relations_read_as_of_their_cutoff")
+def test_a_held_relation_replaces_a_version_only_by_an_admission_held_by_then():
+    """Read as world held it at a selection, a version is replaced only by an admission committed
+    by then: a row is known at its writer's observed time, which a later publish may precede."""
+    held = world_reads.relations(1_700_000_000_000_000, 1_600_000_000_000_000, workspace_id="w1")
+    named = world_reads.relations(1_700_000_000_000_000, workspace_id="w1")
+    replaced = (
+        "by_admission_id IN (SELECT admission_id FROM admission WHERE known_us <= 1600000000000000)"
+    )
+    for name in ("bars", "adjusted", "actions", "action_evidence", "mappings"):
+        assert replaced in held[name]
+        assert "by_admission_id" not in named[name]
+    for macro in ("raw_bar_asof(", "corporate_action_asof(", "corporate_action_versions"):
+        assert not any(macro in held[name] for name in ("bars", "actions", "action_evidence"))
+
+
 BINDING = "0123456789abcdef" * 4
 
 
@@ -71,14 +87,6 @@ def test_a_research_copy_is_named_by_its_binding_folder(path, expected):
     """Only a database in a binding's source folder is a research-input copy, which reads world
     through its selection; every other database reads as before."""
     assert world_reads.binding(Path(path) / "market-data.duckdb") == expected
-
-
-@pytest.mark.proves("market_data_ops.world_serves_only_an_admission_that_took_every_row")
-def test_an_admission_that_dropped_an_equal_time_row_does_not_hold_its_marks():
-    """An admission's marks count only when it dropped no workspace row as written at the same time
-    as world's version of its key; an older row's drop leaves world the newer value."""
-    admissions = [('{"bars": [2, 7]}', 1), ('{"bars": [3, 8]}', None), (None, None)]
-    assert world_reads.taken(admissions) == [{"bars": [3, 8]}]
 
 
 @pytest.mark.proves("market_data_ops.binding_names_a_copy_by_its_research_input_place")

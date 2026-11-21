@@ -185,6 +185,12 @@ TIMED: Final = frozenset({"raw_bar", "corporate_action"})
 """The world tables whose rows carry their source's own last write of the value (OBSERVED): a held
 key is superseded only by a row its source wrote after the newest version's value was last
 written. The time is SOURCE, never content."""
+PUBLISHED: Final = "published_batch"
+"""The name a published batch is registered under on the catalog session while it is judged."""
+KNOWN: Final = "_known_us"
+"""The column of a published batch (`StorePort.publish`) carrying each row's observed time, in
+integer microseconds: when its writer observed it, which dates the row in place of the commit's
+clock. Never written to the catalog."""
 REWRITTEN: Final = "rewritten"
 """A row of a TIMED table whose source wrote its key's newest value again, later: world.rewritten
 records the write against that version, which adds no version and moves its ordering time."""
@@ -304,14 +310,9 @@ class StorePort:
         self.started: dict[str, list[str]] = {}
         self._repaired = 0  # every admission snapshot up to this one has its event in the log
         # What this session read of the catalog's world tables, read once: a table's columns
-        # (`_declared`) and whether it holds a row (`commit_unheld`). This session is the
-        # catalog's one writer (a second Host is refused), so they change only by its own work:
-        # its DDL clears the columns (`_feature_set`), and no write removes a world row.
+        # (`_declared`). This session is the catalog's one writer (a second Host is refused), so
+        # they change only by its own work: its DDL clears the columns (`_feature_set`).
         self._columns: dict[str, dict[str, str]] = {}
-        self._holding: set[str] = set()
-        # Each batch `commit_unheld` judged to admit nothing, by its table, provider and lag rule:
-        # its rows, while no write to that table follows (`_write` forgets it).
-        self._settled: dict[tuple[str, str, tuple[str, int] | None], Any] = {}
         self._block: _Block | None = None  # the open `admitting` block, on the writer's thread
         self._maintained: tuple[int, datetime] | None = None
 
@@ -541,10 +542,8 @@ class StorePort:
                 self._block.published.append(publish)
 
     def _rolled_back(self) -> None:
-        """Roll back an open block; what this session cached of the tables it wrote goes too."""
+        """Roll back an open block."""
         self.lake.execute("ROLLBACK").complete()
-        self._holding.clear()
-        self._settled.clear()
 
     def market_id(self, mic: str, provider_id: str) -> str:
         """Resolve a recorded MIC binding, or register a new market under the Host's writer.
@@ -595,81 +594,67 @@ class StorePort:
         with self._writer:
             tables = staged.tables if isinstance(staged, StagedSet) else (staged,)
             for table in tables:
-                self._registered(table)
+                self._registered(table, _staged_rows(self.root, table))
             if isinstance(staged, StagedSet) or staged.table in RESULTS_KEYS:
                 count = self._catalog_results(staged, tables, self.log.clock())
                 dropped, rewritten = {}, 0
             else:
                 lag = None if staged.lag is None else self._lag(*staged.lag)
-                count, dropped, rewritten = self._catalog_commit(staged, self.log.clock(), lag)
+                source = _staged_rows(self.root, staged)
+                count, dropped, rewritten = self._catalog_commit(
+                    staged, self.log.clock(), lag, source
+                )
             if self._block is not None:  # the block's one commit repairs and collects
                 self._block.staging.append(staged.admission_id)
                 return Committed(None, count, dropped, rewritten)
-            repair(self.log, self.lake, self._repaired)
-            delete(self.root, self.log, f"staging/{staged.admission_id}")
-            if not count and not rewritten:
-                return Committed(None, 0, dropped, 0)
-            found = self.log.read(
-                "SELECT catalog_snapshot FROM admission WHERE admission_id = ?",
-                (staged.admission_id,),
-            )
-            self._repaired = int(found[0][0])  # the repair closed every gap up to this commit
-            return Committed(self._repaired, count, dropped, rewritten)
+            return self._committed(staged, count, dropped, rewritten, staging=True)
 
-    def commit_unheld(
+    def publish(
         self, table: str, provider_id: str, rows: Any, lag: tuple[str, int] | None = None
     ) -> Committed:
-        """Stage and commit only the rows of a world batch that `commit` would admit, in one hold of
-        the writer. The batch is judged unstaged by `commit`'s own rules (`_known`'s fates and
-        `_in_order`'s refusals); a row every version of which is `same` or `held_opening` would be
-        admitted as nothing, so it takes no staging, and a batch of such rows no catalog commit.
-        A table world holds no row of has nothing to judge: its batch is staged whole. A batch
-        equal to one judged to admit nothing, while its table has taken no write since, is judged
-        the same without reading the catalog: its fates and refusals read only the batch and the
-        table's rows. Not for a TIMED table, where a held value written later is a rewrite."""
-        if table in TIMED:
-            raise ValueError(f"{table} is TIMED: a held value written later is a rewrite to record")
-        import pyarrow as pa  # lazy: the optional data extra, as DuckDB
-
+        """Commit a world batch held in memory, an Arrow table, as `commit` commits a staged one,
+        with no staging file: its rows are judged once, against world as an open block
+        (`admitting`) has written it, and written in that block's transaction, or in one snapshot
+        of their own. A batch carrying KNOWN dates each row's change by its observed time, never by
+        this commit's clock. Refused by name as `admissible` and `commit` refuse."""
         with self._writer:
-            if table not in self._holding:
-                exists = f"SELECT EXISTS (FROM lake.world.{table})"
-                if not self.lake.execute(exists).fetchall()[0][0]:
-                    with stage(self.root, table, provider_id, rows, lag=lag) as staged:
-                        return self.commit(staged)
-                self._holding.add(table)
-            settled = (table, provider_id, lag)
-            held = self._settled.get(settled)
-            if held is not None and held.equals(rows):  # value by value, however it is chunked
-                return Committed(None, 0, {}, 0)
             data = admissible(table, provider_id, rows, legacy=lag is not None)
-            numbered = data.append_column("_row", pa.array(range(data.num_rows), pa.int64()))
-            rule = None if lag is None else (*lag, *self._lag(*lag))
-            run = self.lake.execute
-            self.lake.register("unheld_batch", numbered)
+            staged = Staged(uuid7(), table, provider_id, data.num_rows, lag)
+            self.lake.register(PUBLISHED, data)
             try:
-                judged = self._known(
-                    table, "unheld_batch", set(data.column_names), self.log.clock(), rule, "_row"
+                self._registered(staged, PUBLISHED)
+                rule = None if lag is None else self._lag(*lag)
+                count, dropped, rewritten = self._catalog_commit(
+                    staged, self.log.clock(), rule, PUBLISHED
                 )
-                run(f"CREATE OR REPLACE TEMP TABLE admitting AS {judged}").complete()
-                kept = [
-                    row[0]
-                    for row in run(
-                        "SELECT DISTINCT _row FROM temp.admitting"
-                        " WHERE fate NOT IN ('same', 'held_opening') ORDER BY _row"
-                    ).fetchall()
-                ]
-                if kept or lag is not None:  # as `_catalog_commit` checks a batch
-                    same = " AND ".join(f"t.{k} = n.{k}" for k in WORLD_KEYS[table])
-                    self._in_order(table, f"lake.world.{table}", same, lag)
             finally:
-                run("DROP TABLE IF EXISTS temp.admitting").complete()
-                self.lake.unregister("unheld_batch")
-            if not kept:
-                self._settled[settled] = rows
-                return Committed(None, 0, {}, 0)
-            with stage(self.root, table, provider_id, rows.take(kept), lag=lag) as staged:
-                return self.commit(staged)
+                self.lake.unregister(PUBLISHED)
+            if self._block is not None:  # the block's one commit repairs
+                return Committed(None, count, dropped, rewritten)
+            return self._committed(staged, count, dropped, rewritten)
+
+    def _committed(
+        self,
+        staged: Staged | StagedSet,
+        count: int,
+        dropped: dict[str, int],
+        rewritten: int,
+        *,
+        staging: bool = False,
+    ) -> Committed:
+        """What a commit outside a block did, once its owed event is appended and its `staging`
+        folder, if it had one, deleted."""
+        repair(self.log, self.lake, self._repaired)
+        if staging:
+            delete(self.root, self.log, f"staging/{staged.admission_id}")
+        if not count and not rewritten:
+            return Committed(None, 0, dropped, 0)
+        found = self.log.read(
+            "SELECT catalog_snapshot FROM admission WHERE admission_id = ?",
+            (staged.admission_id,),
+        )
+        self._repaired = int(found[0][0])  # the repair closed every gap up to this commit
+        return Committed(self._repaired, count, dropped, rewritten)
 
     def derive(
         self,
@@ -1008,17 +993,16 @@ class StorePort:
         with self._writer:
             self.lake.close()
 
-    def _registered(self, staged: Staged) -> None:
-        """Refuse an admission naming a lineage the log does not register in its family."""
-        parquet = self.root / "staging" / staged.admission_id / f"{staged.table}.parquet"
+    def _registered(self, staged: Staged, source: str) -> None:
+        """Refuse an admission naming a lineage the log does not register in its family; its rows
+        are read from `source`, a relation."""
         columns = {
-            row[0]
-            for row in self.lake.execute(f"DESCRIBE SELECT * FROM '{sql_path(parquet)}'").fetchall()
+            row[0] for row in self.lake.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
         }
         named = set() if staged.provider_id is None else {("provider", staged.provider_id)}
         for column, family in LINEAGES.items():
             if column in columns and column != "provider_id":
-                found = self.lake.execute(f"SELECT DISTINCT {column} FROM '{sql_path(parquet)}'")
+                found = self.lake.execute(f"SELECT DISTINCT {column} FROM {source}")
                 named |= {(family, value) for (value,) in found.fetchall()}
         for family, value in sorted(named):
             known = self.log.read(
@@ -1032,7 +1016,7 @@ class StorePort:
                 )
         if "market_id" in columns and staged.table != "market":
             missing = self.lake.execute(
-                f"SELECT n.market_id FROM '{sql_path(parquet)}' n ANTI JOIN"
+                f"SELECT n.market_id FROM {source} n ANTI JOIN"
                 " lake.world.market m USING (market_id) LIMIT 1"
             ).fetchone()
             if missing:
@@ -1050,29 +1034,30 @@ class StorePort:
         return lag_rule(json.loads(found[0][0]) if found else {}, name, version)
 
     def _catalog_commit(
-        self, staged: Staged, known: int, lag: tuple[int, str] | None
+        self, staged: Staged, known: int, lag: tuple[int, str] | None, source: str
     ) -> tuple[int, dict[str, int], int]:
         """One snapshot: the supersession of each world version the rows replace, then the rows and
         the later writes of held values, carrying the event it owes; the rows admitted, those
         dropped and the rewrites recorded, with no snapshot when it admits and records none. A
-        batch whose changed rows were all dropped is recorded with no snapshot (`_judged`)."""
+        batch whose changed rows were all dropped is recorded with no snapshot (`_judged`). Its
+        rows are read from `source`, a relation; a KNOWN column dates each one (`_known`)."""
         table, admission = staged.table, staged.admission_id
-        parquet = self.root / "staging" / admission / f"{table}.parquet"
-        source = f"read_parquet('{sql_path(parquet)}')"
         key = WORLD_KEYS[table]
         same = " AND ".join(f"t.{k} = n.{k}" for k in key)
         described = self.lake.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
-        columns = {row[0] for row in described}
+        columns = {row[0] for row in described} - {KNOWN}
+        carried = KNOWN if len(described) > len(columns) else ""
         target = f"lake.world.{table}"
         run = self.lake.execute
         rule = None if staged.lag is None or lag is None else (*staged.lag, *lag)
-        known_rows = self._known(table, source, columns, known, rule)
+        known_rows = self._known(table, source, columns, known, rule, carried)
         run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
         try:
             fates = dict(run("SELECT fate, count(*) FROM temp.admitting GROUP BY ALL").fetchall())
             dropped = {fate: int(count) for fate, count in fates.items() if fate in DROPPED}
             rewritten = int(fates.get(REWRITTEN, 0))
-            rows = "SELECT * EXCLUDE (fate, _held) FROM temp.admitting WHERE fate = 'admit'"
+            excluded = ", ".join(("fate", "_held", *([carried] if carried else [])))
+            rows = f"SELECT * EXCLUDE ({excluded}) FROM temp.admitting WHERE fate = 'admit'"
             parts, count = self._parts(table, rows)
             if count or staged.lag is not None:
                 self._in_order(table, target, same, staged.lag)
@@ -1094,10 +1079,7 @@ class StorePort:
         for batch in tables:
             if not batch.row_count:
                 continue
-            table = batch.table
-            parquet = self.root / "staging" / staged.admission_id / f"{table}.parquet"
-            rows = f"SELECT * FROM read_parquet('{sql_path(parquet)}')"
-            writes.append((table, rows))
+            writes.append((batch.table, f"SELECT * FROM {_staged_rows(self.root, batch)}"))
         count = sum(batch.row_count for batch in tables)
         if count:
             owed = self._owed(staged, known, None, count, {}, 0)
@@ -1109,10 +1091,6 @@ class StorePort:
     ) -> None:
         """Put the owed event and every table's writes in the same catalog transaction. A results
         table's keys are checked inside it, so the checks and the writes read one catalog state."""
-        written = {table for table, _ in writes}
-        self._settled = {
-            key: value for key, value in self._settled.items() if key[0] not in written
-        }
         block = self._block
         if block is not None:  # the block's transaction, which its end commits or rolls back
             block.writing = True
@@ -1247,7 +1225,9 @@ class StorePort:
         already holds), or a DROPPED reason. A row may carry `retracted` to withdraw its key's
         fact; a column it leaves out is null, and `retracted` false.
 
-        An observed row's times are both `known`. A session's recorded source observation takes
+        `known` is the commit's clock, or, where `carry` is KNOWN, each row's own observed time,
+        which then stands for it in every rule below. An observed row's times are both `known`.
+        A session's recorded source observation takes
         precedence; a first version generated by a named, versioned calendar rule is reference
         data known before every cutoff, with no invented observation time. A later correction
         has its recorded observation time or this admission's clock.
@@ -1269,7 +1249,7 @@ class StorePort:
         key is superseded only by a row its source wrote after the newest version's value was
         last written (its ordering time, `newest`), and a later write
         of that same value is REWRITTEN."""
-        at = f"make_timestamptz({known}::BIGINT)"
+        at = f"make_timestamptz({f'n.{carry}' if carry == KNOWN else known}::BIGINT)"
         key = WORLD_KEYS[table]
         declared = self._declared(table, columns)
         conformed = ", ".join(
@@ -1468,6 +1448,12 @@ class StorePort:
                 occurred_us=known,
             )
         )
+
+
+def _staged_rows(root: Path, staged: Staged) -> str:
+    """The relation of a staged admission's rows: its Parquet file under staging."""
+    parquet = root / "staging" / staged.admission_id / f"{staged.table}.parquet"
+    return f"read_parquet('{sql_path(parquet)}')"
 
 
 @contextmanager

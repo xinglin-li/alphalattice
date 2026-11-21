@@ -1023,15 +1023,13 @@ def select_research_inputs(
 ) -> None:
     """Fix what the bundle's research may see, once per binding: a selection at a moment world
     holds exactly the copy's market values, which the copy then reads through. None outside a
-    Host, or while world does not hold them as of now (the source's tables, which the Host admits
-    at their market read here, are not the copy's, or world holds another value of one of their
-    keys, another workspace's later one), and the copy reads its own tables."""
+    Host, or while world does not hold them as of now (the source's tables, which their stages
+    publish, are not the copy's, or world holds another value of one of their keys, another
+    workspace's later one), and the copy reads its own tables."""
     host = history.opened_log()
     copy = MarketDataRepository(destination / "source")
     if host is None or world_reads.selected(copy.path) is not None:
         return
-    with MarketDataRepository(source).market_reads():  # in the Host, admits the source's tables
-        pass
     cutoff = host[0].clock()
     if not world_reads.holds(copy.path, cutoff):
         return

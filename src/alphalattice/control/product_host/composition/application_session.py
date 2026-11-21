@@ -315,8 +315,10 @@ class WorkspaceApplicationSession:
                     )
                 upgrade.run()
             workspace_id = named_workspace_id(root)
-            if workspace_id is not None:  # a Host's open admits its market data and documents
-                world.admit_universe(root / "market-data.duckdb", workspace_id)
+            if workspace_id is not None:  # a Host's open publishes its market data and documents
+                # before it answers: what a stage wrote and committed before a crash, or what was
+                # written outside a Host since its last publish (world.publish_pending)
+                world.publish_pending(root / "market-data.duckdb", workspace_id)
                 world.admit_sectors(root / "market-data.duckdb", workspace_id)
                 evidence_world.admit(
                     runtime / "artifacts", runtime / "evidence-knowledge", workspace_id

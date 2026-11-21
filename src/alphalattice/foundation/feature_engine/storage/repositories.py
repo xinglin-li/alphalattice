@@ -2983,9 +2983,8 @@ class FeatureStateRepository(WorkspaceRepository):
         """Activate a revision while its writer reads the workspace, then admit it to world."""
         with world_reads.writing(
             self.path,
-            lambda: world.sector_marks(self.path),
+            lambda workspace_id: world.admit_sectors(self.path, workspace_id),
             dataset="sector",
-            admit=world.admit_sectors,
         ):
             return self._activate_sector_revision(
                 manifest=manifest, observations=observations, observed_at=observed_at
@@ -3403,12 +3402,7 @@ class FeatureStateRepository(WorkspaceRepository):
         if len(revisions) != 1:
             return None
         sector_by_listing = {str(row[0]): str(row[1]) for row in rows}
-        with world_reads.reading(
-            self.path,
-            lambda: world.sector_marks(self.path),
-            dataset="sector",
-            admit=world.admit_sectors,
-        ) as cursor:
+        with world_reads.reading(self.path) as cursor:
             if cursor is not None:
                 named = world.sector_map(
                     tuple(sector_by_listing),
@@ -3451,12 +3445,7 @@ class FeatureStateRepository(WorkspaceRepository):
         missing = [listing_id for listing_id in listing_ids if listing_id not in current]
         if missing:
             current.update(self.sector_classifications(missing, cutoff_us=cutoff_us))
-        with world_reads.reading(
-            self.path,
-            lambda: world.sector_marks(self.path),
-            dataset="sector",
-            admit=world.admit_sectors,
-        ) as cursor:
+        with world_reads.reading(self.path) as cursor:
             if cursor is not None:
                 cutoff = world_reads.LATEST if cutoff_us is None else cutoff_us
                 if (
@@ -3528,12 +3517,7 @@ class FeatureStateRepository(WorkspaceRepository):
         """
         if not listing_ids:
             return {}
-        with world_reads.reading(
-            self.path,
-            lambda: world.sector_marks(self.path),
-            dataset="sector",
-            admit=world.admit_sectors,
-        ) as cursor:
+        with world_reads.reading(self.path) as cursor:
             if cursor is not None:
                 return world.sector_map(
                     listing_ids,

@@ -7,6 +7,7 @@ import json
 import shutil
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from importlib.metadata import version
@@ -31,6 +32,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.chain import digest as text_digest
+from alphalattice.kernel.data_layer.store import KNOWN
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -83,9 +85,11 @@ def bars(
     manifest: UniverseManifest,
     days: tuple[date, ...],
     close: float,
-    offset: int,
+    offset: float,
+    symbols: Sequence[str] = SYMBOLS,
 ) -> None:
-    """Both listings' bars on `days`, written `offset` days after the suites' clock."""
+    """The listings' bars on `days`, both by default, written `offset` days after the suites'
+    clock."""
     rows = tuple(
         {"session_date": d.isoformat(), "open": 100.0, "high": 110.0, "low": 99.0}
         | {"close": close, "volume": 1_000_000}
@@ -93,7 +97,7 @@ def bars(
     )
     store.apply_validated_batch(
         manifest,
-        sanitize_payload(manifest, "fixture", dict.fromkeys(SYMBOLS, rows), SYMBOLS),
+        sanitize_payload(manifest, "fixture", dict.fromkeys(symbols, rows), tuple(symbols)),
         ingestion_id=f"day-{offset}",
         observed_at=NOW + timedelta(days=offset),
     )
@@ -161,25 +165,8 @@ def _universe_records_follow_their_rows(
     )
 
     profile = manifest.profile.market_profile_id
-    store.record_universe_bootstrap(
-        UniverseBootstrapRecord(
-            market_profile_id=profile,
-            t0_session=DAYS[1],
-            history_start=DAYS[0],
-            cohort_listing_ids=("listing-aapl", "listing-msft"),
-            cohort_hash="",
-            manifest_revision=manifest.revision_sha256,
-            candidate_manifest_hash="1" * 64,
-            qualification_policy_hash="2" * 64,
-            feature_input_policy_hash="3" * 64,
-            source_observed_at=NOW - timedelta(days=1),
-            admitted_at=NOW,
-            panel_snapshot_hash="4" * 64,
-            derivation="FIRST_QUALIFIED_PUBLICATION",
-        )
-    )
     port = history.store()
-    commit = port.commit
+    publish = port.publish
     journal = (
         "SELECT count(*) FROM event WHERE type IN"
         " ('universe.bootstrapped', 'universe.member_added', 'universe.member_removed')"
@@ -189,17 +176,17 @@ def _universe_records_follow_their_rows(
         """Admit, interrupted at the `member_sets`-th universe member batch."""
         seen = []
 
-        def counted(staged: Any) -> Any:
-            if staged.table == "universe_member":
-                seen.append(staged)
+        def counted(table: str, *args: Any) -> Any:
+            if table == "universe_member":
+                seen.append(table)
                 if len(seen) == member_sets:
                     raise KeyboardInterrupt
-            return commit(staged)
+            return publish(table, *args)
 
-        monkeypatch.setattr(port, "commit", counted)
+        monkeypatch.setattr(port, "publish", counted)
         with pytest.raises(KeyboardInterrupt):
             world.admit(database, "w1")
-        monkeypatch.setattr(port, "commit", commit)
+        monkeypatch.setattr(port, "publish", publish)
 
     def interrupted_at_its_end(update: Callable[[], None]) -> None:
         """Run `update`, the admission it ends with interrupted once its snapshot's writes are
@@ -223,7 +210,7 @@ def _universe_records_follow_their_rows(
         monkeypatch.setattr(port, "admitting", admitting)
 
     def snapshots(admit: bool) -> int:
-        """The catalog snapshots one whole admission takes."""
+        """The catalog snapshots one whole publish takes."""
         (before,) = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
         assert world.admit(database, "w1") is not None if admit else True
         (count,) = port.lake.execute(
@@ -231,6 +218,23 @@ def _universe_records_follow_their_rows(
         ).fetchone()
         return count
 
+    record = UniverseBootstrapRecord(
+        market_profile_id=profile,
+        t0_session=DAYS[1],
+        history_start=DAYS[0],
+        cohort_listing_ids=("listing-aapl", "listing-msft"),
+        cohort_hash="",
+        manifest_revision=manifest.revision_sha256,
+        candidate_manifest_hash="1" * 64,
+        qualification_policy_hash="2" * 64,
+        feature_input_policy_hash="3" * 64,
+        source_observed_at=NOW - timedelta(days=1),
+        admitted_at=NOW,
+        panel_snapshot_hash="4" * 64,
+        derivation="FIRST_QUALIFIED_PUBLICATION",
+    )
+    # its writer's publish, interrupted inside its snapshot, records nothing it names
+    interrupted_at_its_end(lambda: store.record_universe_bootstrap(record))
     interrupted_at(2)  # the manifest's member set is staged, the cohort's is not yet committed
     held = (world.universe_lineage("w1", profile), port.log.read(journal)[0][0])
     first = snapshots(admit=True)
@@ -316,6 +320,8 @@ def test_a_mapping_reverted_after_an_admission_that_took_none_of_it_is_admitted_
         "providers",
         "publication",
         "absent-file",
+        "resent",
+        "delta",
     ),
 )
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
@@ -347,20 +353,24 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             pytest.fail(f"the market summary exceeded the attrs limit: {error}")
         assert admitted is not None
         summary = _provider_summary("market", sorted([*providers, "fixture"]))
-        assert summary["marks"]
+        assert summary["journal"] is not None  # the journal it took through, which it left
         results = {key: summary[key] for key in ("rows", "dropped", "rewritten") if key in summary}
         assert results == admitted
-        assert world.admit(database, "w1") is None
+        assert world.admit(database, "w1") == {"rows": {}}
+        return
+    if focus == "resent":
+        _a_series_sent_again_unchanged_is_no_delta(store, manifest)
+        return
+    if focus == "delta":
+        _a_publish_takes_its_exact_keys_each_known_at_its_own_time(store, manifest, monkeypatch)
         return
     if focus == "publication":
         _universe_records_follow_their_rows(store, manifest, database, monkeypatch)
         return
-    if focus == "absent-file":  # an update that ends before its file exists has nothing to admit
+    if focus == "absent-file":  # an update that ends before its file exists published nothing
         absent = tmp_path / "unmade" / "market-data.duckdb"
         with world_reads.writing(
-            absent,
-            lambda: pytest.fail("the marks of a file that does not exist were read"),
-            admit=lambda *_: pytest.fail("a file that does not exist was admitted"),
+            absent, lambda _: pytest.fail("a file that does not exist was published")
         ):
             pass
         assert not absent.exists()
@@ -510,7 +520,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
                     )
                     == expected_hash
                 )
-        assert world.admit(other.path, "w2") is None
+        assert world.admit(other.path, "w2") == {"rows": {}}
         return
     set_id = world.admit_member_set(("listing-aapl", "listing-msft"), DAYS[1], "fixture")
     assert world.admit_member_set(("listing-msft", "listing-aapl"), DAYS[1], "fixture") == set_id
@@ -620,11 +630,15 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         for new in (sql.format_map(providers),)
     }
     lake.execute("DETACH old")
-    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # the last day corrected, and a new one
-    corrected = world.admit(database, "w1")
-    known = history.store().log.read(
-        "SELECT known_us FROM admission WHERE dataset = 'raw_bar' ORDER BY admission_seq DESC"
-    )[0][0]
+    # the last day corrected, and a new one: its writer's update publishes them at its end
+    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)
+    corrected = json.loads(
+        history.store().log.read(
+            "SELECT json_extract(attrs, '$.rows') FROM event WHERE type = 'admission'"
+            " AND json_extract(attrs, '$.dataset') = 'market' ORDER BY seq DESC LIMIT 1"
+        )[0][0]
+    )
+    known = world_reads.cutoff(NOW + timedelta(days=1))  # when its writer observed the correction
     read = "SELECT list(close ORDER BY session_date) FROM raw_bar_asof(?) WHERE listing_id = ?"
     aapl = world.world_listing("listing-aapl")
     seen = [lake.execute(read, (cutoff, aapl)).fetchone()[0] for cutoff in (known - 1, known)]
@@ -632,12 +646,12 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         "rows": {"session": 14, "listing": 2, "provider_symbol": 6, "raw_bar": 8}
         | {"corporate_action": 1}
     }
-    assert again is None
+    assert again == {"rows": {}}
     assert differ == {"raw_bar": (0, 0, 8), "corporate_action": (0, 0, 1)} | {
         "listing": (0, 0, 2),
         "provider_symbol": (0, 0, 2),
     }
-    assert corrected == {"rows": {"raw_bar": 4}}
+    assert corrected == {"raw_bar": 4}
     assert seen == [[101.0] * 4 + [103.0], [101.0] * 3 + [103.0] * 2]
     entry_day = date(2026, 8, 4)
     entry = replace(
@@ -768,7 +782,7 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     with store.market_reads(cutoff_us=cutoff) as (cursor, _tables):
         assert cursor.execute(f"SELECT count(*) FROM {before}").fetchone()[0] == 0
         assert cursor.execute(f"SELECT count(*) FROM {at}").fetchone()[0] == 2
-    assert world.admit(database, "w1") is None
+    assert world.admit(database, "w1") == {"rows": {}}
     assert (
         history.store().log.read("SELECT count(*) FROM event WHERE type = 'market.bar_revision'")[
             0
@@ -813,7 +827,17 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     sector = world.admit_sectors(database, "w1")
     summary = _provider_summary("sector", ["fixture"])
     assert summary["rows"] == sector["rows"]
-    assert summary["marks"] == world.sector_marks(database)
+    with store._connect(read_only=True) as connection:
+        marks = {
+            name: connection.execute(
+                f"SELECT [count(*), bit_xor(hash(t))] FROM {table} t"
+            ).fetchone()[0]
+            for name, table in (
+                ("current", "sector_classification_current"),
+                ("revision", "sector_classification_revision"),
+            )
+        }
+    assert summary["marks"] == marks
     assert world.admit_sectors(database, "w1") is None
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -952,22 +976,14 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     }
     seen_world.clear()
     if focus == "workspace":
-        assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Health Care"}
-        assert (
-            feature.current_sector_state(manifest).sector_by_listing_id["listing-aapl"]
-            == "Health Care"
+        # Another workspace's later classification is world's, which every read outside a
+        # writing stage takes.
+        assert feature.sector_classifications(("listing-aapl",)) == real_map(
+            ("listing-aapl",), session=date.max, cutoff_us=world_reads.LATEST
         )
-        assert (
-            source.read_sector_rows(listing_ids=("listing-aapl",))[0]["sector_name"]
-            == "Health Care"
-        )
-        with world_reads.reading(
-            database,
-            lambda: world.sector_marks(database),
-            dataset="sector",
-            admit=world.admit_sectors,
-        ) as served:
-            assert served is None  # A's older marks cannot authorize B's later classification.
+        assert seen_world
+        with world_reads.reading(database) as served:
+            assert served is not None
     connection = store._connect()
     try:
         connection.execute(
@@ -983,8 +999,11 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         )
         world.admit_sectors(database, "w1")
     seen_world.clear()
-    assert feature.sector_classifications(("listing-aapl",)) == {"listing-aapl": "Utilities"}
-    assert not seen_world  # the marks of an equal-time drop cannot make world serve the workspace
+    # every read outside a writing stage is world's, whatever its last sector admission dropped
+    assert feature.sector_classifications(("listing-aapl",)) == real_map(
+        ("listing-aapl",), session=date.max, cutoff_us=world_reads.LATEST
+    )
+    assert seen_world
     if focus == "identity":
         # Later world aliases cannot alter the old manifest's frozen listing facts.
         for provider, symbol in ((world.DISPLAY_ALIAS, "AAPL-NEW"), ("fixture", "AAPL.NEW")):
@@ -1091,12 +1110,13 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
-def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_write_first(
+def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reads are equal under both settings: world serves them while it holds the tables, the Host
-    admitting a write first and an update once, and the workspace answers an unadmitted write."""
+    """World serves every read once the Host's open has published; a write publishes at its end,
+    a stage's own reads take its buffer while other threads read world, it publishes once, and a
+    write no Host has published is read by no one outside its stage."""
     store, manifest, database = workspace
     ids = ["listing-aapl", "listing-msft"]
     uses = {"world": 0}
@@ -1129,7 +1149,8 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         )[0][0]
 
     monkeypatch.setattr(world_reads, "relations", counted)
-    host = [read()]  # the Host admits the unadmitted tables first
+    world.publish_pending(store.path, "w1")  # the Host's open publishes what was written before it
+    host = [read()]
     assert store.raw_bars("listing-aapl", cutoff_us=0) == ()
     receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
     checked = []
@@ -1151,19 +1172,19 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
         )
     assert [value for value, _calls in checked] == [receipt] * 3
     assert all(calls > 0 for _value, calls in checked)
-    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)
+    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # a write publishes at its update's end
     written = [read()]
     before = admissions()
-    # an update writing and reading listing by listing, its commits in a retained instance's
-    # WAL; the held file defers the admission to the first read after it closes
+    # a stage writing and reading listing by listing, its commits in a retained instance's WAL:
+    # it reads its buffer, and publishes once at its end, through the retained instance
     with store.database.retain(read_only=False):
         with store.writing():
             bars(store, manifest, (NEW,), 104.0, 2)
             inside = read()
+            with ThreadPoolExecutor(1) as request:  # a Host request meanwhile reads world
+                elsewhere = request.submit(read).result()
             bars(store, manifest, (NEW,), 105.0, 3)
         held = (admissions() - before, read())
-    after = read()  # the first read after the file closes admits
-    updated = (admissions() - before, after)
     # Import one source's live, delisted and re-listed intervals together. The real
     # StorePort/catalog boundary must retain their values and historical opening state.
     with store._connect() as connection:
@@ -1226,14 +1247,15 @@ def test_world_serves_the_reads_while_it_holds_the_tables_and_the_host_admits_a_
     history.release_history()
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(database.parent.parent / "data"))
     child = [read()]
-    bars(store, manifest, (NEW,), 106.0, 4)  # a write no Host has admitted
+    bars(store, manifest, (NEW,), 106.0, 4)  # a write no Host has published
     unseen = [read()]
     assert [read_[1] for read_ in (host[0], written[0], child[0])] == [4, 4, 4]
     assert written[0][0][0]["listing-aapl"][-1].close == 103.0
     assert (inside[0][0]["listing-aapl"][-1].close, inside[1]) == (104.0, 0)
-    assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (0, 105.0, 0)
-    assert (updated[0], updated[1][0][0]["listing-aapl"][-1].close, updated[1][1]) == (1, 105.0, 4)
-    assert unseen[0][1] == 0  # a write no Host admitted is not served by world
+    assert (elsewhere[0][0]["listing-aapl"][-1].close, elsewhere[1]) == (103.0, 4)
+    assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (1, 105.0, 4)
+    # world serves it, without the write no Host published
+    assert (unseen[0][0][0]["listing-aapl"][-1].close, unseen[0][1]) == (105.0, 4)
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
@@ -1295,6 +1317,7 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
     unmoved by a later correction; a copy bound once world holds another value of one of its keys
     gets no selection, and it and every copy under the workspace setting read their own tables."""
     store, manifest, database = workspace
+    world.publish_pending(store.path, "w1")  # the Host's open publishes what was written before it
     root = database.parent
     digest = file_digest(database)
     bundles = [
@@ -1315,8 +1338,7 @@ def test_a_research_copy_reads_world_as_of_its_selection_and_its_own_tables_with
         copies.append(MarketDataRepository(copy.parent))
     select_research_inputs(copies[0].path.parents[1], root, bundles[0], "manifest")
     select_research_inputs(copies[0].path.parents[1], root, bundles[0], "manifest")  # once
-    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # a correction world admits later
-    world.admit(database, "w1")
+    bars(store, manifest, (DAYS[-1], NEW), 103.0, 1)  # a correction its writer publishes
     # bound after it: its marks are an admission's, but world now holds 103 for its 07-30 bar
     select_research_inputs(copies[1].path.parents[1], root, bundles[1], "manifest")
     uses = {"world": 0}
@@ -1391,3 +1413,178 @@ def test_a_selection_before_a_first_use_reads_its_members_though_world_saw_them_
     finally:
         history.release_history()
     assert members == manifest.listings
+
+
+def _a_series_sent_again_unchanged_is_no_delta(
+    store: MarketDataRepository, manifest: UniverseManifest
+) -> None:
+    """A provider sends its adjusted series again each day. The closes it sends unchanged are not
+    the stage's delta: its publish records no rewrite of them in world. One changed close is the
+    delta's one bar, a new version."""
+    world.publish_pending(store.path, "w1")
+    port = history.store()
+    dividend = CorporateActionEvent("listing-aapl", "fixture", DAYS[2], "CASH_DIVIDEND", None, 0.5)
+    count = "SELECT count(*) FROM lake.world.{} WHERE table_id = world_table_id('raw_bar')"
+
+    def resend(day: int, last: float) -> tuple[int, int, int]:
+        audit_one(
+            store,
+            manifest,
+            listing_id="listing-aapl",
+            provider="fixture",
+            actions=(dividend,),
+            adjusted_closes=(
+                *(
+                    ProviderAdjustedClosePoint("listing-aapl", "fixture", d, 100.5)
+                    for d in DAYS[:-1]
+                ),
+                ProviderAdjustedClosePoint("listing-aapl", "fixture", DAYS[-1], last),
+            ),
+            history_start=DAYS[0],
+            history_end=DAYS[-1],
+            observed_at=NOW + timedelta(days=day),
+        )
+        with store._connect(read_only=True) as connection:
+            journal = connection.execute("SELECT count(*) FROM market_delta").fetchone()[0]
+        return (
+            port.lake.execute(count.format("rewritten")).fetchone()[0],
+            port.lake.execute(count.format("superseded")).fetchone()[0],
+            journal,
+        )
+
+    assert resend(1, 100.5) == (0, 0, 0)
+    assert resend(2, 100.75) == (0, 1, 0)
+
+
+def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
+    store: MarketDataRepository, manifest: UniverseManifest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stage's publish copies only what its writers appended, for each write sequence the journal
+    meets: a correction, the same correction sent again, its revert, and the correction repeated
+    after its revert, of a bar and of an action, copy their changed rows and only the revisions
+    their inserts added; corrections days apart leave the day between unread; and two reference
+    writes before one publish keep each row at its own write's time, never a later write's or
+    bar's, a new session at its own day's bars'. A Host's open with nothing pending opens the file
+    read-only."""
+    from alphalattice.foundation.market_data_ops.sources.manifest import ManifestListing
+
+    world.publish_pending(store.path, "w1")
+    opened: list[bool] = []
+    open_database = world.open_workspace_database
+
+    def opening(path: Path, *, read_only: bool) -> Any:
+        opened.append(read_only)
+        return open_database(path, read_only=read_only)
+
+    monkeypatch.setattr(world, "open_workspace_database", opening)
+    assert world.publish_pending(store.path, "w1") is None  # the next open: nothing pending,
+    assert opened == [True]  # found read-only, the file never opened writable
+    read: dict[str, int] = {}
+    port, staged = history.store(), {}
+    publish = port.publish
+
+    def staging(table: str, provider: str, batch: Any, lag: Any) -> Any:
+        if not read:  # the delta the publish read, which its first batch is built from
+            counts = " UNION ALL ".join(
+                f"SELECT '{name}', count(*) FROM {world.WORKSPACE}.{name}"
+                for name in (*world.DELTA, *world.REVISED)
+            )
+            read.update(port.lake.execute(counts).fetchall())
+        staged.setdefault(table, []).extend(batch.to_pylist())
+        return publish(table, provider, batch, lag)
+
+    monkeypatch.setattr(port, "publish", staging)
+
+    def appended(table: str) -> int:
+        with store._connect(read_only=True) as connection:
+            return connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+    dividend = CorporateActionEvent("listing-aapl", "fixture", DAYS[2], "CASH_DIVIDEND", None, 0.5)
+    closes = tuple(ProviderAdjustedClosePoint("listing-aapl", "fixture", d, 100.5) for d in DAYS)
+
+    def action(amount: float, offset: float) -> None:
+        audit_one(
+            store,
+            manifest,
+            listing_id="listing-aapl",
+            provider="fixture",
+            actions=(replace(dividend, cash_amount=amount),),
+            adjusted_closes=closes,
+            history_start=DAYS[0],
+            history_end=DAYS[-1],
+            observed_at=NOW + timedelta(days=offset),
+        )
+
+    bar, act = (
+        ("raw_daily_bar_current", "bar_revision"),
+        (
+            "corporate_action_current",
+            "corporate_action_revision",
+        ),
+    )
+    sequences = (  # each write sequence: its tables, its write, the rows changed, revisions added
+        ("a bar correction", bar, lambda: bars(store, manifest, DAYS[1:2], 102.0, 1.1), 2, 2),
+        ("sent again", bar, lambda: bars(store, manifest, DAYS[1:2], 102.0, 1.2), 0, 0),
+        ("its revert", bar, lambda: bars(store, manifest, DAYS[1:2], 101.0, 1.3), 2, 2),
+        (
+            "repeated after its revert",
+            bar,
+            lambda: bars(store, manifest, DAYS[1:2], 102.0, 1.4),
+            2,
+            0,
+        ),
+        ("an action correction", act, lambda: action(0.6, 1.5), 1, 1),
+        ("sent again", act, lambda: action(0.6, 1.6), 0, 0),
+        ("its revert", act, lambda: action(0.5, 1.7), 1, 1),
+        ("repeated after its revert", act, lambda: action(0.6, 1.8), 1, 0),
+    )
+    for name, (current, revisions), write, changed, added in sequences:
+        before = appended(revisions)
+        read.clear()
+        write()
+        took = (read.get(current, 0), read.get(revisions, 0), appended(revisions) - before)
+        assert (name, current, *took) == (name, current, changed, added, added)  # copied: appended
+    read.clear()
+    nvda = ManifestListing(
+        listing_id="listing-nvda", symbol="NVDA", mic="XNAS", provider_symbol="NVDA"
+    )
+    added = replace(manifest, listings=(*manifest.listings, nvda), revision_sha256="b" * 64)
+    later = NOW.date() + timedelta(days=1)  # a second write's mappings, effective a day later
+    again = replace(
+        added, profile=replace(added.profile, manifest_as_of=later), revision_sha256="c" * 64
+    )
+    with store.writing():
+        first = datetime.now(UTC)
+        store.bootstrap(added)
+        second = datetime.now(UTC)
+        store.bootstrap(again)
+        third = datetime.now(UTC)
+        bars(store, manifest, (NEW,), 104.0, 2)
+        bars(store, manifest, (DAYS[0], DAYS[-1]), 103.0, 3)
+        bars(store, added, DAYS[:1], 105.0, 10_000, ("NVDA",))
+    assert read == {  # two days apart, NEW's session and NVDA's first bar; day 2 unread
+        "raw_daily_bar_current": 7,
+        "provider_adjusted_close_current": 2,  # AAPL's closes of its two corrected bars
+        "corporate_action_current": 0,
+        "bar_revision": 4,
+        "corporate_action_revision": 0,
+    }
+    nvda_id, us = world.world_listing("listing-nvda"), world._us
+    known = {
+        (table, row.get("valid_from")): row[KNOWN]
+        for table in ("listing", "provider_symbol")
+        for row in staged[table]
+        if row["listing_id"] == nvda_id
+    }
+    written = {key: us(first) <= at <= us(second) for key, at in known.items()}
+    assert written == {  # the first write's rows at its time; the second's mapping at the second's
+        **dict.fromkeys(known, True),
+        ("provider_symbol", later.isoformat()): False,
+    }
+    assert us(second) <= known["provider_symbol", later.isoformat()] <= us(third)
+    sessions = {row["session_date"]: row[KNOWN] for row in staged["session"]}
+    assert {day: sessions.get(day.isoformat()) for day in (DAYS[0], DAYS[-1], NEW)} == {
+        DAYS[0]: us(NOW + timedelta(days=3)),  # its earliest observation, AAPL's and MSFT's
+        DAYS[-1]: us(NOW + timedelta(days=3)),
+        NEW: us(NOW + timedelta(days=2)),  # its own bars', never the later corrections'
+    }

@@ -1711,17 +1711,14 @@ class WorkspacePreparationApplication:
             existing = self._load(task.task_id, stage, optional=True)
             if existing is None:
                 # A stage that writes market data is one market data update: its reads take the
-                # workspace's own tables, and the Host admits once, when the stage has released
-                # the file, not after each listing's writes
+                # workspace's own tables, its buffer, and the Host publishes what it wrote once,
+                # at the stage's end, not after each listing's writes
                 market = MarketDataRepository(self.session.workspace)
-                update = market.writing() if stage in STAGES[1:3] else nullcontext(lambda: None)
-                # The stage opens the market database call by call: one instance serves them.
-                with update as mark, WorkspaceDatabase(self.session.workspace).hold():
-                    try:
-                        result = self._perform(task, plan, stage, execution)
-                    finally:
-                        if market.path.exists():  # a stage refused before making it has no marks
-                            mark()
+                update = market.writing() if stage in STAGES[1:3] else nullcontext()
+                # The stage opens the market database call by call: one instance serves them, and
+                # its publish too, which ends inside the hold.
+                with WorkspaceDatabase(self.session.workspace).hold(), update:
+                    result = self._perform(task, plan, stage, execution)
                 if isinstance(result, StageExecutionResult):
                     return result
                 existing = self._save(task, stage, result)

@@ -2008,25 +2008,21 @@ class WorkspaceDataUpdateApplication:
             if stage == _STAGES[0]
             else WorkspaceDatabase(self.session.workspace).retain(read_only=False)
         )
-        # one market data update per writing step: its reads take the workspace, its marks are
-        # read through the step's retained instance when its writes end, and the Host admits once,
-        # when the step has released the file
+        # one market data update per writing step: its reads take the workspace, its buffer, and
+        # the Host publishes what it wrote once, through the step's retained instance, at its end
         update = (
-            nullcontext(lambda: None)
+            nullcontext()
             if stage == _STAGES[0]
             else MarketDataRepository(self.session.workspace).writing()
         )
-        with update as mark, scope:
+        with scope, update:
             rule_task = decision_task or (bound_to[0].task_id if bound_to else None)
             diagnose = (
                 self.data_rule(rule_task)
                 if self.data_rule and rule_task and stage == _STAGES[1]
                 else None
             )
-            try:
-                return self._step(plan, stage, cancelled, bound_to, diagnose, rule_task)
-            finally:
-                mark()
+            return self._step(plan, stage, cancelled, bound_to, diagnose, rule_task)
 
     def _step(
         self,

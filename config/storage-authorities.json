@@ -16,6 +16,18 @@
     },
     {
       "tables": [
+        "market_delta"
+      ],
+      "database": "workspace",
+      "semantic_role": "journal of committed market writes world has not published, written in each write's own transaction",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "market_data_ops; emptied through each publish once world has committed it",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
         "market_profile",
         "listing",
         "provider_symbol_mapping",

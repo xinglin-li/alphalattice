@@ -16,41 +16,38 @@ from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
     """Admit older workspace tables through the shared, backed-up first-start protocol."""
 
-    def source(workspace: Path) -> tuple[MarketDataRepository, dict[str, list[int]]] | None:
+    def source(workspace: Path) -> MarketDataRepository | None:
         repository = MarketDataRepository(workspace, universe_reader="workspace")
         if not repository.path.is_file():
             return None
-        with hold_workspace_database(repository.path):
-            with repository.database.read_transaction() as connection:
-                created = connection.execute(
-                    "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
-                    " AND schema_name = 'main' AND table_name = 'market_profile'"
-                ).fetchone()
-            if created == (world.WORKSPACE_MARKET_FORMAT,):
-                # A current workspace copied to another machine uses ordinary market admission.
-                return None
-            marks = repository._market_marks()
-        if not marks:
-            raise DataError(
-                "Restore the older workspace's complete market tables before upgrading.",
-                code="upgrade.refused",
-            )
-        if not any(
-            marks[table][0]
-            for table in (
-                "raw_daily_bar_current",
-                "corporate_action_current",
-                "provider_symbol_mapping",
-            )
+        with (
+            hold_workspace_database(repository.path),
+            repository.database.read_transaction() as connection,
         ):
-            return None
-        return repository, marks
+            created, tables = connection.execute(
+                "SELECT max(comment) FILTER (WHERE table_name = 'market_profile'),"
+                " list(table_name) FROM duckdb_tables()"
+                " WHERE database_name = current_database() AND schema_name = 'main'"
+            ).fetchone()
+            if created == world.WORKSPACE_MARKET_FORMAT:
+                # A current workspace copied to another machine is published whole by its
+                # first publish there (world.publish).
+                return None
+            if not set(tables or ()) >= set(world.TABLES):
+                raise DataError(
+                    "Restore the older workspace's complete market tables before upgrading.",
+                    code="upgrade.refused",
+                )
+            rows = connection.execute(
+                "SELECT (SELECT count(*) FROM raw_daily_bar_current)"
+                " + (SELECT count(*) FROM corporate_action_current)"
+                " + (SELECT count(*) FROM provider_symbol_mapping)"
+            ).fetchone()[0]
+        return repository if rows else None
 
     def holds(workspace: Path) -> bool:
-        old = source(workspace)
-        return old is not None and not world_reads._admitted(
-            old[1], workspace_id=identify(workspace)
-        )
+        identity = identify(workspace)
+        return source(workspace) is not None and (identity is None or not world.published(identity))
 
     def step(runner: UpgradeRunner) -> None:
         for workspace in runner.workspaces:
@@ -63,7 +60,7 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
                     "Restore the market workspace's manifest identity.", code="upgrade.refused"
                 )
             history.workspace_on_log(workspace, workspace.name, identity, root=runner.root)
-            world.admit(old[0].path, identity)
+            world.admit(old.path, identity)
             port = history.store()
             if port is None:
                 raise DataError(
@@ -78,9 +75,9 @@ def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:
         for workspace in runner.workspaces:
             old = source(workspace)
             if old is not None and not world_reads.holds(
-                old[0].path,
+                old.path,
                 world_reads.LATEST,
-                listings=old[0]._listings("SELECT listing_id FROM listing", ()),
+                listings=old._listings("SELECT listing_id FROM listing", ()),
             ):
                 return False
         return True

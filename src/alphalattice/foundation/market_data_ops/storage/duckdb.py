@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from io import RawIOBase
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Final, Protocol, TypeVar, cast
 
 import duckdb
 import pyarrow as pa
@@ -156,6 +156,116 @@ def _first_by_key(
     for item in items:
         collapsed.setdefault(item[key_index], item)
     return list(collapsed.values())
+
+
+MARKET_DELTA: Final = (
+    "CREATE SEQUENCE IF NOT EXISTS market_delta_seq",
+    """
+    CREATE TABLE IF NOT EXISTS market_delta (
+        seq BIGINT NOT NULL,
+        kind VARCHAR NOT NULL,
+        listing_id VARCHAR,
+        provider VARCHAR,
+        day DATE,
+        scope VARCHAR,
+        observed_at TIMESTAMP NOT NULL,
+        revision_id VARCHAR
+    )
+    """,
+)
+"""The market data writers' journal of what they wrote that world has not published: rows written
+in each write's own transaction, so it holds exactly the committed, unpublished writes. A row
+names its kind (world.JOURNAL_KINDS), when its writer observed the write, and the exact key it
+changed: a listing, provider and day of bars or actions; a bar or action revision it appended, by
+its `revision_id`; under its market profile (`scope`), a listing whose own row changed, or one of
+its provider symbol mappings, by provider and effective date (`day`); or a market profile whose
+profile-wide reference or universe rows changed (`listing_id` NULL). A publish takes the rows it
+names, in `seq` order, and deletes the journal through the last; no PRIMARY KEY, as a table
+written in bulk."""
+
+COLUMNS: Final = "seq, kind, listing_id, provider, day, scope, observed_at, revision_id"
+
+
+def record_delta(
+    connection: duckdb.DuckDBPyConnection,
+    kind: str,
+    rows: str,
+    date_column: str,
+    observed_at: datetime,
+) -> None:
+    """Journal (MARKET_DELTA) the market rows a write changed, in the write's open transaction:
+    `rows`, a relation of their listing_id, provider and `date_column`, one journal row per
+    distinct key."""
+    for statement in MARKET_DELTA:
+        connection.execute(statement)
+    connection.execute(
+        f"INSERT INTO market_delta ({COLUMNS}) SELECT nextval('market_delta_seq'), ?, listing_id,"
+        f" provider, day, NULL, ?, NULL FROM (SELECT DISTINCT listing_id, provider,"
+        f" {date_column} AS day FROM ({rows}))",
+        [kind, _utc_naive(observed_at)],
+    )
+
+
+def record_scope(
+    connection: duckdb.DuckDBPyConnection,
+    kind: str,
+    market_profile_id: str,
+    observed_at: datetime,
+    keys: Sequence[tuple[str, str | None, date | None]] = (),
+) -> None:
+    """Journal (MARKET_DELTA) a write of a market profile's reference or universe rows, in the
+    write's open transaction: one row per key it changed, a listing's own row (listing, None,
+    None) or a provider symbol mapping (listing, provider, effective date), or one profile-wide
+    row without `keys`."""
+    for statement in MARKET_DELTA:
+        connection.execute(statement)
+    connection.executemany(
+        f"INSERT INTO market_delta ({COLUMNS})"
+        " VALUES (nextval('market_delta_seq'), ?, ?, ?, ?, ?, ?, NULL)",
+        [[kind, *key, market_profile_id, _utc_naive(observed_at)] for key in keys]
+        or [[kind, None, None, None, market_profile_id, _utc_naive(observed_at)]],
+    )
+
+
+def record_revisions(
+    connection: duckdb.DuckDBPyConnection,
+    kind: str,
+    revision_ids: Sequence[str],
+    observed_at: datetime,
+) -> None:
+    """Journal (MARKET_DELTA) the bar or action revisions a write appended, by their ids, in the
+    write's open transaction: only those its insert added, never one the table already held, as a
+    correction repeated after its revert names again."""
+    if not revision_ids:
+        return
+    for statement in MARKET_DELTA:
+        connection.execute(statement)
+    connection.executemany(
+        f"INSERT INTO market_delta ({COLUMNS})"
+        " VALUES (nextval('market_delta_seq'), ?, NULL, NULL, NULL, NULL, ?, ?)",
+        [[kind, _utc_naive(observed_at), revision_id] for revision_id in revision_ids],
+    )
+
+
+def _record_events(
+    connection: duckdb.DuckDBPyConnection,
+    events: Sequence[CorporateActionEvent],
+    observed_at: datetime,
+) -> None:
+    """Journal the actions a write changed one by one (`record_delta`)."""
+    if not events:
+        return
+    name = "changed_action_keys"
+    with _staged_rows(
+        connection,
+        name,
+        {
+            "listing_id": pa.array([e.listing_id for e in events], pa.string()),
+            "provider": pa.array([e.provider for e in events], pa.string()),
+            "effective_date": pa.array([e.effective_date for e in events], pa.date32()),
+        },
+    ):
+        record_delta(connection, "actions", f"FROM {name}", "effective_date", observed_at)
 
 
 class _SourcePrefixHashSink(RawIOBase):
@@ -609,7 +719,7 @@ _Method = TypeVar("_Method", bound=Callable[..., Any])
 def market_update(store: Callable[[Any], MarketDataRepository]) -> Callable[[_Method], _Method]:
     """Run a method as one market data update of the repository ``store`` names on its instance
     (``MarketDataRepository.writing``): an update owner's loop reads its own writes from the
-    workspace, and the Host admits them into world once when the outermost update ends."""
+    workspace, and the Host publishes them into world once when the outermost update ends."""
 
     def wrap(method: _Method) -> _Method:
         @functools.wraps(method)
@@ -664,19 +774,13 @@ class MarketDataRepository(WorkspaceRepository):
             else int(datetime.now(UTC).timestamp() * 1_000_000)
         )
 
-    def _sync_universe(self) -> None:
-        """Let the shared market admission edge admit a newly written universe."""
-        if self._universe_reader != "workspace":
-            with world_reads.reading(self.path, self._market_marks):
-                pass
-
     @contextmanager
     def _universe_reads(self) -> Iterator[tuple[Any, str] | None]:
         """Use the market admission edge for world or the explicit rollback reader."""
         if self._universe_reader == "workspace":
             yield None
             return
-        with world_reads.reading(self.path, self._market_marks) as connection:
+        with world_reads.reading(self.path) as connection:
             if connection is None:
                 yield None
                 return
@@ -711,7 +815,7 @@ class MarketDataRepository(WorkspaceRepository):
         if _connection is not None and not copy:
             yield _connection, world_reads.WORKSPACE
             return
-        with world_reads.reading(self.path, self._market_marks) as world:
+        with world_reads.reading(self.path) as world:
             cutoff = world_reads.selected(self.path) if copy else cutoff_us
             if world is not None and cutoff is not None:
                 held = cutoff if copy else None  # a copy sees what world held at its selection
@@ -735,23 +839,21 @@ class MarketDataRepository(WorkspaceRepository):
         finally:
             connection.close()
 
-    def writing(self) -> AbstractContextManager[Callable[[], None]]:
-        """One market data update of this workspace: its reads take the workspace's tables, and
-        the Host admits them into world once when the outermost update ends
-        (``world_reads.writing``)."""
-        return world_reads.writing(self.path, self._market_marks)
+    def writing(self) -> AbstractContextManager[None]:
+        """One market data update of this workspace: its reads take the workspace's tables, the
+        stage's buffer, and when the outermost update ends the Host publishes into world what its
+        writers journaled (``world_reads.writing``, `_publish`)."""
+        return world_reads.writing(self.path, self._publish)
 
-    def _market_marks(self) -> dict[str, list[int]]:
-        """The workspace's market tables' marks, as world's admission reads them; none while one
-        of them is absent, which no admission matches."""
-        with self._connect(read_only=True) as connection:
-            held = connection.execute(
-                "SELECT table_name FROM duckdb_tables() WHERE database_name = current_database()"
-            ).fetchall()
-            if not {row[0] for row in held} >= set(world_tables.TABLES):
-                return {}
-            return world_tables.table_marks(connection.execute)
+    def _publish(self, workspace_id: str) -> dict[str, Any] | None:
+        """Publish into world, as `workspace_id`'s, what this workspace's writers journaled
+        (MARKET_DELTA) and world has not published, through the instance of the file this process
+        holds, if it holds one, and empty the journal through what it took
+        (``world.publish``); None when the journal names nothing."""
+        with self._connect() as connection:
+            return world_tables.publish(self.path, connection, workspace_id)
 
+    @market_update(lambda self: self)
     def bootstrap(self, manifest: UniverseManifest) -> None:
         """Create or upgrade market-data tables for the supplied manifest.
 
@@ -1829,7 +1931,9 @@ class MarketDataRepository(WorkspaceRepository):
             # When a Panel is stale is Feature's rule alone: a Feature build runs it after
             # this bootstrap and republishes the projection with it.
             profile = manifest.profile
-            connection.execute(
+            connection.execute("BEGIN TRANSACTION")  # the reference rows and their journal row
+            touched: set[str] = set()
+            changed = connection.execute(
                 """
                 INSERT INTO market_profile (
                     market_profile_id, display_name, market, currency, calendar_id, provider,
@@ -1840,6 +1944,13 @@ class MarketDataRepository(WorkspaceRepository):
                     provider = excluded.provider,
                     daily_price_basis = excluded.daily_price_basis,
                     data_validity_class = excluded.data_validity_class
+                WHERE ROW(
+                    market_profile.display_name, market_profile.provider,
+                    market_profile.daily_price_basis, market_profile.data_validity_class
+                ) IS DISTINCT FROM ROW(
+                    excluded.display_name, excluded.provider,
+                    excluded.daily_price_basis, excluded.data_validity_class
+                )
                 """,
                 [
                     profile.market_profile_id,
@@ -1851,8 +1962,8 @@ class MarketDataRepository(WorkspaceRepository):
                     profile.daily_price_basis,
                     profile.data_validity_class,
                 ],
-            )
-            connection.execute(
+            ).fetchone()[0]
+            changed += connection.execute(
                 """
                 INSERT INTO universe_manifest (
                     manifest_id, market_profile_id, as_of_date, revision_sha256,
@@ -1876,6 +1987,26 @@ class MarketDataRepository(WorkspaceRepository):
                     research_use_class = excluded.research_use_class,
                     qualification_obligations_json = excluded.qualification_obligations_json,
                     membership_sha256 = excluded.membership_sha256
+                WHERE ROW(
+                    universe_manifest.as_of_date, universe_manifest.revision_sha256,
+                    universe_manifest.listing_count, universe_manifest.universe_membership_basis,
+                    universe_manifest.is_point_in_time_historical,
+                    universe_manifest.membership_fingerprint,
+                    universe_manifest.qualification_policy_hash,
+                    universe_manifest.universe_policy_type,
+                    universe_manifest.universe_components_json,
+                    universe_manifest.survivorship_bias_warning,
+                    universe_manifest.research_use_class,
+                    universe_manifest.qualification_obligations_json,
+                    universe_manifest.membership_sha256
+                ) IS DISTINCT FROM ROW(
+                    excluded.as_of_date, excluded.revision_sha256, excluded.listing_count,
+                    excluded.universe_membership_basis, excluded.is_point_in_time_historical,
+                    excluded.membership_fingerprint, excluded.qualification_policy_hash,
+                    excluded.universe_policy_type, excluded.universe_components_json,
+                    excluded.survivorship_bias_warning, excluded.research_use_class,
+                    excluded.qualification_obligations_json, excluded.membership_sha256
+                )
                 """,
                 [
                     manifest.manifest_id,
@@ -1899,7 +2030,7 @@ class MarketDataRepository(WorkspaceRepository):
                     ),
                     _membership_digest(listing.listing_id for listing in manifest.listings),
                 ],
-            )
+            ).fetchone()[0]
             # Four inserts per listing became four statements per listing; a
             # 466-listing manifest issued 1,864 of them, each taking its own
             # index probe for its conflict clause. The four relations below are
@@ -1943,17 +2074,26 @@ class MarketDataRepository(WorkspaceRepository):
                         ),
                     },
                 ) as stage:
-                    connection.execute(
-                        f"""
-                        INSERT INTO listing
-                        SELECT listing_id, ?, display_symbol, mic, issuer_external_id
-                        FROM {stage}
-                        ON CONFLICT (listing_id) DO UPDATE SET
-                            display_symbol = excluded.display_symbol,
-                            mic = excluded.mic,
-                            issuer_external_id = excluded.issuer_external_id
-                        """,
-                        [profile.market_profile_id],
+                    touched.update(
+                        (row[0], None, None)
+                        for row in connection.execute(
+                            f"""
+                            INSERT INTO listing
+                            SELECT listing_id, ?, display_symbol, mic, issuer_external_id
+                            FROM {stage}
+                            ON CONFLICT (listing_id) DO UPDATE SET
+                                display_symbol = excluded.display_symbol,
+                                mic = excluded.mic,
+                                issuer_external_id = excluded.issuer_external_id
+                            WHERE ROW(
+                                listing.display_symbol, listing.mic, listing.issuer_external_id
+                            ) IS DISTINCT FROM ROW(
+                                excluded.display_symbol, excluded.mic, excluded.issuer_external_id
+                            )
+                            RETURNING listing_id
+                            """,
+                            [profile.market_profile_id],
+                        ).fetchall()
                     )
                 with _staged_rows(
                     connection,
@@ -1963,14 +2103,18 @@ class MarketDataRepository(WorkspaceRepository):
                         "provider_symbol": pa.array([str(row[1]) for row in mapping_rows]),
                     },
                 ) as stage:
-                    connection.execute(
-                        f"""
-                        INSERT INTO provider_symbol_mapping
-                        SELECT listing_id, ?, provider_symbol, ?, NULL, 'ACTIVE'
-                        FROM {stage}
-                        ON CONFLICT (listing_id, provider, effective_from) DO NOTHING
-                        """,
-                        [profile.provider, profile.manifest_as_of],
+                    touched.update(
+                        (row[0], row[1], row[2])
+                        for row in connection.execute(
+                            f"""
+                            INSERT INTO provider_symbol_mapping
+                            SELECT listing_id, ?, provider_symbol, ?, NULL, 'ACTIVE'
+                            FROM {stage}
+                            ON CONFLICT (listing_id, provider, effective_from) DO NOTHING
+                            RETURNING listing_id, provider, effective_from
+                            """,
+                            [profile.provider, profile.manifest_as_of],
+                        ).fetchall()
                     )
                 with _staged_rows(
                     connection,
@@ -1996,14 +2140,28 @@ class MarketDataRepository(WorkspaceRepository):
                     "manifest_listing_stage",
                     {"listing_id": pa.array([str(row[0]) for row in membership_rows])},
                 ) as stage:
-                    connection.execute(
+                    changed += connection.execute(
                         f"""
                         INSERT INTO universe_manifest_listing
                         SELECT ?, listing_id FROM {stage}
                         ON CONFLICT (manifest_id, listing_id) DO NOTHING
                         """,
                         [manifest.manifest_id],
-                    )
+                    ).fetchone()[0]
+            # each listing row and mapping it changed is journaled at this write's time, and a
+            # change to the profile, manifest or membership once for the whole profile
+            now = datetime.now(UTC)
+            if touched:
+                record_scope(
+                    connection,
+                    "reference",
+                    profile.market_profile_id,
+                    now,
+                    sorted(touched, key=str),
+                )
+            if changed:
+                record_scope(connection, "reference", profile.market_profile_id, now)
+            connection.execute("COMMIT")
             self.readiness.reconcile_incomplete_panel_identity(
                 connection,
                 market_profile_id=profile.market_profile_id,
@@ -2012,7 +2170,6 @@ class MarketDataRepository(WorkspaceRepository):
             checkpoint_workspace_database(connection)
         finally:
             connection.close()
-        self._sync_universe()
 
     def load_universe_manifest(self, manifest_id: str) -> UniverseManifest:
         """Read a frozen manifest from world, or from the rollback workspace."""
@@ -2024,6 +2181,7 @@ class MarketDataRepository(WorkspaceRepository):
                 )
         return self._workspace_load_universe_manifest(manifest_id)
 
+    @market_update(lambda self: self)
     def record_universe_bootstrap(self, record: UniverseBootstrapRecord) -> None:
         """Freeze T0 and U0 once; a second, different record for the profile is refused."""
         existing = self._workspace_universe_bootstrap(record.market_profile_id)
@@ -2033,7 +2191,8 @@ class MarketDataRepository(WorkspaceRepository):
             return
         connection = self._connect()
         try:
-            connection.execute(
+            connection.execute("BEGIN TRANSACTION")  # the record and its journal row
+            written = connection.execute(
                 """
                 INSERT INTO universe_bootstrap VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (market_profile_id) DO NOTHING
@@ -2055,10 +2214,12 @@ class MarketDataRepository(WorkspaceRepository):
                     record.initialization_assumption,
                     record.record_hash,
                 ],
-            )
+            ).fetchone()[0]
+            if written:
+                record_scope(connection, "universe", record.market_profile_id, datetime.now(UTC))
+            connection.execute("COMMIT")
         finally:
             connection.close()
-        self._sync_universe()
 
     def universe_bootstrap(self, market_profile_id: str) -> UniverseBootstrapRecord | None:
         """Return the profile's frozen bootstrap boundary, at the selected cutoff."""
@@ -2145,6 +2306,7 @@ class MarketDataRepository(WorkspaceRepository):
             for row in rows
         )
 
+    @market_update(lambda self: self)
     def append_membership_events(self, events: Sequence[MembershipEvent]) -> None:
         """Append membership events in journal order; a gap or a rewrite is refused."""
         if not events:
@@ -2210,13 +2372,13 @@ class MarketDataRepository(WorkspaceRepository):
                     ],
                 )
                 next_sequence += 1
+            record_scope(connection, "universe", profile, datetime.now(UTC))
             connection.execute("COMMIT")
         except Exception:
             connection.execute("ROLLBACK")
             raise
         finally:
             connection.close()
-        self._sync_universe()
 
     def membership_events(self, market_profile_id: str) -> tuple[MembershipEvent, ...]:
         """Return the profile's membership journal at the selected cutoff."""
@@ -3930,10 +4092,11 @@ class MarketDataRepository(WorkspaceRepository):
                 "next_payload_hash": next_payload_hash,
             }
         )
-        connection.execute(
+        appended = connection.execute(
             """
             INSERT INTO corporate_action_revision VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT DO NOTHING
+            RETURNING revision_id
             """,
             [
                 revision_id,
@@ -3946,6 +4109,9 @@ class MarketDataRepository(WorkspaceRepository):
                 next_payload_hash,
                 observed_at,
             ],
+        )
+        record_revisions(
+            connection, "actions", appended.fetchnumpy()["revision_id"].tolist(), observed_at
         )
 
     def _upsert_actions(
@@ -3978,6 +4144,7 @@ class MarketDataRepository(WorkspaceRepository):
                 existing[(listing_id, provider, row[0], str(row[1]))] = (str(row[2]), str(row[3]))
         inserted = corrected = 0
         fresh: list[CorporateActionEvent] = []
+        changed: list[CorporateActionEvent] = []
         seen: set[tuple[str, str, date, str]] = set()
         for event in events:
             key = (event.listing_id, event.provider, event.effective_date, event.action_kind)
@@ -3985,9 +4152,12 @@ class MarketDataRepository(WorkspaceRepository):
                 outcome = self._upsert_action(connection, event, observed_at=observed_at)
                 inserted += int(outcome == "INSERTED")
                 corrected += int(outcome in {"CORRECTED", "RESTORED"})
+                if outcome != "UNCHANGED":
+                    changed.append(event)
                 continue
             seen.add(key)
             fresh.append(event)
+        _record_events(connection, changed, observed_at)
         if fresh:
             stage = "corporate_action_stage"
             connection.register(
@@ -4019,6 +4189,7 @@ class MarketDataRepository(WorkspaceRepository):
                     FROM {stage}
                     """
                 )
+                record_delta(connection, "actions", f"FROM {stage}", "effective_date", observed_at)
             finally:
                 connection.unregister(stage)
             inserted += len(fresh)
@@ -4116,7 +4287,7 @@ class MarketDataRepository(WorkspaceRepository):
             """,
             [listing_id, provider, history_start, history_end],
         ).fetchall()
-        retracted = 0
+        retracted: list[CorporateActionEvent] = []
         for row in rows:
             event = CorporateActionEvent(*row[:8])
             if (event.effective_date, event.action_kind) in observed_natural_keys:
@@ -4143,8 +4314,9 @@ class MarketDataRepository(WorkspaceRepository):
                 next_payload_hash=None,
                 observed_at=observed_at,
             )
-            retracted += 1
-        return retracted
+            retracted.append(event)
+        _record_events(connection, retracted, observed_at)
+        return len(retracted)
 
     def stage_onboarding_batch(
         self,
@@ -4225,6 +4397,7 @@ class MarketDataRepository(WorkspaceRepository):
             ).fetchall()
         return tuple(RawDailyBar(*row) for row in rows)
 
+    @market_update(lambda self: self)
     def complete_onboarding_audit(
         self, manifest: UniverseManifest, observation: ActionAuditObservation, *, onboarding_id: str
     ) -> ActionAuditReceipt:
@@ -4264,6 +4437,7 @@ class MarketDataRepository(WorkspaceRepository):
                 )
         return receipt
 
+    @market_update(lambda self: self)
     def apply_validated_batch(
         self,
         manifest: UniverseManifest,
@@ -4340,33 +4514,38 @@ class MarketDataRepository(WorkspaceRepository):
                 ).fetchall()
                 changed, corrected = unrebased(connection, changed, rebases, ingestion_id)
             if corrected:
-                connection.executemany(
-                    """
+                keys = [
+                    (str(listing_id), str(provider), session_date, str(prior), str(following))
+                    for listing_id, provider, session_date, prior, following in changed
+                ]
+                ids = [_canonical_hash(list(key)) for key in keys]
+                listings, providers, days, priors, nexts = map(list, zip(*keys, strict=True))
+                appended = (
+                    connection.execute(  # a correction repeated after its revert adds none
+                        """
                     INSERT INTO bar_revision
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'provider_fact_correction')
+                    SELECT unnest(?::VARCHAR[]), unnest(?::VARCHAR[]), unnest(?::VARCHAR[]),
+                           unnest(?::DATE[]), unnest(?::VARCHAR[]), unnest(?::VARCHAR[]),
+                           ?::TIMESTAMP, 'provider_fact_correction'
                     ON CONFLICT DO NOTHING
+                    RETURNING revision_id
                     """,
-                    [
-                        [
-                            _canonical_hash(
-                                [
-                                    str(listing_id),
-                                    str(provider),
-                                    session_date,
-                                    str(prior_hash),
-                                    str(next_hash),
-                                ]
-                            ),
-                            str(listing_id),
-                            str(provider),
-                            session_date,
-                            str(prior_hash),
-                            str(next_hash),
-                            observed_at,
-                        ]
-                        for listing_id, provider, session_date, prior_hash, next_hash in changed
-                    ],
+                        [ids, listings, providers, days, priors, nexts, observed_at],
+                    )
+                    .fetchnumpy()["revision_id"]
+                    .tolist()
                 )
+                record_revisions(connection, "bars", appended, observed_at)
+            record_delta(
+                connection,
+                "bars",
+                f"SELECT s.listing_id, s.provider, s.session_date FROM {stage_name} AS s"
+                " LEFT JOIN raw_daily_bar_current AS current"
+                " USING (listing_id, provider, session_date)"
+                " WHERE current.payload_hash IS DISTINCT FROM s.payload_hash",
+                "session_date",
+                observed_at,
+            )
             connection.execute(
                 f"""
                 MERGE INTO raw_daily_bar_current AS current
@@ -4851,14 +5030,20 @@ class MarketDataRepository(WorkspaceRepository):
         if observed:
             stage = adjusted_stage(listing_id, provider, observed, observed_at, _canonical_hash)
             connection.register("provider_adjusted_close_stage", stage)
+            # Only a changed or new close is written, and journaled: one the provider sent again
+            # unchanged keeps the time it was first observed, as a raw bar does.
+            changed = (
+                "SELECT s.* FROM provider_adjusted_close_stage AS s"
+                " LEFT JOIN provider_adjusted_close_current AS current"
+                " USING (listing_id, provider, session_date)"
+                " WHERE current.payload_hash IS DISTINCT FROM s.payload_hash"
+            )
             try:
+                record_delta(connection, "bars", changed, "session_date", observed_at)
                 connection.execute(
-                    """
-                    INSERT OR REPLACE INTO provider_adjusted_close_current
-                    SELECT listing_id, provider, session_date, adjusted_close, payload_hash,
-                           updated_at
-                    FROM provider_adjusted_close_stage
-                    """
+                    "INSERT OR REPLACE INTO provider_adjusted_close_current SELECT listing_id,"
+                    " provider, session_date, adjusted_close, payload_hash, updated_at"
+                    f" FROM ({changed})"
                 )
             finally:
                 connection.unregister("provider_adjusted_close_stage")
@@ -5322,6 +5507,7 @@ class MarketDataRepository(WorkspaceRepository):
             connection.close()
         return frozenset(str(row[0]) for row in rows if bool(row[1]))
 
+    @market_update(lambda self: self)
     def complete_action_audit(
         self,
         manifest: UniverseManifest,

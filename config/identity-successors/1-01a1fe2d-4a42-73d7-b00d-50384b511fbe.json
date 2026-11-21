@@ -1,0 +1,62 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "9d2e0d7907ba0d85e8852708f5794cbdb3ec2eedc2a8c82fc6711d6ed28fdae4",
+   "successor": "6039616340bab866eeaa162912a32dcc1cef9570991db06a451aff4a8e51db8d",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "5062f0c7463e0b519a1452250429b3b432accff96a3704a552fd758259c45b1c",
+   "successor": "293c0e77a9157dfab2ae4e5376f4ee81bb92d0ecdfee417b2f238da073eb7038",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "02b3501cdeb75ed5eb50f3bd2aff14dad5b6dfe6b154b13f04068a4b6012448c",
+   "successor": "6da1ebd471db187562aaf6f49c9850409fc324b90cbe10f207f6156808bd1624",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "839e92a0bd7506d2f34c43348001978ed24568067ddc0c8ebb2b8b9c3b976d8c",
+   "successor": "9604d739e7a6abe12f44abadd71f083a897248942f38af166ba06ca0371eaf51",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "10d2455c4632ca141b7f6260e829e4dec226a135e3dc65d549b06f50afc83643",
+   "successor": "12870909a1235b094462d9ea41c22bf7ae9e84011d671664327f80f6a0dbe4e8",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a3a33e06c8250f9d9f5b2af1a6ed991616a6479b56d4523088c31ec2e39f96af",
+   "successor": "39b687531224bf0519161ffb39e2994274e5f1bbd5f5606fac171a46ed63e7a3",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "e26c184e35bfc84a42343af824bdf4dc3869bea9d7f1a8597a629838e0d98448",
+   "successor": "b4ddb7ae77cbfaa49e2839a695697757cfb83596974cd02dbe2ff2b981f5239a",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "e26c184e35bfc84a42343af824bdf4dc3869bea9d7f1a8597a629838e0d98448",
+   "successor": "b4ddb7ae77cbfaa49e2839a695697757cfb83596974cd02dbe2ff2b981f5239a",
+   "change": "Market data reaches the shared store once at the end of each update step",
+   "reason": "Market data is published once per stage from its delta journal into the one store of record, with no change to any number: the development replay is ALL EQUAL over 185,251 records at this head, the sufficient set's readers are equal by value digest, and the Feature catalog, Panel preprocessing catalog, implementation and preprocessing bindings equal develop's; the eight implementation roles move by recorded successors"
+  }
+ ]
+}

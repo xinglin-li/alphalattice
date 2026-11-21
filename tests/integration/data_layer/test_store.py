@@ -341,6 +341,29 @@ elif batch.get("owner"):
     history.store()
     setattr(store.StorePort if point == "commit" else store, point, lambda *a: os._exit(9))
     history.write_execution_outcome("a" * 64, values)
+elif batch.get("market"):
+    from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
+    from alphalattice.foundation.market_data_ops.storage import world
+    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+    from alphalattice.kernel.data_layer import history
+    from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
+    workspace, manifest = root.parent / "workspace", acquisition_manifest()
+    market = MarketDataRepository(workspace, universe_reader="workspace")
+    market.bootstrap(manifest)  # journaled, for the Host's first publish
+    history.open_history("w1", "workspace", workspace, root=root)
+    world.publish_pending(market.path, "w1")  # the Host's open: the bars below are a later delta
+    if point == "write":  # the write and its journal row committed, its publish not begun
+        world.publish = lambda *a, **k: os._exit(9)
+    elif point == "catalog":  # the publish's batches written, its catalog commit not made
+        store.StorePort._close_block = lambda *a: os._exit(9)
+    else:  # the catalog committed and its events appended, the journal not yet emptied
+        summary = world._record_admission_summary
+        world._record_admission_summary = lambda *a: (summary(*a), os._exit(9))
+    days = [{"session_date": day, "open": 100.0, "high": 110.0, "low": 99.0, "close": 101.0}
+            | {"volume": 1_000_000} for day in batch["rows"]]
+    payload = sanitize_payload(manifest, "fixture", dict.fromkeys(("AAPL", "MSFT"), days),
+                               ("AAPL", "MSFT"))
+    market.apply_validated_batch(manifest, payload, ingestion_id="day-0", observed_at=NOW)
 elif batch["table"] == "results":
     from types import SimpleNamespace
 
@@ -402,6 +425,7 @@ BATCHES = {
         },
     ),
     "array": ("array", None, [1.0, -0.0]),
+    "market": ("raw_bar", None, ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30"]),
 }
 
 
@@ -419,6 +443,9 @@ BATCHES = {
         pytest.param("results set", "repair", 1500, True, id="table set after catalog commit"),
         pytest.param("array", "commit", 0, False, id="array after its staged body"),
         pytest.param("array", "repair", 1, False, id="array after its profile commit"),
+        pytest.param("market", "write", 8, True, id="market write before its publish"),
+        pytest.param("market", "catalog", 8, True, id="market publish before catalog commit"),
+        pytest.param("market", "journal", 8, False, id="market publish before journal clears"),
     ],
 )
 def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
@@ -438,6 +465,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
                 "rows": given,
                 "owner": batch == "results",
                 "array": batch == "array",
+                "market": batch == "market",
             }
         )
     )
@@ -447,6 +475,9 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     assert child.returncode == 9
     if batch == "array":
         _an_array_after_a_kill(root, point, given)
+        return
+    if batch == "market":
+        _a_market_publish_after_a_kill(root, rows, repaired)
         return
     assert len(list((root / "staging").iterdir())) == 2  # the folder and its dead producer's lock
     orphans = []
@@ -554,6 +585,36 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
             )
         finally:
             history.close_history()
+
+
+def _a_market_publish_after_a_kill(root, rows, published):
+    """Start after a kill in a market write's publish, as the Host's open does: whatever the
+    killed publish left, world holds the workspace's bars once, the batch's commit is recorded
+    once, and the journal is empty. A publish killed before its catalog commit is made by the
+    open (`published`); one killed after it is judged `same` there and commits nothing again."""
+    from alphalattice.foundation.market_data_ops.storage import world
+    from alphalattice.kernel.data_layer import history
+
+    workspace = root.parent / "workspace"
+    history.open_history("w1", "workspace", workspace, root=root)
+    try:
+        port = history.store()
+
+        def committed() -> int:
+            return port.log.read(
+                "SELECT count(*) FROM event e JOIN admission a ON a.admission_id = e.subject_id"
+                " WHERE e.type = 'admission.committed' AND a.dataset = 'raw_bar'"
+            )[0][0]
+
+        before = committed()
+        world.publish_pending(workspace / "market-data.duckdb", "w1")
+        events = committed()
+        found = port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchone()[0]
+    finally:
+        history.release_history()
+    with closing(duckdb.connect(str(workspace / "market-data.duckdb"), read_only=True)) as db:
+        journal = db.execute("SELECT count(*) FROM market_delta").fetchone()[0]
+    assert (found, before, events, journal) == (rows, int(not published), 1, 0)
 
 
 def _an_array_after_a_kill(root, point, given):

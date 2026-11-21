@@ -1,9 +1,12 @@
-"""A workspace's market tables admitted into world once per machine, through the Host's StorePort.
+"""A workspace's market rows published into world, the one store of committed market truth,
+through the Host's StorePort.
 
-0.2.7 keeps a workspace's listings, provider symbols, raw daily bars, the provider's adjusted
-closes and corporate actions in its market-data.duckdb. When the Host opens the workspace, `admit`
-attaches that database read-only to the Host's catalog session and copies its rows into the world
-tables, in order:
+A workspace's market-data.duckdb is a stage's write buffer: its listings, provider symbols, raw
+daily bars, the provider's adjusted closes and corporate actions, in 0.2.7's tables. Each writer
+journals what it wrote in its own transaction (duckdb.MARKET_DELTA). When a stage's market data
+update ends, and when the Host opens the workspace with journal rows pending (`publish_pending`),
+`publish` reads the rows the journal names, and only those, as Arrow through the stage's own
+connection, and publishes them into the world tables in one catalog transaction, in order:
 
 1. the sessions of each listing's market, generated reference data from its profile's pinned
    exchange calendar rules, retaining that origin and version and known before every cutoff;
@@ -17,13 +20,11 @@ tables, in order:
    original key, fields and observation time for that workspace's audit cutoff read;
 
 all but the sessions as legacy batches: the listings, provider symbols and universe members under
-MARKET_OBSERVED, the bars and actions under MARKET_CLOSE. Only the bars and
-actions whose values differ from world's newest version of their key become rows; StorePort admits
-a changed row of a held key only when its source wrote it later, known from its admission.
-
-Each admission records the tables' marks in its `admission` event: each table's row count and the
-exclusive-or of its rows' hashes, a content fingerprint. The next open reads the marks first;
-equal marks end it there.
+MARKET_OBSERVED, the bars and actions under MARKET_CLOSE. Each batch is judged once
+(StorePort.publish): only rows whose values differ from world's newest version of their key
+become versions, a changed row of a held key only when its source wrote it later, known at the
+time its writer observed it. The journal is emptied through what was published once the catalog
+has committed it, so a crash between the two publishes the same rows again, every one `same`.
 """
 
 from __future__ import annotations
@@ -69,8 +70,7 @@ from alphalattice.kernel.data_layer.project import (
     lineage,
     require_lineage,
 )
-from alphalattice.kernel.data_layer.root import sql_path
-from alphalattice.kernel.data_layer.store import as_columns, newest, stage
+from alphalattice.kernel.data_layer.store import KNOWN, as_columns, newest, stage
 from alphalattice.kernel.quant.sector_history import SectorReclassification
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
@@ -169,14 +169,10 @@ TABLES: Final = (
     "universe_membership_event",
     *REVISIONS,
 )
-"""The 0.2.7 tables the admission reads. Each one's mark is its row count and the exclusive-or of
-its rows' hashes: a content fingerprint, which no write time can leave unchanged."""
+"""The 0.2.7 tables a workspace's market data is written in, and a publish reads."""
 WORKSPACE: Final = "market_workspace"
-"""The name the workspace's database is attached under, read-only, for one admission."""
-UNHELD: Final = frozenset({"session", "listing", "provider_symbol"})
-"""The world tables an admission rebuilds whole from the workspace's tables, so each holds mostly
-rows world already holds; StorePort stages only their rows it lacks (`commit_unheld`). The bars'
-and actions' own queries already take only the rows world lacks or holds older."""
+"""The name of the in-memory database on the catalog session holding the rows one publish read
+(`_delta`); a sector admission attaches the workspace's database under it, read-only."""
 DROPS: Final = (
     "DROP TABLE IF EXISTS temp.market_ids",
     "DROP TABLE IF EXISTS temp.market_providers",
@@ -190,14 +186,6 @@ fits, which DuckDB judges and writes across its threads at once (ls1-daily's 1,2
 batch stays bounded."""
 _WRITTEN: Final = "strftime({0}, '%Y-%m-%d %H:%M:%S.%f+00')"
 """A 0.2.7 write time, which 0.2.7 keeps in UTC, as StorePort reads a staged time."""
-
-
-def table_marks(run: Any, schema: str = "") -> dict[str, list[int]]:
-    """Each of TABLES' marks, read with `run` from the database `schema` names (with its dot)."""
-    return {
-        table: run(f"SELECT [count(*), bit_xor(hash(t))] FROM {schema}{table} t").fetchone()[0]
-        for table in TABLES
-    }
 
 
 UNIVERSE_EVENTS: Final = {
@@ -330,10 +318,14 @@ def admit_member_set(listing_ids: Iterable[str], valid_from: date, provider: str
 
 
 def _commit_universe_members(
-    identity: str, intervals: Iterable[tuple[str, date, date | None]], provider: str
+    identity: str,
+    intervals: Iterable[tuple[str, date, date | None]],
+    provider: str,
+    known: Sequence[int] = (),
 ) -> None:
     """Admit one universe's legacy intervals through its registered StorePort, under
-    MARKET_OBSERVED."""
+    MARKET_OBSERVED; each interval known at its `known` time, in microseconds, when given: when
+    its membership was decided."""
     port = history.store()
     if port is None:
         raise DataError(
@@ -348,15 +340,10 @@ def _commit_universe_members(
         }
         for listing, start, end in intervals
     ]
+    rows = [row | _known(at) for row, at in zip(rows, known, strict=True)] if known else rows
     if rows:
-        with stage(
-            port.root,
-            "universe_member",
-            port.log.require_lineage("provider", provider),
-            _arrow(rows),
-            lag=MARKET_OBSERVED,
-        ) as staged:
-            port.commit(staged)
+        lineage = port.log.require_lineage("provider", provider)
+        port.publish("universe_member", lineage, _arrow(rows), MARKET_OBSERVED)
 
 
 @contextmanager
@@ -792,27 +779,37 @@ def load_universe_manifest_revision(
 def _admit_universe_intervals(
     bootstrap: Any, events: Sequence[Any], provider: str, workspace_id: str
 ) -> None:
-    """Admit the bootstrap cohort and its journal as legacy membership intervals."""
+    """Admit the bootstrap cohort and its journal as legacy membership intervals, each known
+    when its membership was decided, never before it took effect (MARKET_OBSERVED): the cohort's
+    when the bootstrap was admitted, an entry's and an exit's when their events were."""
     identity = history.definition_lineage(
         "universe", universe_name(workspace_id, bootstrap.market_profile_id)
     )
     if identity is None:
         raise ValueError("universe manifest is not registered")
-    active = {listing: bootstrap.history_start for listing in bootstrap.cohort_listing_ids}
+    admitted = max(_us(bootstrap.admitted_at), _us(bootstrap.history_start))
+    active = {
+        listing: (bootstrap.history_start, admitted) for listing in bootstrap.cohort_listing_ids
+    }
     intervals: list[tuple[str, date, date | None]] = []
+    known: list[int] = []
     for event in sorted(events, key=lambda item: (item.effective_session, item.sequence)):
+        decided = max(_us(event.observed_at), _us(event.decided_at), _us(event.effective_session))
         if event.kind == "ENTRY":
             if event.listing_id in active:
                 raise ValueError("membership entry for a listing already present")
-            active[event.listing_id] = event.effective_session
+            active[event.listing_id] = (event.effective_session, decided)
         else:
             if event.listing_id not in active:
                 raise ValueError("membership exit for a listing not present")
-            start = active.pop(event.listing_id)
+            start, _ = active.pop(event.listing_id)
             if start < event.effective_session:
                 intervals.append((event.listing_id, start, event.effective_session))
-    intervals.extend((listing, start, None) for listing, start in active.items())
-    _commit_universe_members(identity, intervals, provider)
+                known.append(decided)
+    for listing, (start, at) in active.items():
+        intervals.append((listing, start, None))
+        known.append(at)
+    _commit_universe_members(identity, intervals, provider, known)
 
 
 def admit_universe(database: Path, workspace_id: str) -> None:
@@ -820,64 +817,66 @@ def admit_universe(database: Path, workspace_id: str) -> None:
     admit(database, workspace_id)
 
 
-def _admit_universe_contents(database: Path, workspace_id: str, attached: Any) -> None:
-    """Copy a workspace's manifests, bootstrap and journal before its admission is recorded,
-    read through `attached`, a cursor of the admission's attachment of the file, so the
-    admission opens the file no second time."""
-    connection = attached.cursor()
-    connection.execute(f"USE {WORKSPACE}")
+def _admit_universe_contents(
+    database: Path, workspace_id: str, connection: Any, scopes: Sequence[str] | None
+) -> None:
+    """Copy the manifests, bootstrap and journal of the workspace's market profiles `scopes`
+    (every profile, None) before its publish is recorded, read through `connection`, the
+    publish's own connection of the file."""
     market = UniverseWorkspaceReader(database.parent, through=connection)
-    try:
-        tables = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
-        if "universe_manifest" not in tables:
-            return
-        manifest_ids = [
+    scoped = "" if scopes is None else " WHERE market_profile_id IN (SELECT unnest(?))"
+    named = [] if scopes is None else [list(scopes)]
+    tables = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
+    if "universe_manifest" not in tables:
+        return
+    manifest_ids = [
+        row[0]
+        for row in connection.execute(
+            f"SELECT manifest_id FROM universe_manifest{scoped}"
+            " ORDER BY market_profile_id, as_of_date, manifest_id",
+            named,
+        ).fetchall()
+    ]
+    profiles = (
+        [
             row[0]
             for row in connection.execute(
-                "SELECT manifest_id FROM universe_manifest"
-                " ORDER BY market_profile_id, as_of_date, manifest_id"
+                f"SELECT market_profile_id FROM universe_bootstrap{scoped}"
+                " ORDER BY market_profile_id",
+                named,
             ).fetchall()
         ]
-        profiles = (
-            [
-                row[0]
-                for row in connection.execute(
-                    "SELECT market_profile_id FROM universe_bootstrap ORDER BY market_profile_id"
-                ).fetchall()
-            ]
-            if "universe_bootstrap" in tables
-            else []
-        )
-        providers: dict[str, str] = {}
-        for name in manifest_ids:
-            manifest = market._workspace_load_universe_manifest(name)
-            admit_universe_manifest(manifest, workspace_id)
-            providers[manifest.profile.market_profile_id] = manifest.profile.provider
-        minted: list[Callable[[], None]] = []
-        for profile in profiles:
-            bootstrap = market._workspace_universe_bootstrap(profile)
-            if bootstrap is None:
-                continue
-            events = market._workspace_membership_events(profile)
-            provider = providers[profile]
-            admit_universe_bootstrap(bootstrap, provider, workspace_id)
+        if "universe_bootstrap" in tables
+        else []
+    )
+    providers: dict[str, str] = {}
+    for name in manifest_ids:
+        manifest = market._workspace_load_universe_manifest(name)
+        admit_universe_manifest(manifest, workspace_id)
+        providers[manifest.profile.market_profile_id] = manifest.profile.provider
+    minted: list[Callable[[], None]] = []
+    for profile in profiles:
+        bootstrap = market._workspace_universe_bootstrap(profile)
+        if bootstrap is None:
+            continue
+        events = market._workspace_membership_events(profile)
+        provider = providers[profile]
+        admit_universe_bootstrap(bootstrap, provider, workspace_id)
 
-            def intervals(
-                bootstrap: Any = bootstrap, events: Sequence[Any] = events, provider: str = provider
-            ) -> None:
-                _admit_universe_intervals(bootstrap, events, provider, workspace_id)
-                _after_commit(lambda: _universe_journal(events, workspace_id))
+        def intervals(
+            bootstrap: Any = bootstrap, events: Sequence[Any] = events, provider: str = provider
+        ) -> None:
+            _admit_universe_intervals(bootstrap, events, provider, workspace_id)
+            _after_commit(lambda: _universe_journal(events, workspace_id))
 
-            if universe_lineage(workspace_id, profile) is None:
-                minted.append(intervals)
-            else:
-                intervals()
-        if minted:
-            # the lineage these intervals name is minted by the manifest's version, published at
-            # this block's commit: they take a snapshot of their own after it
-            _after_commit(lambda: _admitted_together(minted))
-    finally:
-        connection.close()
+        if universe_lineage(workspace_id, profile) is None:
+            minted.append(intervals)
+        else:
+            intervals()
+    if minted:
+        # the lineage these intervals name is minted by the manifest's version, published at
+        # this block's commit: they take a snapshot of their own after it
+        _after_commit(lambda: _admitted_together(minted))
 
 
 def market_of(calendar: str) -> str:
@@ -904,139 +903,248 @@ def _record_admission_summary(
 
 
 def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
-    """Admit the workspace's market tables in `database` into world; the rows each world table took,
-    those StorePort dropped and the later writes of held values it recorded, or None when nothing
-    was read: no Host history, no market database, or marks equal to the last admission's. Refused
-    by name: a market whose calendars disagree, and as StorePort refuses."""
-    port = history.store()
-    if port is None or not database.is_file():
+    """Publish every market row the workspace in `database` holds, as a 0.2.7 workspace's
+    upgrade does (`publish`, whole), read from the file opened read-only, which it leaves as it
+    is, journal included; None with no Host history or no market database."""
+    if history.store() is None or not database.is_file():
         return None
-    run = port.lake.execute
     release_workspace_database(database)  # an instance of the file this process keeps open
-    run(f"ATTACH '{sql_path(database)}' AS {WORKSPACE} (READ_ONLY)").complete()
-    try:
-        held = run(
-            "SELECT table_name FROM duckdb_tables() WHERE database_name = ?", [WORKSPACE]
-        ).fetchall()
-        if not {row[0] for row in held} >= set(TABLES):
-            return None
-        marks = table_marks(run, f"{WORKSPACE}.")
-        last = port.log.read(
-            "SELECT seq, json_extract(attrs, '$.marks'),"
-            " json_extract(attrs, '$.dropped.equal_time') FROM event WHERE type = 'admission'"
-            " AND subject_id = ?"
-            " AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC LIMIT 1",
+    with closing(open_workspace_database(database, read_only=True)) as connection:
+        return publish(database, connection, workspace_id, whole=True, emptying=False)
+
+
+def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
+    """The Host's open: publish what the writers of the workspace in `database` journaled and
+    world has not published (`publish`), a stage's writes committed before a crash or writes made
+    outside a Host since its last publish. The file is opened read-only to find them and writable
+    only when the journal holds rows, which the publish then empties; a workspace this machine's
+    log has not published is published whole from the read-only connection, journal left. None
+    with no Host history, no market database or nothing to publish."""
+    if history.store() is None or not database.is_file():
+        return None
+    with closing(open_workspace_database(database, read_only=True)) as connection:
+        held = connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database()"
+            " AND table_name = ?",
+            [JOURNAL],
+        ).fetchone()[0]
+        if not (held and connection.execute(f"SELECT 1 FROM {JOURNAL} LIMIT 1").fetchone()):
+            if published(workspace_id):
+                return None
+            return publish(database, connection, workspace_id, whole=True, emptying=False)
+    with closing(open_workspace_database(database, read_only=False)) as connection:
+        return publish(database, connection, workspace_id)
+
+
+def published(workspace_id: str) -> bool:
+    """Whether this machine's log records a market publish of the workspace."""
+    return bool(
+        _log_rows(
+            "SELECT 1 FROM event WHERE type = 'admission' AND subject_id = ?"
+            " AND json_extract(attrs, '$.dataset') = ? LIMIT 1",
             (workspace_id, DATASET),
         )
-        if last and json.loads(last[0][1]) == marks:
-            return None
-        changed = _changed(port, workspace_id, last[0] if last else None, marks)
-        started = port.log.clock()
+    )
+
+
+JOURNAL: Final = "market_delta"
+"""The workspace's journal of unpublished market writes (duckdb.MARKET_DELTA)."""
+JOURNAL_KINDS: Final = frozenset({"bars", "actions", "reference", "universe"})
+"""What a journal row names: raw bars or adjusted closes (world's bars), corporate actions, a
+market profile's listings, symbols and manifests, or its universe bootstrap and membership
+journal."""
+MARKET_KINDS: Final = frozenset({"bars", "actions", "reference"})
+"""The journal kinds whose rows the market batches publish (`_admit`); a profile's universe
+(`_admit_universe_contents`) follows its reference and universe rows, the revision facts
+(`_revisions`) its bars and actions."""
+
+
+def publish(
+    database: Path,
+    connection: Any,
+    workspace_id: str,
+    *,
+    whole: bool = False,
+    emptying: bool = True,
+) -> dict[str, Any] | None:
+    """Publish into world, as `workspace_id`'s and in one catalog transaction, the market rows
+    of the workspace in `database` its writers journaled (JOURNAL), then empty the journal
+    through the last row it took. The rows are read through `connection`, an open connection of
+    the file, as Arrow, only those the journal names (`_delta`); each batch is judged once
+    (StorePort.publish) and dated by its writer's observed time. A crash before the catalog
+    commits leaves the journal for the next publish; one after, before the journal is emptied,
+    publishes the same rows again, each judged `same`, which takes no snapshot. `whole`
+    publishes every row the tables hold, as does the first publish of a workspace this machine's
+    log has none of (`published`): a 0.2.7 workspace upgraded, or one copied from another
+    machine. `emptying` False leaves the journal, for a file the publish only reads (`admit`).
+    The rows each world table took,
+    those StorePort dropped and the later writes of held values it recorded; None when nothing
+    was published: no Host history, no market tables, or no journal row. Refused by name: a
+    market whose calendars disagree, and as StorePort refuses."""
+    port = history.store()
+    if port is None:
+        return None
+    held = set(
+        connection.execute(
+            "SELECT list(table_name) FROM duckdb_tables() WHERE database_name = current_database()"
+        ).fetchone()[0]
+        or ()
+    )
+    if not held >= set(TABLES):
+        return None
+    through = (
+        connection.execute(f"SELECT max(seq) FROM {JOURNAL}").fetchone()[0]
+        if JOURNAL in held
+        else None
+    )
+    whole = whole or not published(workspace_id)
+    if through is None and not whole:
+        return None
+    started = port.log.clock()
+    run = port.lake.execute
+    try:
+        kinds, scopes, observed, days = _delta(port.lake, connection, None if whole else through)
         providers = _register(run)
-        with port.admitting():  # one catalog snapshot holds every admission this admit makes
-            admitted = _admit(port, providers) if changed & SOURCES["market"] else {"rows": {}}
-            if changed & SOURCES["universe"]:
-                _admit_universe_contents(database, workspace_id, port.lake)
-            if changed & SOURCES["revisions"]:
+        with port.admitting():  # one catalog snapshot holds every batch this publish makes
+            admitted = (
+                _admit(port, providers, observed, days) if kinds & MARKET_KINDS else {"rows": {}}
+            )
+            if kinds & {"reference", "universe"}:
+                _admit_universe_contents(database, workspace_id, connection, scopes)
+            if kinds & {"bars", "actions"}:
                 _revisions(port, workspace_id)
-        _record_admission_summary(
-            workspace_id,
-            sorted(providers),
-            {"dataset": DATASET, "marks": marks} | admitted,
-            started,
-        )
-        history.flush()
-        return admitted
     finally:
         for drop in DROPS:
             run(drop).complete()
-        run(f"DETACH {WORKSPACE}").complete()
-
-
-SOURCES: Final = {
-    "market": frozenset(
-        {
-            "listing",
-            "provider_symbol_mapping",
-            "market_profile",
-            "raw_daily_bar_current",
-            "provider_adjusted_close_current",
-            "corporate_action_current",
-        }
-    ),
-    "universe": frozenset(
-        {
-            "universe_manifest",
-            "universe_manifest_listing",
-            "universe_bootstrap",
-            "universe_membership_event",
-            "listing",
-            "market_profile",
-            "provider_symbol_mapping",
-        }
-    ),
-    "revisions": frozenset(REVISIONS),
-}
-"""The workspace tables each part of an admission reads: the market tables' batches (`_admit`), the
-universe's manifests, bootstrap and journal (`_admit_universe_contents`, whose reader joins the
-listings, profiles and mappings), and the original journal rows (`_revisions`)."""
-
-
-def _changed(
-    port: Any, workspace_id: str, last: Sequence[Any] | None, marks: dict[str, Any]
-) -> set[str]:
-    """The tables an admission must read again: those whose marks moved since this workspace's last
-    market admission, when that admission took every row and no other workspace's market admission
-    came after it. World's market tables are written by market admissions alone, so a table whose
-    rows are unchanged still holds in world what that admission left there, and admitting it again
-    would stage nothing. Every table otherwise: the first admission, one after another workspace's,
-    and one after a drop of an equal time's value, which a new admission must meet again."""
-    if last is None or last[2] is not None:
-        return set(TABLES)
-    other = port.log.read(
-        "SELECT 1 FROM event WHERE type = 'admission' AND seq > ? AND subject_id <> ?"
-        " AND json_extract(attrs, '$.dataset') = ? LIMIT 1",
-        (last[0], workspace_id, DATASET),
+        run(f"DETACH DATABASE IF EXISTS {WORKSPACE}").complete()
+    _record_admission_summary(
+        workspace_id,
+        sorted(providers),
+        {"dataset": DATASET, "journal": through} | admitted,
+        started,
     )
-    if other:
-        return set(TABLES)
-    before = json.loads(last[1])
-    return {table for table in TABLES if before.get(table) != marks[table]}
+    history.flush()
+    if through is not None and emptying:
+        connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
+    return admitted
 
 
-def sector_marks(database: Path) -> dict[str, Any]:
-    """The sector tables' content fingerprints, as recorded by their admission."""
-    connection = open_workspace_database(database, read_only=True)
-    try:
-        names = {row[0] for row in connection.execute("SHOW TABLES").fetchall()}
-        if "sector_classification_current" not in names:
-            return {}
-        marks = {}
-        for name, table in (
-            ("current", "sector_classification_current"),
-            ("revision", "sector_classification_revision"),
-        ):
-            marks[name] = (
-                connection.execute(
-                    f"SELECT [count(*), bit_xor(hash(t))] FROM {table} t"
-                ).fetchone()[0]
-                if table in names
-                else None
+DELTA: Final = {
+    "raw_daily_bar_current": ("bars", "session_date"),
+    "provider_adjusted_close_current": ("bars", "session_date"),
+    "corporate_action_current": ("actions", "effective_date"),
+}
+"""The tables a journal row names rows of by their exact key, listing, provider and day: with
+its kind and their date column."""
+REVISED: Final = {"bar_revision": "bars", "corporate_action_revision": "actions"}
+"""The revision tables a journal row names rows of by their `revision_id`: with its kind."""
+OBSERVED_US: Final = "_observed_us"
+"""The column a published provider symbol mapping carries: when its journal rows observed it."""
+
+
+def _delta(
+    lake: Any, connection: Any, through: int | None
+) -> tuple[set[str], list[str] | None, dict[str, int], dict[date, int] | None]:
+    """Fill WORKSPACE, an in-memory database on the catalog session, with the workspace's market
+    tables holding only the rows the journal names through `through`, read through `connection`
+    as Arrow: the bars, adjusted closes and actions of its exact keys, the revisions of its ids,
+    the listings it names or whose profile it names whole, the provider symbol mappings of its
+    exact keys or of a profile it names whole, each with its journal rows' latest observed time
+    (OBSERVED_US), and every market profile; every row when `through` is None. Its kinds, the
+    profiles it scopes (None: every one), each named listing's latest observed time in
+    microseconds, its own row's where the journal names it, else its profile's, and each bar or
+    action day's earliest (None: every day, as a whole publish). A mapping's time is its exact
+    key's where the journal names it, else its profile's."""
+    journal = "" if through is None else f"(SELECT * FROM {JOURNAL} WHERE seq <= {int(through)})"
+    queries: dict[str, str] = {name: f"SELECT * FROM {name}" for name in (*TABLES[:6], *REVISIONS)}
+    queries["provider_symbol_mapping"] = (
+        f"SELECT *, NULL::BIGINT AS {OBSERVED_US} FROM provider_symbol_mapping"
+    )
+    kinds, scopes, observed, days = set(JOURNAL_KINDS), None, {}, None
+    if journal:
+        named_kinds, scopes = connection.execute(
+            "SELECT list(DISTINCT kind),"
+            f" coalesce(list(DISTINCT scope ORDER BY scope) FILTER (scope IS NOT NULL), [])"
+            f" FROM {journal}"
+        ).fetchone()
+        kinds = set(named_kinds)
+        whole = (
+            "SELECT l.listing_id, NULL::VARCHAR AS provider, NULL::DATE AS day, d.kind,"
+            f" d.observed_at, true AS whole FROM listing l JOIN {journal} d"
+            " ON d.scope = l.market_profile_id AND d.listing_id IS NULL"
+        )
+        keyed = (
+            f"SELECT listing_id, provider, day, kind, observed_at, false AS whole FROM {journal}"
+            " WHERE listing_id IS NOT NULL"
+        )
+        for table, (kind, column) in DELTA.items():
+            queries[table] += (
+                f" t WHERE EXISTS (SELECT 1 FROM {journal} d WHERE d.kind = '{kind}'"
+                " AND d.listing_id = t.listing_id AND d.provider = t.provider"
+                f" AND d.day = t.{column})"
             )
-        return marks
-    finally:
-        connection.close()
+        for table, kind in REVISED.items():
+            queries[table] += (
+                f" WHERE revision_id IN (SELECT revision_id FROM {journal}"
+                f" WHERE kind = '{kind}' AND revision_id IS NOT NULL)"
+            )
+        queries["listing"] += (
+            f" WHERE listing_id IN (SELECT listing_id FROM ({keyed} UNION ALL {whole}))"
+        )
+        queries["provider_symbol_mapping"] = (  # its exact key's time, or its profile's whole
+            "SELECT t.*, epoch_us(coalesce(max(d.observed_at) FILTER (NOT d.whole),"
+            f" max(d.observed_at))) AS {OBSERVED_US} FROM"
+            f" provider_symbol_mapping t JOIN (SELECT * FROM ({keyed}) WHERE provider IS NOT NULL"
+            f" UNION ALL {whole}) d ON d.kind = 'reference' AND d.listing_id = t.listing_id"
+            " AND (d.provider IS NULL OR d.provider = t.provider AND d.day = t.effective_from)"
+            " GROUP BY ALL"
+        )
+        listed, times = connection.execute(
+            "SELECT coalesce(list(listing_id), []), coalesce(list(us), []) FROM (SELECT listing_id,"
+            " epoch_us(coalesce(max(observed_at) FILTER (kind = 'reference' AND provider IS NULL"
+            " AND NOT whole), max(observed_at) FILTER (kind = 'reference'), max(observed_at)))"
+            f" AS us FROM ({keyed} UNION ALL {whole}) GROUP BY ALL)"
+        ).fetchone()
+        observed = dict(zip(listed, times, strict=True))
+        dated, firsts = connection.execute(
+            "SELECT coalesce(list(day), []), coalesce(list(us), []) FROM (SELECT day,"
+            f" epoch_us(min(observed_at)) AS us FROM {journal} WHERE day IS NOT NULL"
+            " AND kind IN ('bars', 'actions') GROUP BY ALL)"
+        ).fetchone()
+        days = dict(zip(dated, firsts, strict=True))
+    lake.execute(f"ATTACH ':memory:' AS {WORKSPACE}").complete()
+    for table, query in queries.items():
+        lake.register("delta_rows", connection.sql(query).to_arrow_table())
+        try:
+            lake.execute(f"CREATE TABLE {WORKSPACE}.{table} AS FROM delta_rows").complete()
+        finally:
+            lake.unregister("delta_rows")
+    return kinds, scopes, observed, days
 
 
 def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
-    """Admit a workspace's legacy sector classifications after its market listings."""
+    """Admit a workspace's legacy sector classifications after its market listings, its two
+    sector tables read as Arrow through a connection of the file, which inside a step's retained
+    instance is a cursor of it (open_workspace_database), never an attach of the file."""
     port = history.store()
     if port is None or not database.is_file():
         return None
     run = port.lake.execute
-    release_workspace_database(database)  # an instance of the file this process keeps open
-    run(f"ATTACH '{sql_path(database)}' AS {WORKSPACE} (READ_ONLY)").complete()
+    run(f"ATTACH ':memory:' AS {WORKSPACE}").complete()
     try:
+        with closing(open_workspace_database(database, read_only=True)) as connection:
+            for table in ("sector_classification_current", "sector_classification_revision"):
+                if connection.execute(
+                    "SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database()"
+                    " AND table_name = ?",
+                    [table],
+                ).fetchone()[0]:
+                    rows = connection.sql(f"FROM {table}").to_arrow_table()
+                    port.lake.register("sector_rows", rows)
+                    try:
+                        run(f"CREATE TABLE {WORKSPACE}.{table} AS FROM sector_rows").complete()
+                    finally:
+                        port.lake.unregister("sector_rows")
         tables = {
             row[0]
             for row in run(
@@ -1201,44 +1309,6 @@ def sector_map(
     return found or {}
 
 
-def sector_holds(database: Path, cursor: Any, *, cutoff_us: int) -> bool:
-    """Whether world still holds this workspace's current values and forward revisions."""
-    connection = open_workspace_database(database, read_only=True)
-    try:
-        rows = connection.execute(
-            "SELECT listing_id, sector_name FROM sector_classification_current ORDER BY listing_id"
-        ).fetchall()
-        columns = {
-            row[0]
-            for row in connection.execute(
-                "SELECT column_name FROM information_schema.columns"
-                " WHERE table_name = 'sector_classification_revision'"
-            ).fetchall()
-        }
-        revisions = (
-            connection.execute(
-                "SELECT listing_id, effective_session, prior_sector_name, sector_name"
-                " FROM sector_classification_revision WHERE effective_session IS NOT NULL"
-                " ORDER BY effective_session, listing_id, retrieved_at"
-            ).fetchall()
-            if {"effective_session", "prior_sector_name", "sector_name"} <= columns
-            else []
-        )
-    finally:
-        connection.close()
-    current = {str(listing): str(name) for listing, name in rows}
-    if len(current) != len(rows):
-        return False
-    if sector_map(tuple(current), session=date.max, cutoff_us=cutoff_us, cursor=cursor) != current:
-        return False
-    expected = tuple(
-        SectorReclassification(str(listing), day, str(prior), str(name))
-        for listing, day, prior, name in revisions
-        if str(listing) in current
-    )
-    return sector_transitions(tuple(current), cutoff_us=cutoff_us, cursor=cursor) == expected
-
-
 def sector_transitions(listings: Sequence[str], *, cutoff_us: int, cursor: Any) -> tuple[Any, ...]:
     """The changes in force for the selected listings among versions known at the cutoff."""
     if not listings:
@@ -1272,9 +1342,11 @@ def _revisions(port: Any, workspace_id: str) -> None:
                 "durable": False,
             },
         )
+        ids = run(f"SELECT coalesce(list(revision_id), []) FROM {WORKSPACE}.{table}").fetchone()[0]
         held = port.log.read(
-            "SELECT subject_id FROM event WHERE type = ? AND workspace_id = ?",
-            (type_, workspace_id),
+            "SELECT subject_id FROM event WHERE type = ? AND workspace_id = ?"
+            " AND subject_id IN (SELECT value FROM json_each(?))",
+            (type_, workspace_id, json.dumps(ids)),
         )
         rows = run(
             f"SELECT {', '.join('r.' + name for name in columns)}, epoch_us(r.observed_at)"
@@ -1321,29 +1393,47 @@ def _register(run: Any) -> set[str]:
     return named
 
 
-def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
-    """Every table's batches in world's order; the rows each world table took, those StorePort
-    dropped by reason, and the later writes of held values it recorded."""
+def _admit(
+    port: Any,
+    providers: set[str],
+    observed: Mapping[str, int],
+    days: Mapping[date, int] | None,
+) -> dict[str, Any]:
+    """Every table's batches in world's order, from the rows `_delta` read; the rows each world
+    table took, those StorePort dropped by reason, and the later writes of held values it
+    recorded. A listing's first session is the earliest of world's and the rows read, since no
+    writer deletes a market row. A listing's row and its symbols are known at its own `observed`
+    time, by 0.2.7 listing id, and a session at the earliest observation of the rows
+    of its day (`days`; a day beyond them, of the calendar's reach, at the latest), where the
+    journal names them."""
     run, w = port.lake.execute, WORKSPACE
+    named = run(f"SELECT coalesce(list(listing_id), []) FROM {w}.listing").fetchone()[0]
+    run("CREATE OR REPLACE TEMP TABLE market_ids (old VARCHAR, new UUID)").complete()
+    port.lake.executemany(
+        "INSERT INTO temp.market_ids VALUES (?, ?)", [(old, world_listing(old)) for old in named]
+    )
     listings = run(
         "SELECT l.listing_id, l.mic, p.currency, p.calendar_id, p.provider,"
-        " strftime(least(min(b.first), min(m.effective_from), min(a.effective_date)), '%Y-%m-%d')"
+        " strftime(least(min(b.first), min(m.effective_from), min(a.effective_date),"
+        " min(h.first)), '%Y-%m-%d')"
         f" FROM {w}.listing l JOIN {w}.market_profile p USING (market_profile_id)"
         f" LEFT JOIN (SELECT listing_id, min(session_date) AS first FROM {w}.raw_daily_bar_current"
         " GROUP BY ALL) b USING (listing_id)"
         f" LEFT JOIN {w}.provider_symbol_mapping m USING (listing_id)"
         f" LEFT JOIN {w}.corporate_action_current a USING (listing_id)"
+        " JOIN temp.market_ids i ON i.old = l.listing_id"
+        " LEFT JOIN (SELECT listing_id, min(first_session) AS first"
+        f" FROM {newest('listing')} WHERE NOT retracted GROUP BY ALL) h ON h.listing_id = i.new"
         " GROUP BY ALL ORDER BY l.listing_id"
     ).fetchall()
     dated = [row for row in listings if row[5] is not None]  # a listing with no row of any date
     ids = {row[0]: world_listing(row[0]) for row in dated}
-    run("CREATE OR REPLACE TEMP TABLE market_ids (old VARCHAR, new UUID)").complete()
+    latest = max(observed.values(), default=None)
     provider_ids = {
         name: port.log.require_lineage("provider", name)
         for name in sorted(providers | PROVIDERS.keys())
     }
     run("CREATE OR REPLACE TEMP TABLE market_providers (name VARCHAR, id VARCHAR)").complete()
-    port.lake.executemany("INSERT INTO temp.market_ids VALUES (?, ?)", list(ids.items()))
     port.lake.executemany(
         "INSERT INTO temp.market_providers VALUES (?, ?)",
         [(name, provider_ids[name]) for name in sorted(providers)],
@@ -1355,11 +1445,7 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
     def commit(table: str, provider: str, batch: Any, lag: Any) -> None:
         if not batch.num_rows:
             return
-        if table in UNHELD:  # rebuilt whole each time, mostly held: only what world lacks is staged
-            done = port.commit_unheld(table, provider_ids[provider], batch, lag)
-        else:
-            with stage(port.root, table, provider_ids[provider], batch, lag=lag) as staged:
-                done = port.commit(staged)
+        done = port.publish(table, provider_ids[provider], batch, lag)
         if done.rows:
             rows[table] = rows.get(table, 0) + done.rows
         for reason, count in done.dropped.items():
@@ -1367,11 +1453,19 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         if done.rewritten:
             rewritten[table] = rewritten.get(table, 0) + done.rewritten
 
-    sessions = _sessions(run, dated)
+    sessions = _sessions(run, dated, days)
     markets = {mic: port.market_id(mic, provider_ids[CALENDARS]) for mic in sessions}
     arrow = import_module("pyarrow")  # lazy: the optional data extra, only for admission
+    reach = max(days.values(), default=None) if days else None
     for mic, batch in sessions.items():
-        table = _arrow(batch)
+        table = _arrow(
+            [
+                row | _known(days.get(date.fromisoformat(row["session_date"]), reach))
+                if days is not None
+                else row | _known(latest)
+                for row in batch
+            ]
+        )
         table = table.drop(["market"]).append_column(
             "market_id", arrow.repeat(markets[mic], table.num_rows)
         )
@@ -1385,12 +1479,13 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
                 "universe_class": row[1],
                 "currency": row[2],
                 "first_session": row[5],
-            },
+            }
+            | _known(observed.get(row[0], latest)),
         )
         for row in dated
     ).items():
         commit("listing", provider, _arrow(batch), MARKET_OBSERVED)
-    for provider, batch in _symbols(run, dated, ids, provider_ids).items():
+    for provider, batch in _symbols(run, dated, ids, provider_ids, observed).items():
         commit("provider_symbol", provider, _arrow(batch), MARKET_OBSERVED)
     for provider, batch in _bars(port.lake):
         commit("raw_bar", provider, batch, MARKET_CLOSE)
@@ -1398,6 +1493,21 @@ def _admit(port: Any, providers: set[str]) -> dict[str, Any]:
         commit("corporate_action", provider, _arrow(batch), MARKET_CLOSE)
     noted = {"dropped": dropped, "rewritten": rewritten}
     return {"rows": rows} | {name: counts for name, counts in noted.items() if counts}
+
+
+def _us(at: datetime | date) -> int:
+    """An instant in integer microseconds since the epoch, a date's its start; a naive instant
+    is UTC, as stored."""
+    if not isinstance(at, datetime):
+        at = datetime(at.year, at.month, at.day)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    return (at - datetime.fromtimestamp(0, UTC)) // timedelta(microseconds=1)
+
+
+def _known(observed_us: int | None) -> dict[str, int]:
+    """A batch row's KNOWN column: its writer's observed time; none without one."""
+    return {} if observed_us is None else {KNOWN: observed_us}
 
 
 def _arrow(rows: list[dict[str, Any]]) -> Any:
@@ -1414,9 +1524,13 @@ def _grouped(pairs: Iterable[tuple[str, dict[str, Any]]]) -> dict[str, list[dict
     return out
 
 
-def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str, Any]]]:
+def _sessions(
+    run: Any, dated: list[tuple[Any, ...]], days: Mapping[date, int] | None = None
+) -> dict[str, list[dict[str, Any]]]:
     """Each market's sessions over every valid date the tables hold, from every calendar its
-    profiles name; calendars disagreeing on a session are refused by name."""
+    profiles name; with a delta publish's `days`, only those days and the calendar's reach past
+    the last, since world holds the sessions between. Calendars disagreeing on a session are
+    refused by name."""
     codes: dict[str, set[str]] = {}
     for *_, calendar, _, _ in dated:
         codes.setdefault(market_of(calendar), set()).update(re.split("[_+]", calendar))
@@ -1429,6 +1543,8 @@ def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str
         f" effective_from FROM {w}.provider_symbol_mapping UNION ALL SELECT effective_to FROM"
         f" {w}.provider_symbol_mapping)"
     ).fetchone()
+    if first is None:  # rows of no date: their markets' sessions are world's already
+        return {market: [] for market in sorted(codes)}
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: untyped calendars
     calendar_version = dict(package_versions(("exchange-calendars",)))["exchange-calendars"]
 
@@ -1462,63 +1578,67 @@ def _sessions(run: Any, dated: list[tuple[Any, ...]]) -> dict[str, list[dict[str
                 "calendar_version": calendar_version,
             }
             for day, (opened, closed) in sorted(clocks[market].items())
+            if days is None or day in days or day > last
         ]
         for market in sorted(clocks)
     }
 
 
 def _symbols(
-    run: Any, dated: list[tuple[Any, ...]], ids: Mapping[str, str], providers: Mapping[str, str]
+    run: Any,
+    dated: list[tuple[Any, ...]],
+    ids: Mapping[str, str],
+    providers: Mapping[str, str],
+    observed: Mapping[str, int],
 ) -> dict[str, list[dict[str, Any]]]:
     """Each provider's symbol rows, an interval with an end as one row, which StorePort writes as
     its two versions, carrying the source's lifecycle state; an alias keeps the valid_from it
-    was first admitted with, so it is never doubled."""
+    was first admitted with, so it is never doubled. A mapping is known at its own journal rows'
+    time (OBSERVED_US), an alias at its listing's `observed` time, where the journal names one."""
+    latest = max(observed.values(), default=None)
     held = run(
         "SELECT provider_id, CAST(listing_id AS VARCHAR), min(valid_from)::VARCHAR"
         " FROM lake.world.provider_symbol GROUP BY ALL"
     ).fetchall()
     aliases = {(provider, listing): valid for provider, listing, valid in held}
     out: dict[str, list[dict[str, Any]]] = {}
-    for listing, provider, symbol, start, end, state in run(
+    for listing, provider, symbol, start, end, state, known in run(
         "SELECT listing_id, provider, provider_symbol, strftime(effective_from, '%Y-%m-%d'),"
-        f" strftime(effective_to, '%Y-%m-%d'), lifecycle_state"
+        f" strftime(effective_to, '%Y-%m-%d'), lifecycle_state, {OBSERVED_US}"
         f" FROM {WORKSPACE}.provider_symbol_mapping"
         " ORDER BY listing_id, provider, effective_from"
     ).fetchall():
         if listing in ids:
             row = {"listing_id": ids[listing], "symbol": symbol, "valid_from": start}
-            out.setdefault(provider, []).append(row | {"valid_to": end, "lifecycle_state": state})
+            row |= {"valid_to": end, "lifecycle_state": state}
+            at = observed.get(listing, latest) if known is None else known
+            out.setdefault(provider, []).append(row | _known(at))
     display = dict(run(f"SELECT listing_id, display_symbol FROM {WORKSPACE}.listing").fetchall())
     for listing, *_, first in dated:
         for alias, symbol in ((LISTING_ALIAS, listing), (DISPLAY_ALIAS, display[listing])):
             valid = aliases.get((providers[alias], ids[listing]), first)
             row = {"listing_id": ids[listing], "symbol": symbol, "valid_from": valid}
-            out.setdefault(alias, []).append(row | {"valid_to": None})
+            row |= {"valid_to": None}
+            out.setdefault(alias, []).append(row | _known(observed.get(listing, latest)))
     return out
 
 
 def _bars(lake: Any) -> Iterator[tuple[str, Any]]:
-    """Each provider's bars whose values differ from world's newest version of their key, or
-    whose source wrote them after that version's value was last written, with the provider's
-    adjusted close and their source's last write, in whole years of at most ADMISSION_ROWS bars,
-    as DuckDB's Arrow result."""
+    """Each provider's bars the publish read, with the provider's adjusted close, their source's
+    last write and, as KNOWN, that write's time, in whole years of at most ADMISSION_ROWS bars, as
+    DuckDB's Arrow result; StorePort judges them against world's newest version of their key."""
     w = WORKSPACE
     lake.execute(
         "CREATE OR REPLACE TEMP TABLE market_bars AS SELECT r.provider,"
         " CAST(i.new AS VARCHAR) AS listing_id, r.session_date, r.open, r.high, r.low, r.close,"
         " CAST(r.volume AS DOUBLE) AS volume, a.adjusted_close,"
         " r.payload_hash AS source_payload_digest,"
-        f" {_WRITTEN.format('greatest(r.observed_at, a.updated_at)')} AS source_observed_at"
+        f" {_WRITTEN.format('greatest(r.observed_at, a.updated_at)')} AS source_observed_at,"
+        f" epoch_us(greatest(r.observed_at, a.updated_at)) AS {KNOWN}"
         f" FROM {w}.raw_daily_bar_current r LEFT JOIN {w}.provider_adjusted_close_current a"
         " USING (listing_id, provider, session_date)"
         " JOIN temp.market_ids i ON i.old = r.listing_id"
         " JOIN temp.market_providers v ON v.name = r.provider"
-        f" LEFT JOIN {newest('raw_bar')} x ON x.provider_id = v.id"
-        " AND x.listing_id = i.new AND x.session_date = r.session_date"
-        " WHERE x.listing_id IS NULL OR x.retracted"
-        " OR ROW(x.open, x.high, x.low, x.close, x.volume, x.adjusted_close) IS DISTINCT FROM"
-        " ROW(r.open, r.high, r.low, r.close, CAST(r.volume AS DOUBLE), a.adjusted_close)"
-        " OR greatest(r.observed_at, a.updated_at) > x.ordered_at"
     ).complete()
     years = lake.execute(
         "SELECT provider, year(session_date), count(*) FROM temp.market_bars GROUP BY ALL"
@@ -1550,30 +1670,26 @@ def admissions(
 
 
 def _actions(run: Any, dated: list[tuple[Any, ...]]) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Each corporate action whose values differ from world's newest version of its key, or
-    whose source wrote it after that version's value was last written, a retracted one as its
-    withdrawal."""
+    """Each corporate action the publish read, a retracted one as its withdrawal, known (KNOWN)
+    at its source's last write; StorePort judges them against world's newest version of their
+    key."""
     currency = {row[0]: row[2] for row in dated}
     for action in run(
         "SELECT c.listing_id, c.provider, strftime(c.effective_date, '%Y-%m-%d'), c.action_kind,"
         " c.new_shares_per_old_share, c.cash_amount, c.provisional, c.provenance, c.status,"
-        f" {_WRITTEN.format('c.observed_at')}, c.payload_hash, CAST(i.new AS VARCHAR)"
+        f" {_WRITTEN.format('c.observed_at')}, c.payload_hash, CAST(i.new AS VARCHAR),"
+        " epoch_us(c.observed_at)"
         f" FROM {WORKSPACE}.corporate_action_current c"
         " JOIN temp.market_ids i ON i.old = c.listing_id"
         " JOIN temp.market_providers v ON v.name = c.provider"
-        f" LEFT JOIN {newest('corporate_action')} x ON x.provider_id = v.id"
-        " AND x.listing_id = i.new AND x.effective_date = c.effective_date"
-        " AND x.action_id = c.action_kind"
-        " WHERE x.listing_id IS NULL OR ROW(x.ratio, x.amount, x.provisional, x.provenance,"
-        " x.retracted) IS DISTINCT FROM ROW(c.new_shares_per_old_share, c.cash_amount,"
-        " c.provisional, c.provenance, c.status = 'RETRACTED') OR c.observed_at > x.ordered_at"
         " ORDER BY ALL"
     ).fetchall():
         yield (
             action[1],
             world_action(
                 action[:10], action[11], currency[action[0]], source_payload_digest=action[10]
-            ),
+            )
+            | _known(action[12]),
         )
 
 

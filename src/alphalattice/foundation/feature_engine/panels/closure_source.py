@@ -342,12 +342,7 @@ class PanelClosureSourceRepository:
             connection.close()
         if len(rows) != len(listing_ids):
             raise ValueError("sector revision map source is incomplete")
-        with world_reads.reading(
-            self._database_path,
-            lambda: world.sector_marks(self._database_path),
-            dataset="sector",
-            admit=world.admit_sectors,
-        ) as cursor:
+        with world_reads.reading(self._database_path) as cursor:
             if cursor is not None:
                 names = world.sector_map(
                     listing_ids,

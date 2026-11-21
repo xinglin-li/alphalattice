@@ -1,13 +1,12 @@
 """Market value reads from world: the session that serves them, and 0.2.7's market tables as
 world's as-of reads, in 0.2.7's names and columns.
 
-World serves a workspace's reads while it holds that workspace's market tables as
-they are: their marks, the content fingerprint world.admit records, equal those of an admission
-that took every row they mark (`reading`). The Host admits its own workspace's tables first when
-they have changed; a Task child, which may not write the catalog, reads the workspace's own
-tables until the Host has, and so does a process whose data root never admitted the workspace.
-Inside a market data update (`writing`) the writer's reads take the workspace's tables, and the
-Host admits once at its end.
+World is the one store of committed market truth, and serves every market read (`reading`) of
+a workspace published into it but those of a market data update (`writing`), a stage writing the
+workspace: the stage's reads take the workspace's own tables, its write buffer, and when its
+outermost update ends the Host publishes what its writers journaled (world.publish). Nothing a
+stage wrote is read outside it before then. A workspace this machine's log records no publish of,
+and a process with no catalog to read, read the workspace's tables.
 A world read runs on `session`: in the Host a cursor on its StorePort's session, and in any other
 process the data root's catalog attached read-only (`reading_session`, without the log), opened
 once. DuckDB never opens the log: the facts a read takes from it come through Python's sqlite3,
@@ -20,22 +19,18 @@ and a provider by its lineage's name.
 
 from __future__ import annotations
 
-import json
 import os
-import threading
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 
 import pyarrow as pa
 
-from alphalattice.control.workspace_runtime.database import (
-    live_workspace_connections,
-    release_workspace_database,
-    store_fingerprint,
-)
+from alphalattice.control.workspace_runtime.database import release_workspace_database
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.history import catalog_session as session
 from alphalattice.kernel.data_layer.root import sql_path
@@ -53,11 +48,17 @@ WORKSPACE: Final = {
     "action_revisions": "corporate_action_revision",
 }
 """The workspace's own market tables, by the name a value read gives each relation."""
-_served: dict[tuple[str, str, str, str], tuple[bool, int]] = {}
-"""Each verdict, by catalog, database and its file's fingerprint: whether world serves it, and
-the catalog snapshot it was reached at."""
-_writing: dict[str, int] = {}
-_lock = threading.Lock()
+_UPDATES: ContextVar[Mapping[str, dict[str, Callable[[str], Any]]]] = ContextVar(
+    "market_updates", default=MappingProxyType({})
+)
+"""The market data updates open in this context, a stage's own work, by their database's
+resolved path: what the outermost of each publishes at its end, each dataset's publish, the
+first an update of it named. Every thread starts with a context of its own, so a Host request or
+another task reads world while a stage writes; a stage's worker threads only fetch from its
+provider, and the stage applies and reads on its own thread."""
+_served: set[tuple[str, str]] = set()
+"""The (catalog, resolved database path) pairs world serves (`_serves`): a publish is never
+undone, so a pair once found stays."""
 
 
 def cutoff(at: datetime) -> int:
@@ -68,105 +69,70 @@ def cutoff(at: datetime) -> int:
 
 
 @contextmanager
-def reading(
-    database: Path,
-    marks: Callable[[], dict[str, Any]],
-    *,
-    dataset: str = DATASET,
-    admit: Callable[[Path, str], Any] = world.admit,
-) -> Iterator[Any | None]:
-    """A cursor on world while it serves the market reads of the workspace in `database`, else
-    None and its own tables answer. World serves when the tables'
-    `marks` equal those of a market admission that took every row (`_admitted`). A verdict is
-    kept for its catalog and the database's file and WAL as they stand (`store_fingerprint`); one
-    that world does not serve is read again once the catalog has a newer snapshot, since an
-    admission may have brought the tables meanwhile. In the Host, tables of its own workspace that
-    no admission holds are admitted first, unless this process holds the file open in an
-    instance, which an admission's attach would meet; that read takes the workspace, and the next
-    admits. The cursor's statements share one transaction, so they see one catalog snapshot."""
-    path = str(database.resolve())
-    if path in _writing:
+def reading(database: Path) -> Iterator[Any | None]:
+    """A cursor on world for the market and sector reads of the workspace in `database`; None,
+    and the workspace's own tables answer, inside an update of it this context opened
+    (`writing`), with no catalog to read, and while world holds no publish of it (`_serves`). The
+    cursor's statements share one transaction, so they see one catalog snapshot."""
+    if str(database.resolve()) in _UPDATES.get():
         yield None
         return
     with session() as cursor:
-        if cursor is None:
-            yield None
-            return
-        catalog = cursor.execute(
-            "SELECT path FROM duckdb_databases() WHERE database_name = 'lake'"
-        ).fetchall()[0][0]
-        key = (catalog, path, dataset, json.dumps(store_fingerprint(database)))
-        verdict = _served.get(key)
-        if (
-            verdict is not None
-            and (not verdict[0] or dataset == "sector")
-            and verdict[1] != _snapshot(cursor)
-        ):
-            verdict = None  # world has committed since it did not serve these tables
-        if verdict is None:
-            current = marks()
-            host = history.opened_log()
-            served = _admitted(current, dataset, workspace_id(database))
-            ours = host is not None and _folder(host[1]) == database.parent
-            # an admission attaches the file, which an instance this process holds open refuses
-            held = ours and live_workspace_connections(database) is not None
-            if not served and ours and not held:
-                admit(database, host[1])
-                served = _admitted(current, dataset, workspace_id(database))
-            verdict = (served, _snapshot(cursor))
-            if served or not held:  # a held file's admission is owed to the next read
-                _served[key] = verdict
-        served = verdict[0]
-        # contract: the workspace's own tables answer while world lacks their current content;
-        # remove once the market data writers commit into world through StorePort staging as they
-        # write, and the workspace setting is retired with the workspace's market tables.
-        if not served:
+        if cursor is None or not _serves(cursor, database):
             yield None
             return
         _log_tables(cursor)
         cursor.begin()
         try:
-            if dataset == "sector" and not world.sector_holds(database, cursor, cutoff_us=LATEST):
-                yield None
-            else:
-                yield cursor
+            yield cursor
         finally:
             cursor.rollback()
 
 
+def _serves(cursor: Any, database: Path) -> bool:
+    """Whether world serves the workspace in `database`, a bound copy's as its owner's: once
+    this machine's log records a market publish of it (world.published). The Host publishes its
+    own workspace at its open; another, one no Host here has opened, holds its rows only in its
+    own tables."""
+    found = cursor.execute("SELECT path FROM duckdb_databases() WHERE database_name = 'lake'")
+    (catalog,) = found.fetchone()
+    found.complete()  # the cursor's next statement needs its result finished
+    key = (catalog, str(database.resolve()))
+    if key not in _served:
+        owner = workspace(database)
+        if owner is None or not world.published(owner):
+            return False
+        _served.add(key)
+    return True
+
+
 @contextmanager
 def writing(
-    database: Path,
-    marks: Callable[[], dict[str, Any]],
-    *,
-    dataset: str = DATASET,
-    admit: Callable[[Path, str], Any] = world.admit,
-) -> Iterator[Callable[[], None]]:
-    """One market data update of the workspace in `database`, in this process. Its reads, every
-    thread's, take the workspace's own tables, reading no marks and admitting nothing, so a loop
-    that writes and reads listing by listing pays no admission per listing. When the outermost
-    update ends, the Host admits the tables once, as `reading` would at its next read; an update
-    that ends before `database` exists has no tables to admit, and reads no marks.
-
-    It yields `mark`: a writer that holds the file open in an instance calls it once its writes
-    are done, so the admission's marks are read through that instance and the admission, made
-    after the instance is released, opens the file no second time."""
+    database: Path, publish: Callable[[str], Any], *, dataset: str = DATASET
+) -> Iterator[None]:
+    """One update of the workspace in `database`'s `dataset`: a stage writing it. Its reads, in
+    this context, the stage's own work, take the workspace's own tables, the stage's buffer;
+    every other reader keeps world. An update inside another of the same file joins it. When the
+    outermost ends, in the Host whose workspace it is, each dataset's `publish` publishes into
+    world, as that workspace's, what the updates' writers wrote, market data first; an update
+    that ends before `database` exists wrote nothing. Elsewhere what was written waits for that
+    Host's next publish."""
     path = str(database.resolve())
-    taken: list[dict[str, Any]] = []
-    with _lock:
-        _writing[path] = _writing.get(path, 0) + 1
+    open_updates = _UPDATES.get()
+    if path in open_updates:
+        open_updates[path].setdefault(dataset, publish)
+        yield
+        return
+    publishes = {dataset: publish}
+    token = _UPDATES.set({**open_updates, path: publishes})
     try:
-        yield lambda: taken.append(marks())
+        yield
     finally:
-        with _lock:
-            _writing[path] -= 1
-            outermost = not _writing[path]
-            if outermost:
-                del _writing[path]
-        if outermost and history.opened_log() is not None and database.exists():
-            read = (lambda: taken[-1]) if taken else marks
-            with reading(database, read, dataset=dataset, admit=admit):
-                pass
+        _UPDATES.reset(token)
+        host = history.opened_log()
+        if host is not None and database.exists() and _folder(host[1]) == database.parent.resolve():
+            for name in sorted(publishes, key=lambda name: name != DATASET):
+                publishes[name](host[1])
 
 
 def binding(database: Path) -> str | None:
@@ -275,33 +241,6 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
             return True
         finally:
             cursor.execute(f"DETACH {alias}").fetchall()
-
-
-def _snapshot(cursor: Any) -> int:
-    """The catalog's current snapshot: a new one is committed by every admission."""
-    return int(cursor.execute("SELECT * FROM lake.current_snapshot()").fetchall()[0][0])
-
-
-def _admitted(
-    marks: dict[str, Any], dataset: str = DATASET, workspace_id: str | None = None
-) -> bool:
-    """Whether one of world's market admissions that took every row it marks (`taken`) recorded
-    this workspace's marks, as the log holds them (`_log_rows`)."""
-    admitted = _log_rows(
-        "SELECT json_extract(attrs, '$.marks'), json_extract(attrs, '$.dropped.equal_time')"
-        " FROM event WHERE type = 'admission' AND json_extract(attrs, '$.dataset') = ?"
-        " AND (? <> 'market' OR subject_id = ?)",
-        (dataset, dataset, workspace_id),
-    )
-    return bool(marks) and marks in taken(admitted)
-
-
-def taken(admissions: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
-    """The marks of the admissions, each as (marks, equal-time drops), that took every row they
-    mark. One that dropped a row written at the same time as world's version of its key
-    (`equal_time`) left world holding that other value; an older row's drop leaves world the
-    newer one, which it serves."""
-    return [json.loads(marks) for marks, equal in admissions if marks and equal is None]
 
 
 def workspace(database: Path) -> str | None:
@@ -424,6 +363,29 @@ def scope(listings: Sequence[str] | None) -> tuple[str, str] | None:
     return f"(SELECT {pairs})", ""
 
 
+def _asof(table: str, cutoff_us: int, held_us: int | None, *, versions: bool = False) -> str:
+    """`table`'s versions world knew at `cutoff_us` (views.sql's `<table>_asof`), or every
+    version with when it was replaced (`<table>_versions`, `versions`); with `held_us`, as world
+    held them then: a version is replaced only by an admission committed by `held_us`, since a
+    row is known at its writer's observed time, which a publish after `held_us` may precede."""
+    if held_us is None:
+        return f"{table}_versions" if versions else f"{table}_asof({cutoff_us})"
+    held = (
+        f"SELECT * FROM lake.world.superseded WHERE table_id = world_table_id('{table}')"
+        f" AND by_admission_id IN (SELECT admission_id FROM admission WHERE known_us <= {held_us})"
+    )
+    if versions:
+        return (
+            f"(SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.{table} r"
+            f" LEFT JOIN ({held}) s ON s.version_id = r.version_id)"
+        )
+    at = f"make_timestamptz({cutoff_us})"
+    return (
+        f"(SELECT r.* FROM lake.world.{table} r ANTI JOIN ({held} AND superseded_asof <= {at}) s"
+        f" ON s.version_id = r.version_id WHERE r.known_asof <= {at} AND NOT r.retracted)"
+    )
+
+
 def _held_by(row: str, held_us: int | None) -> str:
     """The condition that a world row's admission was committed by `held_us`; true without it."""
     if held_us is None:
@@ -505,7 +467,7 @@ def bars(
         "(SELECT alias.listing_id, named.name AS provider, r.session_date, r.open,"
         " r.high, r.low, r.close, CAST(r.volume AS BIGINT) AS volume, r.adjusted_close,"
         f" {payload} AS payload_hash"
-        f" FROM raw_bar_asof({cutoff_us}) r{_named('r', cutoff_us, held_us, named)})"
+        f" FROM {_asof('raw_bar', cutoff_us, held_us)} r{_named('r', cutoff_us, held_us, named)})"
     )
 
 
@@ -537,7 +499,7 @@ def actions(
     listing_id, provider, effective_date, action_kind, new_shares_per_old_share, cash_amount,
     provisional, provenance, status and payload reference. Normal reads hide withdrawals;
     audit evidence keeps the cutoff-visible withdrawal, as the original receipt's hash does."""
-    source = "corporate_action_versions" if evidence else f"corporate_action_asof({cutoff_us})"
+    source = _asof("corporate_action", cutoff_us, held_us, versions=evidence)
     payload = _payload(
         "corporate_action_revision", "c", "effective_date", cutoff_us, held_us, workspace_id
     )
@@ -566,6 +528,7 @@ def mappings(
     return (
         "(SELECT alias.listing_id, named.name AS provider, m.symbol AS provider_symbol,"
         " m.valid_from AS effective_from, m.valid_to AS effective_to, m.lifecycle_state"
-        f" FROM provider_symbol_asof({cutoff_us}) m{_named('m', cutoff_us, held_us, named)}"
+        f" FROM {_asof('provider_symbol', cutoff_us, held_us)} m"
+        f"{_named('m', cutoff_us, held_us, named)}"
         " AND m.provider_id NOT IN (SELECT definition_id FROM market_aliases))"
     )
