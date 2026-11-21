@@ -1625,10 +1625,17 @@ def build_local_web_application(
     # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)
 
+    def refuse_forwarded_serve(_arguments: list[str]) -> int:
+        raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
+
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
     def external_operation(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         if payload.get("operation") == CLI_OPERATION:
-            return invoke_cli(payload, session.workspace)
+            from alphalattice.interface.local_application.cli import main  # lazy: CLI dispatch
+
+            return invoke_cli(
+                payload, session.workspace, lambda argv: main(argv, serve=refuse_forwarded_serve)
+            )
         try:
             document = PortfolioResearchRequestDocument.model_validate(payload)
         except ValidationError as error:

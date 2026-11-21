@@ -8,7 +8,7 @@ import codecs
 import io
 import os
 import sys
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from contextvars import ContextVar
 from pathlib import Path
 from typing import NamedTuple, TextIO
@@ -106,11 +106,11 @@ def _stdout(buffer: io.BytesIO, style: tuple[str, str]) -> io.TextIOWrapper:
     return io.TextIOWrapper(buffer, encoding=style[0], errors=style[1], write_through=True)
 
 
-def _local_only(_arguments: list[str]) -> int:
-    raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
-
-
-def invoke(payload: dict[str, object], served_workspace: Path) -> dict[str, object]:
+def invoke(
+    payload: dict[str, object],
+    served_workspace: Path,
+    dispatch: Callable[[list[str]], int],
+) -> dict[str, object]:
     """Admit the same forms as the client, then run the ordinary CLI with local streams."""
     if payload.keys() != {"operation", "argv", "cwd", "stdin", "streams", "environment"}:
         return {"cli": "local"}
@@ -136,13 +136,11 @@ def invoke(payload: dict[str, object], served_workspace: Path) -> dict[str, obje
     except (LookupError, ValueError):
         return {"cli": "local"}
 
-    from alphalattice.interface.local_application.cli import main  # lazy: CLI uses this context.
-
     with stdout, stderr:
         scope = CLI_CALL.set(Call(caller, settings, stdout, stderr))
         try:
             try:
-                code = main(argv, serve=_local_only)
+                code = dispatch(argv)
             except SystemExit as exited:
                 if not isinstance(exited.code, int):
                     raise
