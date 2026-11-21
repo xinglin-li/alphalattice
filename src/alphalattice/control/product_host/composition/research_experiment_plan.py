@@ -18,6 +18,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceModelTrainingInput,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    RESEARCH_EXPERIMENT_TASK_KIND,
+)
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -47,7 +50,7 @@ from alphalattice.protocols.research_authoring.contracts import (
     SealedResearchProgram,
 )
 
-TASK_KIND = "research_experiment"
+TASK_KIND = RESEARCH_EXPERIMENT_TASK_KIND
 STAGES = ("execute_sealed_experiment", "verify_experiment_evidence")
 
 

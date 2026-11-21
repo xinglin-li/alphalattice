@@ -24,6 +24,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceEvidenceReview,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
+)
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -60,7 +63,6 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
 )
 
-EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
 EVIDENCE_REVIEW_MANIFEST_SCHEMA = "evidence-review-workspace-authority"
 _HASH = r"^[0-9a-f]{64}$"
 

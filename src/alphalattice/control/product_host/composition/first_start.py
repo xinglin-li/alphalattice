@@ -20,8 +20,9 @@ import shutil
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
-from functools import partial
+from functools import cached_property, partial
 from importlib import import_module, resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Final, Literal
@@ -41,9 +42,6 @@ from alphalattice.control.product_host.storage.backup import (
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
 from alphalattice.control.workspace_runtime.storage.capacity import FREE_FLOOR_BYTES
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-from alphalattice.foundation.causal_outcomes.execution.readers import (
-    execution_outcome_upgrade_family,
-)
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
 from alphalattice.kernel.data_layer.log import HostLog
@@ -60,6 +58,10 @@ def execution_outcomes() -> Family:
     """The execution-outcome family, holding a workspace whose committed legacy chunks the catalog
     lacks or disagrees with: its own ALL EQUAL check, asked of that workspace alone. Its module
     stays as merged, so no study's implementation identity moves for this question."""
+    from alphalattice.foundation.causal_outcomes.execution.readers import (  # lazy: on use
+        execution_outcome_upgrade_family,
+    )
+
     family = execution_outcome_upgrade_family()
 
     def holds(workspace: Path) -> bool:
@@ -114,21 +116,26 @@ def _declared_family(declaration: dict[str, str]) -> Callable[[], Family]:
     raise ValueError(f"unknown first-start adapter {mode} for {name}")
 
 
+def _registered_family(path: Traversable) -> Family:
+    """Resolve one declaration when discovery or recovery needs its family."""
+    try:
+        factory = _declared_family(json.loads(path.read_text(encoding="utf-8")))
+    except (AttributeError, ImportError, KeyError, OSError, TypeError, ValueError) as error:
+        raise DataError(
+            f"cannot read first-start family registration {path.name}",
+            code="data_layer.schema_mismatch",
+        ) from error
+    return factory()
+
+
 def _families() -> tuple[Callable[[], Family], ...]:
-    """Read the family registrations in their numbered migration order."""
+    """List the registered family factories in their numbered migration order."""
     directory = resources.files(__package__).joinpath("first_start_families")
-    factories = []
-    for path in sorted(directory.iterdir(), key=lambda item: item.name):
-        if not path.name.endswith(".json"):
-            continue
-        try:
-            factories.append(_declared_family(json.loads(path.read_text(encoding="utf-8"))))
-        except (AttributeError, ImportError, KeyError, OSError, TypeError, ValueError) as error:
-            raise DataError(
-                f"cannot read first-start family registration {path.name}",
-                code="data_layer.schema_mismatch",
-            ) from error
-    return tuple(factories)
+    return tuple(
+        partial(_registered_family, path)
+        for path in sorted(directory.iterdir(), key=lambda item: item.name)
+        if path.name.endswith(".json")
+    )
 
 
 FAMILIES: Final = _families()
@@ -294,12 +301,16 @@ class FirstStart:
     def __init__(self, root: Path, log: HostLog, workspace: Path) -> None:
         """Read what the started workspace's Host owes: a recorded run, a new plan, or none."""
         self.root, self.log, self.workspace = root.resolve(), log, workspace.resolve()
-        self.families = tuple(make() for make in FAMILIES)
         self.failure: str | None = None
         self.plan = self._due()
         self.state: State = "PENDING"
         if self.plan is not None and self.plan.recorded:
             self.state = "RUNNING"  # acknowledged when it started: it resumes as recorded
+
+    @cached_property
+    def families(self) -> tuple[Family, ...]:
+        """Open the upgrade families when the recorded progress leaves work to inspect or run."""
+        return tuple(make() for make in FAMILIES)
 
     def _runner(
         self,
@@ -307,13 +318,13 @@ class FirstStart:
         workspaces: tuple[Path, ...],
         check: Any = None,
         *,
-        families: tuple[Family, ...] | None = None,
+        families: tuple[Family, ...] = (),
     ) -> UpgradeRunner:
         return UpgradeRunner(
             self.root,
             self.log,
             workspaces,
-            self.families if families is None else families,
+            families,
             check or (lambda *_: {}),
             subject=subject,
         )

@@ -37,10 +37,7 @@ from alphalattice.control.observation_runtime.policy import (
     default_observation_policies,
 )
 from alphalattice.control.product_host.composition import native_usage_reader as usage_module
-from alphalattice.control.product_host.composition.local_web_session import (
-    LocalPortfolioWebSession,
-    NativeUsageReader,
-)
+from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.workspace_runtime.mutation_gate import (
     WorkspaceMutationGate,
@@ -330,7 +327,7 @@ def _two_bound(tmp_path, monkeypatch, receipts):
         return receipt
 
     monkeypatch.setattr(usage_module, "read_session_usage", read)
-    return workspace, projects, NativeUsageReader(operations), elapsed, bind
+    return workspace, projects, usage_module.NativeUsageReader(operations), elapsed, bind
 
 
 @pytest.mark.proves("composition.workspace_binding_usage_unknown")

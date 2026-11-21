@@ -26,7 +26,6 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
-from alphalattice.control.product_host.composition import portfolio_result_context
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -49,14 +48,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
     read_research_workspace_manifest,
     update_research_workspace_manifest,
-)
-from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
-from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    factor_input_paths,
-    read_factor_bundle,
-)
-from alphalattice.control.product_host.research_authoring.input_revisions import (
-    ResearchInputRevisions,
 )
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -129,7 +120,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell, worded
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
-from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
@@ -699,6 +689,11 @@ class _Setup:
                 "evidence_review.research_input_id_and_hash_required_together", "research_input_id"
             )
         if input_id is not None:
+            # An explicitly selected input has its own revision authority.
+            from ..research_authoring.input_revisions import (  # lazy: on use
+                ResearchInputRevisions,
+            )
+
             selected = ResearchInputRevisions(session).select(input_id, input_hash)
             universe = _research_universe_listing_ids(workspace, selected.binding_hash)
         else:
@@ -706,7 +701,13 @@ class _Setup:
                 raise OptionRefused(
                     "evidence_review.research_input_selection_required", "research_input_id"
                 )
-            universe = portfolio_result_context.universe_listing_ids(workspace)
+
+            # The installed-book setup reads its Portfolio universe.
+            from .portfolio_result_context import (  # lazy: on use
+                universe_listing_ids,
+            )
+
+            universe = universe_listing_ids(workspace)
         recipe = setup_recipe(
             arguments.recipe,
             installed=_installed_recipe(workspace),
@@ -1200,7 +1201,10 @@ def _installed_manifest(workspace: Path) -> EvidenceReviewWorkspaceManifest | No
     if binding is None:
         return None
     manifest = (workspace / binding.relative_path).read_bytes()
-    return EvidenceReviewWorkspaceManifest.model_validate_json(manifest)
+    return cast(
+        EvidenceReviewWorkspaceManifest,
+        EvidenceReviewWorkspaceManifest.model_validate_json(manifest),
+    )
 
 
 def _installed_recipe(workspace: Path) -> str | None:
@@ -1591,6 +1595,13 @@ def _acquire_sec_sources(
 
 
 def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[str, str]:
+
+    # A setup using a research input reads its Factor publication.
+    from ..research_authoring.factor_inputs import (  # lazy: on use
+        factor_input_paths,
+        read_factor_bundle,
+    )
+
     # The caller admitted and verified this input through ResearchInputRevisions.
     bundle = read_factor_bundle(workspace, binding_hash, verify=False)
     source, artifacts = factor_input_paths(workspace, binding_hash)
@@ -1931,6 +1942,11 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
     check. An acquisition's read-only preflight keeps its exact binding, scope and
     explicit consent; a recorded import's way on is its own check, offline."""
     if str(error) in _RUNTIME_REFUSALS:
+        # Refusal guidance opens runtime and pack commands only on this path.
+        from .retrieval_pack_setup import (  # lazy: on use
+            pack_command,
+        )
+
         # Never the same check again: the runtime's fill and the packs' status come first.
         return {
             "environment": join(fill_command(), shell()),
@@ -1954,6 +1970,12 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
 
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
+
+    # The standalone command alone renders its owner response to stdout.
+    from ....interface.local_application.read_views import (  # lazy: on use
+        emit_owner,
+    )
+
     parser = _parser()
     parser.add_argument(
         "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")

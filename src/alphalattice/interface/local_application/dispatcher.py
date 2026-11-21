@@ -513,7 +513,7 @@ class LocalBackgroundDispatcher:
     @_admitted
     def resume(
         self,
-        commands: dict[str, LocalApplicationCommand],
+        commands: Mapping[str, LocalApplicationCommand],
         *,
         only_task_id: UUID | None = None,
         expected_task_hash: str | None = None,

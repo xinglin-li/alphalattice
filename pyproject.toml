@@ -281,6 +281,11 @@ ignore_missing_imports = true
 module = "alphalattice.kernel.shared_kernel.spawn"
 follow_imports = "normal"
 
+[[tool.mypy.overrides]]
+# Read BaseModel's types through the module that defines it.
+module = "pydantic.main"
+follow_imports = "silent"
+
 [tool.pytest.ini_options]
 tmp_path_retention_policy = "failed"
 tmp_path_retention_count = "1"

@@ -67,6 +67,9 @@ from alphalattice.control.product_host.composition.strategy_scoring import (
 from alphalattice.control.product_host.composition.strategy_scoring import (
     _implementation_hash as scoring_identity,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    DECISION_ADVANCEMENT_SCHEMA,
+)
 from alphalattice.control.product_host.maintenance.data_update import (
     _STAGES as DATA_STAGES,
 )
@@ -146,7 +149,7 @@ from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_roo
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
-SCHEMA = "portfolio-conditional-decision-advancement"
+SCHEMA = DECISION_ADVANCEMENT_SCHEMA
 STAGES = (
     "verify_request",
     "update_inputs",

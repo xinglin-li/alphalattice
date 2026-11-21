@@ -23,9 +23,7 @@ import copy
 import json
 import os
 import threading
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -39,6 +37,13 @@ from alphalattice.control.product_host.composition.research_experiments import (
     ENVELOPE_SCHEMA_ID,
     TASK_KIND,
     ResearchExperimentApplication,
+)
+from alphalattice.control.product_host.composition.research_read_scopes import (
+    _TRIAL_READS,
+    TRIALS_DIRECTORY,
+)
+from alphalattice.control.product_host.composition.research_read_scopes import (
+    trial_reads_once as trial_reads_once,
 )
 from alphalattice.control.product_host.composition.result_standing import trial_standing
 from alphalattice.control.product_host.data_preparation.feature_research import (
@@ -57,7 +62,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-TRIALS_DIRECTORY = "feature-trials"
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")
 _ALPHA_METRICS = ("mean_rank_ic", "pooled_oos_r2", "mean_gross_decile_spread", "fold_coverage_mean")
@@ -186,7 +190,7 @@ class FeatureTrials:
             dispatcher: Local background task dispatcher.
             clock: Explicit observed-time source.
         """
-        self.root = workspace / "runtime" / TRIALS_DIRECTORY
+        self.root = workspace / TRIALS_DIRECTORY
         self.workspace = workspace
         self.experiments = experiments
         self.feature_builds = feature_builds
@@ -841,30 +845,6 @@ class FeatureTrials:
                 caller=trial.caller,
             )
         return body
-
-
-_TRIAL_READS: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
-    "feature_trial_reads", default=None
-)
-
-
-@contextmanager
-def trial_reads_once() -> Iterator[None]:
-    """One request reads each completed trial once.
-
-    A goal's submission and its read resolve the trial a reference names and the review packet
-    another names, and the packet reads the same trial again, its comparison included. Inside
-    this scope a completed trial answers from its first read in the request. An operation run
-    inside another joins the scope already open; the reads are released with it.
-    """
-    if _TRIAL_READS.get() is not None:
-        yield
-        return
-    token = _TRIAL_READS.set({})
-    try:
-        yield
-    finally:
-        _TRIAL_READS.reset(token)
 
 
 __all__ = [

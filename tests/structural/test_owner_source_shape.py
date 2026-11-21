@@ -552,7 +552,10 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to_source
 def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source_shape() -> None:
     """Control: Every read of work planned per strategy is keyed by its strategy source shape."""
 
-    from alphalattice.control.product_host.composition import portfolio_research_operations
+    from alphalattice.control.product_host.composition import (
+        portfolio_operations,
+        portfolio_research_operations,
+    )
 
     readbacks = strategy_readback_operations()
     tree = ast.parse(inspect.getsource(portfolio_research_operations))
@@ -575,12 +578,13 @@ def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source
         return found.union(*(readers(own[f.attr]) for f in named if f.attr in own))
 
     owners: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
+    routes = ast.parse(inspect.getsource(portfolio_operations))
+    for node in ast.walk(routes):
         if (
             isinstance(node, ast.If)
             and isinstance(node.test, ast.Compare)
             and ast.unparse(node.test.left) == "request.operation"
-            and "self._strategy_task(request)" in ast.unparse(node)
+            and "operations._strategy_task(request)" in ast.unparse(node)
         ):
             owners[ast.literal_eval(node.test.comparators[0])] = readers(node)
     assert owners.keys() == readbacks and all(len(owner) == 1 for owner in owners.values()), owners
@@ -605,7 +609,12 @@ def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy_source
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task_source_shape() -> None:
     """Control: Every door whose way on reruns plan resumes its stopped task source shape."""
 
-    from alphalattice.control.product_host.composition import portfolio_research_operations
+    from alphalattice.control.product_host.composition import (
+        data_operations,
+        portfolio_operations,
+        portfolio_research_operations,
+        research_operations,
+    )
     from alphalattice.control.product_host.data_preparation import application as preparation
     from alphalattice.control.product_host.maintenance import data_update
 
@@ -649,25 +658,28 @@ def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task_source_s
     way = inspect.getsource(portfolio_research_operations.PortfolioResearchOperations._deferred_way)
     assert "DATA_UPDATE_TASK_KIND" in way and "DecisionAdvancementApplication.task_kind" in way
     commands.add(preparation.WorkspacePreparationCommand.__name__)
-    door = tree(portfolio_research_operations)
-    held_as = {
-        id(node.value): ast.unparse(node.targets[0])
-        for node in ast.walk(door)
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
-    }
-    submitted: dict[str, str] = {}
-    for call in ast.walk(door):
-        if not (isinstance(call, ast.Call) and ast.unparse(call.func) == "self.dispatcher.submit"):
-            continue
-        made = call.args[0]
-        if isinstance(made, ast.Call) and ast.unparse(made.func) in commands:
-            submitted[ast.unparse(made.func)] = held_as.get(id(call), ast.unparse(call))
+    submitted: dict[str, tuple[str, str]] = {}
+    answered: set[tuple[str, str]] = set()
+    for module in (data_operations, portfolio_operations, research_operations):
+        door = tree(module)
+        held_as = {
+            id(node.value): ast.unparse(node.targets[0])
+            for node in ast.walk(door)
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+        }
+        for call in ast.walk(door):
+            if not isinstance(call, ast.Call):
+                continue
+            if ast.unparse(call.func) == "operations.dispatcher.submit":
+                made = call.args[0]
+                if isinstance(made, ast.Call) and ast.unparse(made.func) in commands:
+                    submitted[ast.unparse(made.func)] = (
+                        module.__name__,
+                        held_as.get(id(call), ast.unparse(call)),
+                    )
+            if ast.unparse(call.func) == "operations._run_answer":
+                answered.add((module.__name__, ast.unparse(call.args[0])))
     assert submitted.keys() == commands, submitted
-    answered = {
-        ast.unparse(call.args[0])
-        for call in ast.walk(door)
-        if isinstance(call, ast.Call) and ast.unparse(call.func) == "self._run_answer"
-    }
     assert set(submitted.values()) <= answered, (submitted, answered)
 
 
@@ -678,6 +690,7 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
 
     from alphalattice.control.product_host.composition import (
         decision_advancement,
+        portfolio_operations,
         portfolio_research_operations,
         research_update_automation,
     )
@@ -732,7 +745,7 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     assert "read_workspace_inputs(" in way and "readiness_status" in way
     assert "running_place_holder()" in way and '"DATA_UPDATE_PLAN"' in way
     assert "DATA_UPDATE_TASK_KIND" in way and "DecisionAdvancementApplication.task_kind" in way
-    assert "self._inputs_way(" in inspect.getsource(operations._execute)
+    assert "operations._inputs_way(" in inspect.getsource(portfolio_operations.execute)
     held = dispatcher.LocalBackgroundDispatcher
     assert "self._waits_its_turn(" in inspect.getsource(held._drain)
     assert "self.drive_waiting()" in inspect.getsource(held._drain)

@@ -10,14 +10,24 @@ from __future__ import annotations
 import json
 import re
 import threading
-from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager, nullcontext, suppress
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
 from time import monotonic, sleep
-from typing import Any, Final, Literal, Protocol, TypeVar, cast, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Literal,
+    NamedTuple,
+    Protocol,
+    TypeVar,
+    cast,
+    runtime_checkable,
+)
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -25,41 +35,14 @@ from pydantic import ValidationError
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
 from alphalattice.control.product_host.composition import committee
+from alphalattice.control.product_host.composition.answer_turns import (
+    CURRENT_OPERATION as _CURRENT_OPERATION,
+)
+from alphalattice.control.product_host.composition.answer_turns import (
+    finish_observation,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
-)
-from alphalattice.control.product_host.composition.decision_advancement import (
-    SCHEMA as DECISION_ADVANCEMENT_SCHEMA,
-)
-from alphalattice.control.product_host.composition.decision_advancement import (
-    DecisionAdvancementApplication,
-    DecisionAdvancementCommand,
-)
-from alphalattice.control.product_host.composition.evidence_authority_setup import (
-    EvidenceInstall,
-    EvidenceInstallCommand,
-    install_refusal,
-    offered_install,
-    read_setup,
-    run_setup,
-    setup_refusal,
-)
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    EvidenceReviewApplication,
-    ReviewOutcome,
-)
-from alphalattice.control.product_host.composition.evidence_review_bundles import (
-    PACKET_SELECTOR_CODES,
-    EvidenceReviewBundles,
-    agent_bundle_refusal,
-    analyst_reads_answer,
-    set_analyst_reads,
-)
-from alphalattice.control.product_host.composition.evidence_review_delivery import (
-    EvidenceReviewDelivery,
-)
-from alphalattice.control.product_host.composition.evidence_review_projection import (
-    EvidenceCroProjector,
 )
 from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
@@ -68,71 +51,22 @@ from alphalattice.control.product_host.composition.experience_read import (
     recall_experience,
     record_experience,
 )
-from alphalattice.control.product_host.composition.feature_trials import (
-    FeatureTrials,
-    trial_reads_once,
-)
 from alphalattice.control.product_host.composition.goal_check import goal_refusal
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.composition.host_answer_submission import (
-    CURRENT_OPERATION as _CURRENT_OPERATION,
-)
-from alphalattice.control.product_host.composition.host_answer_submission import (
-    answer_deadline,
-    finish_observation,
-    submit_agent_answer,
-    submit_evidence_analysis,
-)
-from alphalattice.control.product_host.composition.pending_decisions import (
-    all_data_issues,
-    pending_decisions,
-)
 from alphalattice.control.product_host.composition.plain_refusals import (
     SELECTOR_CODES,
     deferral,
     explain,
-    invalid_plan_document,
     refused,
     task_record_refusal,
-    unit_refusal,
 )
-from alphalattice.control.product_host.composition.portfolio_application import (
-    AdmittedPortfolioResearch,
-    PlannedPortfolioResearch,
-    PortfolioResearchApplication,
-)
-from alphalattice.control.product_host.composition.portfolio_result_context import (
-    date_risk,
-    installed_temporal_statements,
-    position_rows,
-    saved_portfolio_context,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    TASK_KIND as PORTFOLIO_UPDATE_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    PortfolioUpdateApplication,
-    PortfolioUpdateCommand,
-    update_refusal,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    TASK_KIND as RESEARCH_EXPERIMENT_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    ResearchExperimentApplication,
-    review_requests,
+from alphalattice.control.product_host.composition.research_read_scopes import (
+    TRIALS_DIRECTORY,
+    trial_reads_once,
     verified_study_evidence,
 )
-from alphalattice.control.product_host.composition.research_history import ResearchHistory
 from alphalattice.control.product_host.composition.research_review_outcome import (
     _review_outcome_body as _review_outcome_body,
-)
-from alphalattice.control.product_host.composition.research_update_automation import (
-    ResearchUpdateAutomation,
-    dated_plan,
-    first_update,
-    require_service_operation,
-    resume_held,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     RESEARCH_WORKSPACE_MANIFEST_NAME,
@@ -147,31 +81,18 @@ from alphalattice.control.product_host.composition.resource_estimates import (
     MEMORY_INSUFFICIENT,
     gate_for,
 )
-from alphalattice.control.product_host.composition.review_updates import read_review_update
-from alphalattice.control.product_host.composition.strategy_activation import (
-    INSTALLED_BOOK_WORDS,
-    RUN_FORWARD_WORDS,
-    StrategyActivation,
-)
-from alphalattice.control.product_host.composition.strategy_calibration import (
-    TASK_KIND as STRATEGY_CALIBRATION_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.strategy_calibration import (
-    StrategyCalibrationApplication,
-    StrategyCalibrationCommand,
-)
-from alphalattice.control.product_host.composition.strategy_scoring import (
-    TASK_KIND as STRATEGY_SCORE_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.strategy_scoring import (
-    StrategyScoreCommand,
-    StrategyScoringApplication,
-)
 from alphalattice.control.product_host.composition.strategy_tasks import (
     StrategyRead,
     latest_by_strategy,
     planned,
     strategy_task,
+)
+from alphalattice.control.product_host.composition.task_kinds import (
+    DECISION_ADVANCEMENT_SCHEMA,
+    PORTFOLIO_UPDATE_TASK_KIND,
+    RESEARCH_EXPERIMENT_TASK_KIND,
+    STRATEGY_CALIBRATION_TASK_KIND,
+    STRATEGY_SCORE_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
     TaskAttentionFact,
@@ -189,62 +110,10 @@ from alphalattice.control.product_host.composition.task_supervision import (
     TaskSupervisor,
     register_wake,
 )
-from alphalattice.control.product_host.composition.upgrade_overview import (
-    acknowledge_upgrade,
-    installed_study_identities,
-    upgrade_overview,
-)
-from alphalattice.control.product_host.composition.verification_sweep import (
-    StudyVerificationSweep,
-    StudyVerificationSweepCommand,
-)
-from alphalattice.control.product_host.data_preparation.application import (
-    TASK_KIND as PREPARATION_TASK_KIND,
-)
-from alphalattice.control.product_host.data_preparation.application import (
-    WorkspacePreparationApplication,
-    WorkspacePreparationCommand,
-)
-from alphalattice.control.product_host.data_preparation.feature_research import (
-    ResearchFeatureBuildApplication,
-)
-from alphalattice.control.product_host.data_preparation.input_capture import (
-    ResearchInputCaptureApplication,
-)
-from alphalattice.control.product_host.data_preparation.model_training import (
-    ModelTrainingInputApplication,
-)
-from alphalattice.control.product_host.data_preparation.remediation import (
-    WorkspaceDataIssueApplication,
-)
-from alphalattice.control.product_host.data_preparation.research_strategy import (
-    ResearchStrategyPreparation,
-)
-from alphalattice.control.product_host.maintenance.data_update import (
-    DATA_UPDATE_TASK_KIND,
-    WorkspaceDataUpdateApplication,
-    WorkspaceDataUpdateCommand,
-    installed_data_update_binding,
-    read_workspace_inputs,
-)
 from alphalattice.control.product_host.publication.goals import (
     GoalStore,
     session_work_declaration,
 )
-from alphalattice.control.product_host.research_authoring.feature_research import (
-    ResearchFeatureDefinitions,
-)
-from alphalattice.control.product_host.research_authoring.model_extensions import ModelExtensions
-from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
-from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
-from alphalattice.control.product_host.storage.backup import (
-    GENERATIONS_KEPT,
-    WorkspaceBackupError,
-    WorkspaceBackups,
-    backup_answer,
-    take_automatic_backup,
-)
-from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
 from alphalattice.control.product_host.storage.inventory import StorageInventoryError
 from alphalattice.control.product_host.storage.retention import (
     StorageRetentionError,
@@ -315,7 +184,6 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     set_workspace_network,
 )
 from alphalattice.evidence.alternative_evidence.storage.inventory import EvidenceStorageBinding
-from alphalattice.foundation.feature_engine.catalog.service import FeatureCatalogCrudError
 from alphalattice.interface.local_application.activity import (
     ACTIVITY_REFUSAL_DAYS,
     ActivityReadQuery,
@@ -373,16 +241,21 @@ from alphalattice.interface.local_application.native_setup import (
     unbound,
 )
 from alphalattice.interface.local_application.operations import OPERATIONS, PERSON_ONLY
+from alphalattice.interface.local_application.portfolio_request_fields.contracts import (
+    REVIEW_OPERATIONS,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     FrozenCandidateProjection,
     LocalApplicationError,
     LocalPortfolioResearchService,
     OperationCaller,
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
     _spec_document,
+    full_request_document,
     public_control_document,
+    request_document_schema,
     spec_from_document,
+    validate_request_document,
 )
 from alphalattice.investment.alpha_research.scores.model_renewal import (
     verified_lifecycle_admissions,
@@ -408,22 +281,85 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_weight,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
-    BookSelector,
-    PortfolioEvidenceReviewError,
-)
-from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
-    TASK_KIND as CRO_REVIEW_TASK_KIND,
-)
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
 )
-from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord, AgentRole
+from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
-from .portfolio_result_context import read_portfolio
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        DecisionAdvancementApplication,
+    )
+    from alphalattice.control.product_host.composition.evidence_authority_setup import (
+        EvidenceInstall,
+    )
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        EvidenceReviewApplication,
+    )
+    from alphalattice.control.product_host.composition.feature_trials import (
+        FeatureTrials,
+    )
+    from alphalattice.control.product_host.composition.portfolio_application import (
+        AdmittedPortfolioResearch,
+        PlannedPortfolioResearch,
+        PortfolioResearchApplication,
+    )
+    from alphalattice.control.product_host.composition.portfolio_updates import (
+        PortfolioUpdateApplication,
+    )
+    from alphalattice.control.product_host.composition.research_experiments import (
+        ResearchExperimentApplication,
+    )
+    from alphalattice.control.product_host.composition.research_update_automation import (
+        ResearchUpdateAutomation,
+    )
+    from alphalattice.control.product_host.composition.strategy_activation import (
+        StrategyActivation,
+    )
+    from alphalattice.control.product_host.composition.strategy_calibration import (
+        StrategyCalibrationApplication,
+    )
+    from alphalattice.control.product_host.composition.strategy_scoring import (
+        StrategyScoringApplication,
+    )
+    from alphalattice.control.product_host.composition.verification_sweep import (
+        StudyVerificationSweep,
+    )
+    from alphalattice.control.product_host.data_preparation.application import (
+        WorkspacePreparationApplication,
+    )
+    from alphalattice.control.product_host.data_preparation.feature_research import (
+        ResearchFeatureBuildApplication,
+    )
+    from alphalattice.control.product_host.data_preparation.input_capture import (
+        ResearchInputCaptureApplication,
+    )
+    from alphalattice.control.product_host.data_preparation.model_training import (
+        ModelTrainingInputApplication,
+    )
+    from alphalattice.control.product_host.data_preparation.remediation import (
+        WorkspaceDataIssueApplication,
+    )
+    from alphalattice.control.product_host.data_preparation.research_strategy import (
+        ResearchStrategyPreparation,
+    )
+    from alphalattice.control.product_host.maintenance.data_update import (
+        WorkspaceDataUpdateApplication,
+    )
+    from alphalattice.control.product_host.publication.portfolio_research import (
+        PortfolioResearchPipelineStore,
+    )
+    from alphalattice.control.product_host.storage.input_references import (
+        ResearchInputStorage,
+    )
+    from alphalattice.evidence.alternative_evidence.publication.artifacts import (
+        AlternativeEvidenceArtifactStore,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
+
 
 PORTFOLIO_RUN_COMMAND = "portfolio_public_development_replay"
 
@@ -560,20 +496,66 @@ def edge_proof(operation: str) -> AbstractContextManager[None]:
     return full_content_proof() if edge else nullcontext()
 
 
+class WorkspaceOperationCall(NamedTuple):
+    """The Host, typed request and caller delivered to a workspace route family."""
+
+    operations: PortfolioResearchOperations
+    request: PortfolioResearchOperationRequest
+    caller: OperationCaller
+
+
+class OperationRouteFamilies(Protocol):
+    """The Host composition's first-use dispatch to heavier route owners."""
+
+    def workspace(self, call: WorkspaceOperationCall) -> dict[str, object] | None:
+        """Dispatch a workspace operation if the family claims it."""
+        ...
+
+    def portfolio(self, call: WorkspaceOperationCall) -> dict[str, object]:
+        """Dispatch a Portfolio operation after the Host checks installation."""
+        ...
+
+    def review(
+        self,
+        call: WorkspaceOperationCall,
+        *,
+        read_files: tuple[str, ...] | None,
+        agent_run: AgentRun | None,
+        accepted_bundle: AgentBundleRecord | None,
+    ) -> dict[str, object]:
+        """Dispatch a review operation after the Host checks the operation."""
+        ...
+
+
 @dataclass(slots=True)
 class PortfolioResearchOperations:
     """One product operation owner for every human and Agent caller."""
 
-    service: LocalPortfolioResearchService | None
     dispatcher: LocalBackgroundDispatcher
-    application: PortfolioResearchApplication | None
     workspace_manifest: ResearchWorkspaceManifest
     workspace_session: WorkspaceApplicationSession
-    review: EvidenceReviewApplication | None
     heartbeats: TaskHeartbeatReader
     """Read-only access to the runners' operational heartbeat sidecars, by execution id;
     what it reads never raises past its boundary and never changes what Task Control says."""
-    data_update: WorkspaceDataUpdateApplication | None = None
+    route_families: OperationRouteFamilies = field(kw_only=True, repr=False)
+    review_factory: Callable[[], EvidenceReviewApplication] | None = field(
+        default=None, kw_only=True, repr=False
+    )
+    review_artifacts: AlternativeEvidenceArtifactStore | None = field(
+        default=None, kw_only=True, repr=False
+    )
+    portfolio_factory: (
+        Callable[[], tuple[PortfolioResearchApplication, LocalPortfolioResearchService]] | None
+    ) = field(default=None, kw_only=True, repr=False)
+    portfolio_pipeline: PortfolioResearchPipelineStore | None = field(
+        default=None, kw_only=True, repr=False
+    )
+    installed_packages: Callable[[], Mapping[str, FrozenStrategyPackage]] | None = field(
+        default=None, kw_only=True, repr=False
+    )
+    data_update_factory: Callable[[], WorkspaceDataUpdateApplication] | None = field(
+        default=None, kw_only=True, repr=False
+    )
     manifests: ResearchWorkspaceManifestHolder | None = None
     """The one holder of the workspace manifest the applications read; made from
     `workspace_manifest` when the composition passes none."""
@@ -610,63 +592,81 @@ class PortfolioResearchOperations:
 
     observer_failures: int = field(default=0, init=False)
     last_observer_failure: str | None = field(default=None, init=False)
+    _backup_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _trial_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _manifest_stamp: tuple[int, int] | None = field(default=None, init=False)
     """The manifest file's stamp when it last read as the held manifest (W10)."""
     """Exception class of the last observer failure; never its message."""
 
-    scoring: StrategyScoringApplication | None = field(init=False, default=None)
-    calibration: StrategyCalibrationApplication | None = field(init=False, default=None)
-    updates: PortfolioUpdateApplication | None = field(init=False, default=None)
-    research_updates: DecisionAdvancementApplication | None = field(init=False, default=None)
-    automation: ResearchUpdateAutomation | None = field(init=False, default=None)
-    activations: StrategyActivation | None = field(init=False, default=None)
-    experiments: ResearchExperimentApplication = field(init=False)
+    _application: PortfolioResearchApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "application"}
+    )
+    _service: LocalPortfolioResearchService | None = field(init=False, default=None, repr=False)
+    _scoring: StrategyScoringApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "scoring"}
+    )
+    _calibration: StrategyCalibrationApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "calibration"}
+    )
+    _updates: PortfolioUpdateApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "updates"}
+    )
+    _research_updates: DecisionAdvancementApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "research_updates"}
+    )
+    _automation: ResearchUpdateAutomation | None = field(init=False, default=None, repr=False)
+    _activations: StrategyActivation | None = field(init=False, default=None, repr=False)
+    _experiments: ResearchExperimentApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "experiments"}
+    )
     model_contracts: dict[str, dict[str, Any]] = field(init=False, default_factory=dict)
     """Each Alpha model's contract answer by its identity, for the Host's life."""
     goals: GoalApplication = field(init=False)
-    preparation: WorkspacePreparationApplication = field(init=False)
-    data_issues: WorkspaceDataIssueApplication = field(init=False)
-    input_capture: ResearchInputCaptureApplication = field(init=False)
-    model_training_inputs: ModelTrainingInputApplication = field(init=False)
-    feature_builds: ResearchFeatureBuildApplication = field(init=False)
-    trials: FeatureTrials = field(init=False)
-    research_strategies: ResearchStrategyPreparation = field(init=False)
-    storage: ResearchInputStorage = field(init=False)
+    _preparation: WorkspacePreparationApplication | None = field(
+        init=False, default=None, repr=False
+    )
+    _data_update: WorkspaceDataUpdateApplication | None = field(
+        init=False, default=None, repr=False
+    )
+    _data_issues: WorkspaceDataIssueApplication | None = field(init=False, default=None, repr=False)
+    _input_capture: ResearchInputCaptureApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "input_capture"}
+    )
+    _model_training_inputs: ModelTrainingInputApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "model_training_inputs"}
+    )
+    _feature_builds: ResearchFeatureBuildApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "feature_builds"}
+    )
+    _trials: FeatureTrials | None = field(default=None, init=False, repr=False)
+    _owner_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    _research_strategies: ResearchStrategyPreparation | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "research_strategies"}
+    )
+    _storage: ResearchInputStorage | None = field(init=False, default=None, repr=False)
+    _review: EvidenceReviewApplication | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "review"}
+    )
     _packages: dict[str, FrozenStrategyPackage] = field(init=False, repr=False)
-    sweep: StudyVerificationSweep = field(init=False)
-    evidence_install: EvidenceInstall = field(init=False)
+    _sweep: StudyVerificationSweep | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "sweep"}
+    )
+    _evidence_install: EvidenceInstall | None = field(
+        init=False, default=None, repr=False, metadata={"owner": "evidence_install"}
+    )
     supervisor: TaskSupervisor = field(init=False)
     readbacks: VerifiedReadbacks = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Compose workspace owners and resume retained feature trials.
+        """Compose the dispatcher and the workspace's shared readers.
 
-        Preparation, storage, data, experiments and goals share the retained writer session. When
-        portfolio research is installed, wire its scoring, calibration, update and decision owners
-        and the bounded dispatcher idle callback.
+        The workspace readers share the retained writer session and manifest. The
+        other owners open through the operations that need them.
         """
         if self.manifests is None:
             self.manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
         self.readbacks = VerifiedReadbacks()
-        self.experiments = ResearchExperimentApplication(
-            session=self.workspace_session,
-            manifest=self.manifests,
-            dispatcher=self.dispatcher,
-            clock=self.dispatcher.clock,
-        )
         self.supervisor = TaskSupervisor(self)
-        self.evidence_install = EvidenceInstall(
-            session=self.workspace_session,
-            clock=self.dispatcher.clock,
-            installed=self._evidence_installed,
-            official_source=self.official_source,
-        )
-        self.sweep = StudyVerificationSweep(
-            session=self.workspace_session,
-            experiments=self.experiments,
-            installed=lambda: str(canonical_hash(self._installed_study_identities())),
-            clock=self.dispatcher.clock,
-        )
         self.goals = GoalApplication(
             GoalStore(
                 self.workspace_session.workspace / "artifacts", self.workspace_manifest.workspace_id
@@ -680,133 +680,527 @@ class PortfolioResearchOperations:
                 t.lifecycle.value == "SUCCEEDED" for t in self.preparation.tasks()
             ),
         )
-        self._compose_input_owners()
-        self.trials = FeatureTrials(
-            workspace=self.workspace_session.workspace,
-            experiments=self.experiments,
-            feature_builds=self.feature_builds,
-            dispatcher=self.dispatcher,
-            clock=self.dispatcher.clock,
-        )
         self.dispatcher.on_idle = self._worker_idle
-        self.trials.advance_all()
-        self._take_backup()
         self._packages = {}
-        if self.review is not None:
-            self.review.read_experiment = self.experiments.readback
-            self.review.network_delegation = lambda caller: self.goals.network_delegation(
-                REQUEST_PROVENANCE.get(), caller
-            )
-        if self.application is None:
-            return
-        assert self.review is not None
-        self._packages = {
-            package.strategy_id: package
-            for package in self.application.resolver.installed_packages().values()
-        }
-        self.scoring = StrategyScoringApplication(
-            session=self.workspace_session,
-            manifest=self.manifests,
-            packages=lambda: self._packages,
-            clock=self.dispatcher.clock,
-        )
-        clock = self.dispatcher.clock
-        self.calibration = StrategyCalibrationApplication(scoring=self.scoring, clock=clock)
-        self.updates = PortfolioUpdateApplication(
-            application=self.application,
-            calibration=self.calibration,
-            manifest=self.manifests,
-            clock=self.dispatcher.clock,
-        )
-        if self.data_update is not None:
-            self.data_update.portfolio_obligations = self.updates.valuation_obligations
-            self.research_updates = DecisionAdvancementApplication(self.updates, self.data_update)
-        manifests = self.manifests
-        assert manifests is not None
-        self.activations = StrategyActivation(
-            session=self.workspace_session,
-            manifest=lambda: manifests.current,
-            packages=lambda: self._packages,
-            ledger=self.application.ledger,
-            read_experiment=self.experiments.readback,
-            read_information=self.experiments.summary,
-            read_review=self._book_review_standing,
-            clock=self.dispatcher.clock,
-            hold=self._hold_activation,
-        )
-        self.review.read_update = self._read_review_update
-        self.review.installed_packages = self.application.resolver.installed_packages
-        self.review.installed_temporal_statements = partial(
-            installed_temporal_statements, self.workspace_session.workspace, self.workspace_manifest
-        )
-        self.automation = ResearchUpdateAutomation(
-            index=CommittedIndex(self.application.ledger.root, self.application.ledger.content),
-            workspace_manifest_hash=self.workspace_manifest.manifest_hash,
-            installed_package_ids=tuple(p for p in self._packages if self._update_configured(p)),
-            clock=self.dispatcher.clock,
-            execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
-            resume=partial(resume_held, self),
-            admit=self.dispatcher._admit,
-        )
+        if self.portfolio_factory is not None:
+            assert self.review_factory is not None and self.installed_packages is not None
+            self._packages = {
+                package.strategy_id: package for package in self.installed_packages().values()
+            }
 
-    def _compose_input_owners(self) -> None:
-        """Compose input owners with the Goal's data authority."""
-        self.preparation = WorkspacePreparationApplication(
-            self.workspace_session,
-            clock=self.dispatcher.clock,
-            provider=self.data_update.provider if self.data_update else None,
-            source_loader=self.data_update.source_loader if self.data_update else None,
-            recorded_data_confirmation=self.goals.recorded_data_confirmation,
-            data_rule=self.goals.data_rule,
+    @property
+    def has_portfolio(self) -> bool:
+        """Whether this Host can compose the Portfolio application."""
+        return self.portfolio_factory is not None or self._application is not None
+
+    def _open_portfolio(self) -> None:
+        factory = self.portfolio_factory
+        if factory is not None and self._application is None:
+            with self._owner_lock:
+                if self._application is None:
+                    application, self._service = factory()
+                    self._application = application
+
+    @property
+    def application(self) -> PortfolioResearchApplication | None:
+        """Open the workspace Portfolio application on first use."""
+        self._open_portfolio()
+        return self._application
+
+    @application.setter
+    def application(self, owner: PortfolioResearchApplication | None) -> None:
+        self._application, self.portfolio_factory = owner, None
+
+    @property
+    def service(self) -> LocalPortfolioResearchService | None:
+        """Open the workspace Portfolio service and its application on first use."""
+        self._open_portfolio()
+        return self._service
+
+    @property
+    def review(self) -> EvidenceReviewApplication | None:
+        """Open the workspace Evidence review on first use."""
+        factory = self.review_factory
+        if factory is None:
+            return self._review
+        with self._owner_lock:
+            if self._review is None:
+                review = factory()
+                self._review = review
+                try:
+                    self._configure_review(review)
+                    self._bind_evidence_storage_admission()
+                except BaseException:
+                    self._review = None
+                    review.close_source()
+                    raise
+            return self._review
+
+    @review.setter
+    def review(self, owner: EvidenceReviewApplication | None) -> None:
+        self._review, self.review_factory = owner, None
+
+    def _configure_review(self, review: EvidenceReviewApplication) -> None:
+        review.read_experiment = lambda task_id, session: self.experiments.readback(
+            task_id, session
         )
-        if self.data_update is not None:
-            self.data_update.recorded_data_confirmation = self.goals.recorded_data_confirmation
-            self.data_update.data_rule = self.goals.data_rule
-        self.storage = ResearchInputStorage(
-            self.workspace_session,
-            evidence=self._evidence_storage_binding(),
-            clock=self.dispatcher.clock,
+        review.network_delegation = lambda caller: self.goals.network_delegation(
+            REQUEST_PROVENANCE.get(), caller
         )
-        self._bind_evidence_storage_admission()
-        self.data_issues = WorkspaceDataIssueApplication(
-            self.workspace_session,
-            self.dispatcher.clock,
-            recorded_data_confirmation=self.goals.recorded_data_confirmation,
-            preparation_current=self.preparation.binding_current,
-        )
-        self.input_capture = ResearchInputCaptureApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.model_training_inputs = ModelTrainingInputApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.feature_builds = ResearchFeatureBuildApplication(
-            self.workspace_session, clock=self.dispatcher.clock
-        )
-        self.research_strategies = ResearchStrategyPreparation(
-            self.workspace_session,
-            clock=self.dispatcher.clock,
-            read_experiment=lambda task_id: self.experiments.readback(task_id),
-            list_experiments=self.experiments.listing,
-        )
+        if self.application is not None:
+            review.read_update = self._read_review_update
+            review.installed_packages = self.application.resolver.installed_packages
+            workspace = self.workspace_session.workspace
+            manifest = self.workspace_manifest
+
+            def review_temporal_statements(start: date, end: date) -> tuple[str, ...]:
+
+                # A review of the installed book reads its temporal statements.
+                from .portfolio_result_context import (  # lazy: on use
+                    installed_temporal_statements,
+                )
+
+                return installed_temporal_statements(workspace, manifest, start, end)
+
+            review.installed_temporal_statements = review_temporal_statements
+
+    @property
+    def has_data_update(self) -> bool:
+        """Whether this Host can compose workspace data update."""
+        return self.data_update_factory is not None
+
+    @property
+    def data_update(self) -> WorkspaceDataUpdateApplication | None:
+        """Open the workspace data update owner with its retained Goal authority."""
+        factory = self.data_update_factory
+        if factory is None:
+            return None
+        with self._owner_lock:
+            if self._data_update is None:
+                update = factory()
+                update.recorded_data_confirmation = self.goals.recorded_data_confirmation
+                update.data_rule = self.goals.data_rule
+                if self.has_portfolio:
+                    update.portfolio_obligations = self._portfolio_obligations
+                    update.cycle_owner = lambda cycle_id: self._decision_advancement()._cycle_owner(
+                        cycle_id
+                    )
+                self._data_update = update
+            return self._data_update
+
+    @property
+    def preparation(self) -> WorkspacePreparationApplication:
+        """Open workspace preparation with the Host's data authority."""
+        if (owner := self._preparation) is not None:
+            return owner
+        with self._owner_lock:
+            if self._preparation is None:
+                from ..data_preparation.application import (  # lazy: first preparation use
+                    WorkspacePreparationApplication,
+                )
+
+                update = self.data_update
+                self._preparation = WorkspacePreparationApplication(
+                    self.workspace_session,
+                    clock=self.dispatcher.clock,
+                    provider=update.provider if update else None,
+                    source_loader=update.source_loader if update else None,
+                    recorded_data_confirmation=self.goals.recorded_data_confirmation,
+                    data_rule=self.goals.data_rule,
+                )
+            return self._preparation
+
+    @preparation.setter
+    def preparation(self, owner: WorkspacePreparationApplication) -> None:
+        self._preparation = owner
+
+    @property
+    def experiments(self) -> ResearchExperimentApplication:
+        """Open the experiment owner on its first read or admission."""
+        if self._experiments is None:
+            with self._owner_lock:
+                if self._experiments is None:
+                    assert self.manifests is not None
+
+                    from .research_experiments import (  # lazy: the owner loads with its first use.
+                        ResearchExperimentApplication,
+                    )
+
+                    self._experiments = ResearchExperimentApplication(
+                        session=self.workspace_session,
+                        manifest=self.manifests,
+                        dispatcher=self.dispatcher,
+                        clock=self.dispatcher.clock,
+                    )
+        return self._experiments
+
+    @experiments.setter
+    def experiments(self, owner: ResearchExperimentApplication) -> None:
+        self._experiments = owner
+
+    @property
+    def storage(self) -> ResearchInputStorage:
+        """Open the workspace's research input storage on first use."""
+        if self._storage is None:
+            with self._owner_lock:
+                if self._storage is None:
+                    # The owner loads with its first use.
+                    from ..storage.input_references import (  # lazy: on use
+                        ResearchInputStorage,
+                    )
+
+                    evidence = self._evidence_storage_binding()
+                    # Opening the Evidence owner may have bound admission to this store.
+                    if self._storage is None:
+                        self._storage = ResearchInputStorage(
+                            self.workspace_session,
+                            evidence=evidence,
+                            clock=self.dispatcher.clock,
+                        )
+        return self._storage
+
+    @property
+    def scoring(self) -> StrategyScoringApplication | None:
+        """Open the Strategy scoring owner on first use."""
+        if self.application is None:
+            return None
+        if self._scoring is None:
+            with self._owner_lock:
+                if self._scoring is None:
+                    assert self.manifests is not None
+
+                    from .strategy_scoring import (  # lazy: the owner loads with its first use.
+                        StrategyScoringApplication,
+                    )
+
+                    self._scoring = StrategyScoringApplication(
+                        session=self.workspace_session,
+                        manifest=self.manifests,
+                        packages=lambda: self._packages,
+                        clock=self.dispatcher.clock,
+                    )
+                    if self.has_data_update:
+                        self._scoring.additional_publications = lambda: (
+                            self._decision_advancement()._completed_scores()
+                        )
+        return self._scoring
+
+    @property
+    def calibration(self) -> StrategyCalibrationApplication | None:
+        """Open the Strategy calibration owner on first use."""
+        if self.application is None:
+            return None
+        if self._calibration is None:
+            with self._owner_lock:
+                if self._calibration is None:
+                    scoring = self.scoring
+                    assert scoring is not None
+
+                    from .strategy_calibration import (  # lazy: the owner loads with its first use.
+                        StrategyCalibrationApplication,
+                    )
+
+                    self._calibration = StrategyCalibrationApplication(
+                        scoring=scoring, clock=self.dispatcher.clock
+                    )
+                    if self.has_data_update:
+                        self._calibration.additional_input = lambda content_hash: (
+                            self._decision_advancement()._completed_input(content_hash)
+                        )
+        return self._calibration
+
+    @property
+    def updates(self) -> PortfolioUpdateApplication | None:
+        """Open the Portfolio update owner on first use."""
+        application = self.application
+        if application is None:
+            return None
+        if self._updates is None:
+            with self._owner_lock:
+                if self._updates is None:
+                    calibration = self.calibration
+                    assert self.manifests is not None and calibration is not None
+
+                    from .portfolio_updates import (  # lazy: the owner loads with its first use.
+                        PortfolioUpdateApplication,
+                    )
+
+                    self._updates = PortfolioUpdateApplication(
+                        application=application,
+                        calibration=calibration,
+                        manifest=self.manifests,
+                        clock=self.dispatcher.clock,
+                    )
+        return self._updates
+
+    def _portfolio_obligations(self) -> dict[str, tuple[str, tuple[str, ...]]]:
+        updates = self.updates
+        assert updates is not None
+        return updates.valuation_obligations()
+
+    def _decision_advancement(self) -> DecisionAdvancementApplication:
+        advancement = self.research_updates
+        assert advancement is not None
+        return advancement
+
+    @property
+    def research_updates(self) -> DecisionAdvancementApplication | None:
+        """Open the decision-advancement owner on first use."""
+        if self.application is None or self.data_update is None:
+            return None
+        if self._research_updates is None:
+            with self._owner_lock:
+                if self._research_updates is None:
+                    updates = self.updates
+                    assert updates is not None
+
+                    from .decision_advancement import (  # lazy: the owner loads with its first use.
+                        DecisionAdvancementApplication,
+                    )
+
+                    self._research_updates = DecisionAdvancementApplication(
+                        updates, self.data_update
+                    )
+        return self._research_updates
+
+    @property
+    def activations(self) -> StrategyActivation | None:
+        """Open the workspace's Strategy activation owner on first use."""
+        application = self.application
+        if application is None:
+            return None
+        if self._activations is None:
+            with self._owner_lock:
+                if self._activations is None:
+                    manifests = self.manifests
+                    assert manifests is not None
+
+                    from .strategy_activation import (  # lazy: the owner loads with its first use.
+                        StrategyActivation,
+                    )
+
+                    self._activations = StrategyActivation(
+                        session=self.workspace_session,
+                        manifest=lambda: manifests.current,
+                        packages=lambda: self._packages,
+                        ledger=application.ledger,
+                        read_experiment=self.experiments.readback,
+                        read_information=self.experiments.summary,
+                        read_review=self._book_review_standing,
+                        clock=self.dispatcher.clock,
+                        hold=self._hold_activation,
+                    )
+        return self._activations
+
+    @activations.setter
+    def activations(self, owner: StrategyActivation | None) -> None:
+        self._activations = owner
+
+    @property
+    def data_issues(self) -> WorkspaceDataIssueApplication:
+        """Open the workspace data issue owner on first use."""
+        if self._data_issues is None:
+            with self._owner_lock:
+                if self._data_issues is None:
+                    # The owner loads with its first use.
+                    from ..data_preparation.remediation import (  # lazy: on use
+                        WorkspaceDataIssueApplication,
+                    )
+
+                    self._data_issues = WorkspaceDataIssueApplication(
+                        self.workspace_session,
+                        self.dispatcher.clock,
+                        recorded_data_confirmation=self.goals.recorded_data_confirmation,
+                        preparation_current=self.preparation.binding_current,
+                    )
+        return self._data_issues
+
+    @property
+    def input_capture(self) -> ResearchInputCaptureApplication:
+        """Open research input capture on its first request."""
+        if self._input_capture is None:
+            with self._owner_lock:
+                if self._input_capture is None:
+                    # The owner loads with its first use.
+                    from ..data_preparation.input_capture import (  # lazy: on use
+                        ResearchInputCaptureApplication,
+                    )
+
+                    self._input_capture = ResearchInputCaptureApplication(
+                        self.workspace_session, clock=self.dispatcher.clock
+                    )
+        return self._input_capture
+
+    @property
+    def feature_builds(self) -> ResearchFeatureBuildApplication:
+        """Open the Feature build owner on its first request."""
+        if self._feature_builds is None:
+            with self._owner_lock:
+                if self._feature_builds is None:
+                    from ..data_preparation import (  # lazy: the owner loads with its first use.
+                        feature_research,
+                    )
+
+                    self._feature_builds = feature_research.ResearchFeatureBuildApplication(
+                        self.workspace_session, clock=self.dispatcher.clock
+                    )
+        return self._feature_builds
+
+    @property
+    def evidence_install(self) -> EvidenceInstall:
+        """Open Evidence installation on its first request."""
+        if self._evidence_install is None:
+            with self._owner_lock:
+                if self._evidence_install is None:
+                    from . import (  # lazy: the owner loads with its first use.
+                        evidence_authority_setup,
+                    )
+
+                    self._evidence_install = evidence_authority_setup.EvidenceInstall(
+                        session=self.workspace_session,
+                        clock=self.dispatcher.clock,
+                        installed=self._evidence_installed,
+                        official_source=self.official_source,
+                    )
+        return self._evidence_install
+
+    @property
+    def sweep(self) -> StudyVerificationSweep:
+        """Open saved-study verification when due or requested."""
+        if self._sweep is None:
+            with self._owner_lock:
+                if self._sweep is None:
+                    from .verification_sweep import (  # lazy: the owner loads with its first use.
+                        StudyVerificationSweep,
+                    )
+
+                    self._sweep = StudyVerificationSweep(
+                        session=self.workspace_session,
+                        experiments=self.experiments,
+                        installed=lambda: str(canonical_hash(self._installed_study_identities())),
+                        clock=self.dispatcher.clock,
+                    )
+        return self._sweep
+
+    @property
+    def model_training_inputs(self) -> ModelTrainingInputApplication:
+        """Open model training input preparation on first use."""
+        if self._model_training_inputs is None:
+            with self._owner_lock:
+                if self._model_training_inputs is None:
+                    # The owner loads with its first use.
+                    from ..data_preparation.model_training import (  # lazy: on use
+                        ModelTrainingInputApplication,
+                    )
+
+                    self._model_training_inputs = ModelTrainingInputApplication(
+                        self.workspace_session, clock=self.dispatcher.clock
+                    )
+        return self._model_training_inputs
+
+    @property
+    def research_strategies(self) -> ResearchStrategyPreparation:
+        """Open research Strategy preparation on first use."""
+        if self._research_strategies is None:
+            with self._owner_lock:
+                if self._research_strategies is None:
+                    from ..data_preparation import (  # lazy: the owner loads with its first use.
+                        research_strategy,
+                    )
+
+                    self._research_strategies = research_strategy.ResearchStrategyPreparation(
+                        self.workspace_session,
+                        clock=self.dispatcher.clock,
+                        read_experiment=lambda task_id: self.experiments.readback(task_id),
+                        list_experiments=self.experiments.listing,
+                    )
+        return self._research_strategies
+
+    @research_strategies.setter
+    def research_strategies(self, owner: ResearchStrategyPreparation) -> None:
+        self._research_strategies = owner
+
+    @property
+    def automation(self) -> ResearchUpdateAutomation | None:
+        """Compose the update automation once when the Host starts it or a request needs it."""
+        application = self.application
+        if application is None:
+            return None
+        with self._owner_lock:
+            if self._automation is None:
+                from . import (  # lazy: the owner loads with its first use.
+                    research_update_automation,
+                )
+
+                self._automation = research_update_automation.ResearchUpdateAutomation(
+                    index=CommittedIndex(application.ledger.root, application.ledger.content),
+                    workspace_manifest_hash=self.workspace_manifest.manifest_hash,
+                    installed_package_ids=tuple(
+                        p for p in self._packages if self._update_configured(p)
+                    ),
+                    clock=self.dispatcher.clock,
+                    execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
+                    resume=partial(research_update_automation.resume_held, self),
+                    admit=self.dispatcher._admit,
+                )
+            return self._automation
+
+    @property
+    def trials(self) -> FeatureTrials:
+        """Open the trial owner once, on a trial request or recovery."""
+        with self._trial_lock:
+            if self._trials is None:
+                from .feature_trials import (  # lazy: the owner loads with its first use.
+                    FeatureTrials,
+                )
+
+                self._trials = FeatureTrials(
+                    workspace=self.workspace_session.workspace,
+                    experiments=self.experiments,
+                    feature_builds=self.feature_builds,
+                    dispatcher=self.dispatcher,
+                    clock=self.dispatcher.clock,
+                )
+            return self._trials
+
+    def _resume_feature_trials(self) -> None:
+        ledger = self.workspace_session.workspace / TRIALS_DIRECTORY
+        if ledger.is_dir():
+            self.trials.advance_all()
 
     def _worker_idle(self) -> None:
         """The Task worker went idle: wake the update automation, move feature trials on, admit
         the sweep if it is due, then take a data update's waiting backup while no Task waits."""
 
-        if self.automation is not None:
-            self.automation.command_completed()
-        self.trials.advance_all()
+        if self._automation is not None:
+            self._automation.command_completed()
+        self._resume_feature_trials()
         self.sweep_if_due()
         self._take_backup()
 
+    @contextmanager
+    def recover_after_connection(self) -> Iterator[None]:
+        """Publish the connection, then recover before trial and backup readers proceed."""
+        with self._backup_lock:
+            with self._trial_lock:
+                yield
+                self._resume_feature_trials()
+            self._take_backup()
+
     def _take_backup(self) -> None:
-        take_automatic_backup(
-            self.workspace_session.workspace,
-            clock=self.dispatcher.clock,
-            gate=self.workspace_session.mutation_gate,
-            stop=lambda: self.dispatcher.closing or self._tasks_wait(),
+
+        # Held backup recovery and the worker's idle callback need the backup store.
+        from ..storage.backup import (  # lazy: on use
+            take_automatic_backup,
         )
+
+        with self._backup_lock:
+            take_automatic_backup(
+                self.workspace_session.workspace,
+                clock=self.dispatcher.clock,
+                gate=self.workspace_session.mutation_gate,
+                stop=lambda: self.dispatcher.closing or self._tasks_wait(),
+            )
 
     @staticmethod
     def _evidence_consent(consent: EvidenceSourceConsent) -> dict[str, object]:
@@ -829,12 +1223,20 @@ class PortfolioResearchOperations:
         The workspace's lowest priority, it runs only in time the Tasks leave idle: never while
         a deferral holds the running place, which it would only queue behind.
         """
+        from .verification_sweep import (  # lazy: verification is due
+            StudyVerificationSweepCommand,
+        )
+
         with self.sweep.admission:
             if self.sweep.due() and not self._tasks_wait():
                 self.dispatcher.submit(StudyVerificationSweepCommand(self.sweep, "DUE"))
 
     def verify_all(self) -> dict[str, object]:
         """Admit a whole sweep at once: every saved study verified in full."""
+        from .verification_sweep import (  # lazy: requested verification
+            StudyVerificationSweepCommand,
+        )
+
         studies = len(self.sweep.saved_studies())
         sent = self.dispatcher.submit(StudyVerificationSweepCommand(self.sweep, "ALL"))
         if sent.task_id is None:
@@ -877,9 +1279,13 @@ class PortfolioResearchOperations:
         run = partial(
             self._execute_request, request, caller=caller, agent_execution=agent_execution
         )
-        if (deadline := answer_deadline(request)) is None:
+        if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
             return run()
-        with request_deadline(deadline):
+        from .host_answer_submission import (  # lazy: keyed answer
+            answer_deadline,
+        )
+
+        with request_deadline(answer_deadline()):
             return run()
 
     def _execute_request(
@@ -1401,7 +1807,12 @@ class PortfolioResearchOperations:
         caller: OperationCaller,
         agent_execution: AgentExecutionBinding | None,
     ) -> dict[str, object]:
-        require_service_operation(request.operation, caller)
+        if caller == "SERVICE_AUTOMATION":
+            from .research_update_automation import (  # lazy: automation request
+                require_service_operation,
+            )
+
+            require_service_operation(request.operation, caller)
         client = self._client_operation(request, caller=caller)
         if client is not None:
             return client
@@ -1521,14 +1932,20 @@ class PortfolioResearchOperations:
         if request.operation == "EXPERIENCE_RECORD":
             return record_experience(request, caller)
         if request.operation == "RESEARCH_HISTORY":
+            from .research_history import (  # lazy: research history requested
+                ResearchHistory,
+            )
+
             try:
                 answer = ResearchHistory(
                     self.workspace_session,
-                    self.experiments,
-                    None if self.application is None else self.application.pipeline,
-                    self.updates,
-                    self.research_updates,
-                    self.review,
+                    lambda: self.experiments,
+                    self.portfolio_pipeline,
+                    lambda: self.updates,
+                    lambda: self.research_updates,
+                    self.review_artifacts
+                    if self._review is None
+                    else self._review.review_publications.store,
                 ).listing(
                     strategy=request.strategy_package_id,
                     input_id=request.research_input_id,
@@ -1572,6 +1989,11 @@ class PortfolioResearchOperations:
         if request.operation.startswith("MODEL_"):
             return self._model_operation(request, caller)
         if request.operation == "PORTFOLIO_READBACK":
+            # Only this operation reads the saved Portfolio context.
+            from .portfolio_result_context import (  # lazy: on use
+                read_portfolio,
+            )
+
             return read_portfolio(self, request, caller=caller)
         if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
             return cast(
@@ -1674,7 +2096,13 @@ class PortfolioResearchOperations:
                 }
         try:
             review_result = self._review_operation(request, caller=caller)
-        except PortfolioEvidenceReviewError as error:
+        except ValueError as error:
+            from ....oversight.chief_risk_officer.decision import (  # lazy: review refusal
+                book_evidence,
+            )
+
+            if not isinstance(error, book_evidence.PortfolioEvidenceReviewError):
+                raise
             stray = "product_host.evidence_review_update_selector_invalid:position_basis"
             if str(error) == stray:
                 return refused(stray, book=_request_fields(request, "position_basis"))
@@ -1690,309 +2118,8 @@ class PortfolioResearchOperations:
             return review_result
         if not self.installed():
             return refused("research_workspace.strategy_not_installed")
-        assert self.service is not None and self.review is not None
-        assert self.scoring is not None and self.calibration is not None
-        assert self.updates is not None and self.automation is not None
-        match request.operation:
-            case "RESEARCH_UPDATE_AUTOMATION_READBACK":
-                return self._automation_answer(self.automation.readback())
-            case "RESEARCH_UPDATE_AUTOMATION_CONFIGURE":
-                assert caller != "SERVICE_AUTOMATION"
-                if caller == "EXTERNAL_AUTOMATION":
-                    # A person turns it on or off (PERSON_ONLY).
-                    raise ValueError("research_update.human_confirmation_required")
-                if (
-                    type(request.automation_enabled) is not bool
-                    or request.automation_package_ids is None
-                ):
-                    raise ValueError("research_update.automation_fields_invalid")
-                return self._automation_answer(
-                    self.automation.configure(
-                        enabled=request.automation_enabled,
-                        package_ids=request.automation_package_ids,
-                        chosen_by=caller,
-                    )
-                )
-            case "RESEARCH_UPDATE_PLAN" | "RESEARCH_UPDATE_RUN" | "RESEARCH_UPDATE_READBACK":
-                try:
-                    if self.research_updates is None:
-                        raise ValueError("research_update.not_installed")
-                    if request.operation == "RESEARCH_UPDATE_PLAN":
-                        plan, now = self.research_updates.plan, self.dispatcher.clock()
-                        return dated_plan(plan, request, now)
-                    if request.operation == "RESEARCH_UPDATE_READBACK":
-                        chosen = self._strategy_task(request)
-                        if isinstance(chosen, dict):
-                            return chosen
-                        return self._positions(self._research_update_readback(chosen), caller)
-                    assert request.update_plan_hash is not None
-                    plan = self.research_updates.resuming(request.update_plan_hash)
-                    reused_task = self.research_updates.reusable(plan)
-                    if reused_task is not None:
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            "publication_task_id": str(reused_task),
-                        }
-                    pending = self.research_updates.in_flight(plan)
-                    if pending is not None:
-                        return {
-                            "status": "REUSED_IN_FLIGHT",
-                            "task_id": str(pending.task_id),
-                            "lifecycle": pending.lifecycle,
-                        }
-                    return self._run_answer(
-                        self.dispatcher.submit(
-                            DecisionAdvancementCommand(self.research_updates, plan)
-                        ),
-                        plan.data_plan,
-                    )
-                except (ValueError, KeyError, FileNotFoundError) as error:
-                    body = update_refusal(
-                        error,
-                        "research_update.refused",
-                        installed_packages=tuple(self._packages),
-                        strategy_package_id=request.strategy_package_id,
-                    )
-                    if (
-                        body["failure_code"] == "portfolio_update.not_installed"
-                        and request.strategy_package_id is not None
-                        and request.strategy_package_id in self._packages
-                        and self.activations is not None
-                    ):
-                        body["activation"] = self._activation_offer(request.strategy_package_id)
-                    return self._inputs_way(body)
-            case "PORTFOLIO_UPDATE_PLAN" | "PORTFOLIO_UPDATE_RUN" | "PORTFOLIO_UPDATE_READBACK":
-                try:
-                    if request.operation == "PORTFOLIO_UPDATE_PLAN":
-                        assert request.strategy_package_id is not None
-                        return self.updates.plan(
-                            request.strategy_package_id,
-                            request.prepared_input_hash,
-                            None
-                            if request.observed_through is None
-                            else date.fromisoformat(request.observed_through),
-                        )
-                    if request.operation == "PORTFOLIO_UPDATE_READBACK":
-                        chosen = self._strategy_task(request)
-                        if isinstance(chosen, dict):
-                            return chosen
-                        return self._positions(self.updates.readback(chosen))
-                    assert request.update_plan_hash is not None
-                    plan = self.updates.prepare(request.update_plan_hash)
-                    reused = self.updates.reusable(plan)
-                    if reused is not None:
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            "publication_hash": reused.content_hash,
-                            **reused_read(
-                                self.workspace_session.task_control_registry,
-                                plan.plan_hash,
-                                "PORTFOLIO_UPDATE_READBACK",
-                            ),
-                        }
-                    admitted = self.dispatcher.submit(PortfolioUpdateCommand(self.updates, plan))
-                    return {
-                        "status": admitted.disposition,
-                        "task_id": str(admitted.task_id) if admitted.task_id else None,
-                        "lifecycle": admitted.lifecycle,
-                        "failure_code": admitted.refusal_detail,
-                    }
-                except FileNotFoundError:
-                    return refused("portfolio_update.artifact_missing")
-                except (ValueError, KeyError) as error:
-                    return update_refusal(
-                        error,
-                        "portfolio_update.refused",
-                        strategy_package_id=request.strategy_package_id,
-                    )
-            case (
-                "STRATEGY_CALIBRATION_PLAN"
-                | "STRATEGY_CALIBRATION_RUN"
-                | "STRATEGY_CALIBRATION_READBACK"
-            ):
-                try:
-                    if request.operation == "STRATEGY_CALIBRATION_PLAN":
-                        assert (
-                            request.strategy_package_id is not None
-                            and request.score_snapshot_hash is not None
-                        )
-                        return self.calibration.plan(
-                            request.strategy_package_id, request.score_snapshot_hash
-                        )
-                    if request.operation == "STRATEGY_CALIBRATION_READBACK":
-                        chosen = self._strategy_task(request)
-                        if isinstance(chosen, dict):
-                            return chosen
-                        return self.calibration.readback(chosen)
-                    assert request.calibration_plan_hash is not None
-                    plan = self.calibration.prepare(request.calibration_plan_hash)
-                    reused = self.calibration.reusable(plan)
-                    if reused is not None:
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            # The record its reuse is, by its identity (OP18).
-                            "calibration_input_hash": reused.content_hash,
-                            "input": reused.model_dump(mode="json"),
-                            "readout": reused.readout(),
-                            **reused_read(
-                                self.workspace_session.task_control_registry,
-                                plan.plan_hash,
-                                "STRATEGY_CALIBRATION_READBACK",
-                            ),
-                        }
-                    result = self.dispatcher.submit(
-                        StrategyCalibrationCommand(self.calibration, plan)
-                    )
-                    return {
-                        "status": result.disposition,
-                        "task_id": str(result.task_id) if result.task_id else None,
-                        "lifecycle": result.lifecycle,
-                        "failure_code": result.refusal_detail,
-                    }
-                except FileNotFoundError:
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": "portfolio_calibration.artifact_missing",
-                    }
-                except (ValueError, KeyError) as error:
-                    if (
-                        str(error) == "portfolio_calibration.plan_required"
-                        and request.calibration_plan_hash is not None
-                    ):
-                        return {
-                            **refused("portfolio_calibration.plan_required"),
-                            "next_requests": self.calibration.replan_requests(
-                                request.calibration_plan_hash
-                            ),
-                        }
-                    failure = located_failure(error, "portfolio_calibration.refused")
-                    return {
-                        "status": "REFUSED",
-                        **failure,
-                        **explain(str(failure["failure_code"])),
-                    }
-            case "STRATEGY_SCORE_PLAN" | "STRATEGY_SCORE_RUN" | "STRATEGY_SCORE_READBACK":
-                try:
-                    if request.operation == "STRATEGY_SCORE_PLAN":
-                        assert request.strategy_package_id is not None
-                        return self.scoring.plan(
-                            request.strategy_package_id,
-                            date.fromisoformat(request.formation_session)
-                            if request.formation_session
-                            else None,
-                            component_id=request.component_id,
-                        )
-                    if request.operation == "STRATEGY_SCORE_READBACK":
-                        chosen = self._strategy_task(request)
-                        if isinstance(chosen, dict):
-                            return chosen
-                        return self.scoring.readback(chosen)
-                    assert request.score_plan_hash is not None
-                    plan = self.scoring.prepare(request.score_plan_hash)
-                    reused = self.scoring.reusable(plan)
-                    if reused is not None:
-                        return {
-                            "status": "REUSED_EXACT",
-                            "task_id": None,
-                            # The score it reuses, which a calibration plan takes (OP18).
-                            "score_snapshot_hash": reused.snapshot_hash,
-                            "score": reused.model_dump(mode="json"),
-                            **reused_read(
-                                self.workspace_session.task_control_registry,
-                                plan.plan_hash,
-                                "STRATEGY_SCORE_READBACK",
-                            ),
-                        }
-                    result = self.dispatcher.submit(StrategyScoreCommand(self.scoring, plan))
-                    return {
-                        "status": result.disposition,
-                        "task_id": str(result.task_id) if result.task_id else None,
-                        "lifecycle": result.lifecycle,
-                        "failure_code": result.refusal_detail,
-                    }
-                except FileNotFoundError:
-                    return {"status": "REFUSED", "failure_code": "strategy_score.artifact_missing"}
-                except (ValueError, KeyError) as error:
-                    if (
-                        str(error) == "strategy_score.plan_required"
-                        and request.score_plan_hash is not None
-                    ):
-                        return {
-                            **refused("strategy_score.plan_required"),
-                            "next_requests": self.scoring.replan_requests(request.score_plan_hash),
-                        }
-                    failure = (
-                        # The Alpha store says it in a sentence, inside the study's closure: a
-                        # stored artifact missing, stale or tampered.
-                        {"failure_code": "strategy_score.alpha_artifact_unreadable"}
-                        if type(error).__name__ == "AlphaDevelopmentArtifactReadbackError"
-                        and safe_failure_code(str(error)) is None
-                        else located_failure(error, "strategy_score.refused")
-                    )
-                    return {
-                        "status": "REFUSED",
-                        **failure,
-                        **explain(str(failure["failure_code"])),
-                    }
-            case "CONTROLS" | "PLAN" | "RUN":
-                try:
-                    if request.operation == "CONTROLS":
-                        return self.controls(request.strategy_package_id)
-                    assert request.spec is not None
-                    return (
-                        self.plan(request.spec)
-                        if request.operation == "PLAN"
-                        else self.run(request.spec)
-                    )
-                except LocalApplicationError as error:
-                    code = str(error)
-                    if code not in {
-                        "strategy_book.strategy_package_required",
-                        "research_workspace.strategy_not_installed",
-                    } and not code.startswith("local_application.strategy_package_not_installed:"):
-                        raise
-                    return refused(code, installed_packages=self._packages)
-            case "RESULTS":
-                return self.results(request.task_id)
-            case "REPORT":
-                assert request.result_hash is not None
-                try:
-                    return self.report(request.result_hash, request.portfolio_session)
-                except ContentAddressedStoreError as error:
-                    rows = cast("list[dict[str, object]]", self.results()["results"])
-                    listed = {str(v["result_hash"]) for v in rows}
-                    return refused(
-                        "portfolio_research.result_not_found"
-                        if (
-                            str(error).partition(":")[0] == "content_store.artifact_missing"
-                            and request.result_hash not in listed
-                        )
-                        else public_failure(error, "portfolio_research.report_unavailable")
-                    )
-                except LocalApplicationError as error:
-                    if str(error) != "portfolio_application.session_outside_report":
-                        raise
-                    return refused(
-                        public_failure(error, "portfolio_research.report_unavailable"),
-                        result_hash=request.result_hash,
-                    )
-            case "COMPARE":
-                assert request.left_result_hash is not None
-                assert request.right_result_hash is not None
-                return self.compare(request.left_result_hash, request.right_result_hash)
-            case "FREEZE":
-                assert request.result_hash is not None
-                return self.freeze(request.result_hash)
-            case "FINALIZATION":
-                assert request.candidate_hash is not None
-                return self.finalization(request.candidate_hash)
-            case "EXPORT":
-                assert request.result_hash is not None
-                return self.export(request.result_hash)
-        raise ValueError("portfolio_research.operation_unknown")
+
+        return self.route_families.portfolio(WorkspaceOperationCall(self, request, caller))
 
     def _agent_run(self) -> AgentRun | None:
         """The Session that submitted an answer, recorded beside it (AU3, LAWS.md ID7).
@@ -2200,24 +2327,6 @@ class PortfolioResearchOperations:
             }
         return body
 
-    @staticmethod
-    def _review_bundle_refusal(
-        error: Exception, role: AgentRole | None, selector: BookSelector | None
-    ) -> dict[str, object] | None:
-        """A bundle selector names its missing fields; an unavailable unit names its read."""
-        code = public_failure(error, "agent_bundle.refused")
-        # A packet named without its Task or unit is told how to name it.
-        if str(error).partition(":")[0] in PACKET_SELECTOR_CODES | {
-            "agent_bundle.specialist_task_required",
-            "agent_bundle.reference_bound_exceeded",
-        }:
-            return agent_bundle_refusal(code, role=role)
-        # A unit that was not prepared says why and where the prepared ones are.
-        unit = unit_refusal(code, None if selector is None else selector.request_fields())
-        if unit is None:
-            return None
-        return unit
-
     def _review_operation(
         self,
         request: PortfolioResearchOperationRequest,
@@ -2232,310 +2341,15 @@ class PortfolioResearchOperations:
         ``read_files`` is what an agent's answer named as read and ``agent_run`` who made it,
         both kept with the answer.
         """
-        if request.operation not in {
-            "EVIDENCE_CRO",
-            "EVIDENCE_CRO_EXPORT",
-            "EVIDENCE_REFRESH",
-            "EVIDENCE_PREPARE",
-            "EVIDENCE_PREVIEW",
-            "EVIDENCE_PACKET",
-            "EVIDENCE_LEDGER",
-            "EVIDENCE_DOCUMENTS",
-            "EVIDENCE_CONTINUE",
-            "EVIDENCE_ANALYSIS_SUBMIT",
-            "EVIDENCE_SELECT",
-            "CRO_REVIEW",
-            "CRO_REVIEW_DOSSIER",
-            "CRO_REVIEW_FINDING",
-            "CRO_REVIEW_SUBMIT",
-            "AGENT_BUNDLE_PREPARE",
-            "AGENT_ANSWER_SUBMIT",
-        }:
+        if request.operation not in REVIEW_OPERATIONS:
             return None
-        if self.review is None:
-            raise ValueError("product_host.evidence_review_not_configured")
-        selector = _selector(request)
-        match request.operation:
-            case "AGENT_BUNDLE_PREPARE":
-                assert request.agent_role is not None and request.bundle_directory is not None
-                # A role's view of the date's positions, its floor or review route.
-                dated = None if request.task_id is None else self._dated(str(request.task_id))
-                now, store, file = self.dispatcher.clock(), self.goals.store, self._file_floor
-                parts = committee.bundle_parts(
-                    request.agent_role, dated, store, now, request.bundle_directory
-                )
-                try:
-                    prepared = EvidenceReviewBundles(self.review).prepare_agent_bundle(
-                        role=request.agent_role,
-                        selector=selector,
-                        directory=request.bundle_directory,
-                        task_id=request.task_id,
-                        unit_id=request.evidence_unit_id,
-                        dispatcher=self.dispatcher,
-                        view=parts[0],
-                        route=parts[1],
-                        issue_view=lambda: self.data_issues.readback(
-                            limit=50, delegated_by=self._data_decisions(caller)
-                        ),
-                    )
-                except (PortfolioEvidenceReviewError, ValueError) as error:
-                    refusal = self._review_bundle_refusal(error, request.agent_role, selector)
-                    if refusal is None:
-                        raise
-                    return refusal
-                return committee.issued(store, _review_outcome_body(prepared), now, file)
-            case "AGENT_ANSWER_SUBMIT":
-                return cast(dict[str, object], submit_agent_answer(self, request, caller))
-            case "EVIDENCE_CRO":
-                section = self.evidence_cro(
-                    selector,
-                    request.review_publication_hash,
-                    evidence_detail=request.evidence_detail,
-                    view_entity_id=request.view_entity_id,
-                    view_topic=request.view_topic,
-                    view_last_days=request.view_last_days,
-                )
-                if not _pages_citations(request):  # an agent's dated review offers its committee
-                    return committee.offer(self, section, selector, caller)
-                progress = cast("dict[str, object] | None", section.get("coverage_progress"))
-                return {
-                    "status": "EVIDENCE_CRO_CITATIONS_PAGE",
-                    "book": section.get("book"),
-                    "review_publication_hash": section.get("review_publication_hash"),
-                    **_citation_page(
-                        cast(list[dict[str, object]], section.get("citations") or []),
-                        request,
-                        groups={
-                            str(unit["unit_id"]): tuple(cast(list[str], unit["entity_ids"]))
-                            for unit in cast(
-                                list[dict[str, object]], (progress or {}).get("units") or []
-                            )
-                        },
-                        key="citations",
-                    ),
-                }
-            case "EVIDENCE_CRO_EXPORT":
-                delivery = EvidenceReviewDelivery(self.review)
-                if not _pages_citations(request):
-                    return delivery.export_review(
-                        selector,
-                        request.review_publication_hash,
-                        prior_publication_hash=request.prior_review_publication_hash,
-                    )
-                # A page slices the export sealed for this book and review.
-                exported, basis = delivery.export_page_source(
-                    selector,
-                    request.review_publication_hash,
-                    prior_publication_hash=request.prior_review_publication_hash,
-                )
-                exported_dossier = cast(
-                    dict[str, object], cast(dict[str, object], exported["review"])["dossier"]
-                )
-                return {
-                    "status": "EVIDENCE_CRO_EXPORT_SPANS_PAGE",
-                    "export_hash": exported.get("export_hash"),
-                    "verification_basis": basis,
-                    "review_publication_hash": cast(
-                        dict[str, object],
-                        cast(dict[str, object], exported["review"])["publication"],
-                    ).get("publication_hash"),
-                    **_citation_page(
-                        cast(
-                            list[dict[str, object]],
-                            cast(dict[str, object], exported["evidence"]).get("verified_spans")
-                            or [],
-                        ),
-                        request,
-                        groups={
-                            str(child["unit_id"]): tuple(
-                                cast(list[str], child["ordered_entity_ids"])
-                            )
-                            for child in cast(
-                                list[dict[str, object]],
-                                exported_dossier.get("evidence_children") or [],
-                            )
-                        },
-                        key="verified_spans",
-                    ),
-                }
-            case "EVIDENCE_REFRESH":
-                return self.evidence_refresh(selector, caller=caller)
-            case "EVIDENCE_PREPARE":
-                outcome = self.review.refresh_evidence(
-                    dispatcher=self.dispatcher,
-                    selector=selector,
-                    evidence_as_of=(
-                        None
-                        if request.evidence_as_of is None
-                        else datetime.fromisoformat(request.evidence_as_of)
-                    ),
-                    prepare_only=True,
-                    preparation_binding_hash=request.preparation_binding_hash,
-                    caller=caller,
-                )
-                body = _review_outcome_body(outcome)
-                if outcome.task_id is not None:
-                    packets = self.review.packet_requests(selector, task_id=outcome.task_id)
-                    chosen = self.review.default_selector(selector)
-                    # Nothing new: the CRO's review carries forward with its Task and book.
-                    carried: dict[str, dict[str, Any]] = {
-                        "task": {"operation": "STATUS", "task_id": str(outcome.task_id)},
-                        **(
-                            {"book": {"operation": "EVIDENCE_CRO", **chosen.request_fields()}}
-                            if chosen is not None
-                            else {}
-                        ),
-                    }
-                    body["next_requests"] = {
-                        **(outcome.next_requests or {}),
-                        **(packets or carried),
-                    }
-                return body
-            case "EVIDENCE_PREVIEW":
-                return self.review.preview_evidence(selector, caller=caller)
-            case "EVIDENCE_LEDGER":
-                return _review_outcome_body(
-                    EvidenceReviewDelivery(self.review).book_ledger(
-                        selector, page=request.ledger_page
-                    )
-                )
-            case "EVIDENCE_DOCUMENTS":
-                return self.review.documents(page=request.documents_page)
-            case "EVIDENCE_PACKET":
-                assert request.task_id is not None
-                try:
-                    delivered = EvidenceReviewDelivery(self.review).export_analysis_packet(
-                        selector=selector,
-                        task_id=request.task_id,
-                        unit_id=request.evidence_unit_id,
-                        delivery_part=request.delivery_part,
-                        delivery_budget_bytes=request.delivery_budget_bytes,
-                        context_hash=request.analysis_context_hash,
-                        evidence_detail=request.evidence_detail,
-                        view_entity_id=request.view_entity_id,
-                        view_topic=request.view_topic,
-                        view_last_days=request.view_last_days,
-                        view_from=request.view_from,
-                        view_to=request.view_to,
-                    )
-                except (PortfolioEvidenceReviewError, ValueError) as error:
-                    # An unprepared unit says why and where prepared ones are.
-                    unit = unit_refusal(
-                        public_failure(error, "alternative_evidence.refused"),
-                        None if selector is None else selector.request_fields(),
-                    )
-                    if unit is None:
-                        raise
-                    return unit
-                return _review_outcome_body(delivered)
-            case "EVIDENCE_CONTINUE":
-                assert request.task_id is not None
-                assert request.continuation_of is not None
-                assert request.continuation_spans is not None
-                assert request.session_limit is not None
-                assert request.window_limit is not None
-                outcome = self.review.continue_evidence(
-                    dispatcher=self.dispatcher,
-                    selector=selector,
-                    task_id=request.task_id,
-                    unit_id=request.evidence_unit_id,
-                    continuation_of=request.continuation_of,
-                    continuation_spans=request.continuation_spans,
-                    session_limit=request.session_limit,
-                    window_limit=request.window_limit,
-                )
-                body = _review_outcome_body(outcome)
-                if outcome.task_id is not None:
-                    # The continuation's packet is its own Task's; its unit rides in its input.
-                    # Its consumer holds every earlier part already, so the
-                    # session's own windows are offered beside the whole.
-                    packets = self.review.packet_requests(selector, task_id=outcome.task_id)
-                    body["next_requests"] = {
-                        **(outcome.next_requests or {}),
-                        **packets,
-                        "packet_session_windows": {
-                            **packets["packet"],
-                            "evidence_detail": "session_windows",
-                        },
-                    }
-                return body
-            case "EVIDENCE_ANALYSIS_SUBMIT":
-                return cast(
-                    dict[str, object],
-                    submit_evidence_analysis(
-                        self,
-                        request,
-                        selector,
-                        caller,
-                        read_files,
-                        agent_run,
-                        accepted_bundle,
-                        _review_outcome_body,
-                    ),
-                )
-            case "EVIDENCE_SELECT":
-                assert request.analysis_publication_hash is not None
-                return self.evidence_select(
-                    selector,
-                    analysis_publication_hash=request.analysis_publication_hash,
-                    chosen_by=caller,
-                )
-            case "CRO_REVIEW":
-                return self.cro_review(selector)
-            case "CRO_REVIEW_DOSSIER":
-                dossier = EvidenceReviewDelivery(self.review).export_dossier(
-                    selector,
-                    delivery_part=request.delivery_part,
-                    delivery_budget_bytes=request.delivery_budget_bytes,
-                    review_dossier_hash=request.review_dossier_hash,
-                    review_read_at=_read_at(request),
-                )
-                return (
-                    _review_outcome_body(dossier) if isinstance(dossier, ReviewOutcome) else dossier
-                )
-            case "CRO_REVIEW_FINDING":
-                assert request.finding_handle is not None
-                package = EvidenceReviewDelivery(self.review).export_finding_evidence(
-                    selector,
-                    finding_handle=request.finding_handle,
-                    review_dossier_hash=request.review_dossier_hash,
-                    review_publication_hash=request.review_publication_hash,
-                    review_read_at=_read_at(request),
-                )
-                return (
-                    _review_outcome_body(package) if isinstance(package, ReviewOutcome) else package
-                )
-            case "CRO_REVIEW_SUBMIT":
-                assert request.review_dossier_hash is not None
-                assert request.review_policy_hash is not None
-                assert request.review_schema_hash is not None
-                assert request.review_answer is not None
-                with (
-                    self.workspace_session.mutation_gate.hold()
-                    if accepted_bundle is not None
-                    else nullcontext()
-                ):
-                    body = _review_outcome_body(
-                        self.review.submit_assessment(
-                            dispatcher=self.dispatcher,
-                            selector=selector,
-                            dossier_hash=request.review_dossier_hash,
-                            policy_hash=request.review_policy_hash,
-                            schema_hash=request.review_schema_hash,
-                            answer=request.review_answer,
-                            caller=caller,
-                            read_files=read_files,
-                            agent_run=agent_run,
-                            read_at=_read_at(request),
-                        )
-                    )
-                    accepted_receipt = self._observe(
-                        lambda: self.capture_accepted_answer_context(accepted_bundle, body)
-                    )
-                return self.observe_accepted_answer(
-                    body, accepted_bundle, accepted_receipt=accepted_receipt
-                )
-        raise ValueError("portfolio_research.operation_unknown")
+
+        return self.route_families.review(
+            WorkspaceOperationCall(self, request, caller),
+            read_files=read_files,
+            agent_run=agent_run,
+            accepted_bundle=accepted_bundle,
+        )
 
     def _refresh_prepared_inputs(self) -> None:
         # Asked on every operation: the manifest's stat answers first whether anything changed
@@ -2598,8 +2412,9 @@ class PortfolioResearchOperations:
         self.workspace_manifest = current
         assert self.manifests is not None
         self.manifests.current = current  # every application reads this one holder
-        if self.automation is not None:
-            self.automation.manifest_hash = current.manifest_hash
+        with self._owner_lock:
+            if self._automation is not None:
+                self._automation.manifest_hash = current.manifest_hash
 
     def installed(self) -> bool:
         """Read whether a strategy is installed, from the packages this Host holds.
@@ -2646,6 +2461,16 @@ class PortfolioResearchOperations:
 
     def _install_evidence(self, setup: str, caller: str) -> dict[str, object]:
         """A preflight answers at once, offering its install; `install_refusal` admits a Task."""
+
+        from .evidence_authority_setup import (  # lazy: this dependency belongs to the route.
+            EvidenceInstallCommand,
+            install_refusal,
+            offered_install,
+            read_setup,
+            run_setup,
+            setup_refusal,
+        )
+
         workspace = self.workspace_session.workspace
         read = read_setup(setup, workspace)
         if isinstance(read, dict):
@@ -2698,17 +2523,28 @@ class PortfolioResearchOperations:
         self._manifest_stamp = _file_stamp(
             self.workspace_session.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME
         )
-        if self.automation is not None:
-            self.automation.installed = tuple(
-                p for p in self._packages if self._update_configured(p)
-            )
+        with self._owner_lock:
+            if self._automation is not None:
+                self._automation.installed = tuple(
+                    p for p in self._packages if self._update_configured(p)
+                )
 
     def _book_review_standing(self, task_id: UUID) -> dict[str, object]:
         """Compose the Task publication and the review owner's exact-result standing."""
+
+        # Only this operation needs evidence review delivery.
+        from .evidence_review_delivery import (  # lazy: on use
+            EvidenceReviewDelivery,
+        )
+
         assert self.activations is not None and self.review is not None
+        from ....oversight.chief_risk_officer.decision import (  # lazy: saved book selector
+            book_evidence,
+        )
+
         result_hash = self.activations.book_result_hash(task_id)
         return EvidenceReviewDelivery(self.review).review_standing(
-            None if result_hash is None else BookSelector(result_hash=result_hash)
+            None if result_hash is None else book_evidence.BookSelector(result_hash=result_hash)
         )
 
     def _strategy_activation(
@@ -2761,6 +2597,10 @@ class PortfolioResearchOperations:
                 ),
             }
         # The activation stands; its first update answers for itself.
+        from .research_update_automation import (  # lazy: activation request
+            first_update,
+        )
+
         return {**activated, **first_update(self, activated, provenance)}
 
     def _committee(
@@ -2784,6 +2624,11 @@ class PortfolioResearchOperations:
         self, body: dict[str, object], positions: PortfolioUpdatePositions
     ) -> dict[str, Any]:
         """The date's positions' predicted Risk over the one manifest the applications read."""
+
+        from .portfolio_result_context import (  # lazy: this dependency belongs to the route.
+            date_risk,
+        )
+
         manifest = cast(ResearchWorkspaceManifestHolder, self.manifests).current
         return date_risk(self.workspace_session.workspace, manifest, body, positions)
 
@@ -2800,7 +2645,7 @@ class PortfolioResearchOperations:
         if not isinstance(readback.get("publication"), dict) or not isinstance(selector, dict):
             return None
         evidence = self.execute(
-            PortfolioResearchRequestDocument.model_validate(
+            validate_request_document(
                 {"operation": "EVIDENCE_CRO", **selector}
             ).to_operation_request()
         )
@@ -2838,619 +2683,7 @@ class PortfolioResearchOperations:
         *,
         caller: OperationCaller,
     ) -> dict[str, object] | None:
-        match request.operation.partition("_")[0]:
-            case "FEATURE":
-                return self._feature_routes(request, caller=caller)
-            case "RESEARCH" | "MODEL" | "WORKSPACE":
-                return self._research_routes(request, caller=caller)
-            case "DATA" | "STORAGE":
-                return self._data_routes(request, caller=caller)
-            case "STATUS" | "TASK" | "TASKS" | "RECOVER" | "CANCEL":
-                return self._task_routes(request, caller=caller)
-        return None
-
-    def _feature_routes(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object] | None:
-        match request.operation:
-            case "FEATURE_CATALOG_BUILD":
-                assert request.feature_plan_hash is not None
-                return self.feature_builds.build(
-                    request.feature_plan_hash,
-                    caller=caller,
-                    dispatcher=self.dispatcher,
-                    preprocess=request.feature_output == "PREPROCESSED_VALUES",
-                )
-            case "FEATURE_TRIAL" | "FEATURE_TRIAL_READBACK" | "FEATURE_TRIALS":
-                return self._feature_trial(request, caller=caller)
-            case "FEATURE_CATALOG_BUILD_READBACK":
-                return self._feature_build(request, caller=caller)
-            case "FEATURE_CATALOG_CONTROLS" | "FEATURE_CATALOG_PLAN" | "FEATURE_CATALOG_READBACK":
-                return self._feature_catalog(request, caller=caller)
-        return None
-
-    def _research_routes(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object] | None:
-        match request.operation:
-            case "RESEARCH_STRATEGY_CONTROLS":
-                return self.research_strategies.controls()
-            case (
-                "RESEARCH_STRATEGY_PLAN"
-                | "RESEARCH_STRATEGY_PREPARE"
-                | "RESEARCH_STRATEGY_READBACK"
-                | "RESEARCH_STRATEGY_INSTALL"
-            ):
-                return self._strategy(request, caller=caller)
-            case "MODEL_TRAINING_INPUT_PLAN":
-                assert request.research_input_id is not None and request.component_id is not None
-                try:
-                    return self.model_training_inputs.plan(
-                        request.research_input_id,
-                        request.input_binding_hash,
-                        request.component_id,
-                        **(
-                            {"model_lifecycle": request.model_lifecycle}
-                            if request.model_lifecycle
-                            else {}
-                        ),
-                    )
-                except ValueError as error:
-                    code = owner_failure_code(error)
-                    if code != "model_training.component_selection_invalid":
-                        raise
-                    return {
-                        **refused(code),
-                        "next_requests": {
-                            "valid_values": {"operation": "RESEARCH_STRATEGY_CONTROLS"},
-                        },
-                    }
-            case "MODEL_TRAINING_INPUT_PREPARE":
-                return self._training_input(request, caller=caller)
-            case "MODEL_TRAINING_INPUT_READBACK":
-                assert request.task_id is not None
-                return self.model_training_inputs.readback(request.task_id)
-            case "RESEARCH_INPUTS":
-                # Discovery isolates unreadable publications; exact selection stays strict.
-                return self.input_capture.revisions.versions()
-            case "RESEARCH_INPUT_PLAN":
-                assert request.research_input_id is not None
-                return self.input_capture.plan(request.research_input_id)
-            case "RESEARCH_INPUT_CONFIRM":
-                return self._input_confirm(request, caller=caller)
-            case "RESEARCH_INPUT_READBACK":
-                assert request.task_id is not None
-                return self.input_capture.readback(request.task_id)
-            case "WORKSPACE_PREPARE_READBACK":
-                return self._preparation_readback(request.task_id)
-            case "WORKSPACE_PREPARE_PLAN":
-                return self.goals.prepare(request, caller, self.preparation.plan)
-            case "WORKSPACE_PREPARE_CONFIRM":
-                return self._prepare_confirm(request, caller=caller)
-        return None
-
-    def _data_routes(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object] | None:
-        match request.operation:
-            case "DATA_ISSUES":
-                return cast(
-                    dict[str, object],
-                    self.data_issues.readback(
-                        limit=request.history_limit or 25,
-                        cursor=request.history_cursor,
-                        delegated_by=self._data_decisions(caller),
-                    ),
-                )
-            case "DATA_ISSUE_REVOKE":
-                assert request.data_issue_grant_hash is not None
-                return cast(
-                    dict[str, object],
-                    self.data_issues.revoke(
-                        grant_hash=request.data_issue_grant_hash, caller=caller
-                    ),
-                )
-            case "DATA_ISSUE_CONFIRM" | "DATA_ISSUE_PREVIEW" | "DATA_ISSUE_DELEGATE":
-                return cast(
-                    dict[str, object],
-                    self.data_issues.operate(request, caller, self._data_decisions(caller)),
-                )
-            case "STORAGE_CAP_SHOW":
-                return self.storage.cap_readback()
-            case "STORAGE_CAP_SET":
-                assert request.storage_cap_bytes is not None
-                return self.storage.set_cap(request.storage_cap_bytes, caller=caller)
-            case "STORAGE_READBACK":
-                return self.storage.readback()
-            case "STORAGE_PLAN":
-                return self.storage.plan()
-            case "STORAGE_CONFIRM":
-                assert request.storage_plan_hash is not None
-                return self.storage.confirm(request.storage_plan_hash, caller=caller)
-            case "STORAGE_PIN":
-                assert request.input_binding_hash is not None and type(request.input_pinned) is bool
-                return self.storage.pin(
-                    request.input_binding_hash, pinned=request.input_pinned, caller=caller
-                )
-            case "STORAGE_EVIDENCE_REBUILD":
-                assert request.evidence_index_id is not None
-                return self.storage.rebuild_evidence_index(request.evidence_index_id, caller=caller)
-            case "DATA_CHANGE_CONFIRM":
-                return self._data_confirm(request, caller=caller)
-            case "DATA_UPDATE_PLAN" | "DATA_UPDATE_RUN" | "DATA_UPDATE_READBACK":
-                return self._data_update(request, caller=caller)
-        return None
-
-    def _task_routes(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object] | None:
-        match request.operation:
-            case "STATUS":
-                assert request.task_id is not None
-                return self.status(request.task_id, wait_seconds=request.wait_seconds)
-            case "TASK_RECOVERY":
-                assert request.task_id is not None
-                return self.recovery_view(request.task_id)
-            case "TASK_GUARDIAN":
-                return self.guardian()
-            case "TASK_INCIDENTS":
-                return self.supervisor.incidents()
-            case "TASK_REMEDIATE":
-                return self.supervisor.remediate(
-                    request,
-                    selected_by="USER_COMMAND"
-                    if REQUEST_PROVENANCE.get() is None
-                    else "AGENT_PROPOSAL",
-                )
-            case "RECOVER":
-                return self._recover(request, caller=caller)
-            case "TASKS":
-                return self.tasks(
-                    agent_session=request.agent_session,
-                    limit=request.history_limit or _TASK_PAGE_ROWS,
-                    cursor=request.history_cursor,
-                )
-            case "CANCEL":
-                return self._cancel(request, caller=caller)
-        return None
-
-    def _feature_trial(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        try:
-            if request.operation == "FEATURE_TRIALS":
-                return self.trials.listing()
-            if request.operation == "FEATURE_TRIAL_READBACK":
-                assert request.feature_trial_id is not None
-                return self.trials.readback(request.feature_trial_id)
-            assert request.feature_plan_hash is not None and request.task_id is not None
-            return self.trials.start(request.feature_plan_hash, request.task_id, caller=caller)
-        except ValueError as error:
-            code = public_failure(error, "feature_trial.refused")
-            return refused(
-                code,
-                task_id=str(request.task_id or "") or None,
-                # A study the trial cannot run against names the way on.
-                trial=self.trials.way_on(request.feature_plan_hash)
-                if code == "feature_trial.study_not_from_factor_evidence"
-                and request.feature_plan_hash is not None
-                else None,
-            )
-
-    def _feature_build(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.task_id is not None
-        build = self.feature_builds.readback(request.task_id)
-        # The readback checked the Task's contract; its input is the build's source.
-        binding = str(
-            self.workspace_session.task_control_registry.task(request.task_id).input.payload[
-                "input_binding_hash"
-            ]
-        )
-        # What the build's source can claim about time, from its input's Panel.
-        return {
-            **build,
-            "temporal_scope": binding_temporal_scope(
-                self.workspace_session.workspace,
-                binding,
-                window_start=None,
-                window_end=None,
-            ),
-        }
-
-    def _feature_catalog(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        definitions = ResearchFeatureDefinitions(
-            self.workspace_session.workspace,
-        )
-        try:
-            if request.operation == "FEATURE_CATALOG_CONTROLS":
-                assert request.input_binding_hash is not None
-                return {
-                    **definitions.controls(request.input_binding_hash, request.feature_plan_hash),
-                    # trial controls precede the factor build.
-                    **self.experiments.prerequisites_of(
-                        "FEATURE_TRIAL", binding_hash=request.input_binding_hash
-                    ),
-                }
-            if request.operation == "FEATURE_CATALOG_PLAN":
-                assert request.feature_document is not None
-                with self.workspace_session.mutation_gate.hold():
-                    plan = definitions.plan(request.feature_document)
-                return _with_trial(definitions.readback(plan.plan_hash))
-            assert request.feature_plan_hash is not None
-            return _with_trial(definitions.readback(request.feature_plan_hash))
-        except ValidationError as error:
-            return invalid_plan_document(error, request, self.experiments.manifest)
-        except FeatureCatalogCrudError as error:
-            return {
-                "status": "REFUSED",
-                "failure_code": error.failure_code,
-                "message": str(error),
-            }
-        except (ValueError, OSError, KeyError) as error:
-            named = request.input_binding_hash or str(
-                (request.feature_document or {}).get("input_binding_hash") or ""
-            )
-            held = [v.binding_hash for v in self.experiments.manifest.experiment_inputs or ()]
-            if isinstance(error, FileNotFoundError) and named and named not in held:
-                # refused bindings offer their field and admitted controls.
-                return {
-                    "status": "REFUSED",
-                    "failure_code": "feature_research.input_binding_unresolved",
-                    "fields": [["input_binding_hash"]],
-                    "expected": {"input_binding_hash": held},
-                    **explain("feature_research.input_binding_unresolved"),
-                    "next_requests": {
-                        **{
-                            f"controls:{binding[:12]}": {
-                                "operation": "FEATURE_CATALOG_CONTROLS",
-                                "input_binding_hash": binding,
-                            }
-                            for binding in held
-                        },
-                        "inputs": {"operation": "WORKSPACE_SHOW"},
-                    },
-                }
-            return {
-                "status": "REFUSED",
-                "failure_code": public_failure(
-                    error, "feature_research.definition_or_source_unavailable"
-                ),
-            }
-
-    def _strategy(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        try:
-            if request.operation == "RESEARCH_STRATEGY_PLAN":
-                assert request.experiment_document is not None
-                return self.research_strategies.plan(request.experiment_document)
-            if request.operation == "RESEARCH_STRATEGY_PREPARE":
-                assert request.experiment_plan_hash is not None
-                return self.research_strategies.prepare(
-                    request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
-                )
-            assert request.task_id is not None
-            if request.operation == "RESEARCH_STRATEGY_INSTALL":
-                return self._install(request.task_id)
-            return self.research_strategies.readback(request.task_id)
-        except ValidationError as error:
-            return invalid_plan_document(error, request, self.experiments.manifest)
-        except (ValueError, OSError, KeyError) as error:
-            if (
-                str(error) == "research_strategy.preview_required"
-                and request.experiment_plan_hash is not None
-            ):
-                return {
-                    **refused("research_strategy.preview_required"),
-                    "next_requests": self.research_strategies.replan_requests(
-                        request.experiment_plan_hash
-                    ),
-                }
-            refusal: dict[str, object] = {
-                "status": "REFUSED",
-                **located_failure(error, "research_strategy.refused"),
-            }
-            if str(refusal.get("failure_code", "")).startswith(
-                (
-                    "research_strategy.risk_parent_support_incomplete",
-                    "research_strategy.risk_history_insufficient",
-                )
-            ):
-                recovery = self.research_strategies.controls(
-                    (request.experiment_document or {}).get("input_binding_hash")
-                )
-                refusal["risk_windows"] = recovery["risk_windows"]
-                refusal["next_requests"] = recovery["next_requests"]
-            return refusal
-
-    def _training_input(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.experiment_plan_hash is not None
-        try:
-            return self.model_training_inputs.prepare(
-                request.experiment_plan_hash, caller=caller, dispatcher=self.dispatcher
-            )
-        except ValueError as error:
-            if str(error) != "model_training.preview_required":
-                raise
-            return {
-                **refused("model_training.preview_required"),
-                "next_requests": self.model_training_inputs.replan_requests(
-                    request.experiment_plan_hash
-                ),
-            }
-
-    def _input_confirm(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.research_input_plan_hash is not None
-        try:
-            return self.input_capture.confirm(
-                request.research_input_plan_hash, caller=caller, dispatcher=self.dispatcher
-            )
-        except ValueError as error:
-            if str(error) != "research_input.preview_required":
-                raise
-            return {
-                **refused("research_input.preview_required"),
-                "next_requests": self.input_capture.replan_requests(
-                    request.research_input_plan_hash
-                ),
-            }
-
-    def _prepare_confirm(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.preparation_plan_hash is not None
-        try:
-            self.preparation.require_confirmation_caller(
-                request.preparation_plan_hash,
-                caller=caller,
-                grant_hash=request.data_issue_grant_hash,
-                **self.goals.preparation_scope(),
-            )
-        except ValueError as error:
-            if str(error) != "workspace_preparation.preview_stale":
-                raise
-            return {
-                **refused("workspace_preparation.preview_stale"),
-                "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}},
-            }
-        previous = next(
-            (
-                t
-                for t in self.preparation.tasks()
-                if t.input.payload["plan"]["plan_hash"] == request.preparation_plan_hash
-                and t.lifecycle.value != "CANCELLED"
-            ),
-            None,
-        )
-        if previous is not None:
-            tid = str(previous.task_id)
-            reused = {
-                TaskLifecycle.SUCCEEDED: ("REUSED_EXACT", None, tid),
-                **dict.fromkeys(_PREPARATION_IN_FLIGHT, ("REUSED_IN_FLIGHT", tid)),
-            }.get(previous.lifecycle)
-            if reused is not None:
-                return dict(zip(("status", "task_id", "publication_task_id"), reused, strict=False))
-        sent = self.dispatcher.submit(
-            WorkspacePreparationCommand(
-                self.preparation,
-                request.preparation_plan_hash,
-                caller=caller,
-                grant_hash=request.data_issue_grant_hash,
-            )
-        )
-        return {
-            **self._run_answer(sent),
-            **explain(sent.refusal_detail or "", **self._network()),
-            **{
-                None: {},
-                "workspace_preparation.preview_required": {
-                    "next_requests": {"replan": {"operation": "WORKSPACE_PREPARE_PLAN"}}
-                },
-            }.get(sent.refusal_detail, {}),
-        }
-
-    def _data_confirm(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        if self.data_update is None or request.update_plan_hash is None:
-            raise ValueError("workspace_data_update.not_configured")
-        admitted = self.data_update.confirm(request.update_plan_hash, caller=caller)
-        return {
-            "status": "APPROVED",
-            "task_id": str(admitted.task_id),
-            "lifecycle": admitted.lifecycle,
-            "next_action": "DATA_UPDATE_RUN",
-            "next_requests": {
-                "run": {
-                    "operation": "DATA_UPDATE_RUN",
-                    "update_plan_hash": request.update_plan_hash,
-                }
-            },
-        }
-
-    def _data_update(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        try:
-            if self.data_update is None:
-                raise ValueError("workspace_data_update.not_configured")
-            if request.operation == "DATA_UPDATE_PLAN":
-                return self.data_update.plan(recovery_task_id=request.recovery_task_id)
-            if request.operation == "DATA_UPDATE_READBACK":
-                return self._data_update_readback(request.task_id)
-            assert request.update_plan_hash is not None
-            plan = self.data_update.prepare(request.update_plan_hash)
-            reused = self.data_update.reusable(plan)
-            if reused is not None:
-                # follow the Task that sealed the reused update.
-                sealed = self.data_update.receipt_task(reused)
-                return {
-                    "status": "REUSED_EXACT",
-                    "task_id": None,
-                    **(
-                        {}
-                        if sealed is None
-                        else {
-                            "publication_task_id": str(sealed),
-                            "next_requests": {
-                                "read": {
-                                    "operation": "DATA_UPDATE_READBACK",
-                                    "task_id": str(sealed),
-                                }
-                            },
-                        }
-                    ),
-                    "receipt": reused.model_dump(mode="json"),
-                }
-            submitted = self.dispatcher.submit(WorkspaceDataUpdateCommand(self.data_update, plan))
-            # Read the Task's current state after any admitted reopening.
-            answer = self._run_answer(submitted, plan)
-            return {
-                **answer,
-                # A refused admission's words, a provider's wait among them.
-                **(
-                    explain(submitted.refusal_detail, **self._network())
-                    if submitted.refusal_detail
-                    else {}
-                ),
-                # The update it started, read by its Task.
-                **(
-                    {
-                        "next_requests": {
-                            **cast(dict[str, Any], answer.get("next_requests") or {}),
-                            "show": {
-                                "operation": "DATA_UPDATE_READBACK",
-                                "task_id": str(submitted.task_id),
-                            },
-                        }
-                    }
-                    if submitted.task_id
-                    else {}
-                ),
-            }
-        except FileNotFoundError:
-            return {
-                "status": "REFUSED",
-                "failure_code": "workspace_data_update.artifact_missing",
-            }
-        except (ValueError, KeyError) as error:
-            update_refusal: dict[str, object] = {
-                "status": "REFUSED",
-                **located_failure(error, "workspace_data_update.refused"),
-            }
-            if update_refusal["failure_code"] == "workspace_data_update.plan_required":
-                # A plan past its hour or never kept here: plan the update again.
-                update_refusal["next_requests"] = {"replan": {"operation": "DATA_UPDATE_PLAN"}}
-            return update_refusal
-
-    def _recover(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.task_id is not None
-        before = self.status(request.task_id)
-        stale = self._stale_confirmation(request, before)
-        if stale is not None:
-            return stale
-        confirmed = request.expected_task_hash
-        retry: dict[str, object] | None = None
-        if before["lifecycle"] == "BLOCKED":
-            # Reopen the confirmed BLOCKED version only for a repairable artifact.
-            record = self.workspace_session.task_control_registry.task(request.task_id)
-            raised = _runner_retry_reason(record) is not None
-            if record.task_kind != RESEARCH_EXPERIMENT_TASK_KIND and not raised:
-                return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
-            if confirmed is None:
-                return {
-                    "status": "REFUSED",
-                    "failure_code": "local_application.expected_task_hash_required",
-                    "task_id": before["task_id"],
-                    "task_record_hash": before["task_record_hash"],
-                    # The view that offers it bound to this version.
-                    "next_requests": {
-                        "recovery": {
-                            "operation": "TASK_RECOVERY",
-                            "task_id": str(request.task_id),
-                        }
-                    },
-                }
-            # Task Control checks the confirmed version again at the write;
-            # a Task that moved during plan validation is refused as stale.
-            retry = (
-                self._reopen_runner_block(record, confirmed)
-                if raised
-                else self.experiments.retry_blocked(
-                    request.task_id,
-                    now=self.dispatcher.clock(),
-                    expected_task_hash=confirmed,
-                )
-            )
-            if retry.get("failure_code") == "task_control.recovery_version_stale":
-                return {
-                    "status": "REFUSED",
-                    "failure_code": "local_application.confirmation_stale",
-                    "task_id": str(retry["task_id"]),
-                    "lifecycle": retry["lifecycle"],
-                    "task_record_hash": retry["task_record_hash"],
-                    "refused_at": "TASK_CONTROL",
-                }
-            if retry.get("disposition") != "RETRY_ADMITTED":
-                return {**before, **retry}
-            # Resume confirms the reopened version, the confirmed version's successor.
-            confirmed = str(retry["task_record_hash"])
-            before = self.status(request.task_id)
-        if before["lifecycle"] not in {"RECOVERY_REQUIRED", "QUEUED"}:
-            return {**before, "disposition": "NOT_RECOVERY_REQUIRED"}
-        if before["resume_refusal"] is not None:
-            return self._resume_refused(before)
-        if self.recover_task is None:
-            return {
-                **before,
-                **refused(
-                    "local_application.task_recovery_not_configured",
-                    task_id=str(request.task_id),
-                ),
-            }
-        resumed = self.recover_task(request.task_id, expected_task_hash=confirmed)
-        if request.task_id not in resumed:
-            failure = self.dispatcher.failure(request.task_id)
-            if failure:
-                return {
-                    **self.status(request.task_id),
-                    "status": "REFUSED",
-                    "failure_code": failure,
-                    "detail": (
-                        "The resume was not handed to the worker; the Task's recovery "
-                        "view says what stopped it and what may resume it."
-                    ),
-                    "next_requests": {
-                        "recovery": {
-                            "operation": "TASK_RECOVERY",
-                            "task_id": str(request.task_id),
-                        }
-                    },
-                }
-        return {
-            **self.status(request.task_id),
-            **({"retry": retry} if retry is not None else {}),
-            "resumed_task_ids": [str(v) for v in resumed],
-        }
-
-    def _cancel(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]:
-        assert request.task_id is not None
-        stale = self._stale_confirmation(request, self.status(request.task_id))
-        if stale is not None:
-            return stale
-        return self.cancel(request.task_id, expected_task_hash=request.expected_task_hash)
+        return self.route_families.workspace(WorkspaceOperationCall(self, request, caller))
 
     @staticmethod
     def _stale_confirmation(
@@ -3538,7 +2771,7 @@ class PortfolioResearchOperations:
                     "action": "update_data",
                     "label": "Update source data",
                     "entry_operation": "DATA_UPDATE_PLAN",
-                    "configured": self.data_update is not None
+                    "configured": self.has_data_update
                     and self.workspace_manifest.data_update is not None,
                     "selection": [],
                     "effect": "May fetch data and rebuild affected Features after confirmation; "
@@ -3646,7 +2879,6 @@ class PortfolioResearchOperations:
         }
 
     def _update_configured(self, package_id: str) -> bool:
-        assert self.updates is not None
         if self.workspace_manifest.data_update is None or not all(
             any(v.strategy_package_id == package_id for v in bindings or ())
             for bindings in (
@@ -3655,8 +2887,10 @@ class PortfolioResearchOperations:
             )
         ):
             return False
-        checkpoint = self.updates._checkpoint(package_id, current=False)
-        if not self.updates.model_bindings_match(checkpoint):
+        updates = self.updates
+        assert updates is not None
+        checkpoint = updates._checkpoint(package_id, current=False)
+        if not updates.model_bindings_match(checkpoint):
             return False
         return not any(c.weight_rule == "mu.iv0" for c in checkpoint.recipe.components) or any(
             v.strategy_package_id == package_id
@@ -3674,6 +2908,12 @@ class PortfolioResearchOperations:
             Service catalog, selected package presentation, admitted controls and frozen
             controls/refusals.
         """
+
+        # Only this operation needs risk reports.
+        from ..research_authoring.risk_reports import (  # lazy: on use
+            RiskReportLinks,
+        )
+
         assert self.service is not None
         catalog = self.service.controls
         package = self._package(
@@ -3744,6 +2984,10 @@ class PortfolioResearchOperations:
         """The daily update with the strategies it runs forward, and a person's two requests
         on it: on for exactly those strategies, or off. It offers no other package, and
         refuses one by name (`research_update.automation_package_not_installed`)."""
+        from .research_history import (  # lazy: research history requested
+            ResearchHistory,
+        )
+
         assert self.automation is not None
         ids = sorted(self.automation.installed)
         # Each strategy owns its latest update and its read.
@@ -3808,6 +3052,11 @@ class PortfolioResearchOperations:
         activation, a person's, with the book it would activate or the book it holds. A default
         installation's packages have no activation and are not listed.
         """
+        from .strategy_activation import (  # lazy: workspace's forward intent
+            INSTALLED_BOOK_WORDS,
+            RUN_FORWARD_WORDS,
+        )
+
         road = (first := self.goals.first_use()) is not None and bool(
             self.goals.first_use_delegation(first)["active"]
         )
@@ -4099,6 +3348,10 @@ class PortfolioResearchOperations:
         stage_timing = cast(dict[str, object] | None, timing["selected_stage"])
         body["stage_timing"] = stage_timing
         body["stage_updated_at"] = stage_timing["updated_at"] if stage_timing else None
+        from ..data_preparation.application import (  # lazy: preparation Task status
+            TASK_KIND as PREPARATION_TASK_KIND,
+        )
+
         if record.task_kind == PREPARATION_TASK_KIND:
             body.update(self.preparation.activity_readback(record))
         fact = self.supervisor.attention((record,))[task_id]
@@ -4197,6 +3450,15 @@ class PortfolioResearchOperations:
         committee_context: dict[str, Any] | None = None,
     ) -> dict[str, object]:
         """Owner position rows and Committee context at the Host clock, and a caller's offer."""
+        # lazy: only this operation needs evidence review delivery.
+
+        from .evidence_review_delivery import (  # lazy: this dependency belongs to the route.
+            EvidenceReviewDelivery,
+        )
+        from .portfolio_result_context import (  # lazy: positions read
+            position_rows,
+        )
+
         body = position_rows(
             body,
             review=(
@@ -4272,9 +3534,20 @@ class PortfolioResearchOperations:
 
     def _inputs_way(self, answer: dict[str, Any]) -> dict[str, Any]:
         """Name the input owner's update, its retry time or its data case."""
+        from .decision_advancement import (  # lazy: input-readiness refusal
+            DecisionAdvancementApplication,
+        )
+
         code = str(answer.get("failure_code") or "")
         if code != "strategy_score.workspace_inputs_not_ready":
             return answer
+
+        from ..maintenance.data_update import (  # lazy: input-readiness refusal
+            DATA_UPDATE_TASK_KIND,
+            installed_data_update_binding,
+            read_workspace_inputs,
+        )
+
         workspace = self.workspace_session.workspace
         try:
             state = read_workspace_inputs(
@@ -4296,6 +3569,16 @@ class PortfolioResearchOperations:
         """A deferred Task's way on: its owner's words, its retry time, the request that resumes
         it and the readback that says so. A kind without a deferral readback goes on by
         its recovery view; a readback that refuses leaves its read, which says why."""
+        from ..data_preparation.application import (  # lazy: owner of a deferred Task
+            TASK_KIND as PREPARATION_TASK_KIND,
+        )
+        from ..maintenance.data_update import (  # lazy: owner of a deferred Task
+            DATA_UPDATE_TASK_KIND,
+        )
+        from .decision_advancement import (  # lazy: owner of a deferred Task
+            DecisionAdvancementApplication,
+        )
+
         if task_kind == PREPARATION_TASK_KIND:
             operation, reader = "WORKSPACE_PREPARE_READBACK", self._preparation_readback
         elif task_kind == DATA_UPDATE_TASK_KIND:
@@ -4343,12 +3626,22 @@ class PortfolioResearchOperations:
         """What waits on a person, each with the request that takes it (N5)."""
         # One reading of the Tasks serves the whole page: the studies waiting, the
         # stopped Tasks and the upgrade overview answer at one moment.
+
+        from .pending_decisions import (  # lazy: only this operation needs pending decisions.
+            all_data_issues,
+            pending_decisions,
+        )
+
         batch = self.workspace_session.task_control_registry.record_collection()
         tasks = batch.records
         task_refusals = [task_record_refusal(task_id) for task_id in batch.refused_task_ids]
+        from ....oversight.chief_risk_officer.runtime import (  # lazy: CRO decision attribution
+            portfolio_review_task,
+        )
+
         goal_attribution = self.goals.decision_attribution()
         for task in tasks:
-            if task.task_kind == CRO_REVIEW_TASK_KIND and (
+            if task.task_kind == portfolio_review_task.TASK_KIND and (
                 goal_ids := goal_attribution.get(("task_id", str(task.task_id)))
             ):
                 goal_attribution.setdefault(("review_key", task.input.input_hash), set()).update(
@@ -4430,6 +3723,12 @@ class PortfolioResearchOperations:
             return self._upgrade_overview(
                 batch.records, [task_record_refusal(task_id) for task_id in batch.refused_task_ids]
             )
+
+        # Upgrades read their installed identities and publications on demand.
+        from .upgrade_overview import (  # lazy: on use
+            acknowledge_upgrade,
+        )
+
         overview = self._upgrade_overview(registry.tasks())
         assert request.upgrade_set_hash is not None
         return acknowledge_upgrade(
@@ -4440,11 +3739,20 @@ class PortfolioResearchOperations:
         )
 
     def _installed_study_identities(self) -> dict[str, str]:
+        from .upgrade_overview import (  # lazy: upgrades read installed identities on demand
+            installed_study_identities,
+        )
+
         return installed_study_identities(self.experiments.installed_implementation)
 
     def _upgrade_overview(
         self, tasks: tuple[TaskRecord, ...], task_refusals: list[dict[str, Any]] | None = None
     ) -> dict[str, object]:
+        # Upgrades read their installed identities and publications on demand.
+        from .upgrade_overview import (  # lazy: on use
+            upgrade_overview,
+        )
+
         return upgrade_overview(
             workspace=self.workspace_session.workspace,
             registry=self.workspace_session.task_control_registry,
@@ -4502,12 +3810,24 @@ class PortfolioResearchOperations:
         Returns:
             The declarations of every owner this service composes, by Task kind.
         """
-        owners = (
-            owner
-            for item in fields(self)
-            if isinstance(owner := getattr(self, item.name), _AdmitsTasks)
-        )
-        return {replan.task_kind: replan for owner in owners for replan in owner.replans}
+        return {
+            replan.task_kind: replan
+            for owner in self._task_admission_owners()
+            for replan in owner.replans
+        }
+
+    def _task_admission_owners(self) -> Iterator[_AdmitsTasks]:
+        """Open lazy owners only when the recovery view needs their declarations."""
+        for item in fields(self):
+            owner = getattr(self, item.name)
+            if (
+                owner is None
+                and self.manifests is not None
+                and (reader := item.metadata.get("owner"))
+            ):
+                owner = getattr(self, reader)
+            if isinstance(owner, _AdmitsTasks):
+                yield owner
 
     def recovery_view(self, task_id: UUID) -> dict[str, object]:
         """What stopped, what stays verified and what the owners permit, at one moment.
@@ -4585,6 +3905,10 @@ class PortfolioResearchOperations:
             else {}
         )
         context = self.review.task_subject(snapshot.task) if self.review else {}
+        from ..data_preparation.application import (  # lazy: first recovery view use
+            TASK_KIND as PREPARATION_TASK_KIND,
+        )
+
         if snapshot.task.task_kind == PREPARATION_TASK_KIND:
             context.update(self.preparation.task_subject(snapshot.task))
         elif self.data_update and snapshot.task.task_kind == self.data_update.task_kind:
@@ -4614,11 +3938,8 @@ class PortfolioResearchOperations:
         declaration = self.replans().get(task.task_kind)
         if declaration is None:
             return None
-        for item in fields(self):
-            owner = getattr(self, item.name)
-            if isinstance(owner, _AdmitsTasks) and any(
-                replan == declaration for replan in owner.replans
-            ):
+        for owner in self._task_admission_owners():
+            if declaration in owner.replans:
                 return declaration, owner
         return None
 
@@ -4635,16 +3956,12 @@ class PortfolioResearchOperations:
         }
         return cast(
             dict[str, object],
-            PortfolioResearchRequestDocument.model_validate(values).model_dump(
-                mode="json", exclude_none=True
-            ),
+            validate_request_document(values).model_dump(mode="json", exclude_none=True),
         )
 
     def _normalized_replan_request(self, request: Mapping[str, object]) -> dict[str, object]:
         """Validate and normalize one owner-supplied operation request."""
-        typed = PortfolioResearchRequestDocument.model_validate(
-            dict(request)
-        ).to_operation_request()
+        typed = validate_request_document(dict(request)).to_operation_request()
         return self._normalized_operation_request(typed)
 
     def _recovery_context(
@@ -4896,6 +4213,10 @@ class PortfolioResearchOperations:
         A data update and a research update stop in the data update's stages, whose owner says
         which stops a rerun resumes; each is offered through the door that reruns its kind.
         """
+        from ..maintenance.data_update import (  # lazy: blocked update readback
+            DATA_UPDATE_TASK_KIND,
+        )
+
         if self.data_update is None:
             return {}
         task = self.workspace_session.task_control_registry.task(task_id)
@@ -5163,6 +4484,12 @@ class PortfolioResearchOperations:
             return {}
         task = self.workspace_session.task_control_registry.task(projection.task_id)
         assert self.review is not None
+
+        # Only this operation needs evidence review projection.
+        from .evidence_review_projection import (  # lazy: on use
+            EvidenceCroProjector,
+        )
+
         return EvidenceCroProjector(self.review).completed_preparation(task)
 
     def _read_back(self, projection: TaskSafeProjection) -> dict[str, object] | None:
@@ -5348,6 +4675,22 @@ class PortfolioResearchOperations:
             Report, originating tasks, window, controls, unit-bearing readouts and optional
             positions; no research is rerun.
         """
+        # lazy: only this operation needs evidence review delivery.
+
+        # Only this operation needs risk reports.
+        from ..research_authoring.risk_reports import (  # lazy: on use
+            RiskReportLinks,
+        )
+        from .evidence_review_delivery import (  # lazy: this dependency belongs to the route.
+            EvidenceReviewDelivery,
+        )
+        from .portfolio_result_context import (  # lazy: saved report context
+            saved_portfolio_context,
+        )
+        from .research_experiment_plan import (  # lazy: saved report context
+            review_requests,
+        )
+
         assert self.service is not None
         result = self.service.open_result(result_hash)
         report = self.service.report_of(result)
@@ -5368,8 +4711,12 @@ class PortfolioResearchOperations:
         task = self.service.originating_task(result_hash)
         assert self.activations is not None and self.review is not None
         standing = self.activations.standing(task, result_hash=result_hash).model_dump(mode="json")
+        from ....oversight.chief_risk_officer.decision import (  # lazy: report's book selector
+            book_evidence,
+        )
+
         review = EvidenceReviewDelivery(self.review).review_standing(
-            BookSelector(result_hash=result_hash)
+            book_evidence.BookSelector(result_hash=result_hash)
         )
         position = (
             self.service.path_readback_of(
@@ -5632,9 +4979,19 @@ class PortfolioResearchOperations:
         """The Evidence & CRO section for one sealed book, or the default book."""
         assert self.review is not None
         if evidence_detail is not None and evidence_detail != "time_view":
-            raise PortfolioEvidenceReviewError(
+            from ....oversight.chief_risk_officer.decision import (  # lazy: invalid view filter
+                book_evidence,
+            )
+
+            raise book_evidence.PortfolioEvidenceReviewError(
                 "alternative_evidence.view_filters_not_applicable:" + evidence_detail
             )
+
+        # Only this operation needs evidence review projection.
+        from .evidence_review_projection import (  # lazy: on use
+            EvidenceCroProjector,
+        )
+
         body = evidence_cro_body(
             EvidenceCroProjector(self.review).projection(
                 selector,
@@ -5658,6 +5015,10 @@ class PortfolioResearchOperations:
         readback: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Read the exact review origin, reusing a matching result verified in this request."""
+        from .review_updates import (  # lazy: sealed update reader
+            read_review_update,
+        )
+
         body = read_review_update(self, task_id, publication_hash, readback=readback)
         return cast(dict[str, object], body)
 
@@ -5684,10 +5045,18 @@ class PortfolioResearchOperations:
         `chosen_by` has no default: the one caller that could forget to state it
         is the one that would silently record the wrong actor.
         """
+        from .research_experiment_plan import (  # lazy: study review selectors
+            review_requests,
+        )
+
         assert self.review is not None
         if chosen_by == "SERVICE_AUTOMATION":
             raise ValueError("research_update.automation_operation_not_admitted")
-        book = self.review.default_selector(selector) or BookSelector()
+        from ....oversight.chief_risk_officer.decision import (  # lazy: select evidence
+            book_evidence,
+        )
+
+        book = self.review.default_selector(selector) or book_evidence.BookSelector()
         selection = self.review.select_evidence(
             selector=book,
             analysis_publication_hash=analysis_publication_hash,
@@ -5862,6 +5231,11 @@ class PortfolioResearchOperations:
         person sets network access.
         """
 
+        # Only this operation needs model extensions.
+        from ..research_authoring.model_extensions import (  # lazy: on use
+            ModelExtensions,
+        )
+
         models = ModelExtensions(
             self.workspace_session.workspace,
             self.dispatcher.clock,
@@ -5932,6 +5306,10 @@ class PortfolioResearchOperations:
         """
 
         workspace = self.workspace_session.workspace
+        from ..maintenance.data_update import (  # lazy: Feature catalog changed
+            installed_data_update_binding,
+        )
+
         binding = installed_data_update_binding(workspace)
         _, updated = update_research_workspace_manifest(
             workspace,
@@ -5955,9 +5333,13 @@ class PortfolioResearchOperations:
             receipt = request.experiment_receipt_hash
             book: dict[str, str] | None = None
             if receipt is not None and self.review is not None:
+                from ....oversight.chief_risk_officer.decision import (  # lazy: receipt selector
+                    book_evidence,
+                )
+
                 try:
-                    self.review.resolve_book(BookSelector(result_hash=receipt))
-                except (PortfolioEvidenceReviewError, ValueError, KeyError):
+                    self.review.resolve_book(book_evidence.BookSelector(result_hash=receipt))
+                except (ValueError, KeyError):
                     book = None
                 else:
                     study = ("experiment_task_id", "experiment_receipt_hash", "portfolio_session")
@@ -5975,29 +5357,40 @@ class PortfolioResearchOperations:
         `WORKSPACE_BACKUPS` reads the root and the kept generations and makes none, so the
         Storage page can show them before a person chooses "back up now".
         """
+
+        # Backup readers need the backup store, which is unnecessary for Host startup.
+        from ..storage.backup import (  # lazy: on use
+            GENERATIONS_KEPT,
+            WorkspaceBackupError,
+            WorkspaceBackups,
+            backup_answer,
+        )
+
         workspace = self.workspace_session.workspace
-        try:
-            backups = WorkspaceBackups(
-                workspace,
-                workspace_id=read_research_workspace_manifest(workspace).workspace_id,
-                clock=self.dispatcher.clock,
-            )
-            generation = (
-                backups.create(
-                    reason="REQUEST",
-                    generations_kept=request.backup_generations_kept or GENERATIONS_KEPT,
+        with self._backup_lock:
+            try:
+                backups = WorkspaceBackups(
+                    workspace,
+                    workspace_id=read_research_workspace_manifest(workspace).workspace_id,
+                    clock=self.dispatcher.clock,
                 )
-                if make
-                else None
-            )
-        except (WorkspaceBackupError, ResearchWorkspaceError, OSError) as error:
-            return {"status": "REFUSED", **located_failure(error, "workspace_backup.refused")}
-        return backup_answer(backups, generation)
+                generation = (
+                    backups.create(
+                        reason="REQUEST",
+                        generations_kept=request.backup_generations_kept or GENERATIONS_KEPT,
+                    )
+                    if make
+                    else None
+                )
+            except (WorkspaceBackupError, ResearchWorkspaceError, OSError) as error:
+                return {"status": "REFUSED", **located_failure(error, "workspace_backup.refused")}
+            return backup_answer(backups, generation)
 
     def _client_operation(
         self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
     ) -> dict[str, object] | None:
         """Answer client, activity and capacity operations; otherwise None (OP1)."""
+
         operation = request.operation
         if operation in {"WORKSPACE_SHOW", "OPERATION_LIST"}:
             return self.client_session(request, caller=caller)
@@ -6014,18 +5407,20 @@ class PortfolioResearchOperations:
             return set_usage_reading(
                 self.workspace_session.workspace, enabled=request.usage_reading_enabled
             )
-        if operation == "ANALYST_READS":
-            return analyst_reads_answer(
-                self.workspace_session.workspace, request.analyst_reads_bundles
-            )
-        if operation == "ANALYST_READS_SET":
+        if operation in {"ANALYST_READS", "ANALYST_READS_SET"}:
+            from . import evidence_review_bundles  # lazy: analyst read settings
+
+            if operation == "ANALYST_READS":
+                return evidence_review_bundles.analyst_reads_answer(
+                    self.workspace_session.workspace, request.analyst_reads_bundles
+                )
             # The person's answer, relayed: an Agent sets it only with their words.
             if caller != "HUMAN":
                 return refused("evidence_review.analyst_reads_human_only")
             assert request.analyst_reads_mode and request.analyst_reads_bundles
             provenance = REQUEST_PROVENANCE.get()
             relayed = provenance is not None and provenance.relayed
-            return set_analyst_reads(
+            return evidence_review_bundles.set_analyst_reads(
                 self.workspace_session.workspace,
                 mode=request.analyst_reads_mode,
                 bundles=request.analyst_reads_bundles,
@@ -6095,13 +5490,12 @@ class PortfolioResearchOperations:
                 contracts[operation] = {"required": sorted(required), "allowed": sorted(allowed)}
                 if operation in PERSON_ONLY:
                     contracts[operation]["person_only"] = True
-            schema = PortfolioResearchRequestDocument.model_json_schema()
             if selected:
                 return {
                     "operation_fields": contracts,
                     "operation_schema": {
                         **operation_schema(
-                            schema,
+                            request_document_schema(allowed),
                             ["operation", *sorted(allowed)],
                             operation=selected,
                             required=required,
@@ -6111,6 +5505,7 @@ class PortfolioResearchOperations:
                         "required": ["operation", *sorted(required)],
                     },
                 }
+            schema = full_request_document().model_json_schema()
         body = self.session_projection(
             session_token="",
             include_context=request.operation == "WORKSPACE_SHOW",
@@ -6543,7 +5938,11 @@ def _selector(request: PortfolioResearchOperationRequest) -> BookSelector | None
         )
     ):
         return None
-    return BookSelector(
+    from ....oversight.chief_risk_officer.decision import (  # lazy: supplied selector
+        book_evidence,
+    )
+
+    return book_evidence.BookSelector(
         result_hash=request.result_hash,
         handoff_hash=request.handoff_hash,
         update_task_id=request.update_task_id,
@@ -6608,29 +6007,6 @@ def _citation_page(
         "filter": {
             "entity_id": request.citation_entity_id,
             "unit_id": request.citation_unit_id,
-        },
-    }
-
-
-def _with_trial(readback: dict[str, Any]) -> dict[str, Any]:
-    """A planned feature's readback with its trial offered, the study left to choose.
-
-    What a trial runs against is stated before any build, so an agent holding only Factor
-    studies learns it before it builds rather than at the trial's refusal.
-    """
-    return {
-        **readback,
-        "trial_baseline": (
-            "A completed Alpha study handed off from a Factor study on this input, or the "
-            "Portfolio study built on one."
-        ),
-        "next_requests": {
-            **readback["next_requests"],
-            "trial": {
-                "operation": "FEATURE_TRIAL",
-                "feature_plan_hash": readback["plan_hash"],
-                "task_id": None,
-            },
         },
     }
 

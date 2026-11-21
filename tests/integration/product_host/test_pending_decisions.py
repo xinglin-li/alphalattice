@@ -304,9 +304,9 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             ),
         )
         readers.setattr(
-            operations,
+            PortfolioResearchOperations,
             "data_issues",
-            SimpleNamespace(readback=lambda **_: {"next_requests": offers}),
+            property(lambda _: SimpleNamespace(readback=lambda **_: {"next_requests": offers})),
         )
         readers.setattr(
             PortfolioResearchOperations,
@@ -340,7 +340,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         # The public overview reader supplies metadata here; its composition wrapper and
         # canonical Task-kind check remain real, including the negative non-CRO binding.
         readers.setattr(
-            "alphalattice.control.product_host.composition.portfolio_research_operations.upgrade_overview",
+            "alphalattice.control.product_host.composition.upgrade_overview.upgrade_overview",
             lambda **_: overview,
         )
         answer = operations.pending_decisions()

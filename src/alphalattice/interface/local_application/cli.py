@@ -311,10 +311,10 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
                 request = _line_document(repaired, args)()
 
             from .portfolio_research import (  # lazy: validate the repaired declaration
-                PortfolioResearchRequestDocument,
+                validate_request_document,
             )
 
-            PortfolioResearchRequestDocument.model_validate(request)
+            validate_request_document(request)
             return {
                 "repair": worded(
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
@@ -943,13 +943,13 @@ def schema(operation: str) -> dict[str, Any]:
     """
     from alphalattice.interface.local_application.answers import ANSWERS  # lazy: schema read
     from alphalattice.interface.local_application.portfolio_research import (  # lazy: schema read
-        PortfolioResearchRequestDocument,
+        full_request_document,
     )
 
     required, allowed = _fields(operation)
     noun, verb = next(name for name, ops in _commands().items() if operation in ops)
     request = operation_schema(
-        PortfolioResearchRequestDocument.model_json_schema(),
+        full_request_document().model_json_schema(),
         ["operation", *sorted(allowed)],
         operation=operation,
         required=required,

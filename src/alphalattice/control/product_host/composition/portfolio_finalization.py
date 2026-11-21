@@ -796,6 +796,7 @@ class PortfolioFinalizationApplication:
         alpha_evidence_closure: AlphaEvidenceClosureReader | None = None,
         alpha_recipe: AlphaProductRecipeView = INSTALLED_ALPHA_PRODUCT_RECIPE,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        finalization_store: PortfolioFinalizationStore | None = None,
     ) -> None:
         """Compose public/pending stores, validation, upstream evidence and release.
 
@@ -808,6 +809,7 @@ class PortfolioFinalizationApplication:
             alpha_evidence_closure: Optional deterministic upstream closure reader.
             alpha_recipe: Exact installed Alpha recipe declaration.
             clock: Explicit observed-time source.
+            finalization_store: The Host's retained candidate store, when already composed.
         """
         self.workspace_id = workspace_id
         self.session = session
@@ -816,7 +818,7 @@ class PortfolioFinalizationApplication:
         artifact_root = session.workspace / "runtime" / "artifacts"
         self.ledger = PortfolioLedgerStore(artifact_root)
         self.pending = PortfolioLedgerStore(artifact_root, namespace=PENDING_FINALIZATION_NAMESPACE)
-        self.store = PortfolioFinalizationStore(artifact_root)
+        self.store = finalization_store or PortfolioFinalizationStore(artifact_root)
         # Composition constructs the Gate and hands it Portfolio's registry as a
         # read-only port; Portfolio only ever sees the evaluation port back.
         self.gate: ProtectedEvaluationPort = gate or ProtectedValidationGate(

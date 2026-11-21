@@ -33,9 +33,9 @@ STRICT_READERS = {
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_tasks_wait __post_init__ _prepare_confirm _strategy_task "
-        "_automation_answer upgrade cpu_budget _install",
+        "_tasks_wait __post_init__ _strategy_task _automation_answer upgrade cpu_budget _install",
     ),
+    COMPOSITION + "research_operations.py": ("", "_prepare_confirm"),
     COMPOSITION + "portfolio_updates.py": (
         "PortfolioUpdateApplication",
         "reusable admit readback publication_task",
@@ -113,6 +113,7 @@ STRICT_READERS = {
 # resolved stop under its successor from readable canonical records in admission order; they
 # grant no authority either.
 PARTIAL_READERS = {
+    COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
         "recovery_commands",
@@ -150,8 +151,8 @@ def _expected_readers():
     ] = 1
     # One public operation dispatch, not a canonical-record reader.
     expected[
-        COMPOSITION + "portfolio_research_operations.py",
-        "PortfolioResearchOperations._task_routes",
+        COMPOSITION + "task_operations.py",
+        "execute",
         "public-TASKS",
     ] = 1
     return expected
@@ -186,11 +187,11 @@ def _record_reader_calls(sources, *, canonical=False):
             scope = ".".join(reversed(scope))
             action = node.func.attr
             if (
-                path == COMPOSITION + "portfolio_research_operations.py"
-                and scope == "PortfolioResearchOperations._task_routes"
+                path == COMPOSITION + "task_operations.py"
+                and scope == "execute"
                 and action == "tasks"
                 and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "self"
+                and node.func.value.id == "operations"
             ):
                 action = "public-TASKS"
             found[path, scope, action] += 1

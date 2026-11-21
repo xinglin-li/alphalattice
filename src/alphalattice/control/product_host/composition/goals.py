@@ -92,7 +92,7 @@ from alphalattice.interface.local_application.native_bridge import joined_member
 from alphalattice.interface.local_application.operations import FIRST_USE_STEPS
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
 from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -2345,9 +2345,7 @@ class GoalApplication:
                                 "status": "EXPLICIT_SELECTION_REQUIRED",
                             }
                         )
-                delivery_request = PortfolioResearchRequestDocument.model_validate(
-                    delivery
-                ).to_operation_request()
+                delivery_request = validate_request_document(delivery).to_operation_request()
                 deliveries.append(
                     scope.read(
                         document=delivery,

@@ -1464,7 +1464,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         assert live.operations.evidence_install.official_source is source
         with monkeypatch.context() as missing:
             missing.setattr(
-                "alphalattice.control.product_host.composition.portfolio_research_operations.run_setup",
+                "alphalattice.control.product_host.composition.evidence_authority_setup.run_setup",
                 Mock(side_effect=FileNotFoundError("risk.json")),
             )
             refusal = live.operations.execute(

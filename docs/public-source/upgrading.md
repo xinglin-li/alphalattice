@@ -69,7 +69,7 @@ It must contain both runtime files:
 
 ```powershell
 python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.7-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
-uv tool install --force --python 3.12 ./alphalattice-0.2.7-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
+uv tool install --force --compile-bytecode --python 3.12 ./alphalattice-0.2.7-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel

@@ -1,6 +1,13 @@
 """The retained evidence review outcome shape."""
 
-from alphalattice.control.product_host.composition.evidence_review_application import ReviewOutcome
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        ReviewOutcome,
+    )
 
 
 def _review_outcome_body(outcome: ReviewOutcome | dict[str, object]) -> dict[str, object]:

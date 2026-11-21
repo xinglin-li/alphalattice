@@ -8,13 +8,15 @@ replace research cases.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
-from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.publication.goals import GoalStore
 
 CASE_ROUTES: Final = (
     ("GET", "/api/research/cases", "CASE_LIST"),

@@ -290,7 +290,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     request = client + "/portfolio_research.py"
     sources = {
         module: "class CensusNoun: pass\ndef refuse(): raise ValueError('census.unregistered')\n",
-        request: "type PortfolioResearchOperation = Literal['CENSUS_OPERATION']\n",
+        request: (
+            "CensusOperation = Literal['CENSUS_OPERATION']\n"
+            "type PortfolioResearchOperation = Literal[CensusOperation]\n"
+        ),
     }
     fresh_owner = {
         "owner": fresh,

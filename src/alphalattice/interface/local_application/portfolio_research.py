@@ -21,17 +21,15 @@ them.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, get_args
+from functools import cache
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, cast, get_args
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, create_model, model_validator
 
-from alphalattice.evidence.alternative_evidence.analysis.contracts import (
-    AlternativeEvidenceAnalystAnswer,
-    EvidenceTopic,
-)
 from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
 from alphalattice.interface.local_application.portfolio_research_fields import field_contract
 from alphalattice.interface.local_application.questions import (
@@ -53,10 +51,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     ScoreSourceMode,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-    PortfolioReviewAnswer,
-)
 from alphalattice.protocols.actor_execution.bundles import AgentRole
+
+from .portfolio_request_fields import FIELD_OWNER, request_fields
+from .portfolio_request_fields.contracts import PortfolioResearchOperation, RequestFieldModel
 
 if TYPE_CHECKING:
     import numpy as np
@@ -71,6 +69,17 @@ if TYPE_CHECKING:
         PublicControlDescriptor,
     )
 
+    from .portfolio_request_fields.goals import CommitteeMessage as CommitteeMessage
+    from .portfolio_request_fields.research import (
+        FactorCurationChoice as FactorCurationChoice,
+    )
+    from .portfolio_request_fields.research import (
+        FactorCurationRequest as FactorCurationRequest,
+    )
+    from .portfolio_request_fields.research import (
+        ResearchDeliveryCommentary as ResearchDeliveryCommentary,
+    )
+
 
 class LocalApplicationError(ValueError):
     """Stable refusal for a Local Application Service boundary failure."""
@@ -78,237 +87,7 @@ class LocalApplicationError(ValueError):
     allowed: list[str] | None = None  # the fields its operation takes
 
 
-class FactorCurationChoice(BaseModel):  # type: ignore[misc]
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    factor_id: str = Field(min_length=1)
-    role: Literal["CORE", "CONDITIONAL"]
-    rationale: str = Field(min_length=1, max_length=500)
-
-
-class FactorCurationRequest(BaseModel):  # type: ignore[misc]
-    """Actor intent and the report it answers, never caller-supplied authority."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    expected_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    choices: tuple[FactorCurationChoice, ...]
-    limitations_acknowledged: tuple[str, ...]
-
-
-class ResearchDeliveryCommentary(BaseModel):  # type: ignore[misc]
-    """Attributed caller text, never a product-verified actor identity or decision."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    attribution: str = Field(min_length=1, max_length=160)
-    text: str = Field(min_length=1, max_length=20_000)
-
-
-class CommitteeMessage(BaseModel):  # type: ignore[misc]
-    """One message a committee member sends to its floor (`committee submit`)."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    kind: Literal["STANCE", "CHALLENGE", "REPLY", "PASS", "RULING", "VERDICT", "PERSON_ANSWER"]
-    """STANCE (blind first round), CHALLENGE, REPLY, PASS (a yielded turn); the PM's RULING,
-    VERDICT, the person's answer to what the PM handed them (PERSON_ANSWER)."""
-    text: str = Field(min_length=1, max_length=4000)
-    """Its words; a holding or point goes by its alias (H3, T2), never a number."""
-    targets: tuple[str, ...] = Field(default=(), max_length=16)
-    """The tension points (T1), holdings (H3) or messages (M4) it is about."""
-    reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
-    """The message it answers, which a REPLY (any message), a RULING (a challenge not yet
-    ruled) and a PERSON_ANSWER (an item the PM handed the person) name; no other kind."""
-    positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
-        default_factory=dict, max_length=32
-    )
-    """A stance's position on each agenda point."""
-    outcome: (
-        Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES", "DECLINE"]
-        | None
-    ) = None
-    """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
-    PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is
-    refused with its correction."""
-
-
-type PortfolioResearchOperation = Literal[
-    "GOAL_SCHEMA",
-    "GOAL_LIST",
-    "GOAL_OPEN",
-    "GOAL_REVISE",
-    "GOAL_SHOW",
-    "GOAL_NARRATIVE",
-    "GOAL_PROFILE",
-    "GOAL_REFERENCE",
-    "GOAL_ATTACH",
-    "GOAL_NOTE",
-    "GOAL_EXPORT",
-    "GOAL_CONTINUE",
-    "GOAL_TAKE",
-    "GOAL_SUBMIT",
-    "GOAL_ABANDON",
-    "RESEARCH_HISTORY",
-    "EXPERIENCE_READ",
-    "EXPERIENCE_BRIEF",
-    "EXPERIENCE_CLASS",
-    "EXPERIENCE_RECALL",
-    "EXPERIENCE_RECORD",
-    "EXPERIMENT_COMPARE",
-    "EXPERIMENT_ALPHA_COMPARE",
-    "EXPERIMENT_DELIVERY_EXPORT",
-    "RESEARCH_INPUTS",
-    "RESEARCH_INPUT_PLAN",
-    "RESEARCH_INPUT_CONFIRM",
-    "RESEARCH_INPUT_READBACK",
-    "MODEL_TRAINING_INPUT_PLAN",
-    "MODEL_TRAINING_INPUT_PREPARE",
-    "MODEL_TRAINING_INPUT_READBACK",
-    "FEATURE_CATALOG_CONTROLS",
-    "FEATURE_CATALOG_PLAN",
-    "FEATURE_CATALOG_READBACK",
-    "FEATURE_CATALOG_BUILD",
-    "FEATURE_CATALOG_BUILD_READBACK",
-    "FEATURE_TRIAL",
-    "FEATURE_REVIEW",
-    "FEATURE_ACTIVATE",
-    "FEATURE_DEACTIVATE",
-    "FEATURE_EXTENSIONS",
-    "FEATURE_TRIAL_READBACK",
-    "FEATURE_TRIALS",
-    "RESEARCH_STRATEGY_PLAN",
-    "RESEARCH_STRATEGY_CONTROLS",
-    "RESEARCH_STRATEGY_PREPARE",
-    "RESEARCH_STRATEGY_READBACK",
-    "RESEARCH_STRATEGY_INSTALL",
-    "EXPERIMENT_DRAFT",
-    "EXPERIMENT_PROMOTE",
-    "EXPERIMENT_CONTINUE",
-    "WORKSPACE_PREPARE_READBACK",
-    "WORKSPACE_PREPARE_PLAN",
-    "WORKSPACE_PREPARE_CONFIRM",
-    "STORAGE_CAP_SHOW",
-    "STORAGE_CAP_SET",
-    "STORAGE_READBACK",
-    "STORAGE_PLAN",
-    "STORAGE_CONFIRM",
-    "STORAGE_PIN",
-    "STORAGE_EVIDENCE_REBUILD",
-    "EXPERIMENT_CONTROLS",
-    "EXPERIMENT_DECLARATION_CONVERT",
-    "EXPERIMENT_LINK_RISK",
-    "EXPERIMENT_RISK_LINKS",
-    "EXPERIMENT_RISK_EXPORT",
-    "EXPERIMENT_PLAN",
-    "EXPERIMENT_PREVIEW_READBACK",
-    "EXPERIMENT_RUN",
-    "EXPERIMENTS",
-    "EXPERIMENT_READBACK",
-    "EXPERIMENT_SUMMARY",
-    "EXPERIMENT_REPLAY",
-    "EXPERIMENT_EXPORT",
-    "EXPERIMENT_CURATION",
-    "EXPERIMENT_CURATE",
-    "EXPERIMENT_HANDOFF_PREVIEW",
-    "EXPERIMENT_FOUNDATIONS",
-    "EXPERIMENT_FOUNDATION_PREVIEW",
-    "EXPERIMENT_FOUNDATION_SEAL",
-    "EXPERIMENT_FOUNDATION_READBACK",
-    "EXPERIMENT_FOUNDATION_SUMMARY",
-    "EXPERIMENT_FOUNDATION_EXPORT",
-    "EXPERIMENT_FOUNDATION_DRAFT",
-    "EXPERIMENT_PORTFOLIO_DRAFT",
-    "EXPERIMENT_VERIFY_ALL",
-    "CONTROLS",
-    "PLAN",
-    "RUN",
-    "STATUS",
-    "TASK_RECOVERY",
-    "TASK_GUARDIAN",
-    "TASK_INCIDENTS",
-    "TASK_REMEDIATE",
-    "RECOVER",
-    "TASKS",
-    "UPGRADE_OVERVIEW",
-    "UPGRADE_ACKNOWLEDGE",
-    "NETWORK_ACCESS",
-    "NETWORK_ACCESS_SET",
-    "EVIDENCE_CONSENT",
-    "EVIDENCE_CONSENT_SET",
-    "EVIDENCE_INSTALL",
-    "PENDING_DECISIONS",
-    "ACTIVITY_REFUSALS",
-    "CANCEL",
-    "RESULTS",
-    "REPORT",
-    "COMPARE",
-    "FREEZE",
-    "FINALIZATION",
-    "EXPORT",
-    "EVIDENCE_CRO",
-    "EVIDENCE_CRO_EXPORT",
-    "EVIDENCE_REFRESH",
-    "EVIDENCE_PREPARE",
-    "EVIDENCE_PREVIEW",
-    "EVIDENCE_PACKET",
-    "EVIDENCE_LEDGER",
-    "EVIDENCE_DOCUMENTS",
-    "EVIDENCE_CONTINUE",
-    "EVIDENCE_ANALYSIS_SUBMIT",
-    "EVIDENCE_SELECT",
-    "CRO_REVIEW",
-    "CRO_REVIEW_DOSSIER",
-    "CRO_REVIEW_FINDING",
-    "CRO_REVIEW_SUBMIT",
-    "AGENT_BUNDLE_PREPARE",
-    "AGENT_ANSWER_SUBMIT",
-    "DATA_UPDATE_PLAN",
-    "DATA_UPDATE_RUN",
-    "DATA_UPDATE_READBACK",
-    "DATA_CHANGE_CONFIRM",
-    "DATA_ISSUES",
-    "DATA_ISSUE_PREVIEW",
-    "DATA_ISSUE_CONFIRM",
-    "DATA_ISSUE_DELEGATE",
-    "DATA_ISSUE_REVOKE",
-    "STRATEGY_SCORE_PLAN",
-    "STRATEGY_SCORE_RUN",
-    "STRATEGY_SCORE_READBACK",
-    "STRATEGY_CALIBRATION_PLAN",
-    "STRATEGY_CALIBRATION_RUN",
-    "STRATEGY_CALIBRATION_READBACK",
-    "PORTFOLIO_UPDATE_PLAN",
-    "PORTFOLIO_UPDATE_RUN",
-    "PORTFOLIO_UPDATE_READBACK",
-    "PORTFOLIO_READBACK",
-    "RESEARCH_UPDATE_PLAN",
-    "RESEARCH_UPDATE_RUN",
-    "RESEARCH_UPDATE_READBACK",
-    "RESEARCH_UPDATE_AUTOMATION_READBACK",
-    "RESEARCH_UPDATE_AUTOMATION_CONFIGURE",
-    "WORKSPACE_SHOW",
-    "OPERATION_LIST",
-    "ACTIVITY_LIST",
-    "ACTIVITY_RECENT",
-    "EVENT_DECLARE",
-    "WAKE_REGISTER",
-    "SESSION_USAGE_READ",
-    "USAGE_READING",
-    "USAGE_READING_SET",
-    "ANALYST_READS",
-    "ANALYST_READS_SET",
-    "CPU_BUDGET_SHOW",
-    "CPU_BUDGET_SET",
-    "HOST_STOP",
-    "WORKSPACE_BACKUP",
-    "WORKSPACE_BACKUPS",
-    "MODEL_EXTENSIONS",
-    "MODEL_ACTIVATE",
-    "MODEL_DEACTIVATE",
-    "STRATEGY_ACTIVATE",
-    "STRATEGY_DEACTIVATE",
-    "COMMITTEE_OPEN",
-    "COMMITTEE_SUBMIT",
-    "COMMITTEE_DAILY_SET",
-    "COMMITTEE_READ",
-]
+_REQUEST_OPERATIONS = frozenset(get_args(PortfolioResearchOperation.__value__))
 
 _RECOVERY_CONTEXT_OPERATIONS = frozenset(
     {
@@ -633,6 +412,8 @@ class PortfolioResearchOperationRequest:
         ):
             raise LocalApplicationError("research_delivery.question_invalid")
         if self.delivery_commentary is not None:
+            from .portfolio_request_fields import research  # lazy: delivery commentary
+
             if len(self.delivery_commentary) > 16:
                 raise LocalApplicationError("research_delivery.commentary_limit_exceeded")
             object.__setattr__(
@@ -640,17 +421,20 @@ class PortfolioResearchOperationRequest:
                 "delivery_commentary",
                 tuple(
                     value
-                    if isinstance(value, ResearchDeliveryCommentary)
-                    else ResearchDeliveryCommentary.model_validate(value)
+                    if isinstance(value, research.ResearchDeliveryCommentary)
+                    else research.ResearchDeliveryCommentary.model_validate(value)
                     for value in self.delivery_commentary
                 ),
             )
-        if self.committee_message is not None and not isinstance(
-            self.committee_message, CommitteeMessage
-        ):
-            object.__setattr__(
-                self, "committee_message", CommitteeMessage.model_validate(self.committee_message)
-            )
+        if self.committee_message is not None:
+            from .portfolio_request_fields import goals  # lazy: committee message
+
+            if not isinstance(self.committee_message, goals.CommitteeMessage):
+                object.__setattr__(
+                    self,
+                    "committee_message",
+                    goals.CommitteeMessage.model_validate(self.committee_message),
+                )
         if self.person_confirmation is not None and not isinstance(
             self.person_confirmation, PersonConfirmation
         ):
@@ -757,10 +541,11 @@ class PortfolioResearchOperationRequest:
                     ) from error
                 if parsed.tzinfo is None:
                     raise LocalApplicationError("alternative_evidence.view_interval_invalid")
-        if self.view_topic is not None and self.view_topic not in {
-            value.value for value in EvidenceTopic
-        }:
-            raise LocalApplicationError("alternative_evidence.view_topic_unknown")
+        if self.view_topic is not None:
+            from ...evidence.alternative_evidence.analysis import contracts  # lazy: evidence topic
+
+            if self.view_topic not in {value.value for value in contracts.EvidenceTopic}:
+                raise LocalApplicationError("alternative_evidence.view_topic_unknown")
         if self.wait_seconds is not None and (
             isinstance(self.wait_seconds, bool)
             or not isinstance(self.wait_seconds, int | float)
@@ -801,14 +586,15 @@ class PortfolioResearchOperationRequest:
                 raise LocalApplicationError("chief_risk_officer.review_read_at_invalid") from error
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise LocalApplicationError("chief_risk_officer.review_read_at_invalid")
-        if self.experiment_curation is not None and not isinstance(
-            self.experiment_curation, FactorCurationRequest
-        ):
-            object.__setattr__(
-                self,
-                "experiment_curation",
-                FactorCurationRequest.model_validate(self.experiment_curation),
-            )
+        if self.experiment_curation is not None:
+            from .portfolio_request_fields import research  # lazy: Factor curation
+
+            if not isinstance(self.experiment_curation, research.FactorCurationRequest):
+                object.__setattr__(
+                    self,
+                    "experiment_curation",
+                    research.FactorCurationRequest.model_validate(self.experiment_curation),
+                )
         if self.experiment_document is not None and not isinstance(self.experiment_document, dict):
             raise LocalApplicationError("research_experiment.document_not_a_mapping")
         if self.experiment_yaml is not None and not isinstance(self.experiment_yaml, str):
@@ -834,381 +620,13 @@ class PortfolioResearchOperationRequest:
         return field_contract(operation, _RECOVERY_CONTEXT_OPERATIONS, PERSON_DECISIONS)
 
 
-class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
+class _RequestDocument(RequestFieldModel):
     """Actor-neutral document; field docstrings feed `alphalattice schema show` (SC3)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
 
     operation: PortfolioResearchOperation
     """The operation asked for; `alphalattice schema show <name>` lists its fields."""
-    schema_operation: PortfolioResearchOperation | None = None
-    """Only this operation's request schema and fields."""
-    goal_id: UUID | None = None
-    """The goal, by the id its GOAL_OPEN answered with."""
-    goal_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The goal's version as last read; a goal that moved since refuses the change."""
-    goal_reference_id: str | None = Field(default=None, min_length=1, max_length=64)
-    """The reference ID saved in the exact goal revision; only that reference is verified."""
-    goal_declaration: dict[str, Any] | None = None
-    """The goal as written: its statement, scope and completion rule (`goal schema`)."""
-    goal_reference: dict[str, Any] | None = None
-    """What to attach to the goal: a Task, a study, a result or a publication, by reference."""
-    goal_statement: dict[str, Any] | None = None
-    """A note for the goal's record, written by the agent working for it."""
-    goal_submission: dict[str, Any] | None = None
-    """The completion document claiming the goal is met, naming its evidence."""
-    change_reason: str | None = None
-    """Why the goal changes, kept in its record beside the change."""
-    history_limit: int | None = Field(default=None, ge=1, le=50, strict=True)
-    """How many entries one page reads, 1 to 50."""
-    history_cursor: str | None = None
-    """Where a list reads on: the `next_cursor` its previous page answered."""
-    history_entry_id: str | None = Field(default=None, json_schema_extra={"reference": "issued"})
-    """One research history entry, by the id the history listed."""
-    history_kind: str | None = None
-    """Only the history entries of this kind."""
-    experience_hypothesis: str | None = Field(default=None, min_length=1, max_length=256)
-    """A stated hypothesis ID to test or select in a read."""
-    experience_method: str | None = Field(default=None, min_length=1, max_length=256)
-    """Only trials using this method."""
-    experience_workspace: str | None = Field(default=None, min_length=1, max_length=256)
-    """Only trials from this workspace ID."""
-    experience_trial: str | None = Field(default=None, min_length=1, max_length=64)
-    """The trial, by its ID, whose class to read."""
-    experience_width: Literal["recipe", "method_version", "method"] | None = None
-    """The class's width: the same recipe; the same method version with other parameters (the
-    default); any version of the method."""
-    experience_known_at: str | None = Field(default=None, min_length=1, max_length=64)
-    """Read the class as the history knew it at this ISO-8601 time with its offset; now when
-    absent."""
-    experience_budget: int | None = Field(default=None, ge=100, le=32_000, strict=True)
-    """A brief's budget in tokens, 100 to 32,000; 2,000 when absent."""
-    experience_query: str | None = Field(default=None, min_length=1, max_length=512)
-    """The text to recall experiences like, 1 to 512 characters."""
-    experience_limit: int | None = Field(default=None, ge=1, le=20, strict=True)
-    """How many experiences a recall returns, 1 to 20; 5 when absent."""
-    review_subject: str | None = Field(
-        default=None, pattern=r"^(trial|task|goal):[0-9A-Za-z-]{1,64}$"
-    )
-    """What a note reviews: `trial:<id>` or `task:<id>` once it has ended, or `goal:<id>`."""
-    review_verdict: Literal["success", "failure", "inconclusive"] | None = None
-    """The review's verdict on what it reviews."""
-    review_note: dict[str, Any] | None = None
-    """The note: its hypothesis, method and conclusion, each a sentence, its lessons, and for a
-    review task the `trials` it reviewed."""
-    left_task_id: UUID | None = None
-    """The first of two studies to compare, by its Task."""
-    right_task_id: UUID | None = None
-    """The second of two studies to compare, by its Task."""
-    left_candidate_id: str | None = Field(default=None, min_length=1)
-    """The first of two Alpha candidates to compare."""
-    right_candidate_id: str | None = Field(default=None, min_length=1)
-    """The second of two Alpha candidates to compare."""
-    delivery_question: str | None = Field(default=None, min_length=1, max_length=2400)
-    """The research question a delivery answers, in the researcher's words."""
-    delivery_commentary: tuple[ResearchDeliveryCommentary, ...] | None = Field(
-        default=None, max_length=16
-    )
-    """The researcher's comments a delivery carries, each on the part it names."""
-    research_input_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research input plan to confirm, by the hash its PLAN answered."""
-    origin_task_id: UUID | None = None
-    """The study a new plan continues from, by its Task."""
-    factor_task_id: UUID | None = None
-    """The Factor study an Alpha or Foundation plan builds on, by its Task."""
-    preparation_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The workspace preparation plan to confirm, by the hash its PLAN answered."""
-    data_issue_case_token: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The data issue, by the case token the issue list gave."""
-    data_issue_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The evidence the issue was shown with; an issue that moved is refused."""
-    data_issue_option_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,119}$")
-    """The option chosen for the data issue, one of those it offered."""
-    data_issue_option_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The chosen option's hash as offered; a changed option is refused."""
-    data_issue_grant_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A person's recorded grant for a data decision, by its hash."""
-    storage_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The storage clean-up plan to confirm, by the hash its PLAN answered."""
-    evidence_index_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence retrieval index to rebuild, by the id the storage view listed."""
-    input_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research input's version, by its binding hash; with `research_input_id` it names the
-    data a study reads."""
-    input_pinned: bool | None = Field(default=None, strict=True)
-    """true keeps the named evidence index from clean-up; false lets clean-up release it. A
-    research input's version takes no pin (`storage.input_pin_retired`)."""
-    research_input_id: str | None = None
-    """The research input, by its id (RESEARCH_INPUTS lists them)."""
-    experiment_document: dict[str, Any] | None = None
-    """The study's declaration as a document, as `study controls` or `study draft`
-    writes it."""
-    feature_document: dict[str, Any] | None = None
-    """A Feature definition as a document, for the Feature catalog to plan."""
-    feature_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A Feature catalog plan, by the hash its PLAN answered."""
-    feature_preparation_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared Feature input whose controls a study reads, by its hash."""
-    feature_output: Literal["RAW_VALUES", "PREPROCESSED_VALUES"] | None = None
-    """What a Feature build writes: `RAW_VALUES`, or `PREPROCESSED_VALUES` after the catalog's
-    preprocessing."""
-    experiment_kind: str | None = None
-    """The study kind whose controls to show, as `study controls` lists them; Factor when
-    omitted."""
-    risk_task_id: UUID | None = None
-    """The Risk study to link, by its Task."""
-    risk_report_hash: str | None = None
-    """A Risk report, by its hash, to export or deliver."""
-    experiment_yaml: str | None = None
-    """The study's declaration as YAML text; send it or `experiment_document`, not both."""
-    experiment_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A saved plan, by the hash its PLAN answered."""
-    risk_report_scope: Literal["POST_OBSERVED_PORTFOLIO_WINDOW"] | None = None
-    """`POST_OBSERVED_PORTFOLIO_WINDOW` links the Risk report over the Portfolio's observed
-    window."""
-    experiment_curation: FactorCurationRequest | None = None
-    """The Factor curation decision: which factors go on, and why."""
-    curation_receipt_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Factor curation decision, by its receipt hash."""
-    foundation_admission_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Foundation, by its admission hash."""
-    candidate_id: str | None = Field(default=None, min_length=1)
-    """The Alpha candidate a Portfolio draft is built from."""
-    portfolio_session: str | None = None
-    """The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other
-    book fields, as a book's offered requests fill them."""
-    performance: Literal["latest"] | None = None
-    """`latest` reads this exact book's latest retained Forward composite;
-    omitted reads its saved report."""
-    portfolio_scope: Literal["holdings"] | None = None
-    """`holdings` reads only this saved date's positions, without its Forward report."""
-    spec: dict[str, object] | None = None
-    """The Portfolio book's controls (`strategy-book controls` lists them); those left out keep
-    their defaults."""
-    strategy_package_id: str | None = Field(default=None, min_length=1)
-    """The installed strategy package, by its id."""
-    component_id: str | None = Field(default=None, min_length=1)
-    """The strategy component, by its id."""
-    model_lifecycle: Literal["LIGHT", "FULL"] | None = None
-    """A component's model lifecycle: `LIGHT`, the default, or `FULL` by name."""
-    model_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
-    """An Alpha model, by the id its declaration names (`model list` lists them)."""
-    task_id: UUID | None = None
-    """The Task, by its id."""
-    expected_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Task's version as last read; a Task that moved since refuses the request."""
-    recovery_task_id: UUID | None = None
-    """The stopped Task whose owner replan this existing planner/admission continues."""
-    recovery_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The exact stopped Task version named by `recovery_task_id`."""
-    incident_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Guanyin incident, by the key TASK_INCIDENTS listed."""
-    remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None
-    """The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`."""
-    result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A Portfolio result, by its hash; for a book, names the book with the other book fields, as
-    a book's offered requests fill them."""
-    left_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The first of two Portfolio results to compare."""
-    right_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The second of two Portfolio results to compare."""
-    candidate_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The frozen candidate to finalize, by its hash."""
-    handoff_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research handoff a book comes from. Names the book with the other book fields, as a
-    book's offered requests fill them."""
-    update_task_id: UUID | None = None
-    """The Portfolio update Task a book comes from. Names the book with the other book fields, as
-    a book's offered requests fill them."""
-    experiment_task_id: UUID | None = None
-    """The Portfolio study Task a book comes from. Names the book with the other book fields, as
-    a book's offered requests fill them."""
-    experiment_receipt_hash: str | None = None
-    """The Portfolio study's result, by its receipt hash. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    update_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Portfolio update's publication a book comes from. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    position_basis: str | None = None
-    """The positions a book's update published them on. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A published CRO review, by its hash."""
-    analysis_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A published Evidence analysis, by its hash."""
-    review_dossier_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The CRO dossier a review answers, by its hash."""
-    review_policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The review policy the CRO answers under, as the dossier named it."""
-    review_schema_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The review answer's schema, as the dossier named it."""
-    review_read_at: str | None = Field(default=None, min_length=1, max_length=64)
-    """When the review's dossier was read, as its bundle or first part sealed it."""
-    review_answer: PortfolioReviewAnswer | dict[str, Any] | None = None
-    """The schema is the answer's, so capabilities describe it; an answer the
-    schema would refuse is still carried, as written, for the Host to name
-    each problem by item."""
-    analysis_context_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence packet's context an analysis answers, by its hash."""
-    analysis_answer: AlternativeEvidenceAnalystAnswer | dict[str, Any] | None = None
-    """The Analyst's answer to an Evidence packet."""
-    agent_role: AgentRole | None = None
-    """Whose bundle to prepare: `ANALYST`, `CRO`, `ALPHA`, `DATA`, `FACTOR`,
-    `PORTFOLIO` or `RISK`. The five research specialists name a retained Task."""
-    bundle_directory: str | None = Field(default=None, min_length=1, max_length=1024)
-    """Where the agent's bundle is written, and its answer read back."""
-    agent_answer: dict[str, Any] | None = None
-    """An answer to the named bundle as written. Analyst and CRO retain their
-    domain schemas; the other specialists supply bounded `text` and exact
-    `references` listed in the bundle. The Host checks shape and bindings,
-    never scientific content, and names each problem."""
-    evidence_as_of: str | None = Field(default=None, min_length=1, max_length=64)
-    """The time Evidence is prepared as of, in ISO 8601."""
-    preparation_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence preparation's binding, by its hash."""
-    evidence_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
-    """One Evidence unit, by its id (u01, u02 ...)."""
-    delivery_part: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which part of an answer delivered in parts to read, from 1."""
-    delivery_budget_bytes: int | None = Field(default=None, ge=1, strict=True)
-    """The most bytes one delivered part may hold."""
-    evidence_detail: str | None = Field(
-        default=None,
-        pattern=r"^(litigation_inventory|session_windows|topic_coverage|time_view)$",
-    )
-    """Which detail of the packet to read: `litigation_inventory`, `session_windows`,
-    `topic_coverage` or `time_view`; `EVIDENCE_CRO` also takes `time_view` for the
-    published reading."""
-    view_entity_id: str | None = Field(default=None, min_length=1, max_length=32)
-    """Only this entity's Evidence."""
-    view_topic: str | None = Field(default=None, pattern=r"^[A-Z_]{1,40}$")
-    """Only this topic's Evidence."""
-    view_last_days: int | None = Field(default=None, ge=1, le=3660, strict=True)
-    """Only the last this many days."""
-    view_from: str | None = Field(default=None, min_length=1, max_length=64)
-    """The first day read, as YYYY-MM-DD."""
-    view_to: str | None = Field(default=None, min_length=1, max_length=64)
-    """The last day read, as YYYY-MM-DD."""
-    ledger_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the Evidence ledger to read, from 1."""
-    documents_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the workspace's retained documents to read, from 1."""
-    citation_entity_id: str | None = Field(default=None, min_length=1, max_length=32)
-    """The entity whose citation to open."""
-    citation_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
-    """The Evidence unit the citation belongs to."""
-    citation_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the cited source to read, from 1."""
-    continuation_of: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared packet a continuation reads on from, by the receipt it sealed."""
-    continuation_spans: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The packet's sealed span set, by its hash."""
-    session_limit: int | None = Field(default=None, ge=1, le=99, strict=True)
-    """The most reading sessions the continued chain may hold."""
-    window_limit: int | None = Field(default=None, ge=1, le=4096, strict=True)
-    """The most windows the continued chain may read."""
-    finding_handle: str | None = Field(default=None, pattern=r"^FIND-[A-Z0-9-]{1,80}$")
-    """A CRO finding, by its handle (FIND-...)."""
-    prior_review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """An earlier CRO review the export compares with."""
-    update_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """An update plan, by the hash its PLAN answered."""
-    score_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A score plan, by the hash its PLAN answered."""
-    score_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The scores a calibration reads, by their snapshot hash."""
-    calibration_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A calibration plan, by the hash its PLAN answered."""
-    prepared_input_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared input a Portfolio update reads, by its hash."""
-    observed_through: str | None = None
-    """The last session the update observes, as YYYY-MM-DD."""
-    positions_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
-    """The trade date whose positions the update is for, as YYYY-MM-DD; decided at the close
-    before it."""
-    formation_session: str | None = None
-    """The session the scores are formed on, as YYYY-MM-DD."""
-    automation_enabled: bool | None = Field(default=None, strict=True)
-    """true lets the daily research update run by itself; false stops it."""
-    network_enabled: bool | None = Field(default=None, strict=True)
-    """true lets this workspace reach the network; false keeps it offline."""
-    evidence_documents_per_issuer: int | None = Field(default=None, strict=True)
-    """The SEC filings official acquisition may take per issuer; the default budget is three."""
-    evidence_total_documents: int | None = Field(default=None, strict=True)
-    """The SEC filings official acquisition may take in all; the default budget's when absent."""
-    evidence_total_bytes: int | None = Field(default=None, strict=True)
-    """The bytes official acquisition may read in all; the default budget's when absent."""
-    evidence_setup: str | None = Field(default=None, min_length=1, max_length=4096)
-    """The Evidence setup's options, as its script takes them, for the running Host to install
-    (`--acquire-sec --entities AAPL --network-consent --install`)."""
-    usage_reading_enabled: bool | None = Field(default=None, strict=True)
-    """true lets the Host read the bound agent Sessions' own files for usage; false reads
-    nothing."""
-    committee_daily_enabled: bool | None = Field(default=None, strict=True)
-    """true: each daily update's review convenes the committee; false: the PM's view."""
-    analyst_reads_mode: Literal["SUBAGENTS", "IN_SESSION"] | None = None
-    """How the lead reads a review's Analyst bundles: each by its own subagent, or itself."""
-    analyst_reads_bundles: int | None = Field(default=None, ge=1, le=10_000, strict=True)
-    """The Analyst bundles a review hands out, or the count the person's answer covers."""
-    automation_package_ids: tuple[str, ...] | None = None
-    """The strategy packages the automatic research update covers."""
-    upgrade_set_hash: str | None = None
-    """The installed identity set an upgrade overview showed, when acknowledging it."""
-    feature_trial_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A feature trial, by the ID its request answered with."""
-    feature_factor_id: str | None = Field(default=None, min_length=1, max_length=160)
-    """A formula factor a research plan declares, which its review and activation name."""
-    extensions_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the declared formula factors to read, from 1."""
-    agent_session: str | None = Field(default=None, min_length=1, max_length=200)
-    """An agent session: a Task listing shows the Tasks it submitted, 50 to a page, and a goal
-    listing the goals whose record names it."""
-    wait_seconds: float | None = Field(default=None, gt=0, le=20)
-    """How long a Task's status may wait for the Task to move on; at most 20 seconds."""
-    after: str | None = Field(default=None, min_length=1, max_length=256)
-    """Where the activity feed reads on: the cursor its previous page answered."""
-    limit: int | None = Field(default=None, ge=1, le=200, strict=True)
-    """The most a page reads: 1 to 200 rows of the activity feed, 1 to 50 recent groups."""
-    watch: tuple[UUID, ...] | None = Field(default=None, max_length=16)
-    """Tasks, by id, whose current projection the activity page joins; a short id the compact
-    display gave reads as its whole id."""
-    event: dict[str, Any] | None = None
-    """The event this client declares about its own work (`ExternalActivityEventDocument`)."""
-    wake_thread: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,128}$")
-    """The Codex thread to wake (`CODEX_THREAD_ID`)."""
-    wake_read: str | None = Field(
-        default=None, min_length=1, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
-    )
-    """The exact read or rerun command, with its next free output path."""
-    wake_codex_path: str | None = Field(
-        default=None, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
-    )
-    """The client's Codex executable; the Host validates it or uses its PATH."""
-    storage_cap_bytes: str | None = Field(default=None, min_length=1, max_length=32)
-    """`auto`, or a positive whole byte cap for managed writes; changes no result identity."""
-    cpu_budget: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or a whole number of cores a book's preparation may use."""
-    tasks_waiting: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or how many Tasks may wait behind the running one."""
-    tasks_running: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or how many Tasks that may run beside others run at once, within the budget."""
-    backup_generations_kept: int | None = Field(default=None, ge=1, le=100, strict=True)
-    """How many backup generations to keep: seven unless a request keeps another count."""
-    committee_role: Literal["PM", "ALPHA", "RISK", "CRO"] | None = None
-    """The committee member this request speaks or reads for: the PM (the lead), ALPHA, RISK
-    or CRO."""
-    committee_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
-    """That member's key: a specialist's is in its bundle, the PM's in its own open's answer."""
-    committee_message: CommitteeMessage | None = None
-    """One committee message, as its YAML or JSON file."""
-    committee_seen: int | None = Field(default=None, ge=0, le=9999, strict=True)
-    """The last floor message the reader has seen, by its number (M4 is 4)."""
-    person_confirmation: PersonConfirmation | None = None
-    """The person's yes to this decision, asked in one line and relayed whole: `--person-said`
-    their words and `--asked` your question, which the client binds to this request. Only a
-    person's decision takes it, once."""
-    # Deliberately no actor field. Who is choosing is decided by the bridge this envelope
-    # arrives at; a relayed yes is recorded as the person's, relayed by the agent's session.
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_operation_fields(self) -> Self:
@@ -1218,17 +636,79 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
 
     def to_operation_request(self) -> PortfolioResearchOperationRequest:
         """Validate typed fields."""
-        return PortfolioResearchOperationRequest(
-            **{
-                field.name: getattr(self, field.name)
-                for field in fields(PortfolioResearchOperationRequest)
-            }
+        values: dict[str, Any] = {
+            field.name: getattr(self, field.name, None)
+            for field in fields(PortfolioResearchOperationRequest)
+            if field.name != "operation"
+        }
+        return PortfolioResearchOperationRequest(operation=self.operation, **values)
+
+
+@cache
+def _request_document(fields_to_read: frozenset[str]) -> type[_RequestDocument]:
+    definitions = {}
+    for name, family in FIELD_OWNER.items():
+        if name in fields_to_read:
+            field = request_fields(family)[name]
+            definitions[name] = (field.annotation, deepcopy(field))
+    return cast(
+        type[_RequestDocument],
+        create_model(
+            "PortfolioResearchRequestDocument",
+            __base__=_RequestDocument,
+            __doc__=_RequestDocument.__doc__,
+            __module__=__name__,
+            **definitions,
+        ),
+    )
+
+
+def full_request_document() -> type[_RequestDocument]:
+    """The complete, ordered request contract used for discovery."""
+    return _request_document(frozenset(FIELD_OWNER))
+
+
+def request_document_schema(fields_to_read: frozenset[str]) -> dict[str, Any]:
+    """Describe a selected operation using just its declared request fields."""
+    return _request_document(fields_to_read).model_json_schema()
+
+
+def validate_request_document(value: Mapping[str, Any]) -> _RequestDocument:
+    """Use a single operation's admitted fields for regular requests."""
+    operation = value.get("operation")
+    if isinstance(operation, str) and operation in _REQUEST_OPERATIONS:
+        _, allowed = PortfolioResearchOperationRequest.field_contract(
+            cast(PortfolioResearchOperation, operation)
         )
+        if allowed.union({"operation"}).issuperset(value):
+            model = _request_document(allowed)
+            return model.model_validate(value)
+    # Complete validation keeps the order and kinds of refusals across operations.
+    return full_request_document().model_validate(value)
+
+
+def __getattr__(name: str) -> object:
+    """Keep typed request and nested document imports available on demand."""
+    if name == "PortfolioResearchRequestDocument":
+        return full_request_document()
+    if name == "CommitteeMessage":
+        from .portfolio_request_fields import goals  # lazy: committee document
+
+        return goals.CommitteeMessage
+    if name in {"FactorCurationChoice", "FactorCurationRequest", "ResearchDeliveryCommentary"}:
+        from .portfolio_request_fields import research  # lazy: research document
+
+        return getattr(research, name)
+    raise AttributeError(name)
+
+
+if TYPE_CHECKING:
+    PortfolioResearchRequestDocument = _RequestDocument
 
 
 def decision_hash(request: Mapping[str, object]) -> str:
     """Hash the request a relayed yes binds."""
-    document = PortfolioResearchRequestDocument.model_validate(
+    document = validate_request_document(
         {
             name: value
             for name, value in request.items()

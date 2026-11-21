@@ -65,6 +65,9 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
+from alphalattice.control.product_host.composition.task_kinds import (
+    EVIDENCE_REVIEW_RUNTIME_FILE,
+)
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -4726,7 +4729,7 @@ class EvidenceReviewApplication:
         """
         if self.runtime_path is not None:
             return self.runtime_path
-        return self.workspace / "runtime" / "evidence-review-checkpoints.sqlite"
+        return self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE
 
 
 __all__ = [

@@ -7,7 +7,6 @@ import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager, nullcontext
-from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
@@ -79,6 +78,12 @@ from alphalattice.control.product_host.composition.research_prerequisites import
     Flow,
     holdings,
     prerequisites,
+)
+from alphalattice.control.product_host.composition.research_read_scopes import (
+    _VERIFIED_EVIDENCE,
+)
+from alphalattice.control.product_host.composition.research_read_scopes import (
+    verified_study_evidence as verified_study_evidence,
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
@@ -316,10 +321,6 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
 )
 
-_VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
-    "research_experiment_verified_evidence", default=None
-)
-
 _LEDGER_ENTRIES = 8
 """Studies whose verification is kept; each keeps only what a read shows (an Alpha study's
 verified graph holds about 130 MB of chunk tables on the real workspace, none of it kept)."""
@@ -359,38 +360,6 @@ class _VerifiedStudy:
     record_hash: str
     verified_at: datetime
     implementation: str
-
-
-@contextmanager
-def verified_study_evidence() -> Iterator[None]:
-    """Verify each study's evidence once per operation, then release.
-
-    A study page or a research case reads several studies, and a comparison inside
-    it reads two of them again; each read walked the whole sealed graph and
-    re-derived every chunk's content hash (a case gathering
-    studies verified the same two Alpha studies twice in one request). Inside this
-    scope a Task's evidence is verified once per (Task, record version, readback
-    mode) and the verified result reused for the rest of the operation. An
-    operation run inside another (a case reading its studies) joins the scope
-    already open.
-
-    Across requests, a read outside full proof answers from the owner's ledger: the
-    last full verification of the same Task record under the same installed
-    implementation. Its sealed files were proved when the study wrote them; an
-    export proves them again in full, and the scrub finds a changed one and drops
-    the study's ledger entry (EV2). Its answer says so (``verification_basis``).
-    """
-    if _VERIFIED_EVIDENCE.get() is not None:
-        yield
-        return
-    token = _VERIFIED_EVIDENCE.set({})
-    try:
-        yield
-    finally:
-        scope = _VERIFIED_EVIDENCE.get()
-        if scope is not None:
-            scope.clear()
-        _VERIFIED_EVIDENCE.reset(token)
 
 
 def implementation_role(kind: str, *, lifecycle: bool = False) -> str:

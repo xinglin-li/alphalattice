@@ -21,9 +21,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import alphalattice.interface.local_application.portfolio_research as research_requests
-from alphalattice.control.product_host.composition import (
-    portfolio_research_operations as operations,
-)
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     short_source_action,
     source_ways,
@@ -795,7 +792,10 @@ def test_a_delegated_activation_runs_forward_without_the_history_review(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
     )
     update = {"update": {"run": {"task_id": "u"}}}
-    monkeypatch.setattr(operations, "first_update", lambda _host, _activated, _given: update)
+    monkeypatch.setattr(
+        "alphalattice.control.product_host.composition.research_update_automation.first_update",
+        lambda _host, _activated, _given: update,
+    )
     request = Request(operation="STRATEGY_ACTIVATE", task_id=UUID(int=3))
     scope = REQUEST_PROVENANCE.set(
         RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")

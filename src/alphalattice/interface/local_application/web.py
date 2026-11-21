@@ -54,7 +54,8 @@ from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Final, Protocol, cast
+from select import select
+from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from alphalattice.interface.local_application.call_span import (
@@ -86,6 +87,9 @@ from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPE
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
+
+if TYPE_CHECKING:
+    from socket import socket
 
 LOOPBACK_HOST = "127.0.0.1"
 BROWSER_REFUSED_PORTS: Final = frozenset(
@@ -968,6 +972,9 @@ def bind_browser_safe[B: _Bound](bind: Callable[[], B], *, assigned: bool) -> B:
 
 
 class _Server(ThreadingHTTPServer):
+    timeout = 0
+    """The accept loop calls handle_request after the listener signals readiness."""
+
     daemon_threads = False
     """A request thread can admit a task, so it is a writer and must be joined.
 
@@ -985,11 +992,40 @@ class _Server(ThreadingHTTPServer):
     """
 
     def __init__(self, address: tuple[str, int], application: LocalWebApplication) -> None:
+        from socket import socketpair  # lazy: only the listener owns the wake socket
+
         self.application = application
         self.stopping = threading.Event()
         self._handlers: list[threading.Thread] = []
         self._handler_lock = threading.Lock()
-        super().__init__(address, _Handler)
+        self._stop_reader, self._stop_writer = socketpair()
+        try:
+            super().__init__(address, _Handler)
+        except BaseException:
+            self._stop_reader.close()
+            self._stop_writer.close()
+            raise
+
+    def serve_until_stopped(self) -> None:
+        """Wait on the listener and the stop signal in the same accept thread."""
+        while not self.stopping.is_set():
+            readable, _, _ = select([self.socket, self._stop_reader], [], [])
+            if self.socket in readable and not self.stopping.is_set():
+                self.handle_request()
+
+    def stop_accepting(self) -> None:
+        """Wake a blocked accept loop as soon as it has been asked to stop."""
+        with self._handler_lock:
+            if not self.stopping.is_set():
+                self.stopping.set()
+                self._stop_writer.sendall(b"\0")
+
+    def server_close(self) -> None:
+        try:
+            super().server_close()
+        finally:
+            self._stop_reader.close()
+            self._stop_writer.close()
 
     def process_request(self, request: object, client_address: object) -> None:
         """Own the request thread rather than handing it to the base class.
@@ -999,13 +1035,16 @@ class _Server(ThreadingHTTPServer):
         *whether* the threads finished, which is the fact a caller holding a
         workspace lease has to act on.
         """
-        thread = threading.Thread(
-            target=self.process_request_thread,
-            args=(request, client_address),
-            name="local-web-request",
-            daemon=False,
-        )
         with self._handler_lock:
+            if self.stopping.is_set():
+                self.shutdown_request(cast("socket", request))
+                return
+            thread = threading.Thread(
+                target=self.process_request_thread,
+                args=(request, client_address),
+                name="local-web-request",
+                daemon=False,
+            )
             self._handlers = [value for value in self._handlers if value.is_alive()]
             self._handlers.append(thread)
         thread.start()
@@ -1072,7 +1111,9 @@ class LocalWebService:
             # gave us, so `Host` cannot be a wildcard and cannot be widened later.
             self.application.allowed_hosts = frozenset({host, f"localhost:{self.bound_port}"})
             self.application.cookie_name = session_cookie_name(self.bound_port)
-            thread = threading.Thread(target=server.serve_forever, name="local-web", daemon=False)
+            thread = threading.Thread(
+                target=server.serve_until_stopped, name="local-web", daemon=False
+            )
             self._thread = thread
             thread.start()
         except BaseException:
@@ -1095,10 +1136,11 @@ class LocalWebService:
         if server is None:
             return True
         deadline = None if timeout is None else time.monotonic() + timeout
-        server.stopping.set()
-        server.shutdown()
+        server.stop_accepting()
         if thread is not None:
             thread.join(timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                return False
         server.server_close()
         joined = server.join_request_threads(
             None if deadline is None else max(0.0, deadline - time.monotonic())

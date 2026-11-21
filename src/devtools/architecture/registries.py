@@ -721,14 +721,29 @@ def g1_matches(prefix: str, nouns: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _census_file_facts(path: str, text: str) -> dict[str, int]:
     tree = ast.parse(text, filename=path)
+    literal_groups = {
+        assignment.targets[0].id: assignment.value
+        for assignment in tree.body
+        if isinstance(assignment, ast.Assign)
+        and len(assignment.targets) == 1
+        and isinstance(assignment.targets[0], ast.Name)
+        and isinstance(assignment.value, ast.Subscript)
+        and isinstance(assignment.value.value, ast.Name)
+        and assignment.value.value.id == "Literal"
+    }
     return {
         "message-kinds|" + code: line for code, line in refusals(path, tree, locations=True).items()
     } | {
-        "operations|" + n.value: n.lineno
+        "operations|" + literal.value: literal.lineno
         for alias in ast.walk(tree)
         if isinstance(alias, ast.TypeAlias) and alias.name.id == "PortfolioResearchOperation"
         for n in ast.walk(alias.value)
-        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        for literal in (
+            ast.walk(literal_groups[n.id])
+            if isinstance(n, ast.Name) and n.id in literal_groups
+            else (n,)
+        )
+        if isinstance(literal, ast.Constant) and isinstance(literal.value, str)
     }
 
 

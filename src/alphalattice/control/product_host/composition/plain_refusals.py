@@ -28,7 +28,7 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
 from alphalattice.interface.local_application.questions import network_question, person_question
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
@@ -79,7 +79,7 @@ def invalid_plan_document(
                 ),
             }
             try:
-                PortfolioResearchRequestDocument.model_validate(controls)
+                validate_request_document(controls)
             except ValidationError:
                 pass
             else:

@@ -1196,6 +1196,9 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
 
 def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
     "Risk recovery carries its selected input and exact history, skipping absent formations."
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        HostRouteFamilies,
+    )
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
@@ -1284,6 +1287,7 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
 
     monkeypatch.setattr(owner, "plan", refused_plan)
     host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
+    host.route_families = HostRouteFamilies()
     host.research_strategies = owner
     answer = host._workspace_operation(
         PortfolioResearchOperationRequest(

@@ -129,6 +129,7 @@ class PortfolioResearchApplication:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         report_context: Callable[[PortfolioExecutionProgram, date], PortfolioReportContext]
         | None = None,
+        pipeline: PortfolioResearchPipelineStore | None = None,
     ) -> None:
         """Compose exact portfolio input, task, storage, execution and report owners.
 
@@ -140,6 +141,7 @@ class PortfolioResearchApplication:
             resolver: Deterministic strategy/input resolution owner.
             clock: Explicit observed-time source.
             report_context: Optional deterministic report context resolver.
+            pipeline: The Host's retained history store, when already composed.
         """
         self.workspace_id = workspace_id
         self.workspace = workspace.resolve()
@@ -153,7 +155,7 @@ class PortfolioResearchApplication:
             self.workspace, capacity=ResearchInputStorage(session).admit_evidence_bytes
         )
         artifact_root = self.ledger.artifact_root
-        self.pipeline = PortfolioResearchPipelineStore(artifact_root)
+        self.pipeline = pipeline or PortfolioResearchPipelineStore(artifact_root)
         # The installed declarations, so a report rebuilt from a stored ledger
         # can still say which strategy produced it without resolving anything.
         self.executor = PortfolioResearchExecutor(

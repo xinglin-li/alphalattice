@@ -28,7 +28,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PERSON_ONLY,
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
+    full_request_document,
 )
 
 OPERATIONS: Final[tuple[str, ...]] = tuple(get_args(PortfolioResearchOperation.__value__))
@@ -1449,7 +1449,7 @@ def table() -> dict[str, Any]:
         Each command's operation, its required and allowed fields, and each
         request field's JSON types from the request document schema.
     """
-    document = PortfolioResearchRequestDocument.model_json_schema()
+    document = full_request_document().model_json_schema()
     properties = document["properties"]
     definitions = document.get("$defs", {})
     contracts = {operation: fields(operation) for operation in OPERATIONS}

@@ -30,7 +30,7 @@ from alphalattice.interface.local_application.native_bridge import (
 )
 from alphalattice.interface.local_application.native_setup import admitted_session_project
 from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
 
 if TYPE_CHECKING:
@@ -264,8 +264,8 @@ class NativeUsageReader:
                 )
                 try:
                     return self.operations.execute(
-                        PortfolioResearchRequestDocument(
-                            operation="EVENT_DECLARE", event=document
+                        validate_request_document(
+                            {"operation": "EVENT_DECLARE", "event": document}
                         ).to_operation_request(),
                         caller="EXTERNAL_AUTOMATION",
                     )

@@ -147,8 +147,8 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "a busy queue puts the verification sweep and the held-state backup off, a deferral "
     "holding the running place too, which they would only queue behind",
     (
-        "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._recover",
+        "control/product_host/composition/task_operations.py",
+        "_recover",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (

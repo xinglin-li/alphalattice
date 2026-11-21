@@ -34,6 +34,9 @@ from alphalattice.control.product_host.composition.research_experiments import (
     VERIFICATION_LEDGER_DIRECTORY,
     ResearchExperimentApplication,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    STUDY_VERIFICATION_TASK_KIND,
+)
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -51,7 +54,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-SWEEP_TASK_KIND = "study_verification_sweep"
+SWEEP_TASK_KIND = STUDY_VERIFICATION_TASK_KIND
 SWEEP_STAGE = "verify_saved_studies"
 SWEEP_INTERVAL = timedelta(days=7)
 """How long after a whole sweep the next one is due, unless an upgrade makes it due sooner."""

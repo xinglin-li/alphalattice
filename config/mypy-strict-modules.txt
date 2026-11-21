@@ -2,6 +2,15 @@
 src/alphalattice/control/product_host/data_preparation/input_capture.py
 src/alphalattice/control/product_host/research_authoring/input_revisions.py
 src/alphalattice/control/product_host/composition/portfolio_research_operations.py
+src/alphalattice/control/product_host/composition/data_operations.py
+src/alphalattice/control/product_host/composition/feature_operations.py
+src/alphalattice/control/product_host/composition/host_answer_submission.py
+src/alphalattice/control/product_host/composition/portfolio_operations.py
+src/alphalattice/control/product_host/composition/research_operations.py
+src/alphalattice/control/product_host/composition/research_read_scopes.py
+src/alphalattice/control/product_host/composition/review_operations.py
+src/alphalattice/control/product_host/composition/task_kinds.py
+src/alphalattice/control/product_host/composition/task_operations.py
 src/alphalattice/investment/alpha_research/scores/model_renewal.py
 src/alphalattice/investment/alpha_research/experiments/lifecycle_authoring.py
 src/alphalattice/investment/alpha_research/experiments/family_qualification.py
