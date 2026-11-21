@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -32,7 +31,6 @@ from alphalattice.kernel.data_layer.history_runtime import (
     define,
     held,
     release_history,
-    render_experiences,
     workspace_on_log,
 )
 from alphalattice.kernel.data_layer.reading import (
@@ -155,8 +153,6 @@ def open_history(
                 _open["workspace"] = bound
         release_history()  # this opening's reference alone
         raise
-    # a note a stopped Host left unrendered, or a renderer this release changed, is rendered now
-    threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
 
 
 def move_carried(folder: Path, workspace_id: str) -> int:

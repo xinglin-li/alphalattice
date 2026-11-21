@@ -250,7 +250,13 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
     PortfolioFinalizationStore,
 )
 from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.history import data_root, held, move_carried, release_history
+from alphalattice.kernel.data_layer.history import (
+    data_root,
+    held,
+    move_carried,
+    release_history,
+    render_in_background,
+)
 from alphalattice.kernel.data_layer.store import preload_grouping
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -912,6 +918,10 @@ class LocalPortfolioWebSession:
             self.operations.sweep_if_due()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
+        # A note a stopped Host left unrendered, or one a changed renderer rewrites, is rendered
+        # once the Host serves in full: a start that fails, or one restricted to its upgrade,
+        # starts no render and writes nothing to the log through one.
+        render_in_background()
         return url
 
     def resume(

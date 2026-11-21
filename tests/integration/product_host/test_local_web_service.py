@@ -682,8 +682,27 @@ def test_cancellation_is_requested_not_enacted(
 
 
 @pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup"])
-def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure: str) -> None:
+def test_a_failed_start_leaves_no_lease_worker_or_socket(
+    tmp_path: Path, failure: str, monkeypatch
+) -> None:
     "A stopped upgrade never serves; a completed one is reused after a later bind failure."
+    from alphalattice.kernel.data_layer import history_runtime
+
+    # An experience render runs only once the failed start's check has run, as a slow one on a
+    # loaded runner would: a start that fails must have started none.
+    checked, rendered, render = (
+        threading.Event(),
+        threading.Event(),
+        history_runtime.render_experiences,
+    )
+
+    def render_late() -> list[str]:
+        checked.wait(30)
+        made = render()
+        rendered.set()
+        return made
+
+    monkeypatch.setattr(history_runtime, "render_experiences", render_late)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     blocker = socket.socket()
@@ -723,6 +742,7 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
         assert session.web is None
         # A Host a wider fixture serves may share this process's log, whose batch timer is its own.
         assert {thread.name for thread in threading.enumerate()} - before <= {COMMIT_TIMER}
+        checked.set()
         assert steps == ([] if failure == "upgrade-backup" else ["step"])
         checks.update(backup=True, verify=True)
         second = LocalPortfolioWebSession(
@@ -733,11 +753,14 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(tmp_path: Path, failure
         )
         second.start()
         try:
+            # the start that serves renders what earlier Hosts left awaiting their experience
+            assert rendered.wait(20)
             assert _json(second, "/api/session")["workspace_id"] == "qa-failed-start"
             assert steps == (["step", "step"] if failure == "upgrade-verify" else ["step"])
         finally:
             second.stop()
     finally:
+        checked.set()
         blocker.close()
         log.close()
 

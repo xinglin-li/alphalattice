@@ -916,8 +916,13 @@ def record_review(
         )
         log.flush()
         note_id, attrs = log.read("SELECT event_id, attrs FROM event WHERE seq = ?", (seq,))[0]
-    threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
+    render_in_background()
     return {"note_id": note_id, **json.loads(attrs)}
+
+
+def render_in_background() -> None:
+    """Render the notes awaiting their experience (`render_experiences`) off the caller's path."""
+    threading.Thread(target=render_experiences, name="experience-render", daemon=True).start()
 
 
 def render_experiences() -> list[str]:
