@@ -925,32 +925,78 @@ def test_a_derived_partition_is_written_once_and_valid_only_for_its_inputs(root)
     assert refused == ["data_layer.derived_table_not_admitted", *mixed, mixed[0]]
 
 
-@pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
-def test_maintenance_keeps_an_owed_event_s_snapshot_then_frees_a_collected_partition(root):
+def _check_maintenance_keeps_owed_snapshots(root, log, port):
     """A week on, maintenance expires no snapshot from an owed event's on, so its repair still
     finds it; once repaired, it expires the rest and deletes the collected partition's files."""
     later = datetime.now(UTC) + timedelta(days=8)
-    with HostLog.open(root) as log:
-        port = StorePort.open(root, log)
-        owed = owe(port)["event_id"]
-        derive = partial(port.derive, FEATURES, recipe_key="r1", compute_ms=5, rooted_by="w1")
-        derive(factors("d1", "momentum"), parts=parts("d1"))
-        derive(factors("d2", "momentum"), parts=parts("d2"))
-        files = partial(lambda: sum(f.stat().st_size for f in (root / "data").rglob("*.parquet")))
-        held = port.maintain(later)  # merges the two derived files into one
-        before = files()
-        log.rooted("w1", FEATURES, roots(parts("d2")), exactly=True)
-        port.collect(FEATURES)  # d1's file no longer read
-        repaired = repair(log, port.lake)
-        freed = port.maintain(later)
-        after = files()
-        read = port.lake.execute(
-            f"SELECT count(*), any_value(input_digest) FROM lake.derived.{FEATURES}"
-        ).fetchone()
-        port.close()
+    owed = owe(port)["event_id"]
+    derive = partial(port.derive, FEATURES, recipe_key="r1", compute_ms=5, rooted_by="w1")
+    derive(factors("d1", "momentum"), parts=parts("d1"))
+    derive(factors("d2", "momentum"), parts=parts("d2"))
+    files = partial(lambda: sum(f.stat().st_size for f in (root / "data").rglob("*.parquet")))
+    held = port.maintain(later)  # merges the two derived files into one
+    before = files()
+    log.rooted("w1", FEATURES, roots(parts("d2")), exactly=True)
+    port.collect(FEATURES)  # d1's file no longer read
+    repaired = repair(log, port.lake)
+    freed = port.maintain(later)
+    after = files()
+    read = port.lake.execute(
+        f"SELECT count(*), any_value(input_digest) FROM lake.derived.{FEATURES}"
+    ).fetchone()
     assert held["expired"] > 0 and (held["deleted"], repaired) == (2, [owed])  # the merged two
     assert freed["expired"] > 0 and freed["deleted"] > 0 and after < before
     assert read == (4, "d2")
+
+
+@pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
+@pytest.mark.parametrize("listings", [None, 108, 1080], ids=["owed", "inlined", "parquet"])
+def test_maintenance_bounds_catalog_and_preserves_its_readers(root, listings):
+    """A real catalog keeps recovery snapshots and equal as-of rows through maintenance."""
+    with HostLog.open(root) as log, closing(StorePort.open(root, log)) as port:
+        if listings is None:
+            _check_maintenance_keeps_owed_snapshots(root, log, port)
+        else:
+            _check_idle_maintenance_preserves_world_rows(root, log, port, listings)
+
+
+def _check_idle_maintenance_preserves_world_rows(root, log, port, listings):
+    """The idle write and age triggers compact both physical forms without moving as-of rows."""
+    now = datetime.now(UTC)
+    image = "SELECT * FROM raw_bar_asof(epoch_us(?)) ORDER BY listing_id, session_date"
+    at = datetime(2024, 4, 1, tzinfo=UTC)
+    run = port.lake.execute
+    run("SET threads TO 6").complete()
+    provider = log.require_lineage("provider", "yf")
+    for day in range(126):
+        run(
+            "INSERT INTO lake.world.raw_bar BY NAME "
+            " SELECT ? AS provider_id, md5(i::VARCHAR)::UUID AS listing_id,"
+            " (?::DATE + ?::INTEGER) AS session_date,"
+            " md5(i::VARCHAR || ':' || session_date::VARCHAR)::UUID AS version_id,"
+            " i::DOUBLE AS close, ? AS known_asof, false AS retracted,"
+            " 'synthetic-maintenance' AS admission_id"
+            " FROM range(?) t(i) ORDER BY listing_id",
+            (provider, date(2024, 1, 1), day, at, listings),
+        ).complete()
+        port.maintain_idle(now)
+    catalog = (root / "machine/catalog.sqlite").as_uri()
+    with closing(sqlite3.connect(catalog + "?mode=ro", uri=True)) as metadata:
+        active, filed = metadata.execute(
+            "SELECT count(*), coalesce(sum(record_count), 0) FROM ducklake_data_file"
+            " WHERE end_snapshot IS NULL"
+        ).fetchone()
+    assert active <= 2 + storeport.IDLE_MAINTENANCE_WRITES
+    assert 0 <= 126 * listings - filed < storeport.IDLE_MAINTENANCE_WRITES * listings
+    before = run(image, (at,)).to_arrow_table()
+    before_cutoff = run(image, (at - timedelta(seconds=1),)).to_arrow_table()
+    old = run("SELECT count(*) FROM lake.snapshots()").fetchone()[0]
+    port.maintain_idle(now + timedelta(days=8))
+    assert run("SELECT count(*) FROM lake.snapshots()").fetchone()[0] == 1
+    assert old > 1 and before.num_rows == 126 * listings and before_cutoff.num_rows == 0
+    assert run(image, (at,)).to_arrow_table().equals(before)
+    assert run(image, (at - timedelta(seconds=1),)).to_arrow_table().equals(before_cutoff)
+    assert run("SELECT current_setting('threads')").fetchone() == (6,)
 
 
 @pytest.mark.proves("data_layer.legacy_rows_are_known_from_their_lag_rule")

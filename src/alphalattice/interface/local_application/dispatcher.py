@@ -323,6 +323,16 @@ class LocalBackgroundDispatcher:
         with self._lock:
             self._closed = True
 
+    def run_between_tasks(self, action: Callable[[], None]) -> None:
+        """Try for an exclusive idle slice while the caller holds its owner's guards."""
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
+            if not self._closed and not self._running and self._admitting == 1:
+                action()
+        finally:
+            self._lock.release()
+
     def finishing(self) -> list[str]:
         """Name the commands still executing while this Host stops."""
         with self._lock:

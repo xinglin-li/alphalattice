@@ -1169,14 +1169,31 @@ class PortfolioResearchOperations:
             self.trials.advance_all()
 
     def _worker_idle(self) -> None:
-        """The Task worker went idle: wake the update automation, move feature trials on, admit
-        the sweep if it is due, then take a data update's waiting backup while no Task waits."""
+        """Resume idle work, then maintain the catalog after any waiting backup."""
 
         if self._automation is not None:
             self._automation.command_completed()
         self._resume_feature_trials()
         self.sweep_if_due()
         self._take_backup()
+        self._maintain_catalog()
+
+    def _maintain_catalog(self) -> None:
+        """Use the writer and backup holds after Tasks and automatic backup."""
+        from alphalattice.kernel.data_layer.history import store  # lazy: on use
+
+        if self.dispatcher.stop_requested():
+            return
+        try:
+            with self.workspace_session.mutation_gate.try_hold(timeout_seconds=0.01):
+                if self._tasks_wait():
+                    return
+                if port := store():
+                    # Task context takes the log before querying the dispatcher.
+                    with port.log.reading():
+                        self.dispatcher.run_between_tasks(port.maintain_idle)
+        except GateBusy:
+            pass
 
     @contextmanager
     def recover_after_connection(self) -> Iterator[None]:

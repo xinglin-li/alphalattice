@@ -156,6 +156,10 @@ KEEP_SNAPSHOTS: Final = timedelta(days=7)
 SETTLE_FILES: Final = timedelta(days=3)
 """How long a file no kept snapshot names waits before it is deleted, so a read that listed it
 before its snapshot expired still finds it: DuckLake's own guidance, a few days."""
+IDLE_MAINTENANCE_AGE: Final = timedelta(days=1)
+IDLE_MAINTENANCE_WRITES: Final = 16
+"""Earlier of one wall day or sixteen catalog snapshots, checked at the Host's next idle turn."""
+IDLE_MAINTENANCE_THREADS: Final = 4
 DERIVED_REWRITE: Final = 0.5
 """The share of a derived file's rows that must be dead before maintenance rewrites it: a
 collected partition is the derived schema's normal churn, so its dead bytes never outgrow the live
@@ -308,6 +312,7 @@ class StorePort:
         # its rows, while no write to that table follows (`_write` forgets it).
         self._settled: dict[tuple[str, str, tuple[str, int] | None], Any] = {}
         self._block: _Block | None = None  # the open `admitting` block, on the writer's thread
+        self._maintained: tuple[int, datetime] | None = None
 
     @classmethod
     def open(cls, root: Path, log: HostLog, *, owner: Any = None) -> StorePort:
@@ -915,6 +920,45 @@ class StorePort:
         except BaseException:
             run("ROLLBACK").complete()
             raise
+
+    def maintain_idle(self, now: datetime | None = None) -> None:
+        """Run the existing maintenance once per age or write interval at an idle opportunity."""
+        now = now or datetime.now(UTC)
+        if not governance.COPYING.acquire(blocking=False):
+            return  # leave a machine-wide backup alone
+        try:
+            if not self._writer.acquire(blocking=False):
+                return
+            try:
+                if self._block is not None:
+                    return
+                run = self.lake.execute
+                snapshot, oldest = run(
+                    "SELECT max(snapshot_id), min(snapshot_time) FROM lake.snapshots()"
+                ).fetchone()
+                if snapshot is None:
+                    return
+                prior, checked = self._maintained or (0, oldest)
+                if (
+                    snapshot - prior < IDLE_MAINTENANCE_WRITES
+                    and now - checked < IDLE_MAINTENANCE_AGE
+                ):
+                    return
+                threads = int(run("SELECT current_setting('threads')").fetchone()[0])
+                limited = threads > IDLE_MAINTENANCE_THREADS
+                if limited:
+                    run("SET threads TO ?", (IDLE_MAINTENANCE_THREADS,)).complete()
+                try:
+                    self.maintain(now)
+                    latest = run("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()[0]
+                    self._maintained = latest, now
+                finally:
+                    if limited:
+                        run("SET threads TO ?", (threads,)).complete()
+            finally:
+                self._writer.release()
+        finally:
+            governance.COPYING.release()
 
     def maintain(self, now: datetime | None = None) -> dict[str, int]:
         """Keep the catalog compact and its bytes bounded, in one writer hold: flush inlined
