@@ -145,7 +145,8 @@ def writing(
     """One market data update of the workspace in `database`, in this process. Its reads, every
     thread's, take the workspace's own tables, reading no marks and admitting nothing, so a loop
     that writes and reads listing by listing pays no admission per listing. When the outermost
-    update ends, the Host admits the tables once, as `reading` would at its next read.
+    update ends, the Host admits the tables once, as `reading` would at its next read; an update
+    that ends before `database` exists has no tables to admit, and reads no marks.
 
     It yields `mark`: a writer that holds the file open in an instance calls it once its writes
     are done, so the admission's marks are read through that instance and the admission, made
@@ -162,7 +163,7 @@ def writing(
             outermost = not _writing[path]
             if outermost:
                 del _writing[path]
-        if outermost and history.opened_log() is not None:
+        if outermost and history.opened_log() is not None and database.exists():
             read = (lambda: taken[-1]) if taken else marks
             with reading(database, read, dataset=dataset, admit=admit):
                 pass

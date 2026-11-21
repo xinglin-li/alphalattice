@@ -1326,6 +1326,11 @@ def test_admitted_recorded_sources_offer_only_the_confirm_under_the_offline_swit
 
 
 def test_missing_source_authority_refuses_before_task_or_market_database(tmp_path: Path):
+    """Without source authority the plan offers no confirm and the confirm is refused; a
+    permission that ends after the sources are captured is refused by name by the data stage,
+    before any market database exists."""
+    from tests.workspace_maintenance.local_data_provider import recording_provider
+
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("offline")
     )
@@ -1341,6 +1346,22 @@ def test_missing_source_authority_refuses_before_task_or_market_database(tmp_pat
         with pytest.raises(ValueError, match="source_access_not_admitted"):
             app.confirm(plan["plan_hash"], caller="HUMAN")
         assert not session.task_control_registry.tasks()
+        assert not (tmp_path / "market-data.duckdb").exists()
+        loader = _source_loader_for(("AAA", "BBB"))
+
+        def captured_then_expired(**kwargs):
+            sources = loader(**kwargs)
+            app.provider = None  # the permission ends once the sources are captured
+            return sources
+
+        app.provider, app.source_loader = recording_provider(), captured_then_expired
+        task = app.confirm(app.plan()["plan_hash"], caller="HUMAN")
+        app.execute(task.task_id)
+        record = session.task_control_registry.task(task.task_id)
+        assert (record.lifecycle.value, record.failure_code) == (
+            "BLOCKED",
+            "workspace_preparation.source_access_not_admitted",
+        )
         assert not (tmp_path / "market-data.duckdb").exists()
 
 
@@ -1655,8 +1676,10 @@ def test_source_inspection_is_read_only_and_explains_missing_qualification(
         assert not root.exists()
 
 
-def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp_path):
-    """Cancel requested during hydration is honoured at the chunk boundary."""
+def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp_path, monkeypatch):
+    """Cancel requested during hydration is honoured at the chunk boundary; the data stage's
+    hydration runs inside one market data update, which the Host admits once when it ends."""
+    from contextlib import contextmanager
 
     from alphalattice.control.workspace_runtime.database import live_workspace_connections
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -1665,6 +1688,18 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cancel"))
     provider = recording_provider()
     market = MarketDataRepository(tmp_path)
+    writing, updates = MarketDataRepository.writing, []
+
+    @contextmanager
+    def counted(repository):
+        with writing(repository) as mark:
+            updates.append(repository.path)
+            try:
+                yield mark
+            finally:
+                updates.pop()
+
+    monkeypatch.setattr(MarketDataRepository, "writing", counted)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
@@ -1680,6 +1715,7 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
             # The runner is at its network edge; the request lands on Task
             # Control's store and is accepted before the fetch returns.
             if not accepted:
+                accepted.append(bool(updates))  # the fetch runs inside the stage's update
                 current = session.task_control_registry.task(task.task_id)
                 session.task_control_registry.request_cancel(
                     task_id=task.task_id,
@@ -1691,7 +1727,7 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
 
         provider.fetch_daily = cancel_while_fetching  # type: ignore[method-assign]
         app.execute(task.task_id)
-        assert accepted == ["CANCEL_REQUESTED"]
+        assert accepted == [True, "CANCEL_REQUESTED"]
         assert session.task_control_registry.task(task.task_id).lifecycle.value == "CANCELLED"
         # Honoured at the chunk boundary: the chunk's units are persisted and kept.
         disclosure = market.latest_current_universe_onboarding_disclosure(

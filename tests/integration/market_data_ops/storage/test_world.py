@@ -315,6 +315,7 @@ def test_a_mapping_reverted_after_an_admission_that_took_none_of_it_is_admitted_
         "lineage",
         "providers",
         "publication",
+        "absent-file",
     ),
 )
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
@@ -353,6 +354,16 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
         return
     if focus == "publication":
         _universe_records_follow_their_rows(store, manifest, database, monkeypatch)
+        return
+    if focus == "absent-file":  # an update that ends before its file exists has nothing to admit
+        absent = tmp_path / "unmade" / "market-data.duckdb"
+        with world_reads.writing(
+            absent,
+            lambda: pytest.fail("the marks of a file that does not exist were read"),
+            admit=lambda *_: pytest.fail("a file that does not exist was admitted"),
+        ):
+            pass
+        assert not absent.exists()
         return
     if focus == "identity":
         from functools import partial

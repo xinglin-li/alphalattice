@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -1709,9 +1710,18 @@ class WorkspacePreparationApplication:
             stage = work_item.stage_id
             existing = self._load(task.task_id, stage, optional=True)
             if existing is None:
+                # A stage that writes market data is one market data update: its reads take the
+                # workspace's own tables, and the Host admits once, when the stage has released
+                # the file, not after each listing's writes
+                market = MarketDataRepository(self.session.workspace)
+                update = market.writing() if stage in STAGES[1:3] else nullcontext(lambda: None)
                 # The stage opens the market database call by call: one instance serves them.
-                with WorkspaceDatabase(self.session.workspace).hold():
-                    result = self._perform(task, plan, stage, execution)
+                with update as mark, WorkspaceDatabase(self.session.workspace).hold():
+                    try:
+                        result = self._perform(task, plan, stage, execution)
+                    finally:
+                        if market.path.exists():  # a stage refused before making it has no marks
+                            mark()
                 if isinstance(result, StageExecutionResult):
                     return result
                 existing = self._save(task, stage, result)
