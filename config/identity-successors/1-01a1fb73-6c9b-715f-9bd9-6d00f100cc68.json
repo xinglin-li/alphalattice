@@ -1,0 +1,104 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "91b393a000c8d1e28f983c65952abb0a60f0244367e6d31a7f512da6e705bf87",
+   "successor": "38bb4262ae0db5ee169a9c28daa9f1d5b8e46914d7fb081d60075acf583e06e3",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "c6feee06fd64afe8f862c3c850fc2cf0bfb0a82d0c15bdd3bb145b8250a084cd",
+   "successor": "3de76d054b565d7554226a93fb5a4bebbd89c9f7a99b4daa3d1babd81faebfe4",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "4a05fa4aeb16927a1ec68c05bf1719ff67ebc2ed30b57935da9c77490489d005",
+   "successor": "8e149d782711b5d21ef61cdf919f980d5cf3a75aac2414fed988525703e1cb5d",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "b1235b33882782e128472ae359b0c93de43bb7c397a8036f997c304653be4157",
+   "successor": "0673f56962d2517ab82c42b0bc39f4c51596d92ed9e700eb285f8f5c433fce69",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "e00e21a4f010660fbdf095165e7f0ddf8322b1638bdef8f5d1ca671de0e34443",
+   "successor": "6606fc67c1ed3c0a294350f0f769c5a2148c0f1685018d4fcc62664163471ff3",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "4015d93230e13ecdb36b24a3d13796862af2382fd297e76f8bde16e1ad6fe988",
+   "successor": "f37088a95d44c07569e1a5d31b2400ba83eaf6f567716fa28773601a99a628da",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "44a665039d7a7691c0c2053e349a11a9ce7eed8594e2de687e8fcca7ca5f9170",
+   "successor": "6ca7b06298e4045631013d0f401059ea64d0be94ab697ffb5dfffac5b336c6bb",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "b609fc80b291575e82fad7a7cdec2ffc55f333b517e2c0ef019bf23edec945c6",
+   "successor": "27c5a1100adb4a7aa0e98626485a0a813bd4fbc52d345e84b5b98df9a1ca4129",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "7b25fcc9911c53cae8b6e44ef8e38abd7db26fe20aad511c06e90499cda3df2e",
+   "successor": "ad8a9ef0c9d4d26dedfdc3286bce74642aa46c312e66b0bcf67507b59e4d47be",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "f925909e56547ab0742dce52b378ebc9c98934d73e7316b6012748192f2774ce",
+   "successor": "6b6b481e16255bb69dbd5fb4534939c5e5d8671089693ed69d998228a2b0b683",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "241df9d29f25e89f1c47a9c01abc9c6bba3335c5a44d319be6f3e2465f9017bf",
+   "successor": "e1b643e4bedb3b0af5371e684ccd58d5e7c4f5bd1138bf3834e571f3cd858c1c",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c07131160b89f42d0f7852ea5fa8c5e7eefacc8afb0c5aaeef6c5b2ce5c274b1",
+   "successor": "da34a05b811a5be61f966cd9f108e33fde12df54ddc1a5fd10e5bd2f0572283d",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "f5db4fa24593ec8c5df85fd465aaa849336b8b8cea83e5ced5e5daea812226c6",
+   "successor": "1c1f9a6911d4452d8464c6b5d6ac1d45b3f58ad02d45733773ea55a045587d01",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "1f477bc56d457e7418cb7fa3e89d4fa4e4db65d23de4e6e7f9c96ad25c22201b",
+   "successor": "2127bd273ca8c54db454f4e7ab2f047ef86a8f3d5643b9cdb25e2156a908ada1",
+   "change": "Carry research input manifests on volumes without hard links",
+   "reason": "The same fourteen roles as the earlier signed heads, after merging the current target; the change since lists only the carried input writers, factor values stay equal byte for byte and only the missing-observation diagnostic changes"
+  }
+ ]
+}

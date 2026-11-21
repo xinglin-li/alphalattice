@@ -17,6 +17,8 @@ def _history(root):
         "user.email=synthetic@example.test",
         "core.hooksPath=",
         "core.autocrlf=false",
+        "maintenance.auto=false",
+        "gc.auto=0",
     )
 
     def git(*args):
@@ -51,7 +53,9 @@ def _history_start(tmp_path_factory):
 
 @pytest.fixture
 def synthetic_history(tmp_path, _history_start):
-    shutil.copytree(_history_start, tmp_path, dirs_exist_ok=True)
+    shutil.copytree(
+        _history_start, tmp_path, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.lock")
+    )
     return _history(tmp_path)
 
 

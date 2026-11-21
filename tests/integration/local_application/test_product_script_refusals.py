@@ -109,7 +109,6 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
 ) -> None:
     """Locked setup fills an empty uv cache locally; failures retain actionable owner answers."""
 
-    from scripts import create_gpu_environment as gpu
     from scripts import create_retrieval_environment as setup
 
     cache, venv = tmp_path / "uv-cache", tmp_path / "venv"
@@ -204,8 +203,6 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     assert refusal["network"]["UV_HTTP_TIMEOUT"] == "30"
     assert refusal["next_action"] == "RUN_LOCKED_DEPENDENCY_SETUP"
     assert refusal["next_commands"]["setup"] == setup.fill_command()
-    assert gpu.main() == 2
-    assert _refusal(capsys)["failure_code"] == "gpu_environment.setup_failed:uv sync exited 1"
 
     def missing(command: tuple[str, ...], **_options: object) -> None:
         raise FileNotFoundError(2, "The system cannot find the file specified")
@@ -715,6 +712,8 @@ def test_every_setup_refusal_claims_only_what_it_carries_and_its_way_on_fits_its
         payload = json.loads(capsys.readouterr().out)
         assert payload["status"] == "REFUSED" and payload["detail"], (script, mode, payload)
         code = str(payload.get("failure_code") or payload.get("reason"))
+        if script == "create_gpu_environment" and kind == "command":
+            assert code == "gpu_environment.setup_failed:uv sync exited 1"
         quoted = {code, code.partition(":")[2]}
         for place in set(_ANSWER_PATH.findall(payload["detail"])) - quoted:
             found: Any = payload

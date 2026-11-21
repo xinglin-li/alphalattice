@@ -1504,6 +1504,13 @@
       "layer": "integration",
       "seconds": 30
     },
+    "feature_engine.aligned_gap_names_missing_observation": {
+      "description": "An unavailable formula names an aligned missing observation within its declared source window, retaining the formula's calendar horizon and economic skip.",
+      "owner": "alphalattice.foundation.feature_engine",
+      "layer": "integration",
+      "seconds": 8,
+      "lower_layer": "The installed observation clocks, calendar alignment and the real vectorized materializer meet at this boundary."
+    },
     "feature_engine.closure_folder_files_hold_their_bytes": {
       "description": "A closure folder writes each file whole, lists its files sorted, reads them back and removes one without touching the rest, so a Panel closure outside a workspace keeps every byte it is given.",
       "owner": "alphalattice.foundation.feature_engine",

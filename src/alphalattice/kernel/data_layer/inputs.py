@@ -36,7 +36,10 @@ from blake3 import blake3
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.arrays import STAGED, _settled, _unplaced, _writing
 from alphalattice.kernel.data_layer.chain import canonical
+from alphalattice.kernel.data_layer.log import drop as drop_lock
+from alphalattice.kernel.data_layer.log import hold as hold_lock
 from alphalattice.kernel.data_layer.project import uuid7
+from alphalattice.kernel.shared_kernel.waits import wait_until
 
 if TYPE_CHECKING:
     from alphalattice.kernel.data_layer.log import HostLog
@@ -125,7 +128,7 @@ def keep_binding(
 def carry(read: Any, root: Path, workspace: str, copy: Path) -> int:
     """Write each binding `workspace` holds into its copy `copy` under CARRIED: its manifest as
     <binding_hash>.json and each body by its digest, linked where the volume allows. Returns the
-    bindings the copy now carries."""
+    bindings the copy now carries. An equal manifest is kept and a different one is refused."""
     rows = read(
         "SELECT a.content_digest FROM live_ref l JOIN artifact a ON a.artifact_id = l.artifact_id"
         " WHERE l.root_kind = 'workspace' AND l.root_id = ? AND a.body_state <> 'collected'"
@@ -140,8 +143,33 @@ def carry(read: Any, root: Path, workspace: str, copy: Path) -> int:
         for _relative, digest, body in listed:
             _place(body, folder / digest.partition(":")[2])
         manifest = canonical([[relative, digest] for relative, digest, _ in listed])
-        (folder / f"{binding_hash}.json").write_bytes(manifest)
+        _carry_manifest(folder / f"{binding_hash}.json", manifest, binding_hash)
     return len(rows)
+
+
+def _carry_manifest(target: Path, manifest: bytes, binding_hash: str) -> None:
+    """Rename a complete sibling under a per-manifest hold, even on a linkless volume."""
+    if not target.exists(follow_symlinks=False):
+        staged = target.with_name(f".{uuid7()}{STAGED}")
+        lock = target.with_name(f".{target.name}.lock")
+        try:
+            staged.write_bytes(manifest)
+            held = wait_until(
+                lambda _: hold_lock(lock), timeout=5.0, what=f"carry publisher for {target}"
+            )
+            try:
+                if not target.exists(follow_symlinks=False):
+                    os.replace(staged, target)
+                    return
+            finally:
+                drop_lock(held, lock)
+        finally:
+            staged.unlink(missing_ok=True)
+    if target.read_bytes() != manifest:
+        raise DataError(
+            f"a carried research input manifest differs: {binding_hash}",
+            code="data_layer.input_invalid",
+        )
 
 
 def import_carried(root: Path, log: HostLog, folder: Path, *, workspace: str) -> int:

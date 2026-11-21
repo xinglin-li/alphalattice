@@ -72,6 +72,9 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     observation_clock_for,
 )
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
+from alphalattice.foundation.feature_engine.panels.materialization_identity import (
+    align_feature_source_sessions,
+)
 from alphalattice.foundation.feature_engine.panels.observation_clock_authority import (
     FeaturePanelObservationClockVerifier,
 )
@@ -186,6 +189,7 @@ def test_every_installed_formula_lands_its_window_on_the_observation_session() -
     assert NEW_FEATURE_OBSERVATION_CLOCK == "TRUE_OBSERVATION_SESSION"
 
 
+@pytest.mark.proves("feature_engine.aligned_gap_names_missing_observation")
 def test_a_declared_economic_skip_survives_the_successor() -> None:
     """requirement: an economic skip is Formula meaning and is not removed."""
 
@@ -209,6 +213,19 @@ def test_a_declared_economic_skip_survives_the_successor() -> None:
         atol=1e-12,
         equal_nan=True,
     )
+    # Preserve the calendar rows. An early gap falls inside a consumed window at row 330;
+    # a later gap is inside volatility's window but in momentum's economic skip at row 399.
+    sessions = tuple(frame["session_date"].dt.date)
+    gapped = align_feature_source_sessions(frame.drop(index=[100, 380]), sessions)
+    with_gaps = BaseFeatureMaterializer(catalog).materialize_listing(
+        listing_id="skip", projected_bars=gapped, market_bars=_bars(400, seed=19)
+    )
+    facts = with_gaps.ineligibility.set_index(["session_date", "factor_id"])
+    assert facts.loc[(sessions[330], "mom_252_21"), "reason"] == "missing_observation"
+    assert facts.loc[(sessions[-1], "vol_252"), "reason"] == "missing_observation"
+    assert facts.loc[(sessions[0], "vol_252"), "reason"] == "insufficient_history"
+    assert with_gaps.values.iloc[-1]["mom_252_21"] == block.values.iloc[-1]["mom_252_21"]
+
     calendar_ids = catalog.calendar_factor_ids
     for spec in catalog.factors:
         clock = clocks[spec.factor_id]

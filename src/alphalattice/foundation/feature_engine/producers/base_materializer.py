@@ -38,6 +38,8 @@ from alphalattice.kernel.quant.factor_formulas import (
 if TYPE_CHECKING:
     import pandas as pd
 
+REASON_MISSING_OBSERVATION: Final = "missing_observation"
+
 _REQUIRED_COLUMNS: Final = (
     "session_date",
     "open_raw",
@@ -853,6 +855,9 @@ class BaseFeatureMaterializer:
                 },
             }
         )
+        # Every observed bar has a raw close. Calendar alignment leaves it empty on gaps.
+        source_gaps = np.flatnonzero(frame["close_raw"].isna().to_numpy())
+        clocks = self.catalog.clocks_by_factor if source_gaps.size else {}
         missing_at: list[np.ndarray] = []
         missing_factor: list[np.ndarray] = []
         missing_reason: list[np.ndarray] = []
@@ -872,6 +877,16 @@ class BaseFeatureMaterializer:
                     REASON_INSUFFICIENT_HISTORY,
                     REASON_ZERO_DENOMINATOR,
                 ).astype(object)
+                if factor in clocks:
+                    interval = clocks[factor].source_interval
+                    first = interval.earliest_consumed_bound_offset_sessions
+                    last = interval.latest_consumed_offset_sessions
+                    if first is not None and last is not None:
+                        before = np.searchsorted(source_gaps, at - first)
+                        through = np.searchsorted(source_gaps, at - last, side="right")
+                        reasons[(reasons == REASON_ZERO_DENOMINATOR) & (before < through)] = (
+                            REASON_MISSING_OBSERVATION
+                        )
             missing_at.append(at)
             missing_factor.append(np.full(len(at), factor, dtype=object))
             missing_reason.append(reasons)

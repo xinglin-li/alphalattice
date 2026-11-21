@@ -4,9 +4,12 @@ holds them."""
 
 from __future__ import annotations
 
+import errno
 import json
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -131,7 +134,9 @@ def test_a_binding_goes_with_its_last_workspace_and_its_views_with_it(
 
 
 @pytest.mark.proves("data_layer.research_inputs_carried_into_a_copy")
-def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(tmp_path: Path) -> None:
+def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A copy carries only its workspace's bindings, which its own root keeps and reads back byte
     for byte, refusing before any keep a body, path, digest or manifest name that is not sound."""
     log, root = history.held(), history.data_root()
@@ -140,8 +145,55 @@ def test_a_copy_carries_its_workspace_bindings_onto_its_own_root(tmp_path: Path)
     inputs.keep_binding(root, log, held, _laid_out(held, folder), workspace="w")
     inputs.keep_binding(root, log, alone, _laid_out(alone, folder))
     copy, tampered = tmp_path / "copy", tmp_path / "tampered"
+    carried = copy / inputs.CARRIED
+    open_path = Path.open
+
+    @contextmanager
+    def short_manifest(stream):
+        with stream:
+
+            def write(payload):
+                stream.write(payload[:4])
+                raise OSError("carried manifest write interrupted")
+
+            yield SimpleNamespace(write=write)
+
+    def interrupted_open(path, mode="r", *args, **kwargs):
+        stream = open_path(path, mode, *args, **kwargs)
+        if path.parent == carried and mode in {"wb", "xb"}:
+            return short_manifest(stream)
+        return stream
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(Path, "open", interrupted_open)
+        with pytest.raises(OSError, match="carried manifest write interrupted"):
+            inputs.carry(log.read, root, "w", copy)
+    assert not (carried / f"{held}.json").exists()
     assert inputs.carry(log.read, root, "w", copy) == 1
-    assert inputs.carry(log.read, root, "w", tampered) == 1
+
+    def no_links(_source: Path, _target: Path) -> None:
+        raise OSError(errno.ENOTSUP, "hard links are unavailable")
+
+    with monkeypatch.context() as linkless:
+        linkless.setattr(inputs.os, "link", no_links)
+        assert inputs.carry(log.read, root, "w", tampered) == 1
+    manifest = copy / inputs.CARRIED / f"{held}.json"
+    original = manifest.stat()
+    manifest.chmod(0o444)
+    try:
+        assert inputs.carry(log.read, root, "w", copy) == 1
+        assert manifest.stat().st_mtime_ns == original.st_mtime_ns
+    finally:
+        manifest.chmod(original.st_mode)
+
+    conflicting = tampered / inputs.CARRIED / f"{held}.json"
+    previous = conflicting.read_bytes()
+    conflicting.write_bytes(b"[]")
+    with pytest.raises(DataError, match="carried research input manifest differs") as refused:
+        inputs.carry(log.read, root, "w", tampered)
+    assert refused.value.failure.code == "data_layer.input_invalid"
+    assert conflicting.read_bytes() == b"[]"
+    conflicting.write_bytes(previous)
     body = next(p for p in (tampered / inputs.CARRIED).iterdir() if p.suffix != ".json")
     body.unlink()  # a new file, not the kept body a link may share
     body.write_bytes(b"other")

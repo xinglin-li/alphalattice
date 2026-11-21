@@ -2656,8 +2656,8 @@
         "product_host.research_authoring.risk_workflow"
       ],
       "writers": [
+        "data_layer.inputs:_carry_manifest",
         "data_layer.inputs:_place",
-        "data_layer.inputs:carry",
         "product_host.research_authoring.factor_inputs:_bind_factor_inputs",
         "product_host.research_authoring.factor_inputs:_copy_input",
         "product_host.research_authoring.factor_inputs:_record_input_publication",
