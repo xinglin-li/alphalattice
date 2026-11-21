@@ -11,6 +11,7 @@ test's seconds, and an xdist run starts its longest modules first (TT).
 
 from __future__ import annotations
 
+import builtins
 import itertools
 import json
 import os
@@ -295,8 +296,9 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
 
 def _stamp_hosts() -> None:
     """Once its module is loaded, each Host's operations record the scope that started them, a
-    wider fixture's Host too: this runs before any fixture or test body can start one. A unit
-    test starts no Host and reads no module inventory."""
+    wider fixture's Host too: this runs before any fixture or test body can start one, and after
+    each import inside one (`_stamping_import`). A unit test starts no Host and reads no module
+    inventory."""
     if _STAMPED[0] in (-1, len(sys.modules)):
         return
     contract = _RUNNING[-1].stash.get(LAYER_CONTRACT, None) if _RUNNING else None
@@ -316,6 +318,35 @@ def _stamp_hosts() -> None:
 
     owner.__init__ = init
     _STAMPED[0] = -1
+    if builtins.__import__ is _stamping_import:
+        builtins.__import__ = _import
+
+
+_import = builtins.__import__
+_IMPORTING: list[int] = [0]
+"""How deep the import statement in hand is nested; only the outermost one looks."""
+
+
+def _stamping_import(*args: Any, **kwargs: Any) -> Any:
+    """A Host loads its owners at their first use, inside the scope that starts it: an import
+    there that loads new modules stamps the Hosts' operations before their constructor runs.
+    Only the outermost import looks, once every module it loaded has run, and the hook removes
+    itself once they are stamped."""
+    if _IMPORTING[0] or not _SCOPES or _STAMPED[0] == -1:
+        return _import(*args, **kwargs)
+    before = len(sys.modules)
+    _IMPORTING[0] += 1
+    try:
+        module = _import(*args, **kwargs)
+    finally:
+        _IMPORTING[0] -= 1
+    if len(sys.modules) != before:
+        _STAMPED[0] = 0  # a nested import may have searched before the class was defined
+        _stamp_hosts()
+    return module
+
+
+builtins.__import__ = _stamping_import
 
 
 @pytest.hookimpl(wrapper=True)
