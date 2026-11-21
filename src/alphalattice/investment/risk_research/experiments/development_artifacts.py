@@ -333,7 +333,7 @@ def _raise_walk_error(error: OSError) -> None:
     raise error
 
 
-def _covariance_chunks(
+def covariance_chunks(
     workspace: Path,
 ) -> Iterator[tuple[RiskArtifactStore, HistoricalCovarianceChunk, tuple[str, ...], Path]]:
     """Read the sealed covariance references from published surfaces and durable checkpoints."""
@@ -380,7 +380,7 @@ def _legacy_covariance_chunks(
     workspace: Path,
 ) -> Iterator[tuple[RiskArtifactStore, HistoricalCovarianceChunk, tuple[str, ...]]]:
     seen: set[tuple[str, tuple[str, ...]]] = set()
-    for store, chunk, axis, path in _covariance_chunks(workspace):
+    for store, chunk, axis, path in covariance_chunks(workspace):
         key = (chunk.content_hash, axis)
         if key not in seen and path.is_file():
             seen.add(key)
@@ -392,7 +392,7 @@ def carry_risk_covariance(
 ) -> Iterator[Path]:
     """Carry catalog-only chunks into a backup or copy at their retained-file paths."""
     workspace = workspace.resolve()
-    for store, chunk, axis, path in _covariance_chunks(workspace):
+    for store, chunk, axis, path in covariance_chunks(workspace):
         target = copy / path.relative_to(workspace)
         if path.is_file() or target.is_file():
             continue

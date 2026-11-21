@@ -309,7 +309,10 @@ from alphalattice.kernel.shared_kernel.environment import numerical_thread_count
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
+from alphalattice.kernel.shared_kernel.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
+)
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -419,7 +422,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
     """
     if kind == RISK_EXPERIMENT_KIND:
         root = resolve_playpen_root(Path(__file__))
-        return str(
+        rule = str(
             canonical_hash(
                 {
                     "risk_development": risk_development_source_closure_hash(root),
@@ -441,6 +444,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
                 }
             )
         )
+        return switched_identity(f"research_experiment.{kind}.implementation", rule, root=root)
     if kind == PORTFOLIO_EXPERIMENT_KIND:
         return portfolio_implementation_hash()
     closure = source_rule_closure_hash(

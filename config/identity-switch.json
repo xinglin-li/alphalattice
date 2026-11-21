@@ -150,11 +150,15 @@
   },
   "product_host.research_strategy_preparation": {
    "byte": "a40d5d1ac02b25d27774d82ed1c04aa24f2a26db2ce88d30d85103feca8885ca",
-   "rule": "73b3d114d8d1a41864e2eedfd7aec22cf7302a7002ed42b253fe1e4d886519dd"
+   "rule": "b1b013dd48574d72384e02ee47d081a0ce407443ee5e6dbd840a43d551146bda"
   },
   "research_experiment.portfolio.policy-development.implementation": {
    "byte": "c6f8d1ecd89bb4f7ca93c802ded57323b7783258979f3e6627ffdaf547f8abb8",
-   "rule": "f2ef27dcd4ba62f50a8ed8c46ce35305417e4d015db877b422524de12757fd46"
+   "rule": "919e43abc3b1ac31b78ef36dc9cfa9c9176af550098bc3dee2eba75889e91cd7"
+  },
+  "research_experiment.risk.covariance-development.implementation": {
+   "byte": "158aca2a43bb6ef1f4ee052f5b5215f0627a0eb75f15db9ca834877cfc345497",
+   "rule": "fbe9eb0a33f5526faef393b5b62e6aa3af83421ba8330f208b6cd7d979b95dd7"
   },
   "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:184afe79428fc7b0": {
    "byte": "6e79ccbf77c10583a3a0414b5479b4dfaf55d76e060b437c39482409e313f335",

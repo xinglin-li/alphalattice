@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import gc
 import json
-import shutil
 import socket
 import sys
 from collections.abc import Callable, Iterator
@@ -30,6 +29,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel.shared_kernel.waits import wait_until
+from devtools.evaluation.golden_workspaces import remove_tree
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 PACKAGE = "RETURN_G6_MU_ONLY"
@@ -111,11 +111,9 @@ def forward_copy(
     finally:
         live.stop()
         gc.collect()
-        assert workspace.resolve().is_relative_to(tmp_path.resolve())
-        shutil.rmtree(workspace)
+        assert not (left := remove_tree(workspace, tmp_path)), left
         if backup_root.exists():
-            assert backup_root.resolve().is_relative_to(tmp_path.resolve())
-            shutil.rmtree(backup_root)
+            assert not (left := remove_tree(backup_root, tmp_path)), left
 
 
 def no_membership_source(**_kwargs: object) -> object:

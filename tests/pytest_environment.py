@@ -400,26 +400,45 @@ def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
 
 def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
-    and Portfolio results carried into `root`, the copy's own served root unless named: the
-    catalog of the root a workspace was served on holds their rows, not the workspace, so a copy
-    served on a fresh root lacks them and its first start plans an upgrade. A test that serves the
-    copy in its own process names the root it serves it on; no ambient root is ever written."""
+    and catalog-held Risk and Portfolio results carried into `root`, the copy's own served root
+    unless named. A Host on a fresh root needs those catalog rows to read or back up the copied
+    workspace. The recorded review shares that root, so its nested Evidence locators need
+    their exact original bodies there too. An in-process Host names its data root explicitly."""
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
+    )
+    from alphalattice.evidence.alternative_evidence.storage.world import (
+        keep_original,
+        original_locator_bodies,
     )
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         committed_outcome_chunks,
     )
+    from alphalattice.foundation.market_data_ops.storage.world import admit_universe
+    from alphalattice.investment.risk_research.experiments.development_artifacts import (
+        covariance_chunks,
+    )
+    from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactError
     from alphalattice.kernel.data_layer import history
 
     held = sorted(
         {c.content_hash for _store, c, file in committed_outcome_chunks(copy) if not file.exists()}
     )
     results = _portfolio_results(copy)
-    if not held and not results:
+    risk = {
+        (chunk.content_hash, axis): (store, chunk, axis)
+        for store, chunk, axis, file in covariance_chunks(copy)
+        if not file.is_file()
+    }
+    evidence = copy / "recorded-review/evidence"
+    if not held and not results and not risk and not evidence.is_dir():
         return copy
     target = served_root(copy) if root is None else root
     with owning(source, target):
+        for _, body in original_locator_bodies(
+            evidence / "artifacts", evidence / "workspace", root=source
+        ):
+            keep_original(target, body)
         with history.own_root(source):
             bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
             workspace = str(named_workspace_id(copy))
@@ -434,7 +453,7 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
                 if kind != "portfolio_benchmark"
                 or history.portfolio_result_held(kind, digest, workspace)
             ]
-        if not bodies and not rows:  # nothing the copy's root must hold: it is not written
+        if not bodies and not rows and not risk:
             return copy
         with history.own_root(target):
             history.open_history(workspace, copy.name, copy.resolve())
@@ -442,6 +461,13 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
                 history.write_execution_outcome(digest, body)
             for kind, digest, table, (profile, values) in rows:
                 history.write_portfolio_result(kind, digest, profile, values, result_table=table)
+            if risk:
+                admit_universe(copy / "market-data.duckdb", workspace)
+                for store, chunk, axis in risk.values():
+                    packed = store.catalog_covariance(chunk, axis, root=source)
+                    if packed is None:
+                        raise RiskArtifactError("risk_research.covariance_chunk_incomplete")
+                    store.admit_covariance(chunk, axis, packed, workspace_id=workspace)
     return copy
 
 

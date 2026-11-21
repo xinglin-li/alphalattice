@@ -501,13 +501,13 @@ def _row(
     }
 
 
-def carry_originals(workspace: Path, copy: Path, *, root: Path | None = None) -> Iterator[Path]:
-    """Carry bodies addressed by this workspace's world locators into its copy or backup."""
-    artifacts = AlternativeEvidenceArtifactStore(workspace / "runtime/artifacts")
-    sources = workspace / _EVIDENCE_WORKSPACE
+def original_locator_bodies(
+    artifact_root: Path, sources: Path, *, root: Path
+) -> Iterator[tuple[str, bytes]]:
+    """Read each referenced original held on a data root, verifying its sealed bytes."""
+    artifacts = AlternativeEvidenceArtifactStore(artifact_root)
     if not artifacts.root.is_dir() or not sources.is_dir():
         return
-    where = data_root() if root is None else root
     seen: set[str] = set()
     for reference in _references(artifacts, None):
         if isinstance(reference, AcquiredEvidenceDocument):
@@ -522,9 +522,18 @@ def carry_originals(workspace: Path, copy: Path, *, root: Path | None = None) ->
         stored = original.read_bytes()
         if not stored.startswith(WORLD_OBJECT) or sha256_hex(stored) == name:
             continue
-        content = locator_body(stored, where)
+        content = locator_body(stored, root)
         if len(content) != reference.content_bytes or sha256_hex(content) != name:
             raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
+        yield name, content
+
+
+def carry_originals(workspace: Path, copy: Path, *, root: Path | None = None) -> Iterator[Path]:
+    """Carry bodies addressed by this workspace's world locators into its copy or backup."""
+    where = data_root() if root is None else root
+    for name, content in original_locator_bodies(
+        workspace / "runtime/artifacts", workspace / _EVIDENCE_WORKSPACE, root=where
+    ):
         relative = f"{_EVIDENCE_WORKSPACE}/{_CARRIED_ORIGINALS}/{name}"
         make_confined_parents(copy, relative)
         target = resolve_confined(copy, relative)
