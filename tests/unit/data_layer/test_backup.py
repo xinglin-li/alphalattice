@@ -1,7 +1,7 @@
 """The backup's manifest, file pool and SQLite URI construction, without databases."""
 
 import json
-from pathlib import PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 from blake3 import blake3
@@ -105,3 +105,27 @@ def test_a_snapshot_addresses_its_source_with_a_read_only_file_uri(prefix):
     assert uri is not None
     path = PureWindowsPath(prefix + "D:/backup folder/log #1.sqlite")
     assert uri(path) == "file:///D:/backup%20folder/log%20%231.sqlite?mode=ro"
+
+
+BASE = PurePosixPath("/root/data")
+INSIDE = ("main/t/a.parquet", True)
+
+
+@pytest.mark.proves("data_layer.backup_names_only_its_own_files")
+@pytest.mark.parametrize(
+    ("row", "outside", "named", "refused"),
+    [
+        pytest.param((*INSIDE,), True, "data/main/t/a.parquet", None, id="relative inside"),
+        pytest.param(("/root/data/b.parquet", False), True, "data/b.parquet", None, id="absolute"),
+        pytest.param(("/old/data/b.parquet", False), True, None, "backup_path_aliased", id="file"),
+        pytest.param(("/old/data/b.parquet", False), False, None, None, id="moved-from deletion"),
+        pytest.param(("../b.parquet", True), True, None, "backup_manifest_invalid", id="traversal"),
+        pytest.param((None, True), True, None, "backup_catalog_invalid", id="unresolved"),
+    ],
+)
+def test_a_catalog_row_is_named_only_inside_its_data_path(row, outside, named, refused):
+    """A file inside the data path is the root's own; one outside is refused, or, when it is a
+    file scheduled for deletion from the folder the catalog moved from, passed over."""
+    found: set[str] = set()
+    refusal = backup.catalog_files([row], BASE, Path("catalog.sqlite"), found, outside=outside)
+    assert (refusal and refusal[0], found) == (refused, {named} - {None})

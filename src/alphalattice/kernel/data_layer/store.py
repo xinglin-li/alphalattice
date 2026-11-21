@@ -980,6 +980,15 @@ class StorePort:
             expiring = expirable(snapshots, held, now)
             if expiring:
                 run("CALL ducklake_expire_snapshots('lake', versions => ?)", (expiring,)).fetchall()
+            # A file scheduled for deletion outside this root's data path belongs to the folder
+            # a restore moved the catalog from; it is never followed (backup._relocate_catalog).
+            posix = r"replace({}, '\', '/')"
+            run(
+                f"DELETE FROM {METADATA}.ducklake_files_scheduled_for_deletion"
+                f" WHERE NOT path_is_relative AND NOT starts_with({posix.format('path')},"
+                f" (SELECT {posix.format('value')} FROM {METADATA}.ducklake_metadata"
+                "   WHERE key = 'data_path' AND scope IS NULL))"
+            ).fetchall()
             deleted = run(
                 "CALL ducklake_cleanup_old_files('lake', older_than => ?)", (now - SETTLE_FILES,)
             ).fetchall()

@@ -823,6 +823,12 @@
       "seconds": 1,
       "owner": "alphalattice.kernel.data_layer"
     },
+    "data_layer.backup_names_only_its_own_files": {
+      "description": "If a backup named a file outside its data path as its own, or refused a deletion scheduled in the folder its catalog left, a relocated root would carry or refuse another folder's files.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.backup_opens_read_only_sqlite_paths": {
       "description": "A machine backup gives SQLite the same escaped, read-only file URI for an ordinary Windows path and its extended-length spelling.",
       "layer": "unit",

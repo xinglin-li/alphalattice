@@ -64,7 +64,9 @@ Online backup copies the index, then the log, then the catalog, without holding 
 Host writer for the backup's duration. The catalog may contain commits newer than the
 copied log. Restore first verifies the saved chain and its catalog references, then runs
 the store's existing startup repair to append owed events. It relocates the restored
-catalog to the new root. An unverifiable chain, missing file or existing destination is
+catalog to the new root, with the files the catalog had scheduled for deletion, so the
+restored root's cleanup deletes only inside itself and never in the original's folder;
+the restored root backs up like any other. An unverifiable chain, missing file or existing destination is
 refused by name; choose an intact generation and a fresh destination.
 
 ## Storage

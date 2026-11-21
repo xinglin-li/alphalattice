@@ -9,7 +9,9 @@ import uuid
 from contextlib import closing
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
+import duckdb
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -20,7 +22,7 @@ from alphalattice.kernel.data_layer import arrays, backup, create_data_root
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
 from alphalattice.kernel.data_layer.project import recipe_key
-from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
+from alphalattice.kernel.data_layer.store import SETTLE_FILES, StorePort, as_columns, stage
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
 
@@ -190,6 +192,102 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
     with pytest.raises(DataError, match="exists") as refused:
         backup.restore_data_root(generation, restored)
     assert refused.value.failure.code == "data_layer.restore_target_exists"
+
+
+def _left(root):
+    """The dropped table's files still in `root`."""
+    return sorted((root / "data/main/t").glob("*.parquet"))
+
+
+def _cleaned(root):
+    """The Host's maintenance past the settle time: the dropped table's files left in `root`."""
+    with HostLog.open(root) as log:
+        port = StorePort.open(root, log)
+        port.maintain(datetime.now(UTC) + 2 * SETTLE_FILES)
+        port.close()
+    return _left(root)
+
+
+def _as_restored_earlier(original, root):
+    """Give the restored `root` what an earlier restore left where DuckLake records a scheduled
+    deletion by its absolute path (Windows; macOS records it relative): the original folder's
+    path for each, since that restore moved only the data path."""
+    with closing(sqlite3.connect(original / "machine/catalog.sqlite")) as old:
+        ((data,),) = old.execute(
+            "SELECT value FROM ducklake_metadata WHERE key = 'data_path' AND scope IS NULL"
+        )
+    with closing(sqlite3.connect(root / "machine/catalog.sqlite")) as new:
+        new.execute(
+            "UPDATE ducklake_files_scheduled_for_deletion SET path = ? || path,"
+            " path_is_relative = false WHERE path_is_relative",
+            (data,),
+        )
+        new.commit()
+
+
+# What the Host does with each case's root as it stands. DuckLake refuses a data path other than
+# the one its catalog records, so a plain copy or move opens only through backup and restore; a
+# deletion an earlier restore left pointing at the original's folder is dropped, its file kept.
+RELOCATIONS = {"in place": "cleans", "copied, original present": "refused", "moved": "refused"}
+RELOCATIONS |= {"restored, original present": "cleans", "restored, original gone": "cleans"}
+RELOCATIONS |= {"restored by an earlier release": "drops"}
+CASES = [*RELOCATIONS, "a backup that fails midway"]
+
+
+@pytest.mark.proves("data_layer.machine_backup_restores_all_retained_results")
+@pytest.mark.parametrize("case", CASES, ids=CASES)
+def test_a_relocated_root_backs_up_and_cleans_up_only_its_own_folder(tmp_path, case):
+    """Integration: DuckLake records a file it schedules for deletion by its absolute path; only
+    a real catalog, its copy, move and restore, and the Host's own maintenance show that a root in
+    any folder backs up, restores ALL EQUAL and deletes nothing outside itself."""
+    original, first = tmp_path / "original", tmp_path / "first"
+    create_data_root(original)
+    with HostLog.open(original) as log:
+        port = StorePort.open(original, log)
+        _admit(original, port)
+        for sql in ("CREATE TABLE lake.main.t AS FROM range(5000)", "DROP TABLE lake.main.t"):
+            port.lake.execute(sql).fetchall()
+        port.lake.execute("CALL ducklake_expire_snapshots('lake', older_than => now())").fetchall()
+        log.flush()
+        rows = _catalog_rows(port)
+        port.close()
+    if case == "a backup that fails midway":  # a file outside the root: refused by name
+        with closing(sqlite3.connect(original / "machine/catalog.sqlite")) as con:
+            con.execute("UPDATE ducklake_data_file SET path = '/x.parquet', path_is_relative = 0")
+            con.commit()
+        with pytest.raises(DataError) as refused:
+            backup.backup_data_root(original, tmp_path / "backups")
+        assert refused.value.failure.code == "data_layer.backup_path_aliased"
+        assert not list((tmp_path / "backups/generations").iterdir())
+        return
+    root = original
+    if case.startswith("restored"):
+        root = backup.restore_data_root(backup.backup_data_root(original, first), tmp_path / "r")
+        if case.endswith("gone"):
+            shutil.rmtree(original)
+        elif case.endswith("release"):
+            _as_restored_earlier(original, root)
+    elif case == "moved":
+        root = original.rename(tmp_path / "moved")
+    elif case.startswith("copied"):
+        root = Path(shutil.copytree(original, tmp_path / "copy"))
+    others = {f: sorted(f.rglob("*")) for f in (original, first) if f != root and f.exists()}
+    generation = backup.backup_data_root(root, tmp_path / "backups")
+    assert original not in others or _left(original)  # each folder holds its file before cleanup
+    if RELOCATIONS[case] == "refused":
+        with HostLog.open(root) as log, pytest.raises(duckdb.Error, match="data path"):
+            StorePort.open(root, log)
+    else:
+        assert _left(root)
+        assert bool(_cleaned(root)) == (RELOCATIONS[case] == "drops")
+    again = backup.restore_data_root(generation, tmp_path / "again")
+    with HostLog.open(again) as log:
+        port = StorePort.open(again, log)
+        assert _catalog_rows(port) == rows
+        port.close()
+    assert bool(_left(again)) != (RELOCATIONS[case] == "drops")  # a dropped one is not carried
+    assert not _cleaned(again)
+    assert {f: sorted(f.rglob("*")) for f in others} == others
 
 
 @pytest.mark.proves("data_layer.machine_restore_refuses_a_changed_chain")

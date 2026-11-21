@@ -14,7 +14,7 @@ import re
 import shutil
 import sqlite3
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -259,8 +259,26 @@ def _unreadable(error: OSError) -> None:
     ) from error
 
 
+_REFERENCED: Final = (
+    "SELECT s.path,s.path_is_relative,t.path,t.path_is_relative,"
+    "f.path,f.path_is_relative FROM ducklake_{table} f "
+    "LEFT JOIN ducklake_table t ON t.table_id=f.table_id "
+    "AND t.begin_snapshot<=f.begin_snapshot "
+    "AND (t.end_snapshot IS NULL OR t.end_snapshot>f.begin_snapshot) "
+    "LEFT JOIN ducklake_schema s ON s.schema_id=t.schema_id "
+    "AND s.begin_snapshot<=f.begin_snapshot "
+    "AND (s.end_snapshot IS NULL OR s.end_snapshot>f.begin_snapshot)"
+)
+
+
 def _catalog_paths(catalog: Path) -> set[str]:
-    """Resolve the copied catalog's paths at each file's creation snapshot, including history."""
+    """Resolve the copied catalog's paths at each file's creation snapshot, including history.
+
+    A refusal is raised only once the connection and its cursors are closed, so it leaves no
+    open handle on the copied catalog (Windows cannot remove an open file). A file scheduled for
+    deletion outside the data path belongs to the folder the catalog was moved from; it is not
+    one of this root's files and is never followed (``_relocate_catalog`` re-roots them)."""
+    found: set[str] = set()
     with closing(sqlite3.connect(sqlite_read_only_uri(_real(catalog)), uri=True)) as con:
         bases = con.execute(
             "SELECT value FROM ducklake_metadata WHERE key='data_path' AND scope IS NULL"
@@ -270,50 +288,52 @@ def _catalog_paths(catalog: Path) -> set[str]:
                 "backup_catalog_invalid", f"{catalog} lacks one data path; use an intact backup"
             )
         base = PurePosixPath(bases[0][0].replace("\\", "/"))
-
-        def handle(parts):
-            path = base
-            for value, relative in parts:
-                part = PurePosixPath(value.replace("\\", "/"))
-                path = path / part if relative else part
-            try:
-                named = "data/" + path.relative_to(base).as_posix()
-            except ValueError as error:
-                raise _refuse(
-                    "backup_path_aliased", f"{catalog} references {path} outside its data root"
-                ) from error
-            if not _handle(named):
-                raise _refuse(
-                    "backup_manifest_invalid", f"{catalog} references unsafe file {named}"
-                )
-            return named
-
-        found = set()
-        for table in ("data_file", "delete_file"):
-            rows = con.execute(
-                "SELECT s.path,s.path_is_relative,t.path,t.path_is_relative,"
-                f"f.path,f.path_is_relative FROM ducklake_{table} f "
-                "LEFT JOIN ducklake_table t ON t.table_id=f.table_id "
-                "AND t.begin_snapshot<=f.begin_snapshot "
-                "AND (t.end_snapshot IS NULL OR t.end_snapshot>f.begin_snapshot) "
-                "LEFT JOIN ducklake_schema s ON s.schema_id=t.schema_id "
-                "AND s.begin_snapshot<=f.begin_snapshot "
-                "AND (s.end_snapshot IS NULL OR s.end_snapshot>f.begin_snapshot)"
-            )
-            for row in rows:
-                if any(value is None for value in row):
-                    raise _refuse(
-                        "backup_catalog_invalid",
-                        f"{catalog} cannot resolve every referenced file; use an intact backup",
-                    )
-                found.add(handle(zip(row[::2], row[1::2], strict=True)))
-        found.update(
-            handle(((path, relative),))
-            for path, relative in con.execute(
-                "SELECT path,path_is_relative FROM ducklake_files_scheduled_for_deletion"
-            )
+        refused = catalog_files(
+            con.execute(_REFERENCED.format(table="data_file")), base, catalog, found
+        ) or catalog_files(
+            con.execute(_REFERENCED.format(table="delete_file")), base, catalog, found
         )
+        scheduled = con.execute(  # the same parts as a file's, each empty one relative
+            "SELECT '',true,'',true,path,path_is_relative"
+            " FROM ducklake_files_scheduled_for_deletion"
+        )
+        refused = refused or catalog_files(scheduled, base, catalog, found, outside=False)
+        del scheduled  # no cursor outlives the connection, so a refusal holds no handle
+    if refused is not None:
+        raise _refuse(*refused)
     return found
+
+
+def catalog_files(
+    rows: Iterable[tuple[Any, ...]],
+    base: PurePosixPath,
+    catalog: Path,
+    found: set[str],
+    *,
+    outside: bool = True,
+) -> tuple[str, str] | None:
+    """Add each catalog row's file, resolved from its (path, is relative) parts under the data
+    path `base`, to `found` as its backup handle; return the first refusal's code and text
+    instead. A row outside `base` is refused, or passed over when `outside` is False."""
+    for row in rows:
+        if any(value is None for value in row):
+            return (
+                "backup_catalog_invalid",
+                f"{catalog} cannot resolve every referenced file; use an intact backup",
+            )
+        path = base
+        for value, relative in zip(row[::2], row[1::2], strict=True):
+            part = PurePosixPath(value.replace("\\", "/"))
+            path = path / part if relative else part
+        if not path.is_relative_to(base):
+            if outside:
+                return ("backup_path_aliased", f"{catalog} references {path} outside its data root")
+            continue
+        named = "data/" + path.relative_to(base).as_posix()
+        if not _handle(named):
+            return ("backup_manifest_invalid", f"{catalog} references unsafe file {named}")
+        found.add(named)
+    return None
 
 
 def _owners(machine: Path, data: Path, owner: Any = None) -> dict[str, str | dict[str, str] | None]:
@@ -466,17 +486,38 @@ def backup_data_root(root: Path, repository: Path) -> Path:
 
 
 def _relocate_catalog(catalog: Path, data: Path) -> None:
-    """Relocate only the restored catalog's global data path; its file paths stay relative."""
+    """Relocate the restored catalog's global data path, and its files scheduled for deletion
+    with it: DuckLake records those absolute, so one under the old data path is re-rooted as a
+    path relative to the data path, and one outside it, a folder the catalog was moved from
+    before, is dropped. A relocated root's cleanup then never deletes outside its own folder."""
     with closing(sqlite3.connect(catalog)) as con:
-        changed = con.execute(
-            "UPDATE ducklake_metadata SET value = ? WHERE key = 'data_path' AND scope IS NULL",
-            (data.as_posix() + "/",),
-        ).rowcount
-        if changed != 1:
+        old = con.execute(
+            "SELECT max(value), count(*) FROM ducklake_metadata"
+            " WHERE key = 'data_path' AND scope IS NULL"
+        ).fetchone()
+        if old is None or old[1] != 1 or not isinstance(old[0], str):
             raise _refuse(
                 "backup_catalog_invalid",
                 f"{catalog} lacks one global data path; use an intact backup",
             )
+        prefix = old[0].replace("\\", "/").rstrip("/") + "/"
+        posix = r"replace(path, '\', '/')"  # SQLite reads a backslash in a string as itself
+        under = f"substr({posix}, 1, length(?1)) = ?1"
+        con.execute(
+            "UPDATE ducklake_files_scheduled_for_deletion"
+            f" SET path = substr({posix}, length(?1) + 1), path_is_relative = true"
+            f" WHERE NOT path_is_relative AND {under}",
+            (prefix,),
+        )
+        con.execute(
+            f"DELETE FROM ducklake_files_scheduled_for_deletion WHERE NOT path_is_relative"
+            f" AND NOT ({under})",
+            (prefix,),
+        )
+        con.execute(
+            "UPDATE ducklake_metadata SET value = ? WHERE key = 'data_path' AND scope IS NULL",
+            (data.as_posix() + "/",),
+        )
         con.commit()
 
 
