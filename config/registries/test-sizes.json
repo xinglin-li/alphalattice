@@ -2744,17 +2744,6 @@
   ],
   "quarantine": [
     {
-      "node": "tests/integration/data_layer/test_store.py::test_an_append_waits_no_longer_while_a_large_admission_is_staged",
-      "owner": "tests",
-      "reason": "Compares wall-clock medians with a 2 ms slack under a real child process, so a loaded node fails it; a proof of the order by an event replaces it.",
-      "until": "2026-11-21",
-      "class": "unstable",
-      "since": "2026-11-19",
-      "seen_on": [
-        "mac1"
-      ]
-    },
-    {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "In an observed Windows environment, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",

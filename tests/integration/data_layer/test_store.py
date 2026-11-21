@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import statistics
 import subprocess
 import sys
 import threading
@@ -15,7 +14,6 @@ from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from time import perf_counter
 
 import duckdb
 import pyarrow as pa
@@ -1534,10 +1532,11 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
     assert (closes, versions) == ([(2.0,)], [1.0, 2.0])
 
 
-STAGE = """
+STAGE = r"""
 import sys, uuid
 from pathlib import Path
 import pyarrow as pa
+import pyarrow.parquet as pq
 from contextlib import closing
 from alphalattice.kernel.data_layer.log import attach
 from alphalattice.kernel.data_layer.project import require_lineage
@@ -1545,11 +1544,20 @@ from alphalattice.kernel.data_layer.store import as_columns, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
          "close": float(i), "source_observed_at": "2024-02-01 00:00:00+00"}
         for i in range(100_000)]
-print("hashing", flush=True)
 rows = pa.table(as_columns(rows))
 root = Path(sys.argv[1])
 with closing(attach(root)) as con:
     provider = require_lineage(con, "provider", "yf")
+
+write_table = pq.write_table
+
+def held_write(*args, **kwargs):
+    print("staging", flush=True)
+    if sys.stdin.readline() != "append committed\n":
+        raise RuntimeError("staging released before the append committed")
+    return write_table(*args, **kwargs)
+
+pq.write_table = held_write
 with stage(root, "raw_bar", provider, rows) as staged:
     print(staged.row_count, flush=True)
 """
@@ -1557,28 +1565,27 @@ with stage(root, "raw_bar", provider, rows) as staged:
 
 @pytest.mark.proves("data_layer.heavy_work_runs_beside_the_writer")
 def test_an_append_waits_no_longer_while_a_large_admission_is_staged(root):
-    """Staging checks and writes rows in the process that has them, never under the writer: an
-    append and its flush made while 100,000 rows are staged wait as an ordinary one does."""
-    with HostLog.open(root) as log:
-
-        def wait() -> float:
-            began = perf_counter()
-            log.record("outcome.observed", attrs={"n": 1})
-            log.flush()
-            return perf_counter() - began
-
-        ordinary = [wait() for _ in range(100)]
-        with spawn.InteractiveSession(timeout=120, stop_scope="tree") as session:
-            child = session.start([sys.executable, "-c", STAGE, str(root)], **CHILD, stdout=-1)
-            assert child.stdout.readline() == "hashing\n"
-            during = []
-            while child.poll() is None:
-                during.append(wait())
-            session.check()
-            assert child.stdout.read() == "100000\n"
-    assert len(during) > 20
-    assert statistics.median(during) <= 2 * statistics.median(ordinary) + 0.002
-    assert statistics.quantiles(during, n=10)[-1] <= 2 * max(ordinary) + 0.005
+    """The Host commits an append while another process holds a 100,000-row Parquet stage."""
+    with (
+        HostLog.open(root) as log,
+        spawn.InteractiveSession(timeout=120, stop_scope="tree") as session,
+    ):
+        child = session.start(
+            [sys.executable, "-c", STAGE, str(root)],
+            **(CHILD | {"stdin": subprocess.PIPE}),
+            stdout=subprocess.PIPE,
+        )
+        assert child.stdout is not None
+        assert child.stdout.readline() == "staging\n"
+        sequence = log.record("outcome.observed", attrs={"n": 1})
+        log.flush()
+        with closing(host.attach(root)) as reader:
+            event = reader.execute("SELECT seq FROM event WHERE seq = ?", (sequence,)).fetchone()
+            assert event is not None and event["seq"] == sequence
+        session.send("append committed\n")
+        assert child.stdout.readline() == "100000\n"
+        assert child.wait(timeout=120) == 0
+        session.check()
 
 
 BLOB = {"type": "model", "type_version": 1, "meaning": "a fitted model", "identity_kind": "content"}
