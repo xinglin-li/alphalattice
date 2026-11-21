@@ -189,7 +189,7 @@ DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packagin
 package = true
 default-groups = ["dev"]
 conflicts = [[{ group = "docs" }, { group = "dev" }]]
-# semgrep 1.185.0 (its latest) pins packages with known vulnerabilities, and nothing else here needs them. Each
+# semgrep 1.185.0 pins packages with known vulnerabilities, and nothing else here needs them. Each
 # override lifts one pin to its lowest fixed release; drop it once a semgrep release pins a fixed version itself.
 # The opentelemetry family moves together: its other members follow these through their own exact pins.
 override-dependencies = [
@@ -200,6 +200,7 @@ override-dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",  # moves with opentelemetry-sdk, which it pins
     "opentelemetry-instrumentation-requests>=0.66b2,<1",  # the 1.45.2 train's instrumentation
     "opentelemetry-instrumentation-threading>=0.66b2,<1",  # the 1.45.2 train's instrumentation
+    "wcmatch==11.2",  # CVE-2026-132276
 ]
 
 [tool.ruff]
