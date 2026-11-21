@@ -196,10 +196,15 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixture
             strategy_artifacts=(artifact,),
         )
         publish_research_workspace_manifest(root, manifest)
+        from alphalattice.foundation.market_data_ops.storage import world
         from alphalattice.kernel.data_layer import history
 
         history.open_history("factor-seed", "factor seed", root)
         try:
+            opened = history.opened_log()
+            assert opened is not None
+            # The input lives in a separate source, outside the Host's workspace-open admission.
+            world.admit_universe(data.workspace / "market-data.duckdb", opened[1])
             outcome, _ref = publish_causal_outcomes(data, at=datetime(2026, 8, 2, tzinfo=UTC))
             first = bind_factor_inputs(
                 workspace=root,

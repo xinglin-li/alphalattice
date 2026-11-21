@@ -172,7 +172,9 @@ def require_risk_listings(listings: Sequence[str]) -> None:
         raise DataError("the Risk catalog is unavailable", code="data_layer.history_unavailable")
     if unknown:
         raise DataError(
-            f"the Risk formation names unregistered listings: {unknown}",
+            f"The Risk formation names {len(unknown)} unregistered world listings "
+            f"(first listing ID {unknown[0]}). Admit their market data through the workspace "
+            "before running the Risk study again.",
             code="data_layer.lineage_unregistered",
         )
 

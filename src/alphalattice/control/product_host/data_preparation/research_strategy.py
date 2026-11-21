@@ -79,7 +79,10 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_st
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
+from alphalattice.kernel.shared_kernel.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
+)
 
 TASK_KIND = "research_strategy_preparation"
 IMPLEMENTATION_ROLE = "product_host.research_strategy_preparation"
@@ -108,8 +111,9 @@ def implementation_hash() -> str:
     Returns:
         Exact installed implementation identity; no closure record is changed.
     """
-    return source_rule_closure_hash(
-        root=resolve_playpen_root(Path(__file__)),
+    root = resolve_playpen_root(Path(__file__))
+    rule = source_rule_closure_hash(
+        root=root,
         semantic_owner="product_host",
         numerical_role="LOCAL_FROZEN_RECIPE_INPUT_PREPARATION",
         tracked_paths=tuple(
@@ -133,6 +137,7 @@ def implementation_hash() -> str:
             )
         ),
     )
+    return switched_identity(IMPLEMENTATION_ROLE, rule, root=root)
 
 
 def _require_promoted(row: dict[str, Any]) -> None:

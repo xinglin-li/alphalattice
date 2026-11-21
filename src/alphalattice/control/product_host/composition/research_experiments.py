@@ -168,6 +168,7 @@ from alphalattice.control.research_program.authoring.workflow import (
 )
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.task_control.contracts import (
+    StageFailureCause,
     TaskEvidence,
     TaskExecution,
     TaskExecutionCompatibility,
@@ -301,6 +302,7 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
@@ -3775,8 +3777,22 @@ class ResearchExperimentApplication:
         except (AlphaDevelopmentCancelled, PortfolioExperimentCancelled, RiskDevelopmentCancelled):
             return StageExecutionResult(StageDisposition.CANCELLED)
         except ValueError as error:
+            code = failure_code_from(error)
+            origin = error.__cause__
+            cause = None
+            if (
+                isinstance(origin, DataError)
+                and origin.failure.code == code == "data_layer.lineage_unregistered"
+            ):
+                cause = StageFailureCause.from_facts(
+                    {
+                        "exception_type": type(origin).__name__,
+                        "detail": origin.failure.message,
+                        "step": work_item.stage_id,
+                    }
+                )
             return StageExecutionResult(
-                StageDisposition.BLOCKED, failure_code=failure_code_from(error)
+                StageDisposition.BLOCKED, failure_code=code, failure_cause=cause
             )
 
     def _execute_stage(

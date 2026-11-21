@@ -148,6 +148,14 @@
    "byte": "ebae61d3bac25c904bb35ceea2dad4c17fac6872aaf453ba518971d17446c6ff",
    "rule": "713023ad0790e95f2f0c311bb0835cd54ea3c5d73649311a44aa754eefe0a990"
   },
+  "product_host.research_strategy_preparation": {
+   "byte": "a40d5d1ac02b25d27774d82ed1c04aa24f2a26db2ce88d30d85103feca8885ca",
+   "rule": "73b3d114d8d1a41864e2eedfd7aec22cf7302a7002ed42b253fe1e4d886519dd"
+  },
+  "research_experiment.portfolio.policy-development.implementation": {
+   "byte": "c6f8d1ecd89bb4f7ca93c802ded57323b7783258979f3e6627ffdaf547f8abb8",
+   "rule": "f2ef27dcd4ba62f50a8ed8c46ce35305417e4d015db877b422524de12757fd46"
+  },
   "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:184afe79428fc7b0": {
    "byte": "6e79ccbf77c10583a3a0414b5479b4dfaf55d76e060b437c39482409e313f335",
    "rule": "0b87262ad0ca24c41bc55a0e9fe616d6da85c6c9895f0aff2b333394bde0c8a7"
