@@ -23,6 +23,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 )
 from alphalattice.kernel.data_layer.history import (
     carry_arrays,
+    carry_knowledge_snapshots,
     carry_research_inputs,
     carry_results,
     data_root,
@@ -163,11 +164,13 @@ def _copy(source: Path, target: Path) -> None:
 def carry_copy(workspace: Path, copy: Path, *, root: Path | None = None) -> None:
     """Carry into `copy`, a copy of `workspace`, what the catalog of `root` (this process's data
     root unless named) alone keeps for it: its Tasks, lanes, bound inputs, execution outcomes and
-    Portfolio results, and Risk's covariance history. The Host that opens the copy admits them."""
+    Portfolio results, Evidence snapshots, and Risk's covariance history. The Host that opens the
+    copy admits them."""
     carry_tasks(workspace, copy, root=root)
     carry_arrays(workspace, copy, root=root)
     carry_research_inputs(workspace, copy, root=root)
     carry_results(workspace, copy, root=root)
+    carry_knowledge_snapshots(workspace, copy, root=root)
     for _ in carry_risk_covariance(workspace, copy, source_root=root):
         pass
 

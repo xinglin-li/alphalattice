@@ -2416,11 +2416,11 @@
       "lower_layer": "The owner's rebuild reads the copy's real descriptors and the Host's opener holds a real data root; the unit layer cannot hold them."
     },
     "product_host.copies_read_back_every_carried_result": {
-      "description": "A published Portfolio path's copy, carried as the sandbox and saved-object readback carry it, and its restored backup read back every carried result ALL EQUAL on a new data root.",
+      "description": "A published Portfolio path's copy and restored backup read back every carried result and sealed Evidence snapshot ALL EQUAL on a new data root.",
       "owner": "alphalattice.control.product_host",
       "layer": "integration",
       "seconds": 10,
-      "lower_layer": "The proof is a real Portfolio publication's catalog, its backup and the Host's opener on a second data root; the unit layer cannot hold them."
+      "lower_layer": "The proof uses a published Portfolio catalog, its Evidence log, backup and a second data root; the unit layer cannot hold them."
     },
     "product_host.first_start_asks_nothing_of_catalog_held_outcomes": {
       "description": "A fileless outcome chunk asks no upgrade only when the catalog holds its rows; one it lacks is refused by name; other faults stop the start.",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import shutil
 import threading
 import time
 import urllib.error
@@ -39,13 +40,18 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     publish_research_workspace_manifest,
 )
+from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.evidence.alternative_evidence.documents.contracts import (
+    AlternativeEvidenceDocumentSet,
+)
 from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
 from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
 )
+from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -53,6 +59,8 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     BROAD_FEATURE_PACKAGE,
     PRODUCT_EVIDENCE_ROOT_KEY,
 )
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.history_knowledge import CARRIED_KNOWLEDGE
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
@@ -74,6 +82,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     start_service,
 )
 from tests.alternative_evidence_desk.review_package import _package
+from tests.pytest_environment import upgraded
 from tests.structural.source_shape_samples import bundle_refusal_declarations
 
 ONE_UNIT = "u01"
@@ -1051,7 +1060,13 @@ def test_freezing_the_book_asks_for_a_new_review_and_reuses_the_evidence(
     }
 
 
-def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(service: _Service) -> None:
+def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(
+    service: _Service, http_book, tmp_path: Path
+) -> None:
+    selected = {"result_hash": service.result_hash()}
+    original = service.post("/api/evidence/prepare", selected)
+    service.drain()
+    assert service.registry.task(UUID(original["task_id"])).lifecycle is TaskLifecycle.SUCCEEDED
     result_hash = _drive_whole_route(service)
     tasks = len(service.registry.tasks())
     calls = len(service.review.review_actor.observed_deadlines)
@@ -1061,6 +1076,53 @@ def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(service: _Se
     assert again.get("task_id") is None
     assert len(service.registry.tasks()) == tasks
     assert len(service.review.review_actor.observed_deadlines) == calls
+
+    # A legacy copy keeps both sealed publications and their document sets, while its
+    # receiving data root has never admitted the workspace's Knowledge snapshot.
+    artifacts = service.review.artifacts
+    (published,) = artifacts.values("analysis-publications", AlternativeEvidenceAnalysisPublication)
+    old_documents = artifacts.load(
+        "document-sets", published.document_set_hash, AlternativeEvidenceDocumentSet
+    )
+    workspace, report = http_book
+    source_root = history.data_root()
+    service.session.stop()
+    copied = tmp_path / "legacy-copy"
+    shutil.copytree(workspace, copied)
+    carry_copy(workspace, copied, root=source_root)
+    (copied / CARRIED_KNOWLEDGE).unlink()
+    authority = build_authority(tmp_path=tmp_path / "legacy-evidence", report=report)
+    shutil.copytree(artifacts.root, authority.artifacts.root, dirs_exist_ok=True)
+    saved = (
+        authority.artifacts.root / "analysis-publications" / f"{published.publication_hash}.json"
+    )
+    sealed = saved.read_bytes()
+    clock = [_NOW]
+    with history.own_root(tmp_path / "legacy-data-root"):
+        reopened = start_service(upgraded(copied), authority, tmp_path, clock=lambda: clock[0])
+        try:
+            client = LocalResearchClient(copied)
+            preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+            assert preview.get("failure_code") == "data_layer.knowledge_snapshot_missing", (
+                preview.get("status"),
+                preview.get("failure_code"),
+                tuple(preview.get("next_requests", ())),
+            )
+            clock[0] += timedelta(seconds=1)
+            fresh = client.request(preview["next_requests"]["prepare"])
+            assert fresh["disposition"] == "ADMITTED", fresh
+            task = UUID(fresh["task_id"])
+            reopened.drain()
+            assert reopened.registry.task(task).lifecycle is TaskLifecycle.SUCCEEDED
+            adapter = reopened.review.evidence_task_adapter
+            packet = adapter.prepared_packet(task, now=clock[0], unit_id=ONE_UNIT)
+            assert packet.document_set.workspace_snapshot_id != old_documents.workspace_snapshot_id
+            assert {doc.revision_label for doc in packet.document_set.documents} == {
+                doc.revision_label for doc in old_documents.documents
+            }
+            assert saved.read_bytes() == sealed
+        finally:
+            reopened.session.stop()
 
 
 def test_expiry_is_a_typed_zero_work_state_over_http(tmp_path: Path, http_book) -> None:

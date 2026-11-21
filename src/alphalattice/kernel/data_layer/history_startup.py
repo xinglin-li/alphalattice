@@ -15,6 +15,10 @@ from alphalattice.kernel.data_layer.history_carried_results import (
     CarriedCheck,
     _import_carried_results,
 )
+from alphalattice.kernel.data_layer.history_knowledge import (
+    CARRIED_KNOWLEDGE,
+    import_carried_knowledge,
+)
 from alphalattice.kernel.data_layer.history_runtime import (
     _CONDITION_TEXT,
     _EVIDENCE_TEXT,
@@ -167,7 +171,8 @@ def move_carried(folder: Path, workspace_id: str) -> int:
     import alphalattice.kernel.data_layer.inputs as inputs  # lazy: BLAKE3
 
     lanes, bindings = (folder / arrays.CARRIED).is_dir(), (folder / inputs.CARRIED).is_dir()
-    if not (lanes or bindings):
+    knowledge = (folder / CARRIED_KNOWLEDGE).exists(follow_symlinks=False)
+    if not (lanes or bindings or knowledge):
         return 0
     log = held()
     held_id = workspace_on_log(folder, folder.name, workspace_id)
@@ -179,4 +184,6 @@ def move_carried(folder: Path, workspace_id: str) -> int:
         _import_kept_files(log, folder, held_id)
     if bindings:
         count += inputs.import_carried(root, log, folder, workspace=held_id)
+    if knowledge:
+        count += import_carried_knowledge(log, folder, held_id)
     return count

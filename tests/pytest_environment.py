@@ -292,12 +292,17 @@ def serve_apart(workspace: Path) -> Path:
 
     require_isolated_roots()
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a served Host's only
-    from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
+    from alphalattice.kernel.data_layer.history import (
+        carry_arrays,
+        carry_knowledge_snapshots,
+        carry_research_inputs,
+    )
 
     workspace.mkdir(parents=True, exist_ok=True)
     carry_tasks(workspace, workspace)
     carry_arrays(workspace, workspace)
     carry_research_inputs(workspace, workspace)
+    carry_knowledge_snapshots(workspace, workspace)
     return served_root(workspace)
 
 
@@ -318,11 +323,16 @@ def released(root: Path) -> None:
 def with_its_tasks(workspace: Path) -> Path:
     """`workspace`, its served Host's Tasks carried into it, so they are sealed with it."""
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a golden seal's only
-    from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
+    from alphalattice.kernel.data_layer.history import (
+        carry_arrays,
+        carry_knowledge_snapshots,
+        carry_research_inputs,
+    )
 
     carry_tasks(workspace, workspace, root=served_root(workspace))
     carry_arrays(workspace, workspace, root=served_root(workspace))
     carry_research_inputs(workspace, workspace, root=served_root(workspace))
+    carry_knowledge_snapshots(workspace, workspace, root=served_root(workspace))
     return workspace
 
 

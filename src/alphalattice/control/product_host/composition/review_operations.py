@@ -20,7 +20,7 @@ from alphalattice.control.product_host.composition.host_answer_submission import
     submit_agent_answer,
     submit_evidence_analysis,
 )
-from alphalattice.control.product_host.composition.plain_refusals import unit_refusal
+from alphalattice.control.product_host.composition.plain_refusals import refused, unit_refusal
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     _citation_page,
     _pages_citations,
@@ -31,6 +31,7 @@ from alphalattice.control.product_host.composition.research_review_outcome impor
     _review_outcome_body,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -196,7 +197,23 @@ def execute(
                 }
             return body
         case "EVIDENCE_PREVIEW":
-            return operations.review.preview_evidence(selector, caller=caller)
+            try:
+                return operations.review.preview_evidence(selector, caller=caller)
+            except DataError as error:
+                if error.failure.code != "data_layer.knowledge_snapshot_missing":
+                    raise
+                chosen = operations.review.default_selector(selector)
+                return {
+                    **refused(error.failure.code),
+                    "detail": "An earlier Evidence preparation names a snapshot missing from "
+                    "this data root. Prepare the book's Evidence again.",
+                    "next_requests": {
+                        "prepare": {
+                            "operation": "EVIDENCE_PREPARE",
+                            **(chosen.request_fields() if chosen else {}),
+                        }
+                    },
+                }
         case "EVIDENCE_LEDGER":
             return _review_outcome_body(
                 EvidenceReviewDelivery(operations.review).book_ledger(

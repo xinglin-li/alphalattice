@@ -803,6 +803,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         )
         self.sealed_readings = SealedReadings(
             self.artifacts,
+            self.documents,
             expected_bindings=self.publications.expected_bindings,
             days=self.record_days[ANALYSIS_PUBLICATION_CATEGORY],
         )

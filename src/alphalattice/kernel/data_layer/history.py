@@ -42,6 +42,7 @@ from alphalattice.kernel.data_layer.history_execution_outcomes import (
     read_execution_outcome,
     write_execution_outcome,
 )
+from alphalattice.kernel.data_layer.history_knowledge import carry_knowledge_snapshots
 from alphalattice.kernel.data_layer.history_portfolio_results import (
     portfolio_result_held,
     read_portfolio_pair,
@@ -174,6 +175,7 @@ __all__ = [
     "call",
     "carried_result_files",
     "carry_arrays",
+    "carry_knowledge_snapshots",
     "carry_research_inputs",
     "carry_results",
     "catalog_projection",

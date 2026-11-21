@@ -480,9 +480,12 @@ class WorkspaceBackups:
                 digest, size = read_file(path)
                 relative = (arrays.CARRIED / path.name).as_posix()
                 entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
-            # So do its execution outcomes and Portfolio results, which the catalog alone keeps.
+            # Carry results and the sealed Evidence snapshots the machine alone keeps.
             history.carry_results(self.workspace, staging)
-            for path in history.carried_result_files(staging):
+            for path in (
+                *history.carried_result_files(staging),
+                *history.carry_knowledge_snapshots(self.workspace, staging),
+            ):
                 if stop():
                     raise _Stopped
                 digest, size = read_file(path)

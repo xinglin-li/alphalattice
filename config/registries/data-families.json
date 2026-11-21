@@ -2734,7 +2734,8 @@
         "alternative_evidence.publication.AlternativeEvidenceArtifactStore"
       ],
       "writers": [
-        "alternative_evidence.publication.artifacts:AlternativeEvidenceArtifactStore"
+        "alternative_evidence.publication.artifacts:AlternativeEvidenceArtifactStore",
+        "data_layer.history_knowledge:carry_knowledge_snapshots"
       ],
       "readers": [
         "alternative_evidence.publication.analysis",
