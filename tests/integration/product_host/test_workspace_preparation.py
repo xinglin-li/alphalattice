@@ -1576,17 +1576,18 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         late = through + timedelta(days=7)
         market = MarketDataRepository(root)
         assert market.manifest_raw_range(data.manifest) == market.market_reference_raw_range("SPY")
-        for table, field in (
-            ("raw_daily_bar_current", "data_through"),
-            ("provider_adjusted_close_current", "adjusted_through"),
+        listing_id = data.manifest.listings[0].listing_id
+        for table, field, served in (
+            ("raw_daily_bar_current", "data_through", market.raw_bars),
+            (
+                "provider_adjusted_close_current",
+                "adjusted_through",
+                market.provider_adjusted_closes,
+            ),
         ):
-            with future_sample(
-                market,
-                live.session.mutation_gate,
-                table,
-                data.manifest.listings[0].listing_id,
-                late,
-            ):
+            with future_sample(market, live.session.mutation_gate, table, listing_id, late):
+                # The later row is world's, where the Host serves it, not only the stage's buffer.
+                assert late in {row.session_date for row in served(listing_id, through=late)}
                 mutated = (root / "market-data.duckdb").read_bytes()
                 refused = live.operations.preparation.plan(requested_formation_session=through)
                 assert refused["source_inputs"][field] == str(through)
