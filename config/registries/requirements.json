@@ -1302,6 +1302,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.store_research_laws": {
+      "description": "Each registered store keeps the known-time boundary, gives a later restatement only at its own cutoff, keeps one identity for equal evidence, and reads identical typed evidence after restart.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "contract",
+      "seconds": 20
+    },
     "data_layer.storeport_writes_each_derived_partition_once": {
       "description": "StorePort writes a derived partition once, valid only for its recipe and inputs, keeps each digest a workspace roots and collects the rest, and makes and widens a feature set's table.",
       "lower_layer": "The partitions are written into the DuckLake catalog in one transaction and their validity and roots into the log; only a real catalog and log show both.",
@@ -1933,6 +1939,12 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "layer": "contract",
       "seconds": 10
+    },
+    "market_data_ops.daily_provider_research_laws": {
+      "description": "Each registered daily provider includes the cutoff session, excludes following sessions and reopens the same provider evidence.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "contract",
+      "seconds": 20
     },
     "market_data_ops.hydration_provider_conformance": {
       "description": "Every one-response history provider returns the daily port's own rows with in-window actions, adjusted closes and repaired sessions that name only those rows.",

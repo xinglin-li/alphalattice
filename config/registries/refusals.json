@@ -6540,6 +6540,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "The provider payload has missing/nonpositive adjusted close; valid acquired price evidence is required."
 },
+"data.local_bars_invalid": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Repair the named local source file to match the workspace profile and bar format."
+},
 "data.listing_attempt_budget_exhausted_after_interruption": {
 "owner": "data",
 "category": "RESOURCE_EXHAUSTED"

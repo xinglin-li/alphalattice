@@ -75,7 +75,8 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
         "alphalattice.foundation.market_data_ops.sources.contracts",
-        "alphalattice.foundation.market_data_ops.sources.providers"
+        "alphalattice.foundation.market_data_ops.sources.providers",
+        "alphalattice.foundation.market_data_ops.sources.local_file"
       ],
       "folds_in": [],
       "note": "Raw bar canonical hashing and its typed spelling-memo budget live with the existing publication projection hashes; storage imports the same functions.",
@@ -87,7 +88,7 @@
         "src/alphalattice/control/data_platform/readiness.py::build_workspace_readiness"
       ],
       "provider_composition_root": "alphalattice.foundation.market_data_ops.sources.providers.market_provider",
-      "provider_injection": "A non-None override is retained, including a falsey provider; defaults resolve once per Host owner from the admitted source profile."
+      "provider_injection": "A non-None override is retained, including a falsey provider. The Host data owner selects the workspace file capture when market-bars exists and otherwise uses the admitted source's default adapter. Workspace preparation shares the resulting provider."
     },
     "raw bar rebase": {
       "description": "A raw bar rebase records one split's price and volume factors so stored history and later reads apply the same adjustment.",
