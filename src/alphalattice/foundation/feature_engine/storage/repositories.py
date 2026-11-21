@@ -68,10 +68,8 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
     DailyPriceBasis,
     FeatureAdmissionBlocked,
-    action_set_hash,
     project_as_traded_series,
     project_research_series,
-    provider_adjusted_close_evidence_hash,
     provider_adjusted_ratio_diagnostics,
 )
 from alphalattice.foundation.market_data_ops.returns.sector_revision_identity import (
@@ -380,7 +378,10 @@ def projected_feature_rows(inputs: FeatureSourceInputs) -> list[dict[str, object
         if bars[0].session_date <= item.effective_date <= bars[-1].session_date
     )
     projected = project_research_series(
-        bars, scoped_actions, daily_price_basis=inputs.daily_price_basis
+        bars,
+        scoped_actions,
+        daily_price_basis=inputs.daily_price_basis,
+        action_digest=inputs.action_hash if len(scoped_actions) == len(inputs.actions) else None,
     )
     traded = (
         {
@@ -889,7 +890,7 @@ class FeatureStateRepository(WorkspaceRepository):
             allow_missing_adjusted=allow_missing_adjusted,
             as_traded=as_traded,
             raw_hash=raw_hash,
-            action_hash=action_set_hash(actions),
+            action_hash=market._action_set_digest(listing_id, actions),
         )
 
     def feature_source_inputs_by_listing(
@@ -996,7 +997,7 @@ class FeatureStateRepository(WorkspaceRepository):
                 allow_missing_adjusted=allow_missing_adjusted,
                 as_traded=as_traded,
                 raw_hash=raw_hashes[listing],
-                action_hash=action_set_hash(actions[listing]),
+                action_hash=market._action_set_digest(listing, actions[listing]),
             )
         return out
 
@@ -2577,8 +2578,8 @@ class FeatureStateRepository(WorkspaceRepository):
             ):
                 return None
             actions = self._market_data._current_actions(connection, listing_id, provider)
-            if receipt.action_set_hash != action_set_hash(
-                actions
+            if receipt.action_set_hash != self._market_data._action_set_digest(
+                listing_id, actions
             ) or receipt.action_evidence_hash != self._market_data._action_evidence_hash(
                 connection, listing_id=listing_id, provider=provider
             ):
@@ -2609,7 +2610,9 @@ class FeatureStateRepository(WorkspaceRepository):
             if (
                 not bars
                 or {item.session_date for item in bars} != {item.session_date for item in adjusted}
-                or provider_adjusted_close_evidence_hash(adjusted)
+                or self._market_data._adjusted_evidence_digest(
+                    listing_id, provider, receipt.history_start, receipt.history_end, adjusted
+                )
                 != receipt.provider_adjusted_close_evidence_hash
             ):
                 return None

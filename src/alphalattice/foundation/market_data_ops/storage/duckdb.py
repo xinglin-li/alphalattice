@@ -88,6 +88,13 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     _table_exists,
     _utc_aware,
 )
+from alphalattice.kernel.shared_kernel.bounded_memo import stage_digest
+
+
+def _evidence_number(value: float | None) -> object:
+    """Keep the JSON distinctions that ordinary numeric equality would collapse."""
+    return value.hex() if type(value) is float else (type(value), value)
+
 
 FeaturePersistenceTimingSink = Callable[[str, float], None]
 _ONBOARDING_BARS = ", ".join(item.name for item in fields(RawDailyBar))
@@ -4460,7 +4467,20 @@ class MarketDataRepository(WorkspaceRepository):
             """,
             [listing_id, provider],
         ).fetchall()
-        return _canonical_hash(mapping_in_force(rows, as_of_session))
+        return self._mapping_digest(listing_id, provider, as_of_session, rows)
+
+    def _mapping_digest(
+        self,
+        listing_id: str,
+        provider: str,
+        as_of_session: date,
+        rows: Sequence[tuple[Any, ...]],
+    ) -> str:
+        return stage_digest(
+            (self.path, "mapping", listing_id, provider, as_of_session),
+            mapping_in_force(rows, as_of_session),
+            _canonical_hash,
+        )
 
     def provider_mapping_revision(
         self, *, listing_id: str, provider: str, as_of_session: date
@@ -4501,18 +4521,12 @@ class MarketDataRepository(WorkspaceRepository):
         }
         for listing_id, *mapping in rows:
             grouped[str(listing_id)].append(tuple(mapping))
-        revisions: dict[str, str] = {}
-        for listing_id in ordered_ids:
-            mappings = grouped[listing_id]
-            if not mappings:
-                raise ValueError("listing has no provider symbol mapping")
-            active = [
-                row
-                for row in mappings
-                if row[1] <= as_of_session and (row[2] is None or row[2] >= as_of_session)
-            ]
-            revisions[listing_id] = _canonical_hash(active or mappings)
-        return revisions
+        return {
+            listing_id: self._mapping_digest(
+                listing_id, provider, as_of_session, grouped[listing_id]
+            )
+            for listing_id in ordered_ids
+        }
 
     def historical_revision_since(
         self,
@@ -4614,8 +4628,8 @@ class MarketDataRepository(WorkspaceRepository):
             connection, {listing_id: (provider, history_start, history_end)}, tables
         )[listing_id]
 
-    @staticmethod
     def _raw_evidence_hashes(
+        self,
         connection: duckdb.DuckDBPyConnection,
         ranges: Mapping[str, tuple[str, date, date]],
         tables: Mapping[str, str] = world_reads.WORKSPACE,
@@ -4658,7 +4672,11 @@ class MarketDataRepository(WorkspaceRepository):
             if provider == selected and start <= row[0] <= end:
                 revisions[listing].append(tuple(row))
         return {
-            listing: _canonical_hash({"current": current[listing], "revisions": revisions[listing]})
+            listing: stage_digest(
+                (self.path, "raw", listing, *ranges[listing]),
+                {"current": current[listing], "revisions": revisions[listing]},
+                _canonical_hash,
+            )
             for listing in scope
         }
 
@@ -4686,7 +4704,20 @@ class MarketDataRepository(WorkspaceRepository):
             """,
             [listing_id, provider],
         ).fetchall()
-        return _canonical_hash({"current": current, "revisions": revisions})
+        return self._action_evidence_digest(listing_id, provider, current, revisions)
+
+    def _action_evidence_digest(
+        self,
+        listing_id: str,
+        provider: str,
+        current: Sequence[tuple[object, ...]],
+        revisions: Sequence[tuple[object, ...]],
+    ) -> str:
+        return stage_digest(
+            (self.path, "actions", listing_id, provider),
+            {"current": current, "revisions": revisions},
+            _canonical_hash,
+        )
 
     @staticmethod
     def _adjusted_year_digests(values: Mapping[date, float]) -> dict[int, str]:
@@ -5360,15 +5391,15 @@ class MarketDataRepository(WorkspaceRepository):
                         for row in bars[listing]
                         if item.history_start <= row[0] <= item.history_end
                     ),
-                    mapping_revision=_canonical_hash(
-                        mapping_in_force(mappings[listing], item.as_of)
+                    mapping_revision=self._mapping_digest(
+                        listing, item.provider, item.as_of, mappings[listing]
                     ),
                     raw_digest=raw_digests[listing],
-                    action_evidence=_canonical_hash(
-                        {
-                            "current": [row[:4] for row in actions[listing]],
-                            "revisions": revisions[listing],
-                        }
+                    action_evidence=self._action_evidence_digest(
+                        listing,
+                        item.provider,
+                        [row[:4] for row in actions[listing]],
+                        revisions[listing],
                     ),
                 )
                 revision, receipt = self._reconcile_provider_adjusted_series(
@@ -5486,12 +5517,13 @@ class MarketDataRepository(WorkspaceRepository):
         finally:
             connection.unregister("action_audit_receipt_stage")
 
-    @staticmethod
     def _audit_receipt(
+        self,
         manifest: UniverseManifest,
         item: ActionAuditObservation,
         *,
         bars: tuple[RawDailyBar, ...],
+        active: tuple[CorporateActionEvent, ...],
         adjusted: Sequence[ProviderAdjustedClosePoint] | None = None,
         **evidence: Any,
     ) -> ActionAuditReceipt:
@@ -5507,7 +5539,21 @@ class MarketDataRepository(WorkspaceRepository):
             raise ActionAuditScopeInsufficient(
                 "adjusted-close audit does not exactly cover canonical sessions"
             )
-        payload = receipt_payload(manifest, item, bars=bars, **evidence)
+        payload = receipt_payload(
+            manifest,
+            item,
+            bars=bars,
+            active=active,
+            action_set_digest=self._action_set_digest(item.listing_id, active),
+            adjusted_digest=self._adjusted_evidence_digest(
+                item.listing_id,
+                item.provider,
+                item.history_start,
+                item.history_end,
+                item.adjusted_closes,
+            ),
+            **evidence,
+        )
         return ActionAuditReceipt(_canonical_hash(payload), **payload)
 
     def reusable_action_audit_receipt(
@@ -5550,7 +5596,7 @@ class MarketDataRepository(WorkspaceRepository):
                     return None
                 candidates = self._action_audit_candidates(
                     connection,
-                    listing_id=listing_id,
+                    listings=(listing_id,),
                     provider=provider,
                     requested_as_of=requested_as_of,
                     manifest_revision=None
@@ -5629,14 +5675,14 @@ class MarketDataRepository(WorkspaceRepository):
         self,
         connection: duckdb.DuckDBPyConnection,
         *,
-        listing_id: str,
+        listings: Sequence[str],
         provider: str,
         requested_as_of: date,
         manifest_revision: str | None,
     ) -> tuple[ActionAuditReceipt, ...]:
-        """Receipts for one listing and session, newest first; one manifest's or any."""
+        """Receipts by listing for one session, newest first; one manifest's or any."""
         manifest_clause = "" if manifest_revision is None else "AND receipt.manifest_revision = ?"
-        parameters: list[object] = [listing_id, provider, requested_as_of]
+        parameters: list[object] = [list(listings), provider, requested_as_of]
         if manifest_revision is not None:
             parameters.append(manifest_revision)
         rows = connection.execute(
@@ -5652,10 +5698,10 @@ class MarketDataRepository(WorkspaceRepository):
                    receipt.first_adjusted_close_mismatch_session,
                    receipt.diagnostic_policy_hash, receipt.observed_at
             FROM action_audit_receipt AS receipt
-            WHERE receipt.listing_id = ? AND receipt.provider = ?
+            WHERE receipt.listing_id IN (SELECT unnest(?::VARCHAR[])) AND receipt.provider = ?
               AND receipt.requested_as_of = ?
               {manifest_clause}
-            ORDER BY receipt.observed_at DESC, receipt.receipt_hash DESC
+            ORDER BY receipt.listing_id, receipt.observed_at DESC, receipt.receipt_hash DESC
             """,
             parameters,
         ).fetchall()
@@ -5671,66 +5717,110 @@ class MarketDataRepository(WorkspaceRepository):
         history_start: date,
         history_end: date,
         tables: Mapping[str, str] = world_reads.WORKSPACE,
+        preloaded: Mapping[str, dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        """Read the listing's current bytes over one audited range.
+        """The listing's evidence from this snapshot over its receipt's exact range."""
+        if preloaded is None:
+            preloaded = self._action_audit_evidence_batch(
+                connection,
+                (listing_id,),
+                provider,
+                requested_as_of,
+                history_start,
+                history_end,
+                tables,
+            )
+        return preloaded[listing_id]
 
-        The mapping revision as of the requested session, the raw evidence
-        digest and the provider adjusted-close evidence digest over exactly
-        ``history_start..history_end`` (``None`` when the adjusted series does
-        not cover that range's sessions exactly), and the current action set
-        and action evidence, which every receipt digests without a range.
-        """
-        raw_sessions = {
-            item[0]
-            for item in connection.execute(
+    def _action_audit_evidence_batch(
+        self,
+        connection: duckdb.DuckDBPyConnection,
+        listings: Sequence[str],
+        provider: str,
+        requested_as_of: date,
+        history_start: date,
+        history_end: date,
+        tables: Mapping[str, str],
+    ) -> dict[str, dict[str, object]]:
+        """Read each evidence relation once for receipts with the same provider and range."""
+
+        def rows(
+            relation: str, columns: str, order: str, *, ranged: bool = False
+        ) -> dict[str, list[tuple[Any, ...]]]:
+            where = " AND session_date BETWEEN ? AND ?" if ranged else ""
+            params: list[object] = [list(listings), provider]
+            if ranged:
+                params.extend((history_start, history_end))
+            grouped: dict[str, list[tuple[Any, ...]]] = {listing: [] for listing in listings}
+            for listing, *row in connection.execute(
                 f"""
-                SELECT session_date FROM {tables["bars"]}
-                WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
+                SELECT listing_id, {columns} FROM {tables[relation]}
+                WHERE listing_id IN (SELECT unnest(?::VARCHAR[])) AND provider = ?{where}
+                ORDER BY listing_id, {order}
                 """,
-                [listing_id, provider, history_start, history_end],
-            ).fetchall()
-        }
-        adjusted_rows = connection.execute(
-            f"""
-            SELECT session_date, adjusted_close FROM {tables["adjusted"]}
-            WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
-            ORDER BY session_date
-            """,
-            [listing_id, provider, history_start, history_end],
-        ).fetchall()
-        adjusted_points = tuple(
-            ProviderAdjustedClosePoint(listing_id, provider, session, float(adjusted_close))
-            for session, adjusted_close in adjusted_rows
+                params,
+            ).fetchall():
+                grouped[listing].append(tuple(row))
+            return grouped
+
+        sessions = rows("bars", "session_date", "session_date", ranged=True)
+        adjusted = rows("adjusted", "session_date, adjusted_close", "session_date", ranged=True)
+        mappings = rows(
+            "mappings",
+            "provider_symbol, effective_from, effective_to, lifecycle_state",
+            "effective_from",
         )
-        adjusted_digest = (
-            provider_adjusted_close_evidence_hash(adjusted_points)
-            if {item.session_date for item in adjusted_points} == raw_sessions
-            else None
+        raw = self._raw_evidence_hashes(
+            connection,
+            {listing: (provider, history_start, history_end) for listing in listings},
+            tables,
         )
-        return {
-            "mapping_revision": self._mapping_revision(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                as_of_session=requested_as_of,
-                tables=tables,
-            ),
-            "raw_evidence_hash": self._raw_evidence_hash(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                history_start=history_start,
-                history_end=history_end,
-                tables=tables,
-            ),
-            "action_set_hash": action_set_hash(
-                self._current_actions(connection, listing_id, provider, tables)
-            ),
-            "action_evidence_hash": self._action_evidence_hash(
-                connection, listing_id=listing_id, provider=provider, tables=tables
-            ),
-            "provider_adjusted_close_evidence_hash": adjusted_digest,
-        }
+        active = rows(
+            "actions",
+            "status, effective_date, action_kind, new_shares_per_old_share, cash_amount, "
+            "provisional, provenance",
+            "effective_date, action_kind",
+        )
+        current = rows(
+            "action_evidence",
+            "effective_date, action_kind, payload_hash, status",
+            "effective_date, action_kind",
+        )
+        revisions = rows(
+            "action_revisions",
+            "effective_date, action_kind, revision_kind, prior_payload_hash, next_payload_hash",
+            "effective_date, action_kind, revision_id",
+        )
+        result = {}
+        for listing in listings:
+            points = tuple(
+                ProviderAdjustedClosePoint(listing, provider, session, float(close))
+                for session, close in adjusted[listing]
+            )
+            actions = tuple(
+                CorporateActionEvent(listing, provider, *row[1:])
+                for row in active[listing]
+                if row[0] == "ACTIVE"
+            )
+            result[listing] = {
+                "mapping_revision": self._mapping_digest(
+                    listing, provider, requested_as_of, mappings[listing]
+                ),
+                "raw_evidence_hash": raw[listing],
+                "action_set_hash": self._action_set_digest(listing, actions),
+                "action_evidence_hash": self._action_evidence_digest(
+                    listing, provider, current[listing], revisions[listing]
+                ),
+                "provider_adjusted_close_evidence_hash": (
+                    self._adjusted_evidence_digest(
+                        listing, provider, history_start, history_end, points
+                    )
+                    if {point.session_date for point in points}
+                    == {session for (session,) in sessions[listing]}
+                    else None
+                ),
+            }
+        return result
 
     @staticmethod
     def _action_audit_receipt_current(
@@ -5802,12 +5892,16 @@ class MarketDataRepository(WorkspaceRepository):
         """
         return next(
             self._rebindable_action_audit_receipts(
-                connection,
-                listing_id=listing_id,
+                self._action_audit_candidates(
+                    connection,
+                    listings=(listing_id,),
+                    provider=provider,
+                    requested_as_of=requested_as_of,
+                    manifest_revision=manifest_revision,
+                ),
                 provider=provider,
                 requested_as_of=requested_as_of,
                 now=now,
-                manifest_revision=manifest_revision,
                 receipt_hash=receipt_hash,
                 candidate_hashes=candidate_hashes,
                 allow_historical=allow_historical,
@@ -5819,69 +5913,84 @@ class MarketDataRepository(WorkspaceRepository):
 
     def _rebindable_action_audit_receipts(
         self,
-        connection: duckdb.DuckDBPyConnection,
+        candidates: Iterable[ActionAuditReceipt],
         *,
-        listing_id: str,
         provider: str,
         requested_as_of: date,
         now: datetime,
-        manifest_revision: str | None,
         receipt_hash: str | None = None,
         candidate_hashes: frozenset[str] | None = None,
         allow_historical: bool = False,
         verified: frozenset[str] = frozenset(),
         cutoff_us: int | None = None,
+        first_per_listing: bool = True,
     ) -> Iterator[ActionAuditReceipt]:
-        """Every candidate receipt that still proves its own range, in the candidates' order.
+        """Validate receipts in each listing's candidate order, sharing equal-range reads.
 
-        Each receipt is judged on its own recorded range: neither a full-history nor a rolling one,
-        nor a later one over the same range, stands in for another, since bytes may move and return.
-        Byte-free checks go first and one range's evidence is read once: one digest per range. A
-        receipt in ``verified``, a copy its caller bound this cycle from bytes it had just
-        verified, needs none.
+        Each round consumes a candidate per remaining listing. The reader snapshot retains
+        its evidence per listing and recorded range. The opportunistic binder asks for all
+        valid candidates so a later audit never displaces a still-valid older scope.
         """
-        candidates = self._action_audit_candidates(
-            connection,
-            listing_id=listing_id,
-            provider=provider,
-            requested_as_of=requested_as_of,
-            manifest_revision=manifest_revision,
-        )
-        evidence_by_range: dict[tuple[date, date], dict[str, object]] = {}
+        eligible: dict[str, list[ActionAuditReceipt]] = {}
+        for receipt in candidates:
+            if receipt_hash is not None and receipt.receipt_hash != receipt_hash:
+                continue
+            if candidate_hashes is not None and receipt.receipt_hash not in candidate_hashes:
+                continue
+            if receipt.history_end < requested_as_of or not self._action_audit_receipt_current(
+                receipt, now=now, allow_historical=allow_historical
+            ):
+                continue
+            eligible.setdefault(receipt.listing_id, []).append(receipt)
+        if not eligible:
+            return
+        pending = {listing: iter(receipts) for listing, receipts in eligible.items()}
+        readouts: dict[tuple[date, date], dict[str, dict[str, object]]] = {}
         with self.market_reads(
             cutoff_us=world_reads.cutoff(now) if cutoff_us is None else cutoff_us,
-            listings=(listing_id,),
+            listings=tuple(pending),
         ) as (reader, tables):
-            for receipt in candidates:
-                if receipt_hash is not None and receipt.receipt_hash != receipt_hash:
-                    continue
-                if candidate_hashes is not None and receipt.receipt_hash not in candidate_hashes:
-                    continue
-                if receipt.history_end < requested_as_of:
-                    continue
-                if not self._action_audit_receipt_current(
-                    receipt, now=now, allow_historical=allow_historical
-                ):
-                    continue
-                if receipt.receipt_hash in verified:
-                    yield receipt
-                    continue
-                audited = (receipt.history_start, receipt.history_end)
-                evidence = evidence_by_range.get(audited)
-                if evidence is None:
-                    evidence = self._action_audit_evidence(
-                        reader,
-                        listing_id=listing_id,
-                        provider=provider,
-                        requested_as_of=requested_as_of,
-                        history_start=receipt.history_start,
-                        history_end=receipt.history_end,
-                        tables=tables,
-                    )
-                    evidence_by_range[audited] = evidence
-                if self._action_audit_receipt_verifies(
-                    receipt, evidence, now=now, allow_historical=allow_historical
-                ):
+            while pending:
+                accepted: list[ActionAuditReceipt] = []
+                scopes: dict[tuple[date, date], dict[str, ActionAuditReceipt]] = {}
+                for listing, receipts in tuple(pending.items()):
+                    receipt = next(receipts, None)
+                    if receipt is None:
+                        pending.pop(listing)
+                    elif receipt.receipt_hash in verified:
+                        accepted.append(receipt)
+                    else:
+                        audited = (receipt.history_start, receipt.history_end)
+                        scopes.setdefault(audited, {})[listing] = receipt
+
+                for (start, end), group in scopes.items():
+                    evidence = readouts.setdefault((start, end), {})
+                    unread = tuple(listing for listing in group if listing not in evidence)
+                    if unread:
+                        evidence.update(
+                            self._action_audit_evidence_batch(
+                                reader, unread, provider, requested_as_of, start, end, tables
+                            )
+                        )
+                    for listing, receipt in group.items():
+                        value = self._action_audit_evidence(
+                            reader,
+                            listing_id=listing,
+                            provider=provider,
+                            requested_as_of=requested_as_of,
+                            history_start=start,
+                            history_end=end,
+                            tables=tables,
+                            preloaded=evidence,
+                        )
+                        if self._action_audit_receipt_verifies(
+                            receipt, value, now=now, allow_historical=allow_historical
+                        ):
+                            accepted.append(receipt)
+
+                for receipt in accepted:
+                    if first_per_listing:
+                        pending.pop(receipt.listing_id)
                     yield receipt
 
     @staticmethod
@@ -5938,10 +6047,10 @@ class MarketDataRepository(WorkspaceRepository):
             # (freshness, completeness, policy) are the only pruning before
             # the bytes are read, so nothing that could verify today is left
             # unjudged.
-            candidates: dict[str, set[str]] = {}
-            for row in connection.execute(
-                """
-                    SELECT other.listing_id, other.receipt_hash FROM action_audit_receipt AS other
+            candidates = connection.execute(
+                f"""
+                    SELECT {", ".join(f"other.{name}" for name in _RECEIPT_COLUMNS)}
+                    FROM action_audit_receipt AS other
                     WHERE other.provider = ? AND other.requested_as_of = ?
                       AND other.manifest_revision != ?
                       AND NOT EXISTS (
@@ -5968,6 +6077,7 @@ class MarketDataRepository(WorkspaceRepository):
                                 IS NOT DISTINCT FROM other.diagnostic_policy_hash
                             AND bound.observed_at = other.observed_at
                       )
+                    ORDER BY other.listing_id, other.observed_at DESC, other.receipt_hash DESC
                     """,
                 [
                     target_manifest.profile.provider,
@@ -5975,32 +6085,20 @@ class MarketDataRepository(WorkspaceRepository):
                     target_manifest.revision_sha256,
                     target_manifest.revision_sha256,
                 ],
-            ).fetchall():
-                candidates.setdefault(str(row[0]), set()).add(str(row[1]))
-            for listing in target_manifest.listings:
-                new_evidence = candidates.get(listing.listing_id)
-                if not new_evidence:
-                    continue
-                # Only the evidence found new is judged (a receipt whose copy
-                # the manifest already holds would be chosen again by its
-                # order and bind nothing), and every receipt of it that
-                # proves its own range is bound: the manifest inherits the
-                # full-history and the rolling evidence alike, so its
-                # acquisition-budget question is answered by whichever the
-                # ancestor holds.
-                prepared.extend(
-                    self._rebound_receipt(receipt, target_manifest.revision_sha256)
-                    for receipt in self._rebindable_action_audit_receipts(
-                        connection,
-                        listing_id=listing.listing_id,
-                        provider=target_manifest.profile.provider,
-                        requested_as_of=requested_as_of,
-                        now=now,
-                        manifest_revision=None,
-                        candidate_hashes=frozenset(new_evidence),
-                        cutoff_us=cutoff_us,
-                    )
-                )
+            ).fetchall()
+            listing_ids = {listing.listing_id for listing in target_manifest.listings}
+            reusable = self._rebindable_action_audit_receipts(
+                (ActionAuditReceipt(*row) for row in candidates if row[1] in listing_ids),
+                provider=target_manifest.profile.provider,
+                requested_as_of=requested_as_of,
+                now=now,
+                cutoff_us=cutoff_us,
+                first_per_listing=False,
+            )
+            prepared = [
+                self._rebound_receipt(receipt, target_manifest.revision_sha256)
+                for receipt in reusable
+            ]
             if prepared:
                 self._insert_rebound_receipts(connection, prepared)
         finally:
@@ -6207,20 +6305,29 @@ class MarketDataRepository(WorkspaceRepository):
         if not target_ids.issubset(source_ids):
             raise ValueError("target manifest is not a subset of source audit scope")
         now = _utc_naive(now)
-        prepared: list[ActionAuditReceipt] = []
         connection = self._connect()
         try:
-            for listing in target_manifest.listings:
-                receipt = self._rebindable_action_audit_receipt(
-                    connection,
-                    listing_id=listing.listing_id,
-                    provider=target_manifest.profile.provider,
+            provider = target_manifest.profile.provider
+            selected = {
+                receipt.listing_id: receipt
+                for receipt in self._rebindable_action_audit_receipts(
+                    self._action_audit_candidates(
+                        connection,
+                        listings=tuple(item.listing_id for item in target_manifest.listings),
+                        provider=provider,
+                        requested_as_of=requested_as_of,
+                        manifest_revision=source_manifest.revision_sha256,
+                    ),
+                    provider=provider,
                     requested_as_of=requested_as_of,
                     now=now,
-                    manifest_revision=source_manifest.revision_sha256,
-                    verified=verified,
                     cutoff_us=cutoff_us,
+                    verified=verified,
                 )
+            }
+            prepared = []
+            for listing in target_manifest.listings:
+                receipt = selected.get(listing.listing_id)
                 if receipt is None:
                     raise ValueError(
                         "source manifest has no reusable action-audit receipt: "
@@ -6850,7 +6957,50 @@ class MarketDataRepository(WorkspaceRepository):
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> str:
         """Return the exact active corporate-action identity for one listing."""
-        return action_set_hash(self.actions(listing_id, _connection=_connection))
+        return self._action_set_digest(
+            listing_id, self.actions(listing_id, _connection=_connection)
+        )
+
+    def _action_set_digest(self, listing_id: str, actions: Sequence[CorporateActionEvent]) -> str:
+        inputs = tuple(
+            (
+                item.listing_id,
+                item.provider,
+                item.effective_date,
+                item.action_kind,
+                _evidence_number(item.new_shares_per_old_share),
+                _evidence_number(item.cash_amount),
+                item.provisional,
+                item.provenance,
+            )
+            for item in actions
+        )
+        return stage_digest(
+            (self.path, "action set", listing_id), inputs, lambda _: action_set_hash(actions)
+        )
+
+    def _adjusted_evidence_digest(
+        self,
+        listing_id: str,
+        provider: str,
+        history_start: date,
+        history_end: date,
+        points: Sequence[ProviderAdjustedClosePoint],
+    ) -> str:
+        inputs = tuple(
+            (
+                item.listing_id,
+                item.provider,
+                item.session_date,
+                _evidence_number(item.adjusted_close),
+            )
+            for item in points
+        )
+        return stage_digest(
+            (self.path, "adjusted audit", listing_id, provider, history_start, history_end),
+            inputs,
+            lambda _: provider_adjusted_close_evidence_hash(points),
+        )
 
     @staticmethod
     def _provider_for_listing(

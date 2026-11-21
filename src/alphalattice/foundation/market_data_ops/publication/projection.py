@@ -251,6 +251,7 @@ def project_research_series(
     actions: Iterable[CorporateActionEvent],
     *,
     daily_price_basis: DailyPriceBasis = "unadjusted",
+    action_digest: str | None = None,
 ) -> tuple[ProjectedBar, ...]:
     """Project a full feature series with the last session as the TR anchor.
 
@@ -259,7 +260,8 @@ def project_research_series(
     already-written Parquet snapshot.  ``unadjusted`` inputs require dynamic
     split projection. ``split_adjusted`` inputs (the current yfinance contract)
     already use a current share basis, so applying an action split again would
-    corrupt prices and volume; their OHLCV is projected unchanged.
+    corrupt prices and volume; their OHLCV is projected unchanged. A supplied
+    action digest must describe the exact events passed as actions.
     """
     ordered_bars = tuple(sorted(bars, key=lambda item: item.session_date))
     if not ordered_bars:
@@ -280,7 +282,7 @@ def project_research_series(
         if daily_price_basis == "unadjusted"
         else {session: 1.0 for session in multipliers}
     )
-    digest = action_set_hash(ordered_actions)
+    digest = action_set_hash(ordered_actions) if action_digest is None else action_digest
 
     later_multiplier = 1.0
     split_adjusted: list[tuple[float, float, float, float, float]] = [

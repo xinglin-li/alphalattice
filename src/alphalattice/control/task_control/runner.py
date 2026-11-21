@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
 from alphalattice.kernel.data_layer.history import held
+from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
@@ -174,6 +175,7 @@ def _spanned[T](
     stage_id: str,
     phase: str,
     call: Callable[[], T],
+    digests: StageDigests | None = None,
 ) -> T:
     """Run one phase of a stage inside a span ledger and keep what it spent its time on (A4).
 
@@ -181,7 +183,7 @@ def _spanned[T](
     """
     ledger: SpanLedger | None = None
     try:
-        with collect() as ledger:
+        with stage_digests(digests), collect() as ledger:
             return call()
     finally:
         if ledger is not None and ledger.readout_value is not None:
@@ -218,6 +220,7 @@ class _WorkPool:
         )
         self._running: dict[Future[StageExecutionResult], WorkItemDefinition] = {}
         self._finished: list[tuple[WorkItemDefinition, StageExecutionResult]] = []
+        self.digests: dict[str, StageDigests] = {}
 
     def __len__(self) -> int:
         return len(self._running) + len(self._finished)
@@ -738,6 +741,8 @@ class TaskControlRunner:
             # This attempt, after the stage's interrupted ones in a row.
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
             refused = None if self.stage_gate is None else self.stage_gate(task)
+            digests: StageDigests = {}
+            pool.digests[definition.stage_id] = digests
             pool.start(
                 definition,
                 partial(
@@ -764,6 +769,7 @@ class TaskControlRunner:
                         ),
                         None if context.pool.width > 1 else self.stage_scope,
                     ),
+                    digests,
                 ),
             )
         if not pool:
@@ -900,6 +906,7 @@ class TaskControlRunner:
                 work_item=definition,
                 evidence=result.evidence,
             ),
+            context.pool.digests.pop(definition.stage_id),
         )
         if verified != result.evidence:
             raise RuntimeError("stage verifier changed the proposed evidence identity")

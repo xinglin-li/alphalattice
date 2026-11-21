@@ -20,8 +20,6 @@ import pyarrow as pa
 
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
-    action_set_hash,
-    provider_adjusted_close_evidence_hash,
     provider_adjusted_ratio_diagnostics,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -109,6 +107,8 @@ def receipt_payload(
     mapping_revision: str,
     raw_digest: str,
     action_evidence: str,
+    action_set_digest: str,
+    adjusted_digest: str,
 ) -> dict[str, object]:
     """One observation's receipt payload over bars that cover its adjusted closes exactly."""
     diagnostics = provider_adjusted_ratio_diagnostics(
@@ -131,11 +131,9 @@ def receipt_payload(
         "history_start": item.history_start,
         "history_end": item.history_end,
         "raw_evidence_hash": raw_digest,
-        "action_set_hash": action_set_hash(active),
+        "action_set_hash": action_set_digest,
         "action_evidence_hash": action_evidence,
-        "provider_adjusted_close_evidence_hash": provider_adjusted_close_evidence_hash(
-            item.adjusted_closes
-        ),
+        "provider_adjusted_close_evidence_hash": adjusted_digest,
         "max_adjusted_close_difference_bps": max(
             (entry.difference_bps for entry in diagnostics), default=0.0
         ),
