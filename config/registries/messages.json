@@ -107,6 +107,10 @@
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The update's feature result does not match its recorded score plan or update plan, so the update cannot continue. Read the update and its Task, resolve the binding mismatch, then cancel the Task and plan the update again.", "zh-CN": "更新的特征结果与所记录的评分计划或更新计划不匹配，因此无法继续更新。请查看更新及其任务，解决绑定不匹配的问题，然后取消任务并重新规划更新。"}
     },
+    "research_update.stage_missing": {
+      "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": ["subject"],
+      "words": {"en": "The update has not reached the {subject} stage. Wait for its Task, then read again.", "zh-CN": "更新尚未到达 {subject} 阶段。请等待该任务完成后再读取。"}
+    },
     "retrieval.legacy_canary_rebuild": {
       "owner": "alphalattice.kernel.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
       "words": {"en": "the {subject} session's canary differs from the sealed canary at {subject} intra-op threads, the CPU budget's share: this machine's runtime moves a retrieval number; rebuild the index with the current int8 recipe", "zh-CN": "{subject} 会话在 CPU 预算分配的 {subject} 个运算线程下，其金丝雀结果与封存值不同：此机器的运行环境改变了检索数值；请使用当前的 int8 配方重建索引。"}

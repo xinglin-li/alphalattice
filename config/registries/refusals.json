@@ -15927,6 +15927,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Required installed, stored, or bound evidence state cannot satisfy _step; repair/setup/replan before retry. IF value is not None and (value.plan_hash != plan.content_hash or value.step != step)"
 },
+"research_update.stage_missing": {
+"owner": "research_update",
+"category": "UNAVAILABLE",
+"classification_note": "The requested update stage has yet to be committed. Wait for the update Task, then read again."
+},
 "research_update.stage_unknown": {
 "owner": "research_update",
 "category": "INTERNAL",

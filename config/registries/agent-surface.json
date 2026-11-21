@@ -60648,6 +60648,7 @@
     "refusal:research_update.source_changed_during_seal": {},
     "refusal:research_update.source_changed_requires_new_plan": {},
     "refusal:research_update.stage_binding_invalid": {},
+    "refusal:research_update.stage_missing": {},
     "refusal:research_update.stage_unknown": {},
     "refusal:research_update.strategy_package_required": {},
     "refusal:research_update.target_before_publication": {},
