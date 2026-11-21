@@ -2791,6 +2791,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "testing.private_support_import_requires_owned_roots": {
+      "description": "Directly importing the evaluator's test support requires both an isolated data root and an isolated backup root, even when its runner was never started.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
     "testing.reuse_pin_fast_check": {
       "description": "The fast lane runs the reviewed reuse frontier check on changed pinned source files and names how to refresh a moved pin.",
       "owner": "devtools.testing",

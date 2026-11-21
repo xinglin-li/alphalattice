@@ -17,6 +17,7 @@ from alphalattice.kernel.data_layer import history
 from devtools.testing import isolation
 from tests import conftest
 from tests import pytest_environment as environment
+from tests.structural.isolation_support import check_support_roots
 
 TEST_SCOPE = "whole-tree"  # tests/conftest.py runs these guards around every test
 PROBE = "tests/unit/test_probe.py::test_case"
@@ -48,7 +49,6 @@ ENTRIES = {  # a helper a plain script can run, and whether its run names roots 
 }
 PACKAGES = (
     "_support",
-    "agent_eval",
     "alternative_evidence_desk",
     "feature_engine",
     "feature_input_gateway",
@@ -104,24 +104,7 @@ def test_a_test_that_leaks_its_interpreter_or_reaches_a_person_root_fails_by_nam
 
         package, root, named = SUPPORT_ROOTS[case]
         module = _support if package == "_support" else importlib.import_module(f"tests.{package}")
-        base = tmp_path / "person"
-        monkeypatch.setenv("LOCALAPPDATA", str(base))
-        monkeypatch.setenv("XDG_DATA_HOME", str(base))
-        default = base / ("AlphaLattice" if os.name == "nt" else "alphalattice")
-        variable = f"ALPHALATTICE_{root}_ROOT"
-        monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "data"))
-        monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
-        if named == "unset":
-            monkeypatch.delenv(variable, raising=False)
-        else:
-            monkeypatch.setenv(variable, str(default if named == "default" else tmp_path / "own"))
-        if named == "owned":
-            importlib.reload(module)
-        else:
-            with pytest.raises(
-                RuntimeError, match=rf"tests\.support_{root.lower()}_root_unisolated"
-            ):
-                importlib.reload(module)
+        check_support_roots(module, root, named, tmp_path, monkeypatch)
         return
     if case in ENTRIES:
         from tests.researcher_methodology_surface import real_workspace

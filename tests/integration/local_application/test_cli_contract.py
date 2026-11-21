@@ -16,6 +16,7 @@ import sys
 import tempfile
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -25,7 +26,9 @@ import pytest
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application import cli, client, native_setup
 from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
@@ -47,6 +50,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.shared_kernel import spawn
 from devtools.evaluation.forms import Scenario
+from tests._support.history_fixtures import recording_history as recording_history
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
     _cli,
@@ -121,19 +125,34 @@ _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"}
     "failure", ["task_control.queue_full", "TASK_STAGE_RAISED:private-content"]
 )
 def test_problem_report_projects_real_activity_without_private_values(
-    live, tmp_path, monkeypatch, capsys, failure
+    recording_history, tmp_path, monkeypatch, capsys, request, failure
 ) -> None:
     """A local report keeps replay facts and excludes private ledger and doctor values."""
-    private = [str(live.workspace), "private-holdings", "private-content"]
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    activity = WorkspaceActivity(
+        workspace=workspace,
+        workspace_id=recording_history,
+        gate=WorkspaceMutationGate(),
+        instance="problem-report",
+    )
+    request.addfinalizer(activity.close)
+
+    def local_client(path: Path, *, timeout: float) -> SimpleNamespace:
+        assert path == workspace and timeout > 0
+        return SimpleNamespace(activity_recent=activity.recent)
+
+    monkeypatch.setattr(native_setup, "LocalResearchClient", local_client)
+    private = [str(workspace), "private-holdings", "private-content"]
     private += [str(uuid4()), "987654.321"]
-    request = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
-    span = live.activity.entered(request, caller="EXTERNAL_AUTOMATION")
+    operation = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
+    span = activity.entered(operation, caller="EXTERNAL_AUTOMATION")
     assert span is not None
     answer = dict(status="REFUSED", failure_code=failure, next_action="READ_TASK")
     answer.update(task_id=private[3], holdings=private[1], figure=float(private[4]))
     answer.update(file_contents=private[2], conversation=private[2], workspace=private[0])
     answer["next_requests"] = {"retry": {"operation": "WORKSPACE_SHOW", "file": private[0]}}
-    live.activity.returned(span, answer)
+    activity.returned(span, answer)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_THREAD_ID", "test-report-session")
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -148,7 +167,7 @@ def test_problem_report_projects_real_activity_without_private_values(
         args = ["--lang", language, "problem", "report", "--output", str(saved)]
         sentence = "Report the WORKSPACE_SHOW problem to the developers."
         args += ["--sentence", sentence, "--expected-route", "WORKSPACE_SHOW"]
-        code, shown, _ = _inprocess_cli(live.workspace, *args, capsys=capsys)
+        code, shown, _ = _inprocess_cli(workspace, *args, capsys=capsys)
         expected = (0, "PROBLEM_REPORT", "PROBLEM_REPORT")
         assert (code, shown["operation"], shown["status"]) == expected
         report = json.loads(saved.read_text("utf-8"))

@@ -92,10 +92,6 @@ STRICT_READERS = {
         "AlternativeEvidenceDocumentTaskAdapter",
         "_carried_index completed_unit run_tasks prepared_receipts",
     ),
-    "evidence/alternative_evidence/storage/inventory.py": (
-        "EvidenceStorageInventory",
-        "generation_readers",
-    ),
     "interface/local_application/dispatcher.py": (
         "LocalBackgroundDispatcher",
         # Idle expiry must prove no owned Task still needs the Host from complete authority.
