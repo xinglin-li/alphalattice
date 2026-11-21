@@ -650,7 +650,16 @@ def test_executor_creation_and_process_start_refusals_publish_nothing(tmp_path: 
     assert raised.value.__cause__ is partial_start_error
     assert start_attempts == 2
     assert len(started_pids) == 1
-    assert all(not psutil.pid_exists(pid) for pid in started_pids)
+
+    def started(pid: int) -> list[psutil.Process]:
+        try:
+            return [psutil.Process(pid)]
+        except psutil.NoSuchProcess:
+            return []
+
+    # The worker that started must have exited; it is given a bound to finish its exit.
+    running = psutil.wait_procs([p for pid in started_pids for p in started(pid)], timeout=10)[1]
+    assert running == []
     assert artifact_files() == before
 
 
