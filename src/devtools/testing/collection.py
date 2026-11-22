@@ -1047,23 +1047,37 @@ def pytest_collection(session: Any) -> Any:
 
 
 PAID_AGENT, PAID_RUN = "paid_agent", "ALPHALATTICE_PAID_AGENT_RUN"
+PERFORMANCE, PERFORMANCE_RUN = "performance", "ALPHALATTICE_PERFORMANCE_RUN"
+ON_REQUEST = {PAID_AGENT: PAID_RUN, PERFORMANCE: PERFORMANCE_RUN}
 
 
-def deselect_paid(config: Any, items: list[Any]) -> None:
-    """No stage, queue, nightly or full run selects a paid agent run: it spends money on a model
-    turn, so only an explicit command that sets ALPHALATTICE_PAID_AGENT_RUN=1 runs it."""
-    if os.environ.get(PAID_RUN) == "1":
-        return
-    paid = [item for item in items if item.get_closest_marker(PAID_AGENT) is not None]
-    if paid:
-        config.hook.pytest_deselected(items=paid)
-        items[:] = [item for item in items if item.get_closest_marker(PAID_AGENT) is None]
+def deselect_on_request(config: Any, items: list[Any]) -> None:
+    """No stage, queue, nightly or full run selects a test only an explicit command runs: a paid
+    agent run spends money on a model turn, and a performance row measures only in a run of its
+    own. Each runs when its variable is 1; a performance run is refused unless it is serial with
+    pytest-benchmark loaded, since the plugin disables its measurement under xdist."""
+    for marker, variable in ON_REQUEST.items():
+        held = [item for item in items if item.get_closest_marker(marker) is not None]
+        if not held:
+            continue
+        if os.environ.get(variable) != "1":
+            config.hook.pytest_deselected(items=held)
+            items[:] = [item for item in items if item.get_closest_marker(marker) is None]
+        elif marker == PERFORMANCE and (
+            not config.pluginmanager.hasplugin("benchmark")
+            or config.getoption("dist", "no") != "no"
+            or "PYTEST_XDIST_WORKER" in os.environ
+        ):
+            raise pytest.UsageError(
+                "performance.serial_run_required: run the performance rows alone, with "
+                "`uv run --group performance pytest -p no:xdist -m performance`"
+            )
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
-    deselect_paid(config, items)
+    deselect_on_request(config, items)
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
     floor = sizes.floor_mode(lane)
     changed = changed_paths(floor=floor) if lane in {"merge", "fast"} else None

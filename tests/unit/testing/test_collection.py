@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -97,22 +98,42 @@ def test_worker_crash_report_carries_the_exit_and_fault_stack(tmp_path, monkeypa
 
 
 @pytest.mark.proves("testing.paid_agent_runs_only_on_request")
-def test_a_paid_agent_test_runs_only_when_the_run_asks_for_it(monkeypatch):
-    """No stage, queue, nightly or full run selects a model turn that spends money."""
-    marked = {"paid": True, "free": False}
+@pytest.mark.parametrize(
+    ("marker", "under_xdist"),
+    [
+        pytest.param(collection.PAID_AGENT, nullcontext, id="paid-agent"),
+        pytest.param(
+            collection.PERFORMANCE,
+            lambda: pytest.raises(pytest.UsageError, match="serial_run_required"),
+            id="performance-serial-only",
+        ),
+    ],
+)
+def test_a_paid_agent_test_runs_only_when_the_run_asks_for_it(monkeypatch, marker, under_xdist):
+    """No stage, queue, nightly or full run selects a model turn that spends money, or a
+    performance row, which measures only in a serial run with pytest-benchmark loaded."""
+    marked = {"held": True, "free": False}
     items = [
-        SimpleNamespace(name=name, get_closest_marker=lambda mark, paid=paid: paid or None)
-        for name, paid in marked.items()
+        SimpleNamespace(
+            name=name, get_closest_marker=lambda mark, held=held: (held and mark == marker) or None
+        )
+        for name, held in marked.items()
     ]
     dropped = []
     config = SimpleNamespace(
-        hook=SimpleNamespace(pytest_deselected=lambda items: dropped.extend(items))
+        hook=SimpleNamespace(pytest_deselected=lambda items: dropped.extend(items)),
+        pluginmanager=SimpleNamespace(hasplugin=lambda name: name == "benchmark"),
+        getoption=lambda name, default: default,
     )
-    monkeypatch.delenv(collection.PAID_RUN, raising=False)
+    monkeypatch.delenv(collection.ON_REQUEST[marker], raising=False)
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
     kept = list(items)
-    collection.deselect_paid(config, kept)
-    assert [i.name for i in kept] == ["free"] and [i.name for i in dropped] == ["paid"]
-    monkeypatch.setenv(collection.PAID_RUN, "1")
+    collection.deselect_on_request(config, kept)
+    assert [i.name for i in kept] == ["free"] and [i.name for i in dropped] == ["held"]
+    monkeypatch.setenv(collection.ON_REQUEST[marker], "1")
     kept = list(items)
-    collection.deselect_paid(config, kept)
-    assert [i.name for i in kept] == ["paid", "free"]
+    collection.deselect_on_request(config, kept)
+    assert [i.name for i in kept] == ["held", "free"]
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+    with under_xdist():
+        collection.deselect_on_request(config, list(items))

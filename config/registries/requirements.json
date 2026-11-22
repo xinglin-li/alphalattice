@@ -2735,8 +2735,27 @@
       "layer": "integration",
       "seconds": 10
     },
+    "testing.a_hot_loop_costs_at_most_two_percent_more_with_kernel_owners": {
+      "description": "If the kernel's owners plugged into a hot data loop cost more than 2%, the 0.2.9 kernel slows the data path it was meant to keep.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "It times whole Panel-sized loops in pairs until the cost's margin is within 1%, in a serial run of its own, beyond a unit test's one second."
+    },
     "testing.a_merge_is_budgeted_against_the_tip_it_lands_on": {
       "description": "The commit hook measures a merge's test budget against the tip its committer names in ALPHALATTICE_TEST_BUDGET_BASE, so a merge onto a tip ahead of develop is not charged with the changes beneath it; unset, the base is develop.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.a_node_judges_its_operations_by_its_own_budgets": {
+      "description": "A node judged by another machine's absolute budgets reads a slower or faster machine as a regression or a pass; an operation its record does not list is measured, not judged, and an unreadable record is refused by name.",
+      "owner": "devtools.testing",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "testing.a_performance_judge_refuses_by_name": {
+      "description": "A performance judge that passes an operation over its budget, or a loop over its 2% bound, or rules before its 99% interval settles against the bound, lets a slowdown through or reads noise as one.",
       "owner": "devtools.testing",
       "layer": "unit",
       "seconds": 1
@@ -2787,6 +2806,13 @@
       "owner": "devtools.testing",
       "layer": "integration",
       "seconds": 1
+    },
+    "testing.each_kernel_operation_stays_within_its_budget": {
+      "description": "A kernel operation whose mean call grows past its budget slows every owner that calls it, unseen until a release is measured.",
+      "owner": "devtools.testing",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "Its budget is a mean measured by pytest-benchmark in a serial run of its own, which a unit test under xdist cannot hold."
     },
     "testing.fast_whole_tree_guard_runs_when_its_tree_changed": {
       "description": "A deferred whole-tree guard runs in the commit stage when the tree it declares it reads changed; one recorded as slow still waits for post-merge, and without the rule nothing moves.",

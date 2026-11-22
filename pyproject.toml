@@ -160,6 +160,10 @@ dev = [
 order = [
     "pytest-randomly>=5,<6",
 ]
+# The kernel's performance holder: pytest-benchmark, which measures only in a serial run.
+performance = [
+    "pytest-benchmark==5.3.1",
+]
 # The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
 supply-chain = [
     "cyclonedx-bom==7.6.0",
@@ -310,4 +314,5 @@ markers = [
     "per_file: a structural scan scoped to the changed files; it reads source only through scanned()",
     "paid_agent: a test that starts a model turn and spends money; only a run with ALPHALATTICE_PAID_AGENT_RUN=1 selects it",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
+    "performance: a kernel performance row under a budget; only a serial run with ALPHALATTICE_PERFORMANCE_RUN=1 and the performance group selects it",
 ]
