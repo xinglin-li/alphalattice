@@ -679,6 +679,11 @@ def _recorded_durations() -> dict[str, float]:
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
+    # The test process's DuckDB driver, as each product process's entry installs it.
+    from alphalattice.control.workspace_runtime import reader_threads
+    from alphalattice.kernel import storage
+
+    storage.install_driver(reader_threads.DRIVER)
     if not config.pluginmanager.is_registered(environment):  # its fixture-roots hook
         config.pluginmanager.register(environment, "tests.pytest_environment")
     checkout = Path(__file__).resolve().parents[1]

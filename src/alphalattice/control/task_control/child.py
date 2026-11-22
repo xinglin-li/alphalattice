@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from alphalattice.kernel import storage
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.resources import (
@@ -487,6 +488,10 @@ def _worker_started(worker: int = 0) -> None:
     if worker > 0:
         declare(Change("task-worker-start", dict.fromkeys(ONE_THREAD_VARIABLES, "1")), native=True)
     threading.Thread(target=_watch_parent, name="parent-watch", daemon=True).start()
+    # The worker's DuckDB driver, installed in the storage port before any call opens a file.
+    from alphalattice.control.workspace_runtime import reader_threads  # lazy: the worker's own
+
+    storage.install_driver(reader_threads.DRIVER)
 
 
 def _follow_root(root: str | None) -> None:

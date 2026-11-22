@@ -809,4 +809,9 @@ def _bridge(con: sqlite3.Connection, metric: str, src: int, dst: int) -> tuple[f
 
 
 if __name__ == "__main__":
+    # The reading process's entry: the product's DuckDB driver, installed in the storage port.
+    from alphalattice.control.workspace_runtime import reader_threads
+    from alphalattice.kernel import storage
+
+    storage.install_driver(reader_threads.DRIVER)
     serve(Path(sys.argv[1]), sys.stdin.buffer, sys.stdout.buffer)  # noqa: TID251  # answer pipe

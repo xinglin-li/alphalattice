@@ -313,8 +313,11 @@ KILL = """
 import json, os, sys
 from pathlib import Path
 import pyarrow as pa
+from alphalattice.control.workspace_runtime import reader_threads
+from alphalattice.kernel import storage
 from alphalattice.kernel.data_layer import store
 from alphalattice.kernel.data_layer.log import HostLog
+storage.install_driver(reader_threads.DRIVER)  # this process's entry installs its DuckDB driver
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
 lag = batch["lag"] and tuple(batch["lag"])
 if batch.get("array"):

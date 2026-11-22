@@ -75,6 +75,7 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.control.workspace_runtime.database import keep_workspace_databases
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
@@ -659,6 +660,8 @@ class LocalPortfolioWebSession:
     web: LocalWebService | None = field(default=None, init=False)
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
     _history: bool = field(default=False, init=False, repr=False)
+    _kept: Callable[[], None] | None = field(default=None, init=False, repr=False)
+    """The end of this Host's storage session: each workspace file opened once while it serves."""
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
     stop_requested: Callable[[], bool] = field(default=bool, init=False)
     _workspace_review_authority: bool = field(default=False, init=False)
@@ -733,6 +736,7 @@ class LocalPortfolioWebSession:
                 self.workspace_manifest.workspace_id, self.workspace, self.clock
             )
             self._history = True
+            self._kept = keep_workspace_databases()
             return self._start()
         except BaseException:
             self._teardown(timeout=None)
@@ -1357,6 +1361,9 @@ class LocalPortfolioWebSession:
             self.review_authority = None
         if self.operations is not None and self.operations._review is not None:
             self.operations._review.close_source()
+        if self._kept is not None:  # before the lease: every kept file closed and sealed
+            self._kept()
+            self._kept = None
         if self._history:
             self._history = False
             release_history()

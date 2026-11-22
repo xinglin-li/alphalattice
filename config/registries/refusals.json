@@ -17813,6 +17813,10 @@
 "owner": "storage",
 "category": "RESOURCE_EXHAUSTED"
 },
+"storage.driver_missing": {
+"owner": "storage",
+"category": "FAILED_PRECONDITION"
+},
 "storage.eviction_readback_failed": {
 "owner": "storage",
 "category": "FAILED_PRECONDITION"

@@ -599,3 +599,16 @@ rules:
               - pattern: "{$K: $V for $ROW in $ROWS if $C}"
               - pattern: "($E for $ROW in $ROWS)"
               - pattern: "dict($ROWS)"
+  - id: duckdb-open-outside-the-storage-port
+    message: >-
+      A DuckDB instance opened here bypasses the storage sessions, which open each data root once
+      per process. Open through alphalattice.kernel.storage (storage.connect, storage.memory, or
+      the workspace database owner), whose one driver holds the product's call of duckdb.connect.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - "/src/alphalattice/"
+      exclude:
+        - "/src/alphalattice/control/workspace_runtime/reader_threads.py"
+    pattern: duckdb.connect(...)

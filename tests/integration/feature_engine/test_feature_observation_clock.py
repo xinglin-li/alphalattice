@@ -914,7 +914,7 @@ def test_runtime_plan_jointly_bounds_desktop_workers_models_and_duckdb(
     from alphalattice.kernel.shared_kernel import environment
 
     reader_threads._THREADS.clear()  # the list patched above: nothing applied
-    monkeypatch.setattr(reader_threads.pa, "set_cpu_count", lambda threads: None)
+    monkeypatch.setattr(pa, "set_cpu_count", lambda threads: None)  # the one reader_threads loads
     monkeypatch.setenv("OMP_NUM_THREADS", "1")
     # The getter reports the applied budget alone, which a feature pool sizes by.
     assert reader_threads.reader_threads() is None

@@ -2684,6 +2684,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "storage.an_open_without_a_driver_is_refused_by_name": {
+      "description": "If the storage port opened an engine of its own when no driver was installed, a process could configure DuckDB two ways and the kernel would load a third-party engine.",
+      "owner": "alphalattice.kernel.storage",
+      "layer": "unit",
+      "seconds": 1
+    },
     "task_control.a_0_2_7_store_moves_in_admission_order": {
       "description": "If Tasks admitted at one clock, or a 0.2.7 store from before admissions were ordered, lost their order on the log, the queue would start them out of turn.",
       "lower_layer": "The order is the registry's admission transaction and the import of a real DuckDB 0.2.7 store onto a real SQLite log.",
@@ -3057,7 +3063,7 @@
       "lower_layer": "It reads through the process-wide request cache every test in the process shares, which a unit test may not reach."
     },
     "workspace_runtime.a_held_file_is_released_where_another_reader_needs_it": {
-      "description": "A held workspace database keeps one instance between its connections and closes it before another instance attaches the file, during another process's call, for a writer, and at the hold's end.",
+      "description": "A held workspace database, or every file while a Host's session lives, keeps one instance between its connections and closes it before another instance attaches the file, during another process's call, for a writer, and at the hold's end.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 1,

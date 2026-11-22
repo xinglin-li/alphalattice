@@ -267,3 +267,5 @@ src/alphalattice/control/product_host/composition/foundation_summary.py
 src/alphalattice/capabilities/causal_inputs/availability.py
 src/alphalattice/kernel/shared_kernel/bounded_memo.py
 src/alphalattice/investment/alpha_research/experiments/development_chunk_identity.py
+src/alphalattice/kernel/storage/__init__.py
+src/alphalattice/kernel/storage/port.py

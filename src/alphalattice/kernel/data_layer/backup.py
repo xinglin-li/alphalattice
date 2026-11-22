@@ -19,6 +19,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from alphalattice.kernel import storage
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
@@ -366,8 +367,8 @@ def _owners(machine: Path, data: Path, owner: Any = None) -> dict[str, str | dic
         with closing(
             owner.cursor()
             if owner is not None
-            else duckdb.connect(
-                ":memory:",
+            else storage.connect(
+                storage.MEMORY,
                 config={
                     "autoinstall_known_extensions": False,
                     "autoload_known_extensions": False,

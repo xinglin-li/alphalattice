@@ -1041,25 +1041,25 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Trusts the SHA-256 of a file under no held workspace until its stamp changes, for this process only."
     },
-    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._HELD::year-fact-schema-presence-held": {
-      "owner": "alphalattice.control.workspace_runtime",
+    "src/alphalattice/kernel/storage/port.py::<module>._SCHEMAS::table-schemas-by-root-and-revision": {
+      "owner": "alphalattice.kernel.storage",
       "defined_by": [
-        "src/alphalattice/control/workspace_runtime/verified_facts.py::_HELD"
+        "src/alphalattice/kernel/storage/port.py::_SCHEMAS"
       ],
-      "definition_line": 42,
-      "key": "connection object",
-      "dependency_coverage": "Scoped: owner schema lifetime",
-      "invalidation_rule": "weak-key garbage collection",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "weak-key GC",
+      "definition_line": 50,
+      "key": "data root path and table name, with the root writer's revision the schema was read at",
+      "dependency_coverage": "Scoped: the root owner's schema revision, moved by each schema-changing statement, its transaction's end and each fresh instance of the file",
+      "invalidation_rule": "a lookup at another revision reads the catalog again and replaces the entry",
+      "size_bound": "one entry per data root and table read",
+      "bound_scope": "per process; the roots and tables the process reads",
+      "eviction": "replaced at the next revision; cleared when the sessions close",
       "safe_to_drop": "Yes: catalog read",
       "location": {
         "scope": "process",
-        "path_expression": "In-memory _HELD in its module, instance, or call namespace"
+        "path_expression": "In-memory _SCHEMAS in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Remembers which database connections contain the verified-year table until those connection objects are collected."
+      "description": "Keeps each data root's table schemas from one catalog read until a writer changes them."
     },
     "src/alphalattice/control/workspace_runtime/database.py::<module>._EPOCHS::database-instance-seal-epoch-resource-pool": {
       "owner": "alphalattice.control.workspace_runtime",

@@ -1,5 +1,7 @@
 # Each rule fires on its example and stays quiet on its bounded counterpart.
 import os
+
+import duckdb
 import subprocess
 from subprocess import run as direct_run
 from pathlib import Path
@@ -160,3 +162,12 @@ def bulk_reads(con):
     # ok: fetchall-rows-into-python
     first = con.execute("SELECT path FROM duckdb_databases()").fetchall()[0][0]
     return names, out, mapping, held, kept, kept_map, table, count, first
+
+
+def opened(path, storage):
+    # An instance is opened through the storage port, which counts it and keeps it for its session.
+    # ruleid: duckdb-open-outside-the-storage-port
+    direct = duckdb.connect(str(path), read_only=True)
+    # ok: duckdb-open-outside-the-storage-port
+    ported = storage.connect(str(path), read_only=True)
+    return direct, ported

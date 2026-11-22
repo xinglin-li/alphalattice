@@ -717,6 +717,7 @@
     "alphalattice.interface.local_application.portfolio_request_fields.workspace": "Validate workspace requests including activity reads.",
     "alphalattice.investment.portfolio_strategy_lab.application.strategy_package": "Load the frozen catalog only when a workspace binds installed strategy artifacts.",
     "alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research": "Read the lifecycle artifact key only when the workspace declares a research installation.",
+    "alphalattice.control.workspace_runtime.reader_threads": "Install the DuckDB driver at a process's entry, past the CLI's thin path and at a Task worker's start; it loads DuckDB at its first open and Arrow at the first grant; dependencies: duckdb and pyarrow.",
     "alphalattice.kernel.identity._digests -> blake3": "Load BLAKE3 when the identity port first needs its BLAKE3 digest.",
     "alphalattice.kernel.identity._digests -> xxhash": "Load xxHash when the identity port first needs its in-process lookup digest.",
     "alphalattice.capabilities.portfolio_inputs.benchmark": "Verify a copied benchmark only when a read carries its bounds.",

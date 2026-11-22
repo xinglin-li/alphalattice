@@ -12,6 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from alphalattice.interface.local_application import thin_cli
+from alphalattice.kernel import storage
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
@@ -150,6 +151,14 @@ def _closed_output_pipe(error: OSError) -> bool:
         return False
 
 
+def _install_storage_driver() -> None:
+    """The process's DuckDB driver, installed in the storage port before the CLI or Host opens a
+    file; the thin path above loads no DuckDB."""
+    from alphalattice.control.workspace_runtime import reader_threads  # lazy: past the thin path
+
+    storage.install_driver(reader_threads.DRIVER)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
     process_config()
@@ -165,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
                 return delivery_lost(arguments, error)
+        _install_storage_driver()
         from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
         result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))

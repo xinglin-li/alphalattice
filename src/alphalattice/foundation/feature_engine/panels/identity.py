@@ -17,13 +17,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-import duckdb
 import pyarrow as pa
 
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
 )
+from alphalattice.kernel import storage
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_values
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
@@ -154,15 +154,12 @@ def panel_rows_match_their_hashes(
     if not {*provenance, "session_date", "listing_id", "row_hash"} <= set(table.column_names):
         return False
     row_hash = _row_hash_sql(identity_basis=identity_basis, factors=factors, stamped=False)
-    connection = duckdb.connect(":memory:", config=duckdb_thread_config())
-    try:
+    with storage.memory(duckdb_thread_config()) as connection:
         connection.register("panel_partition", _in_batches(table))
         found = connection.execute(
             f"SELECT count(*) FILTER (WHERE {row_hash} IS DISTINCT FROM row_hash) "
             "FROM panel_partition"
         ).fetchone()
-    finally:
-        connection.close()
     return found is not None and found[0] == 0
 
 
@@ -241,8 +238,7 @@ def _hash_panel_rows(
         missing = tuple(sorted(expected.difference(table.column_names)))
         raise ValueError(f"panel row-hash input is missing columns: {missing}")
     relation = "panel_row_hash_input"
-    connection = duckdb.connect(":memory:", config=duckdb_thread_config())
-    try:
+    with storage.memory(duckdb_thread_config()) as connection:
         connection.register(relation, _in_batches(table))
         sql = _panel_row_hash_select_sql(
             relation_name=relation,
@@ -258,8 +254,6 @@ def _hash_panel_rows(
         else:
             parameters.extend([catalog_hash, policy_hash])
         return connection.execute(sql, parameters).to_arrow_table()
-    finally:
-        connection.close()
 
 
 def _in_batches(table: pa.Table) -> pa.Table:

@@ -44,6 +44,7 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
     FREE_FLOOR_BYTES,
     free_floor_shortfall,
 )
+from alphalattice.kernel import storage
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
@@ -322,13 +323,11 @@ class StorePort:
         """Attach the catalog and the reading surface's world macros, then run `start`. The log
         is never attached: this process writes it through Python's sqlite3, and a second SQLite
         library closing its descriptor would release the writer's locks on the file."""
-        import duckdb  # lazy: DuckDB is the optional data extra; only a Host with data opens this
-
         lake = (
             owner.cursor()
             if owner is not None
-            else duckdb.connect(
-                ":memory:",
+            else storage.connect(  # through the driver: DuckDB, the optional data extra
+                storage.MEMORY,
                 config={
                     "autoinstall_known_extensions": False,
                     "autoload_known_extensions": False,

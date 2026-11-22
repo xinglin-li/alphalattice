@@ -27,6 +27,7 @@ from importlib import resources
 from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
+from alphalattice.kernel import storage
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
@@ -247,11 +248,11 @@ def duckdb_session(root: Path) -> Any | None:
     """An in-memory DuckDB session with the SQLite scanner and DuckLake loaded from their installed
     wheels, every download off; None without the data extra. The caller closes it."""
     try:
-        import duckdb  # lazy: DuckDB is the optional data extra; without it the session defers
+        import duckdb  # noqa: F401  # lazy: DuckDB is the optional data extra; without it the session defers
     except ImportError:
         return None
-    connection = duckdb.connect(
-        ":memory:",
+    connection = storage.connect(
+        storage.MEMORY,
         config={
             "extension_directory": str(root / "extensions"),
             "autoinstall_known_extensions": False,

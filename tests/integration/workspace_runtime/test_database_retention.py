@@ -19,24 +19,33 @@ import sys
 import textwrap
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
+from typing import cast
 
 import duckdb
+import pyarrow as pa
 import pytest
 
+from alphalattice.control.workspace_runtime import reader_threads
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
+    WorkspaceConnection,
     WorkspaceDatabase,
     checkpoint_workspace_database,
     hand_off,
+    keep_workspace_databases,
     live_workspace_connections,
     open_workspace_database,
     release_workspace_database,
     retain_workspace_database,
     retained_workspace_database,
+    table_columns,
 )
+from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
+from alphalattice.kernel import storage
 from alphalattice.kernel.shared_kernel import spawn
 
 
@@ -576,6 +585,181 @@ def _attachable(database: WorkspaceDatabase) -> bool:
     return True
 
 
+def _kept_for_the_session(
+    database: WorkspaceDatabase, second: WorkspaceDatabase, case: str
+) -> None:
+    """While a Host's storage session lives, each file is opened once in the process: reads take
+    cursors of its one instance, a second data root has its own, a reader sees the writer's rows,
+    a schema change refreshes the kept schema, a pool's readers each hold a handle of their own,
+    a unit's hold ending keeps the instance, a narrower CPU grant reaches the kept instance, a
+    pinned reader and a writer's open transaction each read their own catalog, and the session's
+    end lets every file go."""
+    before = storage.opens()
+    end = keep_workspace_databases()
+    try:
+        if case == "session-reads-in-one-task":
+            seen: object = [_rows(database) for _ in range(5)]
+        elif case == "session-a-second-data-root":
+            seen = [_rows(each) for each in (database, second, database, second)]
+        elif case == "session-a-reader-after-a-writer":
+            with database.transaction() as connection:
+                connection.execute("INSERT INTO unit VALUES (2, 'written')")
+            seen = _rows(database)
+        elif case == "session-a-schema-change-by-the-writer":
+            seen = _session_schema(database)
+        elif case == "session-a-unit-hold-ends":
+            with database.hold():
+                seen = [_rows(database)]
+            seen.append(_rows(database))
+        elif case == "session-a-narrower-grant-on-a-kept-instance":
+            seen = _session_grant(database)
+        elif case.startswith(("session-a-pinned-reader", "session-a-writers-own-catalog")):
+            seen = _session_catalogs(
+                database, pinned=case.endswith("its-catalog"), begun=case.rpartition("catalog")[2]
+            )
+        else:
+            seen = _session_pool(database)
+    finally:
+        end()
+    after = storage.opens()
+    opened = {
+        name: after.get(str(each.path), 0) - before.get(str(each.path), 0)
+        for name, each in (("first", database), ("second", second))
+    }
+    assert (opened, seen, _attachable(database)) == (*SESSION_CASES[case], True)
+
+
+def _session_schema(database: WorkspaceDatabase) -> tuple[bool, list[str]]:
+    """Columns read twice (kept), then after the writer adds one (read again)."""
+
+    def columns() -> tuple[tuple[str, str], ...]:
+        connection = database.connect(read_only=True)
+        try:
+            return table_columns(connection, "unit")
+        finally:
+            connection.close()
+
+    kept = columns() == columns()
+    with database.transaction() as connection:
+        connection.execute("ALTER TABLE unit ADD COLUMN extra INTEGER")
+    return kept, [name for name, _ in columns()]
+
+
+def _session_grant(database: WorkspaceDatabase) -> int:
+    """The threads a kept instance reads with after a later Task's narrower grant."""
+    saved, cpus = list(reader_threads._THREADS), pa.cpu_count()
+    try:
+        apply_reader_threads(2)
+        _rows(database)  # the instance opens, and is kept idle
+        apply_reader_threads(1)
+        connection = database.connect(read_only=True)
+        try:
+            row = connection.execute("SELECT current_setting('threads')").fetchone()
+        finally:
+            connection.close()
+    finally:
+        reader_threads._THREADS[:] = saved
+        pa.set_cpu_count(cpus)
+    return int(row[0]) if row else 0
+
+
+def _session_catalogs(
+    database: WorkspaceDatabase, *, pinned: bool, begun: str = ""
+) -> tuple[object, ...]:
+    """A table created while another handle reads: a reader pinned before it, or the writer in
+    its open transaction, reads its own catalog; a reader of the latest catalog reads the other.
+    The writer begins by its own BEGIN, by `begin()`, or with the change in one call in any of
+    its spellings, and commits, or rolls back (its table is never published)."""
+    writer = database.connect(read_only=False)
+    reader = database.connect(read_only=True)
+    try:
+        if pinned:
+            with cast(WorkspaceConnection, reader).snapshot():
+                before = table_columns(reader, "late")
+                writer.execute("CREATE TABLE late (x INTEGER)")
+                current = database.connect(read_only=True)
+                try:
+                    latest = table_columns(current, "late")
+                finally:
+                    current.close()
+                return before, latest, table_columns(reader, "late")
+        if begun in IN_ONE_CALL:
+            writer.execute(IN_ONE_CALL[begun])
+        else:
+            writer.begin() if begun == "-after-begin" else writer.execute("BEGIN TRANSACTION")
+            writer.execute("CREATE TABLE late (x INTEGER)")
+        own, other = table_columns(writer, "late"), table_columns(reader, "late")
+        writer.execute("ROLLBACK" if begun == "-rolled-back" else "COMMIT")
+        return own, other, table_columns(reader, "late")
+    finally:
+        reader.close()
+        writer.close()
+
+
+IN_ONE_CALL = {
+    "-in-one-call": "BEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-after-a-comment": "-- the writer's unit\nBEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-after-whitespace": "\n\t BEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-in-lower-case": "begin transaction; create table late (x integer)",
+}
+"""A writer's transaction begun with its schema change in one call, in each spelling."""
+
+
+def _session_pool(database: WorkspaceDatabase) -> tuple[int, int, bool]:
+    """Four readers at once: each holds a handle of its own on the one instance."""
+    together = threading.Barrier(4, timeout=30.0)
+
+    def read(_: int) -> tuple[int, int, list[tuple[int, str]]]:
+        connection = database.connect(read_only=True)
+        try:
+            rows = connection.execute("SELECT id, note FROM unit ORDER BY id").fetchall()
+            together.wait()
+            live = live_workspace_connections(database.path)
+            together.wait()
+            return id(connection), 0 if live is None else live.handles, rows
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        seen = list(pool.map(read, range(4)))
+    return (
+        len({handle for handle, _, _ in seen}),
+        max(live for _, live, _ in seen),
+        all(rows == [(1, "seed")] for _, _, rows in seen),
+    )
+
+
+SESSION_CASES = {
+    "session-reads-in-one-task": ({"first": 1, "second": 0}, [[(1, "seed")]] * 5),
+    "session-a-second-data-root": ({"first": 1, "second": 1}, [[(1, "seed")]] * 4),
+    "session-a-reader-after-a-writer": ({"first": 1, "second": 0}, [(1, "seed"), (2, "written")]),
+    # read-only first, so the writer reopens the file writable: the access-mode rule's one reopen
+    "session-a-schema-change-by-the-writer": (
+        {"first": 2, "second": 0},
+        (True, ["id", "note", "extra"]),
+    ),
+    "session-a-thread-pools-readers": ({"first": 1, "second": 0}, (4, 4, True)),
+    "session-a-unit-hold-ends": ({"first": 1, "second": 0}, [[(1, "seed")]] * 2),
+    "session-a-narrower-grant-on-a-kept-instance": ({"first": 1, "second": 0}, 1),
+    "session-a-pinned-reader-keeps-its-catalog": (
+        {"first": 1, "second": 0},
+        ((), (("x", "INTEGER"),), ()),
+    ),
+    **{
+        f"session-a-writers-own-catalog{begun}": (
+            {"first": 1, "second": 0},
+            ((("x", "INTEGER"),), (), (("x", "INTEGER"),)),
+        )
+        for begun in ("", "-after-begin", *IN_ONE_CALL)
+    },
+    "session-a-writers-own-catalog-rolled-back": (
+        {"first": 1, "second": 0},
+        ((("x", "INTEGER"),), (), ()),
+    ),
+}
+"""Each session case's instances opened per file while the session lives, and what it saw."""
+
+
 @pytest.mark.proves("workspace_runtime.a_held_file_is_released_where_another_reader_needs_it")
 @pytest.mark.parametrize(
     "scenario",
@@ -585,6 +769,21 @@ def _attachable(database: WorkspaceDatabase) -> bool:
         "close-cannot-keep",
         "release-meets-a-close",
         "hand-off-meets-a-close",
+        "session-reads-in-one-task",
+        "session-a-second-data-root",
+        "session-a-reader-after-a-writer",
+        "session-a-schema-change-by-the-writer",
+        "session-a-thread-pools-readers",
+        "session-a-unit-hold-ends",
+        "session-a-narrower-grant-on-a-kept-instance",
+        "session-a-pinned-reader-keeps-its-catalog",
+        "session-a-writers-own-catalog",
+        "session-a-writers-own-catalog-in-one-call",
+        "session-a-writers-own-catalog-after-begin",
+        "session-a-writers-own-catalog-after-a-comment",
+        "session-a-writers-own-catalog-after-whitespace",
+        "session-a-writers-own-catalog-in-lower-case",
+        "session-a-writers-own-catalog-rolled-back",
     ],
 )
 def test_a_held_file_is_released_where_another_reader_needs_it(
@@ -594,7 +793,9 @@ def test_a_held_file_is_released_where_another_reader_needs_it(
     reader needs the file: another instance's attach, a writer, a call in another process, the
     hold's end, a close that cannot keep it, and a release or hand-off meeting a close in flight."""
     database = _prepared(tmp_path)
-    if scenario == "between-connections":
+    if scenario.startswith("session-"):
+        _kept_for_the_session(database, _prepared(tmp_path / "second"), scenario)
+    elif scenario == "between-connections":
         _kept_between_connections(database)
     elif scenario == "call-in-another-process":
         _released_for_a_call_in_another_process(database)

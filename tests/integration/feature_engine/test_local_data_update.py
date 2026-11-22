@@ -1450,7 +1450,8 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
 
 
 def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
-    """One injected root serves all five consumers while both write stages open once."""
+    """One injected root serves all five consumers while both write stages open no instance of
+    the store: the Host's storage session opened it once before them."""
     from alphalattice.foundation.market_data_ops.sources import providers
 
     workspace = copy_workspace(qualified, tmp_path / "daily")
@@ -1476,7 +1477,7 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
         assert owner.reusable(owner.prepare(plan["plan_hash"])) is not None
         assert providers.market_provider(workspace, "", provider) is provider
         assert build.called and all(c.args == (cache,) for c in build.call_args_list)
-    expected = {"maintain_data_feature": 1, "publish_update_receipt": 1}
+    expected = {"maintain_data_feature": 0, "publish_update_receipt": 0}
     assert {
         stage["stage_id"]: sum(
             row["count"]

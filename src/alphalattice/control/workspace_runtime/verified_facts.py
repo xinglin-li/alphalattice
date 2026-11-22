@@ -28,7 +28,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -39,6 +38,7 @@ from typing import BinaryIO, cast
 
 import duckdb
 
+from alphalattice.control.workspace_runtime.database import table_columns
 from alphalattice.kernel.clock import wall_time, wall_time_ns
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
@@ -100,8 +100,6 @@ _DIGEST_TRUST = FileDigestTrust(
     time_ns=lambda: wall_time_ns(),
     trusting=file_trust,
 )
-_HELD: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, bool] = weakref.WeakKeyDictionary()
-"""Connections that have seen the year-fact table: one catalog read each, not one per call."""
 
 
 def ensure_year_fact_schema(connection: duckdb.DuckDBPyConnection) -> None:
@@ -119,17 +117,8 @@ def ensure_year_fact_schema(connection: duckdb.DuckDBPyConnection) -> None:
 
 def _year_facts_held(connection: duckdb.DuckDBPyConnection) -> bool:
     # Asked of the catalog, never by a failed read: a failed statement ends the caller's
-    # transaction.
-    if connection in _HELD:
-        return True
-    held = connection.execute(
-        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'verified_year_fact'"
-    ).fetchone()
-    if held is None or not held[0]:
-        return False
-    with _LOCK:
-        _HELD[connection] = True
-    return True
+    # transaction. The file's schema is read once until a writer changes it (`table_columns`).
+    return bool(table_columns(connection, "verified_year_fact"))
 
 
 def year_facts(
