@@ -84,8 +84,13 @@ def test_real_teardowns_judge_own_hosts_and_say_foreign_ones(tmp_path: Path) -> 
     result = subprocess.run(  # pytest's own teardown is the behaviour under test
         [sys.executable, "-m", "pytest", *inner],
         cwd=tmp_path,
-        # The inner run selects its own cases: an outer lane (the full run's) deselects all three.
-        env={**os.environ, "PYTHONPATH": path, "ALPHALATTICE_TEST_LANE": ""},
+        # The inner run selects its own cases, independently of the outer lane and required nodes.
+        env={
+            **os.environ,
+            "PYTHONPATH": path,
+            "ALPHALATTICE_TEST_LANE": "",
+            "ALPHALATTICE_PIPELINE_REQUIRED_TESTS": "[]",
+        },
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
