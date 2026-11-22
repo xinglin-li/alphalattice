@@ -40,6 +40,7 @@ from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_asi
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.foundation.causal_outcomes.execution.publication import (
@@ -94,7 +95,6 @@ from alphalattice.kernel.data_layer.backup import (
 )
 from alphalattice.kernel.data_layer.inputs import folder_files
 from alphalattice.kernel.data_layer.upgrade import Family
-from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
@@ -147,17 +147,8 @@ def confined(root: Path, relative: str) -> Path:
     return path
 
 
-def _digest_stream(stream: BinaryIO) -> str:
-    """The content digest of one open file object, read whole from its start."""
-
-    digest = integrity_sha256()
-    for block in iter(lambda: stream.read(1024 * 1024), b""):
-        digest.update(block)
-    return digest.hexdigest()
-
-
 def file_digest(path: Path) -> str:
-    """Stream the exact file bytes into their SHA-256 identity.
+    """The file's SHA-256 identity, through the trust record: hashed only when its stamp changed.
 
     Args:
         path: Explicit file to read.
@@ -165,8 +156,8 @@ def file_digest(path: Path) -> str:
     Returns:
         Lowercase SHA-256 digest.
     """
-    with path.open("rb") as stream:
-        return _digest_stream(stream)
+    digest: str = file_sha256(path)
+    return digest
 
 
 _DIGEST_WORKERS = 4
@@ -185,7 +176,8 @@ def _file_object(stream: BinaryIO) -> tuple[int, int] | None:
 
 
 def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
-    """Digest several files at once; every file object is read whole, by the same digest.
+    """Digest several files at once; every file object by the same digest, through the trust
+    record, so an object whose stamp holds is not read again.
 
     Every path is opened first and held open until the call returns; the
     grouping, the reads and the check below all concern those open objects,
@@ -218,7 +210,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
             first_of[path] = path if identity is None else representative.setdefault(identity, path)
         distinct = tuple(dict.fromkeys(first_of.values()))
         if len(distinct) <= 1:
-            digests = {path: _digest_stream(streams[path]) for path in distinct}
+            digests = {path: file_sha256(path, handle=streams[path]) for path in distinct}
         else:
             with ThreadPoolExecutor(
                 max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))
@@ -226,7 +218,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
                 digests = dict(
                     zip(
                         distinct,
-                        pool.map(lambda path: _digest_stream(streams[path]), distinct),
+                        pool.map(lambda path: file_sha256(path, handle=streams[path]), distinct),
                         strict=True,
                     )
                 )

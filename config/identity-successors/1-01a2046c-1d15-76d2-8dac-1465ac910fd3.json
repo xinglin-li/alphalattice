@@ -1,0 +1,139 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "14391ff068dcb242fa6c326a11c2f071ccebdfc05bc6118f6c4113a1a4a7f5cc",
+   "successor": "e9ebd41a1d3e3dd2ff3f41e9265b4cd6885739a18f9342590ef02d966139705b",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "ad0da04c52d58d2cb3c167efc9e2d634e94c4c0bab19d06ac25cecc5674945c3",
+   "successor": "62ec48d304bff6a5d11049e7f31b1fb3d4a3954f7f0711d281f451667b6155aa",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "b757941b4ece1eeaa4c127fea19eac3f75368e60e42c962e9bb76546da54699c",
+   "successor": "3cea082270da6c9d682f87bb4ea889d75b5d8652d7759f8beb3558082bb65e0b",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "a6e5f3b6176201830ce88e72aea113e2c48edd221c45fcd8b5770df076776c23",
+   "successor": "1385808bbbbd5700caf67d00c0c2f1b21624d2d4bd99b89fddc8fd025bb18f48",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "544dcbaacc899348fc6ed374365f9ee0410cfd93188b668fce7e3ac034671536",
+   "successor": "d3df967f7d7a7c35fc31912afd35df22878b241d1fd57b33ac26a518714d385e",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ca53578ecb8077683bce8a202826d947323d67fdb7b34354ddbf55d5bd60e894",
+   "successor": "9307b8a1dad7603f37ffa1d458e780120c7cccec755438df5c1d3c67b3a6f7f1",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "35ccd60ea8a3c31b3e5818e0b14dd04b52c5d82b8e69c18e66ffdf1e8d4a0241",
+   "successor": "49e33a68c9be130c9df00722564343bbad293006020f63ae2cd996fdeea2dc22",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "a062af8c279b38f479c19d3a6b4df16cc32d01952ac4c1f0167a63a361923b18",
+   "successor": "e44b40e5b8ddea0138b59040f30f2cfc6987e33b426fea1f38c2b89a7a32acb1",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ca1efadd967387220ccdeb918570686571a27f18a4a29231b4b206d4c79a8989",
+   "successor": "06b66910798ee97785b7b09d8cecfee8013ea8cfc2504684d6290bc7530472b3",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "81c4b433283348ba7be4ba5492b700a7bcca2acfbed08b24f64a961fd50cff82",
+   "successor": "3fa90e2fe732cfb53a712c253477bebccd6d4a550c6182d4382466b477b785d3",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8ba7ee242edeed1a24d9f875af6f2b68648548aa77929bdc57d45f670c3dadd7",
+   "successor": "54e25e60d73a1de6ce2d8fc39d0811a5794b51d4bb094b68967c5b9772bc623d",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f682184c99c1a874b5d64c151e013b35874daedcb4cfa123e09e1aa0240ec526",
+   "successor": "b28150ba52136ecaf17de5de0829c248db98a7a5149c6e3a050a8b9098c3c190",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "208ad663b457677069639e1d1ec04c905ff9c9119c891b45da230b58de2a9450",
+   "successor": "245d86ca0720630aa3326d885bd3ea6b13c39183191e1492d2eb17744a768c34",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "91ec774fcb8a7389aabe350567c42a95d785c490844c415d36ee2d39d760250f",
+   "successor": "93326202f6fc46cc8c2441ea8e373532befae4c04eede907100339cd225f01fb",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "91ec774fcb8a7389aabe350567c42a95d785c490844c415d36ee2d39d760250f",
+   "successor": "93326202f6fc46cc8c2441ea8e373532befae4c04eede907100339cd225f01fb",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "b4937dc9568795f79e9d2c2622e73d7218ad32f7cd715c5874ffe06f9da72d6f",
+   "successor": "6ecbcec8b7d852d1e7b50e88197d9507bcf7007642bb3230ab9545355075da0f",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "a5c0977588cc0a5fd426e1c476244b6c3ce5c6a163b458a27eb96f29406f94de",
+   "successor": "ef7b8fac9a88ac920e4be76b6aa100e5eeb0b0c2ad115675afbd9e8b03cd614d",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "fa32ec8eea722af8cbe2719c957ed58c505679b1f95736ad08c1428006dcb9fa",
+   "successor": "076b5bd9676ab8fc94e124872357e24f939bde8afb71087ab7167fe528db6744",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "d14fdcdd2af4cec7db368918959f4c9f90781ac2e3fef0cf52171b6aea51e37e",
+   "successor": "ca8a0fa8b3d860da17a1ab0316a51c21edfd5cf91b7d212d8778ff2b4d8f0b8a",
+   "change": "Files are hashed once and trusted until they change",
+   "reason": "Files are hashed once and trusted until they change; this head only merges develop's resource leases and environment owner beside the card's own changes, both additive, so the roles still move by code fingerprint only with the development replay ALL EQUAL over 185,251 records."
+  }
+ ]
+}

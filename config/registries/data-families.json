@@ -3121,15 +3121,16 @@
       ]
     },
     "verified-file-facts": {
-      "summary": "verified file facts kept for re-proof on read",
+      "summary": "verified file facts and each file's trusted digest, kept until the file's stamp changes",
       "class": "cache-scratch",
       "tier": 3,
       "retire": "re-proof on read retires in the 0.2.8 data layer: reads trust the catalog's registration, so no reader needs the stored proof",
       "location": "workspace-runtime",
       "bytes": null,
       "writers": [
-        "workspace_runtime.verified_facts:keep_file_facts",
-        "workspace_runtime.verified_facts:record_file_fact"
+        "identity.file_facts:FileDigestTrust",
+        "workspace_runtime.verified_facts:_append",
+        "workspace_runtime.verified_facts:_journal"
       ],
       "readers": [
         "feature_engine.panels.closure",

@@ -13,14 +13,19 @@ grant, a Task submit, a dispatch through the door, a clock read and an open thro
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+import time
+from collections.abc import Callable, MutableMapping
+from contextlib import nullcontext
 from functools import partial
+from pathlib import Path
+from threading import Lock
 
 import numpy as np
 import pyarrow as pa
 import pytest
 
 from alphalattice.kernel.data_layer import arrays
+from alphalattice.kernel.identity import FileDigestTrust, TrustEntry
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
 from devtools.testing.performance import (
     Operation,
@@ -34,9 +39,41 @@ TEST_SOURCE = "src/devtools/testing/performance.py"
 
 _LANE = {"close": np.linspace(1.0, 2.0, 65_536), "volume": np.arange(65_536, dtype=np.int64)}
 
+
+class _Held:
+    """A trust record's store holding its entries in memory, for one process."""
+
+    def __init__(self) -> None:
+        self.entries: dict[str, TrustEntry] = {}
+
+    def place(self, path: Path) -> tuple[MutableMapping[str, TrustEntry], str]:
+        return self.entries, str(path)
+
+    def kept(self, path: Path, key: str, entry: TrustEntry) -> None:
+        return None
+
+
+def _held_check() -> Callable[[], object]:
+    """A stat-gated check of a settled file the trust record holds: what a trusted input costs a
+    read once its digest is kept. This settled source file is hashed once here, never again."""
+    trust = FileDigestTrust(
+        store=_Held(),
+        lock=Lock(),
+        span=lambda _kind, _detail: nullcontext(),
+        time_ns=time.time_ns,
+        trusting=lambda: True,
+    )
+    source = Path(__file__)
+    trust.verified(source)
+    return lambda: trust.verified(source)
+
+
 OPERATIONS = (
     # 1 MiB over two lanes: about 0.4 ms on the workshop's machine (11-22); the budget holds 2x.
     Operation("trusted digest", lambda: arrays.digest(_LANE), 0.001),
+    # One open, its stamp and a held entry: about 52 us on the workshop's machine (11-22, three runs
+    # of 5,000); the budget holds 2x.
+    Operation("a holding stat-gated fact check", _held_check(), 0.0001),
 )
 
 KERNEL_OWNERS: tuple[Callable[[pa.RecordBatch], object], ...] = ()

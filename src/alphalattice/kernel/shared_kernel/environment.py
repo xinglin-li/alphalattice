@@ -28,6 +28,10 @@ from alphalattice.kernel.egress import (
 )
 from alphalattice.kernel.resources import cpu_width, current_resource_lease
 
+FILE_TRUST_SWITCH = "ALPHALATTICE_FILE_TRUST"
+"""The operator's file-trust switch: ``=0`` hashes every file on every read; unset, a file's digest
+is trusted until its stamp changes."""
+
 THREAD_SHARE = "OMP_NUM_THREADS"
 """The operator's thread share for each process: OpenMP's variable, which Arrow reads too."""
 
@@ -60,6 +64,14 @@ def duckdb_thread_config(environment: Mapping[str, str] | None = None) -> dict[s
     """
     share = thread_share(environment)
     return {"threads": share, "async_threads": share} if share else {}
+
+
+def file_trust(environment: Mapping[str, str] | None = None) -> bool:
+    """Whether a file's digest is trusted until its stamp changes: the one reader of
+    `ALPHALATTICE_FILE_TRUST`. Only ``0`` turns trust off, so every read hashes again."""
+    if environment is None:
+        return process_config().get(FILE_TRUST_SWITCH) != "0"
+    return environment.get(FILE_TRUST_SWITCH) != "0"
 
 
 def set_duckdb_pool_width(connection: Any, width: int) -> None:
@@ -259,9 +271,11 @@ def numerical_thread_limit(limits: int, *, preload_models: bool = True) -> Itera
 
 
 __all__ = [
+    "FILE_TRUST_SWITCH",
     "OFFLINE_SWITCH",
     "THREAD_SHARE",
     "duckdb_thread_config",
+    "file_trust",
     "held_offline",
     "numerical_thread_counts",
     "numerical_thread_limit",

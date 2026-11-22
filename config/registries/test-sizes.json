@@ -2,7 +2,7 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
-    "tests/integration/workspace_runtime/test_content_store.py::test_a_change_to_the_file_ends_its_fact": {
+    "tests/integration/workspace_runtime/test_content_store.py::test_a_files_digest_is_trusted_until_its_stamp_changes": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py",
         "src/alphalattice/kernel/identity/file_facts.py"

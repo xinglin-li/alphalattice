@@ -107,7 +107,6 @@
     "tests/integration/feature_engine/test_local_data_update_runs.py::patch _quote_runner": 1,
     "tests/integration/feature_engine/test_local_data_update_runs.py::patch _registry": 1,
     "tests/integration/product_host/test_research_input_storage.py::import _copy_input": 1,
-    "tests/integration/product_host/test_research_input_storage.py::patch _digest_stream": 1,
     "tests/integration/product_host/test_research_input_storage.py::patch _source": 3,
     "tests/integration/market_data_ops/test_workspace_maintenance.py::patch _bind_derived_manifest_evidence": 1,
     "tests/integration/market_data_ops/test_workspace_maintenance.py::patch _bind_manifest": 1,

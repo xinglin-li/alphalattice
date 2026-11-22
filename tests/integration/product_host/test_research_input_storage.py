@@ -114,20 +114,20 @@ def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
 
     import alphalattice.control.product_host.research_authoring.factor_inputs as inputs
 
-    original = inputs._digest_stream
+    original = inputs.file_sha256
     reads = [0]
     # The objects are digested on a pool: the first read's inject holds the
     # others until it has run, or a second read also sees a count of zero.
     first_read = threading.Lock()
 
-    def counted(stream):
+    def counted(path, **keywords):
         with first_read:
             if reads[0] == 0 and inject is not None:
                 inject()
             reads[0] += 1
-        return original(stream)
+        return original(path, **keywords)
 
-    monkeypatch.setattr(inputs, "_digest_stream", counted)
+    monkeypatch.setattr(inputs, "file_sha256", counted)
     return reads
 
 
@@ -159,7 +159,7 @@ def test_file_digests_bind_every_path_to_the_object_whose_bytes_were_read(
     digests = file_digests([a, b, c, a])
     # One read per object: the two links once, the same-size other file itself.
     assert reads[0] == 2
-    # Nothing survives a call: the next call reads every object again.
+    # A file inside its racy tick is read again by the next call.
     assert file_digests([a, b, c]) == digests
     assert reads[0] == 4
     assert digests[a] == digests[b] == file_digest(a) and digests[c] == file_digest(c)

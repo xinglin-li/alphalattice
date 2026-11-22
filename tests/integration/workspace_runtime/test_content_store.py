@@ -13,8 +13,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import threading
-import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -23,6 +23,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue
 from threading import Barrier, BoundedSemaphore, Event, Lock, Semaphore, Thread, current_thread
+from time import time_ns
 from typing import ClassVar, Literal
 from uuid import uuid4
 
@@ -44,6 +45,8 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from alphalattice.kernel.config import Change, override
+from alphalattice.kernel.data_layer import backup
 from alphalattice.kernel.identity import file_facts as digests
 from alphalattice.kernel.identity import file_stamp
 from alphalattice.kernel.shared_kernel.spans import collect
@@ -1133,14 +1136,15 @@ def test_every_source_in_a_proof_is_proved_and_mutable_results_are_not_retained(
 
 
 @contextmanager
-def _kept_facts(tmp_path: Path):
-    """A workspace whose file facts this process keeps, and one file in it, written now."""
+def _kept_facts(tmp_path: Path, name: str = "workspace"):
+    """A workspace whose file digests and facts this process keeps, and one file in it."""
     from alphalattice.control.workspace_runtime import verified_facts as facts
 
-    workspace = tmp_path / "workspace"
+    workspace = tmp_path / name
     target = workspace / "store" / "part.parquet"
-    target.parent.mkdir(parents=True)
-    target.write_bytes(b"one")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_bytes(b"one")
     facts.keep_file_facts(workspace)
     try:
         yield facts, workspace, target
@@ -1152,199 +1156,238 @@ def _aged(target: Path) -> None:
     os.utime(target, (target.stat().st_atime - 10, target.stat().st_mtime - 10))
 
 
-def _advance_file_fact_clock(facts, target: Path, monkeypatch) -> None:
-    """Move past both the modification and change clocks without waiting."""
-    now = max(file_stamp(target)[-2:]) + 10**10
-    monkeypatch.setattr(facts, "wall_time", lambda: now / 1e9)
-    monkeypatch.setattr(facts, "wall_time_ns", lambda: now)
+class _Clock:
+    """The trust record's clock, moved past a file's racy tick without waiting."""
+
+    def __init__(self, facts, monkeypatch) -> None:
+        self.now = time_ns()
+        monkeypatch.setattr(facts, "wall_time", lambda: self.now / 1e9)
+        monkeypatch.setattr(facts, "wall_time_ns", lambda: self.now)
+
+    def settle(self, target: Path) -> None:
+        self.now = max(self.now, max(file_stamp(target)[-2:]) + 10**10)
 
 
-def _hashed(timing) -> int:
-    """How many sealed files the verifier hashed inside `timing`."""
-    return sum(row["count"] for row in timing.rows() if row["detail"] == "sealed_file")
+def _counted_hashes(monkeypatch) -> list[bool]:
+    calls: list[bool] = []
+    digest = digests.integrity_sha256_stream
+
+    def counted(*args, **kwargs):
+        calls.append(True)
+        return digest(*args, **kwargs)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", counted)
+    return calls
+
+
+_ONE = hashlib.sha256(b"one").hexdigest()
+_TWO = hashlib.sha256(b"two").hexdigest()
+
+
+def _write_then_read(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.file_sha256(target, written=True)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _read_twice(facts, target, clock, tmp_path, monkeypatch) -> str:
+    clock.settle(target)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assert list(pool.map(facts.file_sha256, [target] * 4)) == [_ONE] * 4
+    return facts.file_sha256(target)
+
+
+def _racy_rewrite(facts, target, clock, tmp_path, monkeypatch) -> str:
+    # A same-size rewrite inside one clock tick leaves the whole stamp unchanged.
+    stamp = file_stamp(target)
+    facts.record_sealed_file(target, _ONE)
+    monkeypatch.setattr(digests, "handle_stamp", lambda _handle: stamp)
+    target.write_bytes(b"two")
+    return facts.file_sha256(target)
+
+
+def _mtime_changed(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    stat = target.stat()
+    os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _renamed_over(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    stat = target.stat()
+    staged = target.with_name("staged.parquet")
+    staged.write_bytes(b"two")
+    os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    os.replace(staged, target)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _switch_off(facts, target, clock, tmp_path, monkeypatch) -> str:
+    with override(Change("file-trust-off", {"ALPHALATTICE_FILE_TRUST": "0"})):
+        facts.file_sha256(target, written=True)
+        clock.settle(target)
+        facts.file_sha256(target)
+        return facts.file_sha256(target)
+
+
+def _copied_root(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    workspace = target.parents[1]
+    facts.release_file_facts(workspace)
+    shutil.copytree(workspace, tmp_path / "copy")  # its trust journal with it
+    with _kept_facts(tmp_path, "copy") as (_facts, _copy, copied):
+        clock.settle(copied)
+        return facts.file_sha256(copied)
+
+
+def _foreign_write(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _TWO)  # the writer's digest; the path holds other bytes
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _edited_while_hashed(facts, target, clock, tmp_path, monkeypatch) -> str:
+    counted = digests.integrity_sha256_stream
+
+    def then_edited(*args, **kwargs):
+        held = counted(*args, **kwargs)
+        with target.open("r+b") as other:  # the same file, edited in place after its hash
+            other.write(b"two")
+        stat = target.stat()
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+        return held
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", then_edited)
+    facts.file_sha256(target, written=True)
+    monkeypatch.setattr(digests, "integrity_sha256_stream", counted)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _backup(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    stamp = file_stamp(target)
+    monkeypatch.setattr(digests, "handle_stamp", lambda _handle: stamp)
+    target.write_bytes(b"two")  # a byte change that kept its stamp, as a restored timestamp
+    with facts.full_content_proof():
+        assert not facts.sealed_file_holds(target, _ONE)
+        assert facts.file_sha256(target) == _TWO
+    return backup._file_digest(target, "sha256").removeprefix("sha256:")
+
+
+# Each input, the trust record's hashes it costs (a writer's hash of the file it renamed into
+# place included, backup's own hashlib digest not) and the digest its last read gives.
+_TRUST_TABLE = {
+    "write then read": (_write_then_read, 1, _ONE),
+    "read twice": (_read_twice, 1, _ONE),
+    "bytes changed, same size, mtime inside the racy tick": (_racy_rewrite, 2, _TWO),
+    "mtime changed": (_mtime_changed, 2, _ONE),
+    "replaced by rename": (_renamed_over, 2, _TWO),
+    "switch off": (_switch_off, 3, _ONE),
+    "copied to another root": (_copied_root, 2, _ONE),
+    "a writer's digest of bytes the path does not hold": (_foreign_write, 2, _ONE),
+    "edited in place while its writer hashes it": (_edited_while_hashed, 2, _TWO),
+    "backup": (_backup, 3, _TWO),
+}
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-@pytest.mark.parametrize("case", ["just-written", "young-rewrite", "stamp-ages-during-hash"])
-def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
+@pytest.mark.parametrize("case", list(_TRUST_TABLE), ids=list(_TRUST_TABLE))
+def test_a_files_digest_is_trusted_until_its_stamp_changes(
     tmp_path: Path, monkeypatch, case: str
 ) -> None:
-    """A young reader hashes immediately and rehashes after a rewrite."""
-    with (
-        _kept_facts(tmp_path) as (facts, _workspace, target),
-        monkeypatch.context() as clock,
-    ):
-        young = now = max(file_stamp(target)[-2:])
-
-        def unexpected_wait(_seconds: float) -> None:
-            pytest.fail("a reader must not wait for a file stamp")
-
-        digest_stream = digests.integrity_sha256_stream
-
-        def finish_hash_after_window(handle):
-            nonlocal now
-            digest = digest_stream(handle)
-            now += int((facts.RACY_SECONDS + 1) * 10**9)
-            return digest
-
-        clock.setattr(facts, "wall_time", lambda: now / 1e9)
-        clock.setattr(facts, "wall_time_ns", lambda: now)
-        clock.setattr(time, "sleep", unexpected_wait)
-        with monkeypatch.context() as hashing:
-            if case == "stamp-ages-during-hash":
-                hashing.setattr(digests, "integrity_sha256_stream", finish_hash_after_window)
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-        assert facts.file_fact(target, "sha256") is None
-        now = young
-        if case == "young-rewrite":
-            target.write_bytes(b"two")
-            assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
-            target.write_bytes(b"one")
-
-        facts.record_file_fact(target, "columns", "a" * 64)
-        assert facts.file_fact(target, "columns") is None
-        facts.record_file_fact(target, "columns", "a" * 64, written=True)
-        assert facts.file_fact(target, "columns") == "a" * 64
-        sealed = hashlib.sha256(b"one").hexdigest()
-        assert facts.file_sha256(target, written=True) == sealed
-        assert facts.file_fact(target, "sha256") == sealed
-        facts.record_sealed_file(target, sealed)
-        stat = target.stat()
-        target.write_bytes(b"two")  # same size, in the same tick as far as its stat says
-        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        assert not facts.sealed_file_holds(target, sealed)
+    """Each input's hash count and digest: a stamp's change, the racy tick, a copy and the
+    switch hash again; the full proof and backup hash every file."""
+    run, hashes, digest = _TRUST_TABLE[case]
+    with _kept_facts(tmp_path) as (facts, _workspace, target):
+        clock = _Clock(facts, monkeypatch)
+        calls = _counted_hashes(monkeypatch)
+        with collect() as timing:
+            assert run(facts, target, clock, tmp_path, monkeypatch) == digest
+    assert len(calls) == hashes
+    off = any(row["detail"] == "file_trust_off" for row in timing.rows())
+    assert off == (case == "switch off")
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
-    tmp_path: Path,
-    monkeypatch,
+def test_a_files_digest_outlives_its_process_for_the_lease_holders_workspace(
+    tmp_path: Path, monkeypatch
 ) -> None:
-    """requirement: a digest verified once is kept for the next process of the workspace, and
-    a sealed file's writer's digest lets that process read it with no hash."""
+    """requirement: a writer's digest is kept for the next process of the workspace, which
+    reads the file with no hash; older journal lines cost a hash, and a long journal is
+    compacted to its latest entries."""
     with _kept_facts(tmp_path) as (facts, workspace, target):
         _aged(target)
-        _advance_file_fact_clock(facts, target, monkeypatch)
-        sealed = hashlib.sha256(b"one").hexdigest()
-        facts.record_sealed_file(target, sealed)
+        clock = _Clock(facts, monkeypatch)
+        clock.settle(target)
+        facts.record_sealed_file(target, _ONE)
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)  # the next process: only the writer's journal
-        with collect() as timing:
-            assert facts.sealed_file_holds(target, sealed)
-        assert _hashed(timing) == 0
-        # A legacy metadata-only fact is readable but never used as a byte proof.
-        stat = target.stat()
-        journal = workspace / facts.FILE_FACTS
-        journal.parent.mkdir(parents=True, exist_ok=True)
+        calls = _counted_hashes(monkeypatch)
+        assert facts.sealed_file_holds(target, _ONE)
+        assert facts.file_fact(target, "sha256") == _ONE
+        assert calls == []
+        journal = workspace / facts.FILE_TRUST
+        line = journal.read_bytes().splitlines(keepends=True)[-1]
+        malformed = [*json.loads(line)[:-1], ""]  # the held stamp, with no SHA-256
         journal.write_text(
-            json.dumps(
-                [
-                    target.relative_to(workspace).as_posix(),
-                    "columns",
-                    stat.st_size,
-                    stat.st_mtime_ns,
-                    stat.st_ino,
-                    "a" * 64,
-                ]
-            )
+            json.dumps([target.relative_to(workspace).as_posix(), "sealed-sha256", _ONE])
+            + "\n"
+            + json.dumps(malformed)
             + "\n",
             encoding="utf-8",
         )
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
-        assert facts.file_fact(target, "columns") is None
-        facts.record_file_fact(target, "columns", "a" * 64)
+        assert facts.file_fact(target, "sha256") is None
+        assert facts.file_sha256(target) == _ONE
+        assert len(calls) == 1
+        with journal.open("ab") as stream:
+            stream.write(line * 1100)
+        before = journal.stat().st_size
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
-        assert facts.file_fact(target, "columns") == "a" * 64
-        facts.configure_file_facts(capacity=1)
-        try:
-            for _ in range(2):
-                facts.file_sha256(target)
-                facts.record_file_fact(target, "columns", "a" * 64)
-                assert facts.file_fact(target, "sha256") is None
-                assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-                facts.release_file_facts(workspace)
-            journal = (workspace / facts.FILE_FACTS).read_bytes()
-            facts.keep_file_facts(workspace)
-            assert (workspace / facts.FILE_FACTS).read_bytes() == journal
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-            # Compaction keeps the latest content proof while bounding historical rows.
-            path = workspace / facts.FILE_FACTS
-            with path.open("ab") as stream:
-                stream.write(journal.splitlines(keepends=True)[-1] * 1100)
-            before = path.stat().st_size
-            facts.release_file_facts(workspace)
-            facts.keep_file_facts(workspace)
-            assert path.stat().st_size < before
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-        finally:
-            facts.configure_file_facts()
+        assert journal.stat().st_size < before
+        assert facts.file_fact(target, "sha256") == _ONE
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None:
-    """tamper: a file rewritten in place, same size, loses its fact and is digested again; a
-    sealed file's read hashes it again once its stat changed, and only full proof refuses a
-    rewrite whose stat was put back."""
-    with _kept_facts(tmp_path) as (facts, _workspace, target):
-        _aged(target)
-        digest = digests.integrity_sha256_stream
-        calls = []
-
-        def counted(*args, **kwargs):
-            calls.append(True)
-            return digest(*args, **kwargs)
-
-        with monkeypatch.context() as counting:
-            _advance_file_fact_clock(facts, target, counting)
-            counting.setattr(digests, "integrity_sha256_stream", counted)
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                assert (
-                    list(pool.map(facts.file_sha256, [target] * 4))
-                    == [hashlib.sha256(b"one").hexdigest()] * 4
-                )
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-            assert calls == [True]
+def test_a_value_derived_from_a_files_bytes_is_kept_by_their_digest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A young reader's value is not kept and its writer's is; a copy shares it by digest; a
+    rewrite, or a forced index collision, finds none; an unreadable stamp still hashes."""
+    with _kept_facts(tmp_path) as (facts, workspace, target):
+        clock = _Clock(facts, monkeypatch)
+        facts.record_file_fact(target, "columns", "a" * 64)
+        assert facts.file_fact(target, "columns") is None
+        facts.record_file_fact(target, "columns", "a" * 64, written=True)
+        assert facts.file_fact(target, "columns") == "a" * 64
+        facts.release_file_facts(workspace)
+        facts.keep_file_facts(workspace)
+        assert facts.file_fact(target, "columns") == "a" * 64
+        copy = target.with_name("copy.parquet")
+        copy.write_bytes(target.read_bytes())
+        assert facts.file_fact(copy, "columns") == "a" * 64
+        original = target.stat()
+        target.write_bytes(b"two")
+        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+        clock.settle(target)
+        assert facts.file_fact(target, "columns") is None
+        monkeypatch.setattr(facts, "change_xxh3_128_hex", lambda _data: "0" * 32)
+        facts.record_file_fact(target, "columns", "b" * 64, written=True)
+        target.write_bytes(b"one")
+        clock.settle(target)
+        assert facts.file_fact(target, "columns") is None
 
         def unavailable(_path):
             raise OSError("stamp unavailable")
 
         with monkeypatch.context() as blocked, collect() as timing:
-            blocked.setattr(facts.os, "fstat", unavailable)
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+            blocked.setattr(digests.os, "fstat", unavailable)
+            assert facts.file_sha256(target) == _ONE
         assert any(row["detail"] == "file_stamp_unavailable" for row in timing.rows())
-        facts.record_file_fact(target, "columns", "a" * 64)
-        copy = target.with_name("copy.parquet")
-        copy.write_bytes(target.read_bytes())
-        assert facts.file_fact(copy, "columns") == "a" * 64
-        stat = target.stat()
-        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
-        assert facts.file_fact(target, "columns") == "a" * 64
-        original = target.stat()
-        assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-        target.write_bytes(b"two")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        assert facts.file_fact(target, "columns") is None
-        assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
-        sealed = hashlib.sha256(b"two").hexdigest()
-        _aged(target)
-        facts.record_sealed_file(target, sealed)
-        aged = target.stat()
-        target.write_bytes(b"TWO")
-        with collect() as timing:
-            assert not facts.sealed_file_holds(target, sealed)  # its stat changed: hashed
-        assert _hashed(timing) == 1
-        os.utime(target, ns=(aged.st_atime_ns, aged.st_mtime_ns))
-        assert facts.sealed_file_holds(target, sealed)  # stat put back: trusted, as git does
-        with facts.full_content_proof():
-            assert not facts.sealed_file_holds(target, sealed)
-        target.write_bytes(b"two")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        # Even a forced index collision cannot match a different full content key.
-        monkeypatch.setattr(facts, "change_xxh3_128_hex", lambda _data: "0" * 32)
-        facts.record_file_fact(target, "columns", "b" * 64, written=True)
-        target.write_bytes(b"one")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        assert facts.file_fact(target, "columns") is None

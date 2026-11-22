@@ -14,8 +14,12 @@ import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
+from alphalattice.control.workspace_runtime.verified_facts import (
+    file_sha256,
+    record_sealed_file,
+)
 from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_stream
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .compile import _SCHEMA_ID, _schema
@@ -250,6 +254,7 @@ class _ExecutionOutcomeArtifactStore:
                 raise ValueError("causal_outcomes.qa_preparation_missing") from exc
             except OSError as exc:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid") from exc
+            # The bytes decoded are the bytes proved: a part is read whole either way.
             if (
                 len(content) != part.byte_count
                 or integrity_sha256(content).hexdigest() != part.file_hash
@@ -307,8 +312,7 @@ class _ExecutionOutcomeArtifactStore:
                     # _read_local_qa_table verifies these exact bytes once.
                     continue
                 try:
-                    with path.open("rb") as stream:
-                        actual = integrity_sha256_stream(stream).hexdigest()
+                    actual = file_sha256(path)
                 except FileNotFoundError as exc:
                     raise ValueError("causal_outcomes.qa_preparation_missing") from exc
                 if actual != expected:
@@ -323,7 +327,9 @@ class _ExecutionOutcomeArtifactStore:
         )
         return head, pa.ipc.open_stream(pa.py_buffer(content)).read_all()
 
-    def _write_local_qa(self, path: Path, content: bytes, *, replace: bool = False) -> None:
+    def _write_local_qa(
+        self, path: Path, content: bytes, *, replace: bool = False, digest: str | None = None
+    ) -> None:
         if path.exists():
             existing = path.read_bytes()
             if existing == content:
@@ -334,6 +340,7 @@ class _ExecutionOutcomeArtifactStore:
             raise ValueError("causal_outcomes.qa_preparation_capacity_required")
         self._preparation_capacity(len(content))
         self._atomic_write(path, content)
+        record_sealed_file(path, digest or integrity_sha256(content).hexdigest())
 
     def publish_local_qa_preparation(
         self,
@@ -370,7 +377,9 @@ class _ExecutionOutcomeArtifactStore:
                 file_hash=file_hash,
                 byte_count=len(content),
             )
-            self._write_local_qa(self._local_qa_path("parts", file_hash, "parquet"), content)
+            self._write_local_qa(
+                self._local_qa_path("parts", file_hash, "parquet"), content, digest=file_hash
+            )
         head = LocalQAOutcomePreparationHead.create(
             **dict(values),
             previous_head_hash=None if previous is None else previous.content_hash,
