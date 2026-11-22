@@ -1,5 +1,30 @@
 {
 "entries": {
+"src/alphalattice/interface/local_application/portfolio_request_fields/__init__.py::_FAMILIES_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps one request family's field definitions for each of the 8 families."
+},
+"src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_ROOTS_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps the recorded value moves of at most 8 data roots, evicting the least recently used."
+},
+"src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_BOOSTERS_HELD::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A chronological LightGBM scope keeps at most 64 parsed boosters, evicting the least recently used."
+},
+"src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_DATASETS_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A chronological LightGBM scope keeps at most 8 binned datasets, evicting the least recently used."
+},
+"src/alphalattice/foundation/feature_engine/panels/sector_classification.py::_NAMES_HELD::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps World's Sector names for at most 64 recent data root, listing and cutoff reads."
+},
 "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::alpha_array_files::64": {
 "class": "METHOD",
 "count": 1,

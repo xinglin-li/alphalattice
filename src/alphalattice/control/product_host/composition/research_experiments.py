@@ -2953,12 +2953,13 @@ class ResearchExperimentApplication:
 
         scope = _VERIFIED_EVIDENCE.get()
         key = (task.task_id, task.record_hash, recorded_readback)
-        if scope is not None and key in scope:
+        held = scope.get(key) if scope is not None else None
+        if held is not None:
             return cast(
                 tuple[
                     ResearchExecutionEvidence, ResearchProgramWorkflow, ResearchExecutionEvidence
                 ],
-                scope[key],
+                held,
             )
         plan, actor = plan_actor if plan_actor is not None else self._of(task)
         stored: list[ResearchExecutionEvidence] = []

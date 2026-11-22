@@ -143,14 +143,15 @@ class BoundedMemo[K: Hashable, V](MutableMapping[K, V]):
             self._observe(ledger)
 
 
-StageDigests = dict[tuple[object, ...], tuple[object, str]]
+StageDigests = BoundedMemo[tuple[object, ...], tuple[object, str]]
+"""A stage's digests, held to BoundedMemo's capacity: an evicted slot digests its inputs again."""
 _STAGE_DIGESTS: ContextVar[StageDigests | None] = ContextVar("stage_digests", default=None)
 
 
 @contextmanager
 def stage_digests(digests: StageDigests | None = None) -> Iterator[None]:
     """Open the stage's digest holder in the thread running its current phase."""
-    token = _STAGE_DIGESTS.set({} if digests is None else digests)
+    token = _STAGE_DIGESTS.set(BoundedMemo() if digests is None else digests)
     try:
         yield
     finally:

@@ -1,0 +1,132 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "d069a0713026e856d8e7e0bb67a72a7372fdc081d3ca0d3504206838ffda3c46",
+   "successor": "6e7b10955e80fe447ea40bfbb5d0d6b44a7e412b3b9b73b55546234c44e9d752",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "ee71741ebcdf075a117bbd398e8a6fceb71839a5281a35bf236bf6ee34166c38",
+   "successor": "36743cf0bf688a6d42f4cc0862e90a96a771db3601694ceee8e5c6c97a506670",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "967d0a799d35256e0b0226c303677394ab69d69ddffc2a2dd67a8ee677f58d2c",
+   "successor": "af26114661dbe52928394b0731c25a88013f82649518235ba7b81da659a41b7c",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "ef5f81176bd19a48e27814f3e9242bcfb916b7bf5ed792de0bd033f596a15c66",
+   "successor": "f2f97712d4b1c8d28d4aaec9c6733a0a94db7b4532fb094f294e25273cbd2911",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "35f2df388f72db0f54677339ead9deddbe1c2445d5677c453f4a74359bc0f712",
+   "successor": "25bd6fd1e29c2dab7071e7b07ef5f9f318d11beb47ba719ae5e38d9012ca8241",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "3f87e6cde6c900e97da5841665a2ca85e160bfb83e433f8ec0cf65a4eeb85ad7",
+   "successor": "4749af4d0e4349121caf47dec06dd51dbd12bbadaba990502169c27481309945",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "63512311ea4fe78e9fd5569038841cf98c6e6a5a8a1c62b0b8ab6ae3ac7933c3",
+   "successor": "ff89515b321028f55d1a1a48c24e07695b2493c7b0c61d5601f25fb7e4130630",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c035b9c057d92acd628aeeea739ec054a6f822103fc8654036288500d44a9097",
+   "successor": "46627affac7cdd03d8187c8d30ddc275fbca1cb7217ecce95fade5d6b727f206",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "8aa10dcdcbbc9106189f235d4668da5b1434448a0472779af5cfc1ee22145158",
+   "successor": "781a6395cf07ff7abbfe4246fa58d671639611fb1fa16005f703a3c6ec69e93c",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "30eba65f76ed9591adf4df1a4d4ffd67a4ecd9d4f1324e6680d72e0db5c77269",
+   "successor": "112a279d83367e07efb0807845290d4f44ff1645a3053faedbfbc5320730d63a",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "f97ab0698730d8b4629ed2bab0cfe6e10bfea0f718846e7b2732540f82c551c2",
+   "successor": "8561a0eef789e66654c80c1336f211016eb5aca9f2bd79845bec8cc658ada5c6",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "98472e265dd544a1f6e66a2d2aa8434757bb503297037c545a3caa403f33f91b",
+   "successor": "5de407b5cf01480980702ab229b8da22b05512a8651a77b9e4e2b4c5e42f4018",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "981b17cc2517aafdaf541ff2ad54967ab006adfaede42dfdc4b7c5184aa0dc8b",
+   "successor": "976203f9519848d2f53bce15b8d6b03b7aab4a4e03de958e3329f9168a0c0076",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "a29c83fcbedcfed2171f3d4133992baa4d895aaf49b71f600a6cdaa1f7a44018",
+   "successor": "f9159d5bf8f72f1dc7743cd4e6b29d80e1a174a845675021cf0aebdbf4fda5c9",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "a29c83fcbedcfed2171f3d4133992baa4d895aaf49b71f600a6cdaa1f7a44018",
+   "successor": "f9159d5bf8f72f1dc7743cd4e6b29d80e1a174a845675021cf0aebdbf4fda5c9",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "f549957b58dcd8567105014174897f8d10680407ac70d8068d29b4d5ba2d5d07",
+   "successor": "2f23eefa19327adaec3658e26c265a3f917ad0e2b9ba39894f506ea55ab19513",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "94712aa40d18e69c9b8f72ede749c89333eae04caf619001f59bf3bcfaaa5952",
+   "successor": "311c93ec725a097af0572fd2a26a8a35cef9cda76684ce7ab236912a96f32d09",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "ca8a0fa8b3d860da17a1ab0316a51c21edfd5cf91b7d212d8778ff2b4d8f0b8a",
+   "successor": "487224cd94d3af580edf30ef41f87c065c4a7c5b6a57acdd6a48a22fd09d39ca",
+   "change": "Every cache has a registered bound, and a new unbounded one is refused",
+   "reason": "Every cache is registered with its owner, bound and key, and a cache whose owner already holds the value is gone; the development replay reads ALL EQUAL over 185,251 records at this head, so the moved roles change code fingerprints only. (carried across composition on 03952ee2542d685de3e2bfbff91ec195c55f673a)"
+  }
+ ]
+}

@@ -2640,6 +2640,13 @@
       "seconds": 30,
       "lower_layer": "The real resolver reads the workspace's bound research data when it checks authority."
     },
+    "resources.every_cache_is_registered_with_a_bound": {
+      "description": "A cache that names no bound, or that no register row names, holds memory no rule can see grow, until a long Daily runs out of it.",
+      "owner": "alphalattice.kernel.resources",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "The rule reads every module of the product tree and the shipped register, and its eviction case runs a real cache's owner, which a unit test cannot reach."
+    },
     "resources.task_grants_obey_the_budget": {
       "description": "A resource grant atomically debits the budget and returns exactly its reservation at release or observed process exit.",
       "owner": "alphalattice.kernel.resources",

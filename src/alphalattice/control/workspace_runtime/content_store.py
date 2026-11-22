@@ -24,7 +24,7 @@ import os
 import shutil
 import sys
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import Context, ContextVar
@@ -172,8 +172,9 @@ def verified_source_value[T](
     proved = _FULL_PROOF.get()
     while True:
         with _VERIFIED_ARRAY_CACHE_LOCK:
-            if proved is not None and key in proved:
-                return cast(T, proved[key])
+            held = proved.get(key, _ABSENT) if proved is not None else _ABSENT
+            if held is not _ABSENT:
+                return cast(T, held)
             cached = _VERIFIED_ARRAY_CACHE.get(key)
             if cached is not None and proved is None:
                 _VERIFIED_ARRAY_CACHE.move_to_end(key)
@@ -323,7 +324,7 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
     """
     proved = _FULL_PROOF.get()
     if proved is not None:
-        if ("request-proof", identity) in proved:
+        if proved.get(("request-proof", identity), _ABSENT) is not _ABSENT:
             return
         with span("verify", "request_proof"):
             check()
@@ -425,8 +426,12 @@ def verified_request_value[T](
     return cast(T, _handed(kept))
 
 
+_ABSENT = object()
+"""What a held store answers for a key it does not hold, apart from a held None."""
+
+
 def _proved_request_value[T](
-    proved: dict[tuple[object, ...], object],
+    proved: MutableMapping[tuple[object, ...], object],
     key: tuple[object, ...],
     builder: Callable[[], T],
     nbytes: int | Callable[[T], int],
@@ -434,21 +439,24 @@ def _proved_request_value[T](
     copy_mutable: bool,
 ) -> T:
     """One full proof's value: built once inside it, never answered from what was kept before."""
-    if ("request-value", key) in proved:
-        return cast(T, _handed(proved["request-value", key]))
+    held = proved.get(("request-value", key), _ABSENT)
+    if held is not _ABSENT:
+        return cast(T, _handed(held))
     value = builder()
     size = nbytes(value) if callable(nbytes) else nbytes
     if size < 0:
         raise ValueError("content_store.verified_value_size_invalid")
     if size > _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         return value
+    kept: object
     if _immutable_request_value(value):
-        proved["request-value", key] = value
+        kept = value
     elif copy_mutable:
-        proved["request-value", key] = _Copied(value)
+        kept = _Copied(value)
     else:
         return value
-    return cast(T, _handed(proved["request-value", key]))
+    proved["request-value", key] = kept
+    return cast(T, _handed(kept))
 
 
 def _remember_request_value(

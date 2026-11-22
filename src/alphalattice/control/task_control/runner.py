@@ -28,7 +28,11 @@ from alphalattice.kernel.resources import (
     carry_resource_lease,
     worker_width,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
+from alphalattice.kernel.shared_kernel.bounded_memo import (
+    BoundedMemo,
+    StageDigests,
+    stage_digests,
+)
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
@@ -776,7 +780,7 @@ class TaskControlRunner:
             # This attempt, after the stage's interrupted ones in a row.
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
             refused = None if self.stage_gate is None else self.stage_gate(task)
-            digests: StageDigests = {}
+            digests: StageDigests = BoundedMemo()
             pool.digests[definition.stage_id] = digests
             pool.start(
                 definition,

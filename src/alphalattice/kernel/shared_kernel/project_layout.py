@@ -6,7 +6,7 @@ import json
 import shutil
 import subprocess
 from contextlib import suppress
-from functools import cache
+from functools import cache, lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, Final
@@ -16,11 +16,34 @@ from alphalattice.kernel.config import current as process_config
 REFUSAL_WORDS_RESOURCE: Final = "src/alphalattice/interface/local_application/refusal_words.json"
 
 
-@cache
+_RESOURCES_HELD = 64
+"""The shipped JSON resources one process reads: a few dozen registries and catalogs."""
+
+
 def runtime_json(relative: str) -> dict[str, Any]:
-    """Read one shipped JSON resource once per process, on either runtime leg."""
-    root = resolve_playpen_root(Path(__file__))
-    payload: dict[str, Any] = json.loads(resource_path(root, relative).read_text(encoding="utf-8"))
+    """Read one shipped JSON resource on either runtime leg, once while its file is unchanged."""
+    return json_file(resource_path(_root(), relative))
+
+
+def json_file(path: Path) -> dict[str, Any]:
+    """Read one JSON file, once while it is unchanged.
+
+    The file's stat (modification time, size and file id) is the key's invalidation input, so a
+    resident process reads a resource again once it is rewritten, as an editable checkout's are.
+    """
+    stat = path.stat()
+    return _resource_json(path, stat.st_mtime_ns, stat.st_size, stat.st_ino)
+
+
+@cache
+def _root() -> Path:
+    """This installation's root, which a process never moves."""
+    return resolve_playpen_root(Path(__file__))
+
+
+@lru_cache(maxsize=_RESOURCES_HELD)
+def _resource_json(path: Path, _mtime_ns: int, _size: int, _ino: int) -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     return payload
 
 

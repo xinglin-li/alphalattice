@@ -15,7 +15,7 @@ A world revision known after the cutoff never reaches the map's readers.
 from __future__ import annotations
 
 from datetime import date
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 
 from alphalattice.foundation.feature_engine.panels.closure_contracts import (
@@ -84,11 +84,15 @@ def _select(sector_map: SectorRevisionMap) -> int | None:
     return cutoff
 
 
-@cache
+_NAMES_HELD = 64
+"""The distinct (root, listings, cutoff) cuts one process reads names for: a Daily's few."""
+
+
+@lru_cache(maxsize=_NAMES_HELD)
 def _names(root: Path, listings: tuple[str, ...], cutoff_us: int) -> dict[str, str] | None:
     """World's Sector names of `listings` as known at `cutoff_us` in the data root `root`, or None
     with no world catalog; a known-time cut never changes, so each is read once per process and
-    root."""
+    root, and at most _NAMES_HELD cuts are held."""
     with world_reads.session() as cursor:
         if cursor is None:
             return None

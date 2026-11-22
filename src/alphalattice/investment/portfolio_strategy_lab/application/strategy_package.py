@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 from typing import ClassVar, Literal, Protocol, Self, runtime_checkable
 
@@ -99,7 +99,11 @@ recipe and its policy binding and catalog (NM1). Their recorded moves are what a
 stored before a move is read through."""
 
 
-@cache
+_ROOTS_HELD = 8
+"""The data roots whose recorded moves one process keeps."""
+
+
+@lru_cache(maxsize=_ROOTS_HELD)
 def _value_moves(root: Path | None = None) -> dict[str, dict[str, str]]:
     """Each value role's moves in force (`effective_moves`), by the value each moves from."""
     roles: dict[str, dict[str, str]] = {}

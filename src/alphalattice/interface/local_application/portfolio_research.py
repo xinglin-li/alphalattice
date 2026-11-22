@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from functools import cache
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, cast, get_args
 from uuid import UUID
 
@@ -644,7 +644,11 @@ class _RequestDocument(RequestFieldModel):
         return PortfolioResearchOperationRequest(operation=self.operation, **values)
 
 
-@cache
+_DOCUMENTS_HELD = 256
+"""Request document models kept: above one per operation's admitted fields plus the full set."""
+
+
+@lru_cache(maxsize=_DOCUMENTS_HELD)
 def _request_document(fields_to_read: frozenset[str]) -> type[_RequestDocument]:
     definitions = {}
     for name, family in FIELD_OWNER.items():

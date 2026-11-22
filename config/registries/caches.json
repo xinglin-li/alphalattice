@@ -281,24 +281,25 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches joint exchange session clocks for each requested start and end date, rebuilding on a new range or after LRU eviction."
     },
-    "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_plain_text::module-plain-text": {
+    "src/alphalattice/foundation/market_data_ops/publication/projection.py::_plain_text::module-plain-text": {
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
-        "src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_plain_text"
+        "src/alphalattice/foundation/market_data_ops/publication/projection.py::_plain_text"
       ],
-      "definition_line": 194,
+      "definition_line": 106,
       "key": "value",
       "dependency_coverage": "Yes: complete input string",
       "invalidation_rule": "none needed for pure string result",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none; process/closure end",
+      "size_bound": "lru_cache at BoundedMemo's default capacity, 1024 entries per logical CPU",
+      "bound_scope": "per process",
+      "eviction": "LRU at capacity",
       "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _plain_text in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Keeps how the canonical hash spells each string it writes unescaped, recomputing one evicted at capacity."
     },
     "src/alphalattice/foundation/market_data_ops/storage/source_prefix.py::market_data_source_prefix_proofs.listings::market-data-source-prefix-proofs-listings": {
       "owner": "alphalattice.foundation.market_data_ops",
@@ -441,46 +442,6 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the installed declaration-answer contracts until process restart."
     },
-    "src/alphalattice/interface/local_application/labels.py::label_table::module-label-table": {
-      "owner": "alphalattice.interface.local_application",
-      "defined_by": [
-        "src/alphalattice/interface/local_application/labels.py::label_table"
-      ],
-      "definition_line": 62,
-      "key": "unit key; installed module namespace",
-      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
-      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "1 entry",
-      "bound_scope": "1 entry",
-      "eviction": "none; process/closure end",
-      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory label_table in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches the installed product label table until process restart."
-    },
-    "src/alphalattice/interface/local_application/labels.py::_by_id::module-by-id": {
-      "owner": "alphalattice.interface.local_application",
-      "defined_by": [
-        "src/alphalattice/interface/local_application/labels.py::_by_id"
-      ],
-      "definition_line": 69,
-      "key": "unit key; installed module namespace",
-      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
-      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "1 entry",
-      "bound_scope": "1 entry",
-      "eviction": "none; process/closure end",
-      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory _by_id in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches product labels indexed by identifier until process restart."
-    },
     "src/alphalattice/investment/alpha_research/experiments/campaign_evidence.py::_policy_hash_for::module-policy-hash-for": {
       "owner": "alphalattice.investment.alpha_research",
       "defined_by": [
@@ -526,13 +487,13 @@
       "defined_by": [
         "src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_value_moves"
       ],
-      "definition_line": 103,
+      "definition_line": 107,
       "key": "unit key; installed module namespace",
       "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
       "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "1 entry",
-      "bound_scope": "1 entry",
-      "eviction": "none; process/closure end",
+      "size_bound": "8 entries",
+      "bound_scope": "8 entries, one per data root read",
+      "eviction": "LRU at capacity",
       "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
       "location": {
         "scope": "process",
@@ -700,26 +661,6 @@
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches recorded identity moves for each checkout root until process restart."
-    },
-    "src/alphalattice/kernel/shared_kernel/project_layout.py::runtime_json::module-runtime-json": {
-      "owner": "alphalattice.kernel.shared_kernel",
-      "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/project_layout.py::runtime_json"
-      ],
-      "definition_line": 15,
-      "key": "relative",
-      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
-      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none; process/closure end",
-      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory runtime_json in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches each installed JSON resource by its relative path until process restart."
     },
     "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule::module-number-deciding-rule": {
       "owner": "alphalattice.kernel.shared_kernel",
@@ -1201,24 +1142,25 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches native session usage readings for ten seconds, removing inactive bindings and clearing all readings when usage observation is switched off."
     },
-    "src/alphalattice/interface/local_application/native_setup.py::<module>._IN_WORKSPACE::native-sandbox-binding-reminder-memo": {
+    "src/alphalattice/interface/local_application/native_setup.py::<module>._BINDING_MEMO::native-sandbox-binding-reminder-memo": {
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
-        "src/alphalattice/interface/local_application/native_setup.py::_IN_WORKSPACE"
+        "src/alphalattice/interface/local_application/native_setup.py::_BINDING_MEMO"
       ],
-      "definition_line": 1164,
-      "key": "host,session,resolved workspace; _IN_WORKSPACE/_REMINDED",
+      "definition_line": 1340,
+      "key": "host,session,resolved workspace",
       "dependency_coverage": "No binding-file generation; first check retained",
       "invalidation_rule": "none; process end",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "per process",
+      "eviction": "LRU at capacity; a miss rereads the binding",
       "safe_to_drop": "Conditional: reset/recheck; notices can change",
       "location": {
         "scope": "process",
-        "path_expression": "In-memory _IN_WORKSPACE in its module, instance, or call namespace"
+        "path_expression": "In-memory _BINDING_MEMO in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Remembers which host session's sandbox binding was already checked in a workspace, rereading the binding after an eviction at capacity."
     },
     "src/alphalattice/control/product_host/composition/portfolio_result_context.py::<module>._SECTOR_CACHE::portfolio-book-sector-projection-sector-cache": {
       "owner": "alphalattice.control.product_host.composition",
@@ -1878,24 +1820,25 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches canonical cutoff-set payloads and hashes by factor axis and exact cutoff JSON text, rebuilding after changed keys, LRU eviction or capacity reconfiguration."
     },
-    "src/alphalattice/foundation/feature_engine/runtime/service.py::<module>._WORKER_PANELS::feature-worker-panel-materializers": {
+    "src/alphalattice/foundation/feature_engine/producers/cross_section.py::<module>._WORKER_PANELS::feature-worker-panel-materializers": {
       "owner": "alphalattice.foundation.feature_engine",
       "defined_by": [
-        "src/alphalattice/foundation/feature_engine/runtime/service.py::_WORKER_PANELS"
+        "src/alphalattice/foundation/feature_engine/producers/cross_section.py::_WORKER_PANELS"
       ],
-      "definition_line": 244,
+      "definition_line": 409,
       "key": "catalog hash,implementation binding",
       "dependency_coverage": "Yes for materializer; chunk inputs passed on each call",
       "invalidation_rule": "worker end",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "per worker process",
+      "eviction": "LRU at capacity; worker end",
       "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _WORKER_PANELS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Keeps a kept worker's Panel materializers by catalog hash and implementation binding, rebuilding one evicted at capacity."
     },
     "src/alphalattice/foundation/feature_engine/panels/rematerialization.py::_Replays.base_cache::artifact-replay-base-year-frame-cache": {
       "owner": "alphalattice.foundation.feature_engine",
@@ -1977,24 +1920,25 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches exchange calendars and schedule rows by calendar identifier for the onboarding run's fixed history window until that onboarding object is discarded."
     },
-    "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::<module>._VERIFIED_CHUNKS::alpha-verified-development-chunk-hashes": {
+    "src/alphalattice/investment/alpha_research/experiments/development_chunk_identity.py::<module>._VERIFIED_CHUNKS::alpha-verified-development-chunk-hashes": {
       "owner": "alphalattice.investment.alpha_research",
       "defined_by": [
-        "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::_VERIFIED_CHUNKS"
+        "src/alphalattice/investment/alpha_research/experiments/development_chunk_identity.py::_VERIFIED_CHUNKS"
       ],
-      "definition_line": 269,
+      "definition_line": 27,
       "key": "SHA-256(file bytes),canonical identity hash",
       "dependency_coverage": "Yes",
       "invalidation_rule": "new bytes/identity; process end",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "per process",
+      "eviction": "LRU at capacity; a miss derives and verifies in full",
       "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_CHUNKS in its module, instance, or call namespace"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739"
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Keeps each development chunk's content hash by its file's SHA-256 and identity hash, deriving and verifying a chunk again after an eviction."
     },
     "src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::<module>._SIDECAR_SCOPE::alpha-model-fit-sidecar-operation-scope": {
       "owner": "alphalattice.investment.alpha_research",
@@ -2201,13 +2145,13 @@
       "defined_by": [
         "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_DATASET_CACHE"
       ],
-      "definition_line": 48,
+      "definition_line": 54,
       "key": "feature/target/weight byte identities,feature names,params,reference key",
       "dependency_coverage": "Yes: construction-default inputs and reference included",
       "invalidation_rule": "outer-fold scope exit",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "scope clear",
+      "size_bound": "8 entries",
+      "bound_scope": "scope entries",
+      "eviction": "LRU at the bound; scope clear",
       "safe_to_drop": "Yes with exact pinned runtime/inputs",
       "location": {
         "scope": "process",
@@ -2221,13 +2165,13 @@
       "defined_by": [
         "src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_BOOSTER_CACHE"
       ],
-      "definition_line": 59,
+      "definition_line": 65,
       "key": "exact model text",
       "dependency_coverage": "Scoped same installed LightGBM runtime; read-only predictions",
       "invalidation_rule": "scoring-loop scope exit",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "scope clear",
+      "size_bound": "64 entries",
+      "bound_scope": "scope entries",
+      "eviction": "LRU at the bound; scope clear",
       "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
@@ -3702,6 +3646,238 @@
         "path_expression": "In-memory VerifiedReadbacks._flights on PortfolioResearchOperations.readbacks"
       },
       "source_commit": "050bc399d899c7c5112a7720eda3d34e82dd0d97"
+    },
+    "src/alphalattice/interface/local_application/labels.py::_installed::module-label-table": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/labels.py::_installed"
+      ],
+      "definition_line": 62,
+      "key": "unit key; installed module namespace; the table and its index by id",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _installed in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches the installed product label table and its index by identifier until process restart."
+    },
+    "src/alphalattice/kernel/shared_kernel/project_layout.py::_resource_json::shipped-json-resource": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/project_layout.py::_resource_json"
+      ],
+      "definition_line": 45,
+      "key": "resource path and its file's stat (modification time, size, file id)",
+      "dependency_coverage": "The file's stat is the key's invalidation input: a rewritten resource is read again",
+      "invalidation_rule": "the file's stat changes; LRU eviction at the bound",
+      "size_bound": "64 entries",
+      "bound_scope": "process entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _resource_json in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches one shipped JSON resource while its file is unchanged, on either runtime leg."
+    },
+    "src/alphalattice/kernel/shared_kernel/project_layout.py::_root::installation-root": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/project_layout.py::_root"
+      ],
+      "definition_line": 39,
+      "key": "unit key; this installation's root",
+      "dependency_coverage": "A process never moves its installation",
+      "invalidation_rule": "none; process end",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _root in its module, instance, or call namespace"
+      },
+      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
+      "description": "Caches this installation's root, resolved once per process."
+    },
+    "src/alphalattice/foundation/feature_engine/panels/sector_classification.py::_names::world-sector-names-at-cutoff": {
+      "owner": "alphalattice.foundation.feature_engine",
+      "defined_by": [
+        "src/alphalattice/foundation/feature_engine/panels/sector_classification.py::_names"
+      ],
+      "definition_line": 92,
+      "key": "data root, listings tuple and known-time cutoff",
+      "dependency_coverage": "A known-time cut of world's Sector catalog never changes, so the cutoff and root decide it",
+      "invalidation_rule": "none; a known-time cut is immutable; LRU eviction at the bound",
+      "size_bound": "64 entries",
+      "bound_scope": "process entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: read world's Sector catalog again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _names in its module, instance, or call namespace"
+      },
+      "source_commit": "31e9a25724876c3d7d0824970cb89203beb39bac",
+      "description": "Caches world's Sector names of a listings tuple as known at a cutoff, for the panels that classify by sector."
+    },
+    "src/alphalattice/interface/local_application/message_catalog.py::catalog_words::installed-message-words": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/message_catalog.py::catalog_words"
+      ],
+      "definition_line": 27,
+      "key": "unit key; installed messages.json",
+      "dependency_coverage": "Installed messages.json; fixed-install/process assumption",
+      "invalidation_rule": "none; process end",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory catalog_words in its module, instance, or call namespace"
+      },
+      "description": "Keeps the installed message catalog's ids and English aliases for the CLI and Workbench readers."
+    },
+    "src/alphalattice/interface/local_application/questions.py::_catalog::installed-person-questions": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/questions.py::_catalog"
+      ],
+      "definition_line": 19,
+      "key": "unit key; installed messages.json",
+      "dependency_coverage": "Installed messages.json; fixed-install/process assumption",
+      "invalidation_rule": "none; process end",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _catalog in its module, instance, or call namespace"
+      },
+      "description": "Keeps the installed catalog's person questions, each with its catalog hash."
+    },
+    "src/alphalattice/interface/local_application/portfolio_request_fields/__init__.py::request_fields::portfolio-request-family-fields": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/portfolio_request_fields/__init__.py::request_fields"
+      ],
+      "definition_line": 184,
+      "key": "request family",
+      "dependency_coverage": "Yes: the family names the installed model whose fields are read",
+      "invalidation_rule": "none; process end",
+      "size_bound": "8 entries, one per request family",
+      "bound_scope": "per process",
+      "eviction": "LRU at capacity",
+      "safe_to_drop": "Yes: recompute from identical retained inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory request_fields in its module, instance, or call namespace"
+      },
+      "description": "Keeps each request family's field definitions, loaded only when a request first needs one of them."
+    },
+    "src/alphalattice/interface/local_application/portfolio_research.py::_request_document::portfolio-request-document-models": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/portfolio_research.py::_request_document"
+      ],
+      "definition_line": 652,
+      "key": "the request fields read (an operation's admitted set, or every field)",
+      "dependency_coverage": "Yes: the field set and the installed field definitions decide the model",
+      "invalidation_rule": "none; process end",
+      "size_bound": "256 entries, above one per request operation plus the full document",
+      "bound_scope": "per process",
+      "eviction": "LRU at capacity",
+      "safe_to_drop": "Yes: recompute from identical retained inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _request_document in its module, instance, or call namespace"
+      },
+      "description": "Keeps the request document model for each operation's admitted fields and for every field, building one on first use."
+    },
+    "src/alphalattice/kernel/shared_kernel/bounded_memo.py::<module>._STAGE_DIGESTS::stage-input-digests": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/bounded_memo.py::_STAGE_DIGESTS"
+      ],
+      "definition_line": 148,
+      "key": "reader slot (store, kind, listing, range) and its equal immutable inputs",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "inputs differ in the slot; stage end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "stage",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "stage",
+        "path_expression": "In-memory _STAGE_DIGESTS in its module, instance, or call namespace"
+      },
+      "description": "Keeps one digest and its inputs per reader slot within a Task stage, digesting again when the inputs differ or after an eviction at capacity."
+    },
+    "src/alphalattice/control/product_host/composition/research_read_scopes.py::<module>._VERIFIED_EVIDENCE::operation-verified-study-evidence": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_read_scopes.py::_VERIFIED_EVIDENCE"
+      ],
+      "definition_line": 16,
+      "key": "Task id, record hash and readback mode",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "operation end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "operation",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "operation",
+        "path_expression": "In-memory _VERIFIED_EVIDENCE in its module, instance, or call namespace"
+      },
+      "description": "Keeps each study's verified evidence for one operation, verifying a study again after an eviction at capacity."
+    },
+    "src/alphalattice/control/product_host/composition/research_read_scopes.py::<module>._TRIAL_READS::request-completed-trial-reads": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/research_read_scopes.py::_TRIAL_READS"
+      ],
+      "definition_line": 53,
+      "key": "trial id of a completed trial",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "request end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "request",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "request",
+        "path_expression": "In-memory _TRIAL_READS in its module, instance, or call namespace"
+      },
+      "description": "Keeps each completed trial's first read in one request, reading a trial again after an eviction at capacity."
+    },
+    "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._FULL_PROOF::full-proof-proved-values": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/verified_facts.py::_FULL_PROOF"
+      ],
+      "definition_line": 59,
+      "key": "kind and identity of each sealed value or request the proof checked",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "proof end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "proof",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "proof",
+        "path_expression": "In-memory _FULL_PROOF in its module, instance, or call namespace"
+      },
+      "description": "Shares what one full content proof has proved among its reads, proving a value again from its bytes after an eviction at capacity."
     }
   }
 }

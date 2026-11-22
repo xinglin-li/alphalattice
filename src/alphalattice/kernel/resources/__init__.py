@@ -1,4 +1,5 @@
-"""Admission and lifetime of the resources an execution holds."""
+"""Admission and lifetime of the resources an execution holds, and the register of the caches
+that hold memory."""
 
 import os
 from collections.abc import Callable, Iterator
@@ -9,14 +10,19 @@ from uuid import UUID
 
 from alphalattice.kernel.config import current as process_config
 
+from .caches import CacheBound, CacheRow, cache_bound, cache_register
 from .port import ResourceAmounts, ResourceLease, ResourcesPort
 
 __all__ = [
+    "CacheBound",
+    "CacheRow",
     "ResourceAmounts",
     "ResourceLease",
     "ResourceLeases",
     "ResourceRefused",
     "ResourcesPort",
+    "cache_bound",
+    "cache_register",
     "carry_resource_lease",
     "cpu_width",
     "current_resource_lease",

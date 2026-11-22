@@ -910,7 +910,9 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
     with chronological_lightgbm_dataset_cache():
         original, key = adapter._dataset(Backend, **arguments)
         assert adapter._dataset(Backend, **deepcopy(arguments)) == (original, key)
-        for field, value in parameters.items():
+        # The fields that keep reuse are asked first, while the bounded scope holds the original.
+        preserving = ("num_threads", "verbosity")
+        for field, value in sorted(parameters.items(), key=lambda item: item[0] not in preserving):
             altered = deepcopy(arguments)
             altered["dataset_params"][field] = changed(value)
             result, other_key = adapter._dataset(Backend, **altered)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import cache
+from functools import lru_cache
 from typing import Any, Literal, cast
 
 from pydantic.fields import FieldInfo
@@ -176,7 +176,11 @@ FIELD_OWNER: dict[str, RequestFamily] = {
 }
 
 
-@cache
+_FAMILIES_HELD = 8
+"""One entry per request family."""
+
+
+@lru_cache(maxsize=_FAMILIES_HELD)
 def request_fields(family: RequestFamily) -> dict[str, FieldInfo]:
     """Load the fields of a family only when a request needs one of them."""
     model: type[Any]

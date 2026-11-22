@@ -56,7 +56,7 @@ FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 FILE_TRUST = Path("runtime") / "file-trust.jsonl"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_KIND = "\x00content-v1:"
-_FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+_FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
     "content_store_full_proof", default=None
 )
 """Open inside ``full_content_proof()``: what a proof has shown, shared by its reads."""
@@ -305,7 +305,7 @@ def full_content_proof() -> Iterator[None]:
     if _FULL_PROOF.get() is not None:
         yield
         return
-    token = _FULL_PROOF.set({})
+    token = _FULL_PROOF.set(BoundedMemo())
     try:
         yield
     finally:

@@ -356,8 +356,9 @@ class FeatureTrials:
         request and its later reads answer from it.
         """
         reads = _TRIAL_READS.get()
-        if reads is not None and trial_id in reads:
-            return copy.deepcopy(reads[trial_id])
+        held = reads.get(trial_id) if reads is not None else None
+        if held is not None:
+            return copy.deepcopy(held)
         body = self._readback(trial_id)
         if reads is not None and body["state"] == "COMPLETED":
             reads[trial_id] = copy.deepcopy(body)
