@@ -33,7 +33,7 @@ import secrets
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import closing, contextmanager, nullcontext
+from contextlib import ExitStack, closing, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -45,6 +45,8 @@ import alphalattice.kernel.data_layer.project as project
 import alphalattice.kernel.data_layer.recall as recall
 import alphalattice.kernel.data_layer.return_series as return_series
 from alphalattice.kernel.clock import wall_time_ns
+from alphalattice.kernel.config import Change, process_override
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
@@ -344,14 +346,20 @@ def workspace_on_log(
 
 def _capture_message_content() -> bool:
     """Whether the OpenTelemetry GenAI capture mode permits content on spans."""
-    return os.environ.get(OTLP_CONTENT_ENV, "").strip().lower() in {"span_only", "span_and_event"}
+    return process_config().get(OTLP_CONTENT_ENV, "").strip().lower() in {
+        "span_only",
+        "span_and_event",
+    }
 
 
 def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
     """Scrub and send opted-in OTLP traces while the workspace's network control allows it."""
-    endpoint = os.environ.get(OTLP_TRACES_ENDPOINT_ENV, "").strip()
+    config = process_config()
+    traces = config.secret(OTLP_TRACES_ENDPOINT_ENV)
+    endpoint = traces.reveal().strip() if traces is not None else ""
     if not endpoint:
-        base_endpoint = os.environ.get(OTLP_ENDPOINT_ENV, "").strip()
+        base = config.secret(OTLP_ENDPOINT_ENV)
+        base_endpoint = base.reveal().strip() if base is not None else ""
         if not base_endpoint:
             return None
         endpoint = f"{base_endpoint.removesuffix('/')}/v1/traces"
@@ -410,30 +418,33 @@ def own_root(folder: Path) -> Iterator[Path]:
     and the catalog read on `folder` outside a Host closes with the hold, so a folder made again
     at that path is read afresh. Refused by name (`data_layer.root_held`) while this process's
     Host records."""
-    with _lifecycle, _opening, _lock:
-        if recording():
-            raise DataError(
-                f"this process's Host records in {_open['root']}; a copy opens in another process",
-                code="data_layer.root_held",
+    with ExitStack() as settings:
+        with _lifecycle, _opening, _lock:
+            if recording():
+                raise DataError(
+                    f"this process's Host records in {_open['root']}; "
+                    "a copy opens in another process",
+                    code="data_layer.root_held",
+                )
+            aside = dict(_open)
+            settings.enter_context(
+                process_override(
+                    Change("borrow-history-root", {DATA_ROOT_ENV: str(folder)}), native=True
+                )
             )
-        aside, before = dict(_open), os.environ.get(DATA_ROOT_ENV)
-        _open.clear()
-        os.environ[DATA_ROOT_ENV] = str(folder)
-    try:
-        yield folder
-    finally:
-        with _lifecycle, _opening:
-            _close_history()
-            with _lock:
-                _open.update(aside)
-                if before is None:
-                    os.environ.pop(DATA_ROOT_ENV, None)
-                else:
-                    os.environ[DATA_ROOT_ENV] = before
-        with _catalog_lock:
-            surface = _catalog_surfaces.pop(folder.resolve(), None)
-        if surface is not None:
-            surface.close()
+            _open.clear()
+        try:
+            yield folder
+        finally:
+            with _lifecycle, _opening:
+                _close_history()
+                with _lock:
+                    _open.update(aside)
+                    settings.close()
+            with _catalog_lock:
+                surface = _catalog_surfaces.pop(folder.resolve(), None)
+            if surface is not None:
+                surface.close()
 
 
 def release_history() -> None:

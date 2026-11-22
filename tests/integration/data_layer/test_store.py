@@ -19,6 +19,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 
+from alphalattice.kernel.config import Change, override
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import create_data_root, governance
 from alphalattice.kernel.data_layer import log as host
@@ -1723,20 +1724,21 @@ def _holds(log: HostLog, holder: str) -> None:
 
 @pytest.mark.proves("data_layer.a_body_goes_only_when_nothing_holds_it")
 @pytest.mark.parametrize(
-    ("holder", "unheld", "kept"),
+    ("holder", "unheld", "retention_days", "kept"),
     [
-        pytest.param("workspace", timedelta(0), True, id="held by its workspace"),
-        pytest.param("pin", timedelta(0), True, id="held by a pin"),
-        pytest.param("none", timedelta(days=7), True, id="held by the window"),
-        pytest.param("none", timedelta(0), False, id="collected when none holds it"),
-        pytest.param("unpinned", timedelta(0), False, id="collected once unpinned"),
+        pytest.param("workspace", timedelta(0), None, True, id="held by its workspace"),
+        pytest.param("pin", timedelta(0), None, True, id="held by a pin"),
+        pytest.param("none", timedelta(days=7), None, True, id="held by the window"),
+        pytest.param("none", timedelta(days=7), "30", True, id="held by the configured window"),
+        pytest.param("none", timedelta(0), None, False, id="collected when none holds it"),
+        pytest.param("unpinned", timedelta(0), None, False, id="collected once unpinned"),
         pytest.param(
-            "deleted workspace", timedelta(0), False, id="collected once unheld by delete"
+            "deleted workspace", timedelta(0), None, False, id="collected once unheld by delete"
         ),
     ],
 )
 def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_it(
-    root, monkeypatch, holder, unheld, kept
+    root, monkeypatch, holder, unheld, retention_days, kept
 ):
     """The collector takes a body no live reference, pin or window holds: its event first, then
     its file; a held one, or one younger than the window, stays."""
@@ -1746,7 +1748,11 @@ def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_i
         _holds(log, holder)
         (root / "blobs" / "a").write_bytes(b"model")
         port = StorePort.open(root, log)
-        collected = port.collect_unheld()
+        if retention_days is not None:
+            in_two_weeks = log.clock() + timedelta(days=14) // timedelta(microseconds=1)
+            monkeypatch.setattr(log, "clock", lambda: in_two_weeks)
+        with override(Change("test-retention", {"ALPHALATTICE_RETENTION_DAYS": retention_days})):
+            collected = port.collect_unheld()
         port.close()
         state = log.read("SELECT body_state FROM artifact WHERE artifact_id = 'a'")[0][0]
     assert collected == ([] if kept else ["a"])

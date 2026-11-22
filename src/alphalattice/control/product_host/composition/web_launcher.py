@@ -51,6 +51,7 @@ from alphalattice.interface.local_application.web import (
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 from alphalattice.kernel.shared_kernel.waits import pause
@@ -225,9 +226,9 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     """
     # The new interpreter imports this same source, as `entry.serve` gives its child.
     source = str(Path(__file__).resolve().parents[4])
-    inherited = os.environ.get("PYTHONPATH")
-    environment = {
-        **os.environ,
+    environment = process_config().child_environment()
+    inherited = environment.get("PYTHONPATH")
+    environment |= {
         "PYTHONPATH": source + os.pathsep + inherited if inherited else source,
         "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
@@ -315,7 +316,7 @@ def _detach(
                     failed.write("local_web.detached_breakaway_denied\n")
                 return _failed_start(arguments.workspace, None, "", log_path)
         log_path.unlink(missing_ok=True)
-        panel_host = os.environ.get("ALPHALATTICE_TERMINAL_PANEL_HOST", "")
+        panel_host = process_config().get("ALPHALATTICE_TERMINAL_PANEL_HOST", "")
         capability = runtime_json("config/registries/host-capabilities.json")["entries"].get(
             f"{panel_host}.product-host.terminal-panel", {}
         )
@@ -498,7 +499,7 @@ def main(
     arguments = parser.parse_args(argv)
     if arguments.detach:
         return _detach(arguments, host_interpreter, new_research)
-    handed = LAUNCH_KEY_VARIABLE in os.environ
+    handed = process_config().secret(LAUNCH_KEY_VARIABLE) is not None
 
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,

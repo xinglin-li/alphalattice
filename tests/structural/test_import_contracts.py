@@ -204,7 +204,8 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
                 "alphalattice.kernel.egress.lazy -> httpx": "fixture backend",
             },
             "owned_imports": {
-                "alphalattice.kernel.egress": ("httpx", "requests", "urllib.request")
+                "alphalattice.kernel.egress": ("httpx", "requests", "urllib.request"),
+                "alphalattice.kernel.low": ("os.getenv",),
             },
         }
     )
@@ -233,6 +234,9 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
         ("kernel/identity/foreign.py", "def digest():\n    import xxhash", "xxhash"),
         ("kernel/low/stdlib.py", "from types import MappingProxyType", None),
         ("control/high/types.py", "from alphalattice.kernel import types", None),
+        ("kernel/low/environment.py", "import os\nvalue = os.getenv('OMP_NUM_THREADS')", None),
+        ("control/high/environment.py", "import os\nvalue = os.getenv('OMP_NUM_THREADS')", None),
+        ("control/high/config_read.py", "from alphalattice.kernel.low import environment", None),
     )
     expected = set()
     for module, body, banned in cases:
@@ -254,6 +258,14 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
     for module, body, _ in outbound:
         (src / "control/high" / f"{module}.py").write_text(body + "\n", encoding="utf-8")
     found = import_contracts.check(tree, tmp_path / "evidence", registry)
+    owned = [
+        line.replace("\\", "/")
+        for line in found
+        if line.startswith("ruff:") and ("environment.py" in line or "config_read.py" in line)
+    ]
+    assert len(owned) == 1 and all(
+        value in owned[0] for value in ("control/high/environment.py", "TID251", "os.getenv")
+    ), owned
     actual = {
         line.removeprefix("lint-imports: - ").strip().split(" (l.", 1)[0]
         for line in found

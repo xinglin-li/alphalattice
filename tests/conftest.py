@@ -125,7 +125,7 @@ def _one_machine_per_test(request: pytest.FixtureRequest) -> Iterator[None]:
         return make(path)
 
     # Its own patch, not the test's `monkeypatch`: a test that undoes its patches keeps its root.
-    with pytest.MonkeyPatch.context() as patch:
+    with environment.ConfigMonkeyPatch.context() as patch:
         patch.setattr(history, "create_data_root", from_empty)
         patch.setenv(history.DATA_ROOT_ENV, str(root))
         try:

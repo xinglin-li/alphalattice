@@ -81,6 +81,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     setup_environment,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
@@ -570,7 +571,11 @@ def host_readiness(
             python_version.split(".")[:2] == ["3", "12"],
             {"version": python_version, "interpreter": sys.executable},
         ),
-        ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
+        (
+            "uv",
+            (uv := command_readiness([process_config().get("UV", "uv"), "--version"]))["present"],
+            uv,
+        ),
         (
             "installed_leg",
             (tool := fillable["installed_leg"]).pop("present"),
@@ -697,7 +702,7 @@ def problem_report(
         f"Report the {op} problem to the developers." for op in operations
     }:
         raise NativeBridgeError("local_client.report_sentence_not_admitted")
-    session = agent_session(os.environ)
+    session = agent_session(process_config().public)
     binding = None
     try:
         found = session_binding(project, workspace, session)
@@ -1801,7 +1806,7 @@ def main() -> int:
             # The checkout's shim of `alphalattice session unbind`, by the session it names.
             result = unbind_session(ROOT, session_id=args.session_id, host=args.host)
         else:
-            session = agent_session(os.environ)
+            session = agent_session(process_config().public)
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")
             binding = NativeResearchBinding.read(ROOT, session=session)

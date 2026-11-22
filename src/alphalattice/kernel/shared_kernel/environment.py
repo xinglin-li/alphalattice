@@ -19,6 +19,7 @@ from contextlib import contextmanager, suppress
 from functools import cache
 from typing import Any
 
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.egress import (
     OFFLINE_SWITCH,
     held_offline,
@@ -43,7 +44,9 @@ def thread_share(environment: Mapping[str, str] | None = None) -> int | None:
     Returns:
         A positive count, or None when the variable is unset or not one positive integer.
     """
-    value = (os.environ if environment is None else environment).get(THREAD_SHARE, "").strip()
+    if environment is None:
+        return process_config().settings.cpu_cores
+    value = environment.get(THREAD_SHARE, "").strip()
     return int(value) if value.isdigit() and int(value) > 0 else None
 
 

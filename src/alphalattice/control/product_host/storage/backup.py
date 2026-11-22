@@ -58,6 +58,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
     carry_risk_covariance,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -210,14 +211,14 @@ def default_backup_root(workspace_id: str) -> Path:
     Returns:
         `<root>/<workspace_id>`.
     """
-    override = os.environ.get("ALPHALATTICE_BACKUP_ROOT", "").strip()
+    override = process_config().get("ALPHALATTICE_BACKUP_ROOT", "").strip()
     if override:
         base = Path(override)
     elif os.name == "nt":
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        local = process_config().get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         base = Path(local) / "AlphaLattice" / "backups"
     else:
-        data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        data = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
         base = Path(data) / "alphalattice" / "backups"
     if not workspace_id or any(part in workspace_id for part in ("/", "\\", "..")):
         raise WorkspaceBackupError("workspace_backup.workspace_id_invalid")

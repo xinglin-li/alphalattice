@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+
+from alphalattice.kernel.config import current as process_config
 
 OFFLINE_SWITCH = "ALPHALATTICE_NETWORK_DISABLED"
 """The operator's offline switch: ``=1`` keeps the process offline, whatever a workspace allows."""
@@ -28,7 +29,9 @@ def offline(environment: Mapping[str, str] | None = None) -> bool:
     """
     if _HELD_OFFLINE.get():
         return True
-    return (os.environ if environment is None else environment).get(OFFLINE_SWITCH) == "1"
+    if environment is None:
+        return process_config().settings.network_disabled
+    return environment.get(OFFLINE_SWITCH) == "1"
 
 
 def running_held_offline() -> bool:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from contextlib import suppress
@@ -11,6 +10,8 @@ from functools import cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, Final
+
+from alphalattice.kernel.config import current as process_config
 
 REFUSAL_WORDS_RESOURCE: Final = "src/alphalattice/interface/local_application/refusal_words.json"
 
@@ -88,7 +89,9 @@ def tracked_path(root: Path, path: Path) -> str:
 
 def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
     """Return the tool-installed command, available in every host's fresh shell."""
-    if portable or ("UV_RUN_RECURSION_DEPTH" not in os.environ and shutil.which("alphalattice")):
+    if portable or (
+        "UV_RUN_RECURSION_DEPTH" not in process_config().public and shutil.which("alphalattice")
+    ):
         return ("alphalattice",)
     uv = shutil.which("uv")
     folder = None

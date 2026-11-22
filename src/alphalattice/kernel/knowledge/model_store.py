@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.egress import EgressPort, EgressTransportError, HttpEgress, HttpSource
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge.hybrid_contracts import (
@@ -303,7 +304,7 @@ STORE_POINTER = "store.json"
 
 def default_store_root() -> Path:
     """Explicit variable, then the home pointer, then the legacy pointer, then platform."""
-    override = os.environ.get("ALPHALATTICE_MODEL_STORE", "").strip()
+    override = process_config().get("ALPHALATTICE_MODEL_STORE", "").strip()
     if override:
         return Path(override)
     platform = _platform_store_root()
@@ -353,9 +354,9 @@ def remember_store(store: Path) -> None:
 
 def _platform_store_root() -> Path:
     if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        base = process_config().get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "AlphaLattice" / "models"
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    base = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(base) / "alphalattice" / "models"
 
 

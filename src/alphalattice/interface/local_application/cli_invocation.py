@@ -6,14 +6,14 @@ import base64
 import builtins
 import codecs
 import io
-import os
 import sys
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from pathlib import Path
 from typing import NamedTuple, TextIO
 
 from alphalattice.interface.local_application.thin_cli import CLI_ENVIRONMENT, CLI_OPERATION, select
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix as layout_command_prefix
 
 
@@ -29,10 +29,10 @@ class Call(NamedTuple):
 CLI_CALL: ContextVar[Call | None] = ContextVar("cli_invocation", default=None)
 
 
-def environment() -> MutableMapping[str, str]:
+def environment() -> Mapping[str, str]:
     """Read the command's presentation environment."""
     call = CLI_CALL.get()
-    return os.environ if call is None else call.environment
+    return process_config().public if call is None else call.environment
 
 
 def command_prefix(*, portable: bool = False) -> tuple[str, ...]:

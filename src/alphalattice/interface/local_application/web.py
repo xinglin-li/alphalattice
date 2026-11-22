@@ -83,6 +83,7 @@ from alphalattice.interface.local_application.failure_codes import (
     public_failure,
 )
 from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
+from alphalattice.kernel.config import consume_secret
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
@@ -283,6 +284,11 @@ LAUNCH_KEY_VARIABLE = "ALPHALATTICE_LAUNCH_KEY"
 """Where a detached launch hands the Host the launch key it made (`web_launcher`)."""
 
 
+def _launch_key() -> str:
+    handed = consume_secret(LAUNCH_KEY_VARIABLE)
+    return (handed.reveal() if handed is not None else None) or secrets.token_urlsafe(32)
+
+
 @dataclass
 class LocalWebApplication:
     """Routing, authorisation and encoding. It owns no domain logic.
@@ -294,12 +300,7 @@ class LocalWebApplication:
     """
 
     session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
-    launch_key: str = field(
-        default_factory=lambda: (
-            os.environ.pop(LAUNCH_KEY_VARIABLE, None) or secrets.token_urlsafe(32)
-        ),
-        repr=False,
-    )
+    launch_key: str = field(default_factory=_launch_key, repr=False)
     """Held in memory and put only in the launch URL; never on disk or in an answer. A detached
     launch makes it and hands it over in `LAUNCH_KEY_VARIABLE`, taken from the environment once."""
     offered: set[tuple[str, str]] = field(default_factory=set, init=False, repr=False)

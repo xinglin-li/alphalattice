@@ -706,6 +706,15 @@
         "scope": "Static import, path and string references to public consumers; matches do not prove runtime execution."
       }
     },
+    "process configuration": {
+      "description": "Owns the process environment snapshot and the operator settings read from it.",
+      "covers": "startup capture, typed policy, declared changes, secret access and child environment transport",
+      "owner": "alphalattice.kernel.config",
+      "defined_by": [
+        "alphalattice.kernel.config.port"
+      ],
+      "folds_in": []
+    },
     "shared kernel": {
       "description": "The shared kernel provides common immutable records, identity functions and persistence primitives so domain owners can share these basic contracts and operations.",
       "covers": "shared domain validation, failure and value records; canonical JSON, content, source and recipe identity and seals; durable-file and resource-layout primitives; bounded waits; environment provenance, execution-span readouts and sector-history treatment vocabulary",

@@ -41,6 +41,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from alphalattice.kernel.config import Change, declare
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
@@ -317,7 +319,7 @@ def _submitted(
             threads,
             None if answer is None else str(answer),
             _carrier(),
-            os.environ.get(DATA_ROOT_ENV),
+            process_config().get(DATA_ROOT_ENV),
             preload_models,
         )
     except BrokenProcessPool:
@@ -463,8 +465,7 @@ def _worker_started(worker: int = 0) -> None:
     # 1.5 GB of commit a worker. The Task's own worker keeps the default its calls run
     # under (`threads=None`), on which a Risk number can depend (LAWS PA3).
     if worker > 0:
-        for name in ONE_THREAD_VARIABLES:
-            os.environ[name] = "1"
+        declare(Change("task-worker-start", dict.fromkeys(ONE_THREAD_VARIABLES, "1")), native=True)
     threading.Thread(target=_watch_parent, name="parent-watch", daemon=True).start()
 
 
@@ -472,10 +473,7 @@ def _follow_root(root: str | None) -> None:
     """Name the caller's data root in this worker's environment, which `data_root` reads."""
     from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
 
-    if root is None:
-        os.environ.pop(DATA_ROOT_ENV, None)
-    else:
-        os.environ[DATA_ROOT_ENV] = root
+    declare(Change("task-worker-data-root", {DATA_ROOT_ENV: root}), native=True)
 
 
 def _call(

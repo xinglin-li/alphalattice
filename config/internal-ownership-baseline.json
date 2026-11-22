@@ -7,6 +7,7 @@
     "causal_inputs",
     "causal_outcomes",
     "clock",
+    "config",
     "data",
     "data_layer",
     "egress",

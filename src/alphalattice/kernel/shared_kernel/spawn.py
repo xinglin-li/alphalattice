@@ -23,6 +23,8 @@ from typing import Any, Literal, overload
 
 import psutil
 
+from alphalattice.kernel.config import current as process_config
+
 if sys.platform == "win32":
     import _winapi
 
@@ -99,7 +101,7 @@ def attached(
 
 def ambient_job_probe(args: list[str], *, creationflags: int) -> subprocess.CompletedProcess[str]:
     """Run the leaf Job probe hidden and bounded without changing its Job membership."""
-    env = os.environ.copy()
+    env = process_config().child_environment()
     env.pop("ALPHALATTICE_DATA_ROOT", None)
     env["GIT_TERMINAL_PROMPT"] = "0"
     return subprocess.run(
@@ -244,7 +246,7 @@ def run(
     ):
         raise ValueError("spawn.timeout_invalid: provide a finite positive timeout")
     supplied = kwargs.pop("env", None)
-    environment = dict(os.environ if supplied is None else supplied)
+    environment = process_config().child_environment() if supplied is None else dict(supplied)
     if supplied is None:  # only an explicitly supplied environment may carry the person's data root
         environment.pop("ALPHALATTICE_DATA_ROOT", None)
     environment["GIT_TERMINAL_PROMPT"] = "0"
@@ -369,7 +371,7 @@ class InteractiveSession:
         if stdin not in (subprocess.PIPE, subprocess.DEVNULL):
             raise ValueError("spawn.session_owns_stdin")
         supplied = kwargs.pop("env", None)
-        env = dict(os.environ if supplied is None else supplied)
+        env = process_config().child_environment() if supplied is None else dict(supplied)
         if supplied is None:
             env.pop("ALPHALATTICE_DATA_ROOT", None)
         env["GIT_TERMINAL_PROMPT"] = "0"

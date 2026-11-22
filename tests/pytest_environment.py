@@ -272,10 +272,61 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
         lambda: tempfile.mkdtemp(prefix="alphalattice-test-models-", dir=backup_parent),
     )
     os.environ["ALPHALATTICE_MODEL_STORE"] = str(MODEL_STORE)
+    _declare_environment(
+        {
+            "ALPHALATTICE_SHELL",
+            "ALPHALATTICE_DATA_ROOT",
+            "ALPHALATTICE_BACKUP_ROOT",
+            "ALPHALATTICE_MODEL_STORE",
+        },
+        "test-worker-roots",
+    )
     OWNED_ROOTS[:] = [backup_parent, Path(tempfile.gettempdir())]
     if basetemp is not None:
         OWNED_ROOTS.append(Path(os.path.abspath(str(basetemp))).parent)
     MODEL_ROOTS[:] = [*OWNED_ROOTS, MODEL_STORE]
+
+
+def _declare_environment(names: set[str], kind: str) -> None:
+    """Keep pytest's explicit OS overrides visible to the frozen product configuration."""
+    from alphalattice.kernel.config import Change, declare
+
+    declare(Change(kind, {name: os.environ.get(name) for name in names}))
+
+
+class ConfigMonkeyPatch(pytest.MonkeyPatch):
+    """Apply existing pytest env fixtures as their own declared configuration changes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._environment_names: set[str] = set()
+
+    def setitem(self, mapping: Any, name: Any, value: Any) -> None:
+        super().setitem(mapping, name, value)
+        self._note(mapping, name)
+
+    def delitem(self, mapping: Any, name: Any, raising: bool = True) -> None:
+        super().delitem(mapping, name, raising)
+        self._note(mapping, name)
+
+    def _note(self, mapping: Any, name: Any) -> None:
+        if mapping is os.environ:
+            name = name.upper() if os.name == "nt" else name
+            self._environment_names.add(name)
+            _declare_environment({name}, "test-override")
+
+    def undo(self) -> None:
+        super().undo()
+        if self._environment_names:
+            _declare_environment(self._environment_names, "test-override-restored")
+            self._environment_names.clear()
+
+
+@pytest.fixture
+def monkeypatch() -> Iterator[pytest.MonkeyPatch]:
+    """Expose existing test overrides to Python children and the product's settings port."""
+    with ConfigMonkeyPatch.context() as patcher:
+        yield patcher
 
 
 def served_root(workspace: Path) -> Path:

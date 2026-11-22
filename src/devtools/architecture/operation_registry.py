@@ -39,6 +39,7 @@ from alphalattice.interface.local_application.cli_contract import (
     host_checked,
     worded,
 )
+from alphalattice.kernel.config import Change, override
 from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
@@ -1225,10 +1226,8 @@ def walk(root: Path) -> list[str]:
     """
 
     with contextlib.ExitStack() as outside:
-        for _vendor, variable in AGENT_SESSION_VARIABLES:
-            if variable in os.environ:
-                value = os.environ.pop(variable)
-                outside.callback(os.environ.__setitem__, variable, value)
+        session_variables = dict.fromkeys(variable for _vendor, variable in AGENT_SESSION_VARIABLES)
+        outside.enter_context(override(Change("operation-registry-unbound", session_variables)))
         # Each answer prints its command prefix, found on PATH: one lookup per name for the
         # walk's whole run, not one PATH scan per answer (179 scans, 1.3 s of the guard).
         outside.enter_context(mock.patch("shutil.which", functools.cache(shutil.which)))

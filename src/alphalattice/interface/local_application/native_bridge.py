@@ -49,6 +49,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
@@ -1385,11 +1386,11 @@ def fresh_path() -> str | None:
     Returns:
         PATH without that folder under `uv run`; otherwise None, PATH as it is.
     """
-    venv = os.environ.get("VIRTUAL_ENV")
-    if venv is None or "UV_RUN_RECURSION_DEPTH" not in os.environ:
+    venv = process_config().get("VIRTUAL_ENV")
+    if venv is None or "UV_RUN_RECURSION_DEPTH" not in process_config().public:
         return None
     own = {Path(venv) / "Scripts", Path(venv) / "bin"}
-    parts = os.environ.get("PATH", "").split(os.pathsep)
+    parts = process_config().get("PATH", "").split(os.pathsep)
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
 
 
@@ -1409,7 +1410,10 @@ def codex_system_config(environ: Mapping[str, str]) -> Path:
         `/etc/codex/config.toml`, or on Windows `OpenAI/Codex/config.toml` under `ProgramData`.
     """
     if os.name == "nt":
-        return Path(environ.get("ProgramData") or "C:/ProgramData") / "OpenAI/Codex/config.toml"
+        program_data = next(
+            (value for name, value in environ.items() if name.upper() == "PROGRAMDATA"), ""
+        )
+        return Path(program_data or "C:/ProgramData") / "OpenAI/Codex/config.toml"
     return Path("/etc/codex/config.toml")
 
 
@@ -1535,7 +1539,9 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
         answer = attachment_preflight(project, binding, session[0])
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
     if session is not None and session[0] == "codex":
-        trust = codex_project_trust(project, os.environ)  # missing gates; unknown never does
+        trust = codex_project_trust(
+            project, process_config().public
+        )  # missing gates; unknown never does
         answer.update({} if trust["present"] is True else {"project_trust": trust})
     return answer
 
@@ -1667,7 +1673,7 @@ def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | N
     Fail fast: each missing item is named with its commands, under `missing` only (never an
     offered command a walk would run), and nothing opens until the same command runs again.
     """
-    setup = setup_reading(Path.cwd(), workspace, agent_session(os.environ))
+    setup = setup_reading(Path.cwd(), workspace, agent_session(process_config().public))
     missing = {k: setup[k] for k in SETUP_GATE if (setup.get(k) or {}).get("present") is False}
     if not missing:
         return setup, None

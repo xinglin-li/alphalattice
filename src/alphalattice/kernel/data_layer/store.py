@@ -45,6 +45,7 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
     free_floor_shortfall,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
@@ -1753,14 +1754,17 @@ def start(root: Path, log: HostLog, lake: Any) -> dict[str, list[str]]:
 def collect_unheld(
     root: Path, log: HostLog, lake: Any, writer: AbstractContextManager[Any]
 ) -> list[str]:
-    """Collect each artifact body no live reference holds, produced over `governance.UNHELD`
-    ago, holding `governance.COPYING` and then `writer`, the order every collection takes. Its
+    """Collect each unheld artifact body older than the configured window, `governance.UNHELD`
+    by default, holding `governance.COPYING` and then `writer`. Its
     `artifact.collected` and its body's place in the deletion queue are decided in one log unit,
     so no hold slips between the read and the event, and committed before the body goes, so a
     crash over-retains and the next start finishes it; an inline body goes with the event. The
     artifacts collected."""
     with governance.COPYING, writer:
-        before = log.clock() - governance.UNHELD // timedelta(microseconds=1)
+        days = process_config().settings.retention_days
+        tick = timedelta(microseconds=1)
+        age = governance.UNHELD // tick if days is None else days * (timedelta(days=1) // tick)
+        before = max(0, log.clock() - age)
         with log.unit():
             found = governance.unheld(log.read, before)
             for artifact, storage in found:

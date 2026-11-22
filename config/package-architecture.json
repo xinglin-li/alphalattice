@@ -948,6 +948,7 @@
     "time.time_ns": "read wall time through alphalattice.kernel.clock"
   },
   "owned_imports": {
+    "alphalattice.kernel.config": ["os.environ", "os.getenv"],
     "alphalattice.kernel.egress": ["httpx", "requests", "urllib.request"]
   },
   "retired_imports": {

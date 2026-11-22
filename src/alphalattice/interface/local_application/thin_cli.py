@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Final, NamedTuple
 from urllib.parse import urlsplit
 
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.identity import identity_sha256
 
 CONNECTION_NAME: Final = "local-research-connection.json"
@@ -159,7 +160,8 @@ def agent_session_values(environ: Mapping[str, str]) -> dict[str, str]:
 
 
 def _settings() -> dict[str, str]:
-    return {key: os.environ[key] for key in CLI_ENVIRONMENT if key in os.environ}
+    values = process_config().public
+    return {key: values[key] for key in CLI_ENVIRONMENT if key in values}
 
 
 def _styles() -> list[list[str | None]]:
@@ -177,13 +179,13 @@ def _refused_before_dispatch(status: int, response: dict[str, object]) -> bool:
 
 def invoke(argv: list[str]) -> int | None:
     """Print the Host's bytes and return its exit code, or select the full CLI."""
-    if any(agent_session_values(os.environ).values()):
+    if any(agent_session_values(process_config().public).values()):
         # Launch counting and named native bindings are caller-side file operations.
         return None
     # The portable launcher is the caller's existing prefix in this case. Probing
     # an off-PATH tool can start uv, so that caller-side action stays on the full path.
     if (
-        "UV_RUN_RECURSION_DEPTH" in os.environ or shutil.which("alphalattice") is None
+        "UV_RUN_RECURSION_DEPTH" in process_config().public or shutil.which("alphalattice") is None
     ) and shutil.which("uv") is not None:
         return None
     try:

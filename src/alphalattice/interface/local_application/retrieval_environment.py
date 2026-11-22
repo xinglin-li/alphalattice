@@ -33,6 +33,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -71,7 +72,7 @@ LOCKED_SETUP_WORDS = (
 
 
 def _uv() -> str:
-    executable = os.environ.get("UV", "uv")
+    executable = process_config().get("UV", "uv")
     return executable
 
 
@@ -86,7 +87,7 @@ def trace_path() -> Path:
 
 def network_environment(environment: dict[str, str] | None = None) -> dict[str, str]:
     """The network settings a uv step ran with, a credential in a URL masked."""
-    found = os.environ if environment is None else environment
+    found = process_config().child_environment() if environment is None else environment
     return {
         key.upper(): _redact(value, found)
         for key, value in sorted(found.items())
@@ -174,7 +175,7 @@ def _run_uv(
     A failed step raises CalledProcessError, as before; its trace stays for the refusal to name.
     """
     command = (_uv(), "-v", *arguments)
-    effective = dict(os.environ) if env is None else env
+    effective = process_config().child_environment() if env is None else env
     with trace.open("a", encoding="utf-8") as log:
         log.write(
             json.dumps(
@@ -257,7 +258,7 @@ def setup_environment(project: Path) -> Iterator[dict[str, str]]:
         else nullcontext(None)
     )
     with temporary as scratch:
-        environment = dict(os.environ)
+        environment = process_config().child_environment()
         if scratch is not None:
             environment.update(TEMP=scratch, TMP=scratch, TMPDIR=scratch)
         yield environment

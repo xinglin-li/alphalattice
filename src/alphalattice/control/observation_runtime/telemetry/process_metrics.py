@@ -27,6 +27,7 @@ from typing import Any, Literal, Self
 import psutil
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _metric_lock = threading.RLock()
@@ -1145,14 +1146,17 @@ def bind_process_logical_processors(
     library_threads = configured if library_thread_limit is None else int(library_thread_limit)
     if library_threads < 1 or library_threads > configured:
         raise ProcessCapacityError("process_capacity.library_thread_budget_invalid")
-    for name in (
+    thread_variables = (
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         "MKL_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
-    ):
-        os.environ[name] = str(library_threads)
+    )
+    declare(
+        Change("process-capacity", dict.fromkeys(thread_variables, str(library_threads))),
+        native=True,
+    )
 
     return {
         "kind": "ProcessCapacityBound",

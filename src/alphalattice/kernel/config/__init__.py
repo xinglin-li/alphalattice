@@ -1,5 +1,31 @@
 """Configuration access."""
 
-from .port import ConfigPort
+from .port import (
+    Change,
+    Config,
+    ConfigEvent,
+    ConfigPort,
+    Secret,
+    Settings,
+    consume_secret,
+    current,
+    declare,
+    override,
+    process_override,
+    using,
+)
 
-__all__ = ["ConfigPort"]
+__all__ = [
+    "Change",
+    "Config",
+    "ConfigEvent",
+    "ConfigPort",
+    "Secret",
+    "Settings",
+    "consume_secret",
+    "current",
+    "declare",
+    "override",
+    "process_override",
+    "using",
+]

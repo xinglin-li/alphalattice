@@ -27,6 +27,7 @@ from importlib import resources
 from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
 from alphalattice.kernel.shared_kernel.environment import (
@@ -73,13 +74,13 @@ class DataRoot:
 
 def data_root() -> Path:
     """The machine's data root: `ALPHALATTICE_DATA_ROOT`, else the application data folder."""
-    override = os.environ.get(DATA_ROOT_ENV, "").strip()
+    override = process_config().get(DATA_ROOT_ENV, "").strip()
     if override:
         return Path(override)
     if os.name == "nt":
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        local = process_config().get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(local) / "AlphaLattice"
-    data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    data = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(data) / "alphalattice"
 
 

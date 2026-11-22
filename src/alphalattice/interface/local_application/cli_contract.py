@@ -61,6 +61,7 @@ from alphalattice.interface.local_application.thin_cli import (
     WORKSPACE_HEADER as WORKSPACE_HEADER,
 )
 from alphalattice.interface.local_application.thin_cli import agent_session_values
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
     resolve_playpen_root,
@@ -2523,7 +2524,7 @@ def wait_event(
 
 def follow_returns() -> str:
     """When a follow returns and how this host waits for it, never by polling."""
-    session = agent_session(os.environ)
+    session = agent_session(process_config().public)
     way = AGENT_HOST_WAITS.get(session[0]) if session else None
     way = way or "let your shell wait or run this in the background"
     return f"{_FOLLOW_RETURNS}{way}, and do not poll it"

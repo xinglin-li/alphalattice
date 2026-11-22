@@ -12,6 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from alphalattice.interface.local_application import thin_cli
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 
@@ -82,7 +83,7 @@ def serve(arguments: list[str]) -> int:
         # The checkout shim's sys.path bootstrap does not reach a new interpreter.
         # Give that child the same checkout source, even when its environment has
         # dependencies installed without an editable package installation.
-        environment = dict(os.environ)
+        environment = process_config().child_environment()
         source = str(root / "src")
         inherited_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = (
@@ -151,6 +152,7 @@ def _closed_output_pipe(error: OSError) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
+    process_config()
     arguments = sys.argv[1:] if argv is None else argv
     try:
         if argv is None:

@@ -8,7 +8,6 @@ pages; Evidence and CRO share the browser and generic Agent operation owner.
 from __future__ import annotations
 
 import json
-import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
@@ -160,6 +159,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
     PortfolioFinalizationStore,
 )
 from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.history import (
     data_root,
@@ -1406,7 +1406,7 @@ class LocalPortfolioWebSession:
         """
         if self.web is None:
             raise LocalWebError("local_web.service_not_started")
-        named = agent_session(os.environ)
+        named = agent_session(process_config().public)
         goal = (
             self.operations.goals.attributed_goal(
                 RequestProvenance(vendor=named[0], session=named[1])

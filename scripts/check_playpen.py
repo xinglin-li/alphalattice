@@ -22,6 +22,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
+from alphalattice.kernel.config import Change, process_override
 from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -422,7 +423,6 @@ def staged_snapshot(base_ref: str) -> Iterator[None]:
     common = common if common.is_absolute() else ROOT / common
     public = ledger_records(ROOT)
     names = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")
-    saved = {name: os.environ.get(name) for name in names}
     with tempfile.TemporaryDirectory(prefix="staged-snapshot-") as folder:
         repo = Path(folder)
         clean = {key: value for key, value in os.environ.items() if key not in names}
@@ -431,10 +431,10 @@ def staged_snapshot(base_ref: str) -> Iterator[None]:
         (directory / "objects/info/alternates").write_bytes(
             ((common / "objects").resolve().as_posix() + "\n").encode("utf-8")
         )
-        try:
-            os.environ.update(
-                GIT_DIR=str(directory), GIT_INDEX_FILE=str(repo / "index"), GIT_WORK_TREE=str(ROOT)
-            )
+        view = dict(
+            GIT_DIR=str(directory), GIT_INDEX_FILE=str(repo / "index"), GIT_WORK_TREE=str(ROOT)
+        )
+        with process_override(Change("staged-git-view", view), native=True):
             for ref, value in (("refs/heads/stage-base", base), ("refs/heads/develop", base)):
                 _quiet_run(["git", "update-ref", ref, value], cwd=ROOT, check=True)
             if public is not None:
@@ -448,12 +448,6 @@ def staged_snapshot(base_ref: str) -> Iterator[None]:
             )
             _quiet_run(["git", "read-tree", head], cwd=ROOT, check=True)
             yield
-        finally:
-            for name, prior in saved.items():
-                if prior is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = prior
 
 
 def _check_host_materialization() -> None:

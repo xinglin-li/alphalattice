@@ -24,6 +24,7 @@ from alphalattice.interface.local_application.web import (
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
 )
+from alphalattice.kernel.config import Change, process_override
 from alphalattice.kernel.data_layer.history import (
     carry_arrays,
     carry_knowledge_snapshots,
@@ -298,16 +299,8 @@ def _upgraded(session: Any) -> None:
 
 @contextmanager
 def _environment(**values: str) -> Iterator[None]:
-    before = {name: os.environ.get(name) for name in values}
-    os.environ.update(values)
-    try:
+    with process_override(Change("saved-object-readback", values)):
         yield
-    finally:
-        for name, value in before.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
 
 
 def _reader(live: Any, name: str, rows: list[dict[str, Any]]) -> Callable[..., Any]:

@@ -276,7 +276,7 @@
       "seconds": 5
     },
     "architecture.kernel_ports_enforce_import_boundaries": {
-      "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals.",
+      "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals or reserved APIs.",
       "owner": "devtools.architecture",
       "layer": "integration",
       "seconds": 5,
@@ -497,6 +497,12 @@
       "owner": "alphalattice.control.product_host.composition",
       "layer": "integration",
       "seconds": 5
+    },
+    "config.environment_access_uses_the_config_port": {
+      "description": "The config port serves one environment snapshot, declares settings changes and keeps secrets out of diagnostics.",
+      "owner": "alphalattice.kernel.config",
+      "layer": "unit",
+      "seconds": 1
     },
     "data_layer.a_backup_copy_excludes_collection": {
       "description": "A collection waits while a backup copies the data root and decides no body until the copy ends.",

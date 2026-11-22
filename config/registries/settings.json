@@ -218,6 +218,23 @@
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
     },
+    "env:ALPHALATTICE_RETENTION_DAYS": {
+      "key": "env:ALPHALATTICE_RETENTION_DAYS",
+      "description": "Keeps artifact bodies that have no live reference for this many whole days after production.",
+      "owner": "alphalattice.kernel.config",
+      "type": "positive int | absent",
+      "default": {
+        "value": null,
+        "resolution": "An absent or invalid value keeps unheld artifact bodies for seven days.",
+        "source": "src/alphalattice/kernel/data_layer/governance.py::UNHELD"
+      },
+      "defined_by": [
+        "src/alphalattice/kernel/config/port.py::Settings"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "environment/operational policy",
+      "identity_basis": "The policy is configuration beside research results and is outside their identities."
+    },
     "env:ALPHALATTICE_SHELL": {
       "key": "env:ALPHALATTICE_SHELL",
       "description": "Selects the powershell or posix quoting enum for printed commands so they can be pasted into the operator's actual shell.",
@@ -545,6 +562,23 @@
         ]
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
+    },
+    "env:OMP_NUM_THREADS": {
+      "key": "env:OMP_NUM_THREADS",
+      "description": "Names the operator's CPU thread share, also read by native numerical libraries.",
+      "owner": "alphalattice.kernel.config",
+      "type": "positive int | absent",
+      "default": {
+        "value": null,
+        "resolution": "An absent or invalid value leaves the applicable resource owner's default in force.",
+        "source": "src/alphalattice/kernel/config/port.py::Settings.from_values"
+      },
+      "defined_by": [
+        "src/alphalattice/kernel/config/port.py::Settings"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "environment/operational policy",
+      "identity_basis": "The configured share and observed numerical pools are recorded outside research identities."
     },
     "env:PATH": {
       "key": "env:PATH",
