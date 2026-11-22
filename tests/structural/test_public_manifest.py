@@ -978,16 +978,28 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
-@pytest.mark.parametrize("failure", ("timeout", "crash", "prior-timeout", "malformed"))
+@pytest.mark.parametrize(
+    "failure", ("timeout", "timeout-end-blocked", "crash", "prior-timeout", "malformed")
+)
 def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, failure):
-    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash."""
+    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash, and
+    ends a worker whose timeout recorded itself but then blocked (Windows' thread method, the
+    public Verify shards cancelled at their 60-minute limit on 11-21)."""
     from tests.structural.pytest_support import child_environment
 
     workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text("utf-8")
     plugin = workflow.split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
     plugin = textwrap.dedent(plugin).replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    plugin = plugin.replace("HANG_GRACE = 60", "HANG_GRACE = 2", 1)
     (tmp_path / "ci_worker_diagnostics.py").write_text(plugin, encoding="utf-8")
-    body = "Event().wait()" if failure == "timeout" else "os._exit(5)"
+    if failure == "timeout-end-blocked":  # pytest-timeout's own end never reaches os._exit
+        (tmp_path / "conftest.py").write_text(
+            "import pytest_timeout\nfrom threading import Event\n\n\n"
+            "def pytest_configure(config):\n"
+            "    pytest_timeout.timeout_timer = lambda item, settings: Event().wait()\n",
+            encoding="utf-8",
+        )
+    body = "Event().wait()" if failure.startswith("timeout") else "os._exit(5)"
     if failure == "prior-timeout":
         body = (
             "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
@@ -1051,8 +1063,8 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
     )
     visible = run.stdout + run.stderr
     assert run.returncode != 0 and "crashed while running" in visible
-    assert ('"event": "timeout"' in visible) == (failure == "timeout")
-    if failure == "timeout":
+    assert ('"event": "timeout"' in visible) == failure.startswith("timeout")
+    if failure.startswith("timeout"):
         assert "test_probe.py::test_probe" in visible and '"seconds": 2.0' in visible
         assert visible.index('"event": "timeout"') < visible.index("crashed while running")
     if failure == "malformed":

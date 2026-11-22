@@ -311,6 +311,7 @@ jobs:
 
           _stream = None
           HANG_SECONDS = 900  # a public run stops a hang, never a slow test; size budgets are the commit stage's
+          HANG_GRACE = 60  # past a test's timeout, the worker's C watchdog ends it if pytest-timeout's own end blocked
 
 
           @pytest.hookimpl(wrapper=True)
@@ -431,9 +432,17 @@ jobs:
           @pytest.hookimpl(wrapper=True, tryfirst=True)
           def pytest_runtest_protocol(item, nextitem):
               _event("start", node=item.nodeid)
+              marker = item.get_closest_marker("timeout")
+              limit = (marker.args[0] if marker.args else marker.kwargs.get("timeout")) if marker else None
+              if _stream is not None and limit:
+                  # Windows' thread method records its timeout, then can block before os._exit (the Verify shards
+                  # cancelled at 60 minutes on 11-21); this watchdog needs no GIL, so one hang costs its bound.
+                  faulthandler.dump_traceback_later(limit + HANG_GRACE, exit=True, file=_stream)
               try:
                   return (yield)
               finally:
+                  if _stream is not None and limit:
+                      faulthandler.cancel_dump_traceback_later()
                   _event("end", node=item.nodeid)
           PY
       - name: Run this shard of every public test
