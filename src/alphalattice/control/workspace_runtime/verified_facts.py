@@ -134,9 +134,12 @@ def record_year_facts(
     if values:
         if not _year_facts_held(connection):
             ensure_year_fact_schema(connection)
-        connection.executemany(
-            "INSERT OR REPLACE INTO verified_year_fact VALUES (?, ?, ?, ?, ?, ?)",
-            [[kind, scope, int(year), basis, epoch, value] for year, value in values.items()],
+        # One statement for every year: a row-by-row executemany costs a statement per year.
+        years = {int(year): value for year, value in values.items()}
+        connection.execute(
+            "INSERT OR REPLACE INTO verified_year_fact"
+            " SELECT ?, ?, unnest(?::INTEGER[]), ?, ?, unnest(?::VARCHAR[])",
+            [kind, scope, list(years), basis, epoch, list(years.values())],
         )
 
 
