@@ -188,6 +188,7 @@ src/alphalattice/control/product_host/composition/result_standing.py
 src/alphalattice/control/product_host/composition/research_prerequisites.py
 src/alphalattice/control/product_host/composition/pending_decisions.py
 src/alphalattice/control/workspace_runtime/content_store.py
+src/alphalattice/control/workspace_runtime/verified_readbacks.py
 src/alphalattice/control/workspace_runtime/network_access.py
 src/alphalattice/control/task_control/timing.py
 src/alphalattice/control/task_control/child.py

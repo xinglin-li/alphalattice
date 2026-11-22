@@ -34,6 +34,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources import sec_edgar
+from alphalattice.kernel.data_layer import history
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     LATER_EIGHT_K,
@@ -222,6 +223,14 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
     runtime = _runtime(tmp_path)
     try:
         sessions = _Sessions(runtime)
+        indexed = []
+        original = history.index_references
+
+        def record_index(**kwargs):
+            indexed.append(len(kwargs["revisions"]))
+            return original(**kwargs)
+
+        monkeypatch.setattr(history, "index_references", record_index)
         first = _prepare(runtime, transport, as_of=NOW)
         transport.add_filing(AAPL, LATER_EIGHT_K, filing_body(LATER_EIGHT_K.accession))
         extractions.reset()
@@ -240,6 +249,14 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
         assert sessions.opened == 2 and runtime.selection_reuse_count == 0
         assert second["receipt"].reused_from_receipt_hash is None
         _assert_spans_anchor(runtime, second)
+        assert first["generation"].generation_hash != second["generation"].generation_hash
+        for prepared in (first, second):
+            runtime.retrieval.open_session(
+                document_set=prepared["document_set"],
+                generation=prepared["generation"],
+                evidence_as_of=prepared["request"].evidence_as_of,
+            )
+        assert indexed == [3, 4]
 
         other_policy = SealedSelections(
             runtime.artifacts,

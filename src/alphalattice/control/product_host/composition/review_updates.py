@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -23,6 +26,32 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePublication,
 )
+
+_BUNDLE_TASK: ContextVar[UUID | None] = ContextVar("review_bundle_task", default=None)
+
+
+@contextmanager
+def bundle_update(task_id: UUID) -> Iterator[None]:
+    """Allow the bundle's nested reads to reuse its sealed book's input projection."""
+    token = _BUNDLE_TASK.set(task_id)
+    try:
+        yield
+    finally:
+        _BUNDLE_TASK.reset(token)
+
+
+def bundle_book_key(registry: Any, task_id: UUID) -> Hashable | None:
+    """Name the exact completed Task evidence that this bundle can reuse."""
+    if _BUNDLE_TASK.get() != task_id:
+        return None
+    task = registry.task(task_id)
+    if task.lifecycle is not TaskLifecycle.SUCCEEDED:
+        return None
+    stages = tuple(
+        (item.stage_id, item.lifecycle, tuple(v.content_hash for v in item.evidence))
+        for item in registry.work_items(task_id)
+    )
+    return task_id, task.record_hash, stages
 
 
 def read_review_update(
@@ -71,7 +100,11 @@ def read_review_update(
         body = dict(readback)
     elif task.lifecycle is TaskLifecycle.SUCCEEDED:
         key = (type(reader).__name__, str(task_id), task.record_hash, publication_hash)
-        verify = partial(reader.readback, task_id, publication_hash=publication_hash)
+        verify = (
+            partial(operations._advancement_readback, task_id, publication_hash=publication_hash)
+            if task.input.input_schema_id == DECISION_ADVANCEMENT_SCHEMA
+            else partial(reader.readback, task_id, publication_hash=publication_hash)
+        )
         body = operations.readbacks.read(key, verify)
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)

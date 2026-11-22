@@ -14,8 +14,10 @@ import sqlite3
 import time
 import zipfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from threading import RLock
 from typing import Any, Final, Literal, Protocol, Self
@@ -27,6 +29,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.encoders import DEADLINE_SECONDS, SHORTLIST
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
+from alphalattice.kernel.shared_kernel.environment import thread_share
 
 type Precision = Literal["float16", "int8"]
 type Matrix = NDArray[np.float32]
@@ -1285,11 +1288,27 @@ class NumpyVectorIndex:
         """Score one matrix with BLAS, then select the eligible top-k (each source's top-k when
         `per_source`) with stable ties."""
         with self._guard:
-            return self._search(query, scope, limit, per_source)
+            return self._hits(*self._search(query, scope, limit, per_source))
+
+    def _with_lexical(
+        self,
+        query: Matrix,
+        scope: Scope,
+        limit: int,
+        per_source: bool,
+        lexical: Callable[[], tuple[SearchHit, ...]],
+    ) -> tuple[tuple[SearchHit, ...], tuple[SearchHit, ...]]:
+        """Overlap FTS with matrix ranking while the caller owns both SQLite reads."""
+        with self._guard:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                selected = pool.submit(self._search, query, scope, limit, per_source)
+                words = lexical()
+            return words, self._hits(*selected.result(timeout=0))
 
     def _search(
         self, query: Matrix, scope: Scope, limit: int, per_source: bool
-    ) -> tuple[SearchHit, ...]:
+    ) -> tuple[list[str], list[float]]:
+        """Rank the in-memory index while its caller holds the index guard."""
         if self._rebuild_required:
             raise DataError(
                 "the vector index requires its background rebuild",
@@ -1308,10 +1327,10 @@ class NumpyVectorIndex:
             )
         query = query / norm
         if limit < 1 or not len(self._ids):
-            return ()
+            return [], []
         scoped = self._scopes.get((scope.workspace, scope.kind))
         if scoped is None:
-            return ()
+            return [], []
         if scope.ranges:  # the rows inside the ranges first, then those the scope holds
             inside = self._in_ranges(scope.ranges)
             scoped = inside[self._members[scope.workspace, scope.kind][self._codes[inside]]]
@@ -1331,7 +1350,7 @@ class NumpyVectorIndex:
             eligible_mask &= allowed[codes]
         eligible = scoped[eligible_mask]
         if not len(eligible):
-            return ()
+            return [], []
         scores = np.concatenate((self.matrix @ query, self._delta[: self._delta_count] @ query))
         values = scores[eligible]
         if per_source:  # each source's best `limit`, in one global order
@@ -1354,7 +1373,12 @@ class NumpyVectorIndex:
             order = np.lexsort((eligible[candidate], -values[candidate]))[:count]
             positions = eligible[candidate[order]]
             scores = [float(values[candidate[index]]) for index in order]
-        selected = [self._ids[int(position)] for position in positions]
+        return [self._ids[int(position)] for position in positions], scores
+
+    def _hits(self, selected: list[str], scores: list[float]) -> tuple[SearchHit, ...]:
+        """Read the selected chunks on the caller's log connection in rank order."""
+        if not selected:
+            return ()
         with self.store.log.reading() as con:
             rows = con.execute(
                 "SELECT s.source_id, v.version, c.ordinal, c.chunk_id, c.char_start, c.char_end,"
@@ -1524,14 +1548,25 @@ class HybridSearch:
                 ranges=ranges,
             )
             window, per_source = (WINDOW, True) if depth else (50, False)
-            lexical = self.store.lexical(
+            read_lexical = partial(
+                self.store.lexical,
                 query,
                 scope,
                 recipe_id=self.vector.recipe_id,
                 limit=window,
                 per_source=per_source,
             )
-            dense = self.vector.search(query_vector, scope, limit=window, per_source=per_source)
+            if (
+                language == "zh"
+                and isinstance(self.vector, NumpyVectorIndex)
+                and thread_share() != 1
+            ):
+                lexical, dense = self.vector._with_lexical(
+                    query_vector, scope, window, per_source, read_lexical
+                )
+            else:
+                lexical = read_lexical()
+                dense = self.vector.search(query_vector, scope, limit=window, per_source=per_source)
             ranked = list(fuse(lexical, dense, limit=len(lexical) + len(dense)))
             if depth is None:
                 ranked = ranked[:50]

@@ -3457,7 +3457,23 @@ class PortfolioResearchOperations:
     def _research_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A research update's readback by its Task, with its way on (STATUS's deferral reader)."""
         assert self.research_updates is not None and task_id is not None
-        return self._research_update_way(task_id, self.research_updates.readback(task_id))
+        return self._research_update_way(task_id, self._advancement_readback(task_id))
+
+    def _advancement_readback(
+        self, task_id: UUID, *, publication_hash: str | None = None
+    ) -> dict[str, object]:
+        """Keep one verified advancement readback while the bundle reads its sealed book."""
+        from .review_updates import bundle_book_key  # lazy: dated update projection
+
+        def verify() -> dict[str, object]:
+            assert self.research_updates is not None
+            return self.research_updates.readback(task_id, publication_hash=publication_hash)
+
+        registry = self.workspace_session.task_control_registry
+        key = bundle_book_key(registry, task_id)
+        if key is None:
+            return verify()
+        return self.readbacks.book(key, publication_hash, verify)
 
     def _positions(
         self,

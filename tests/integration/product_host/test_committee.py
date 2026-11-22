@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,10 +18,24 @@ import numpy as np
 import pytest
 
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
-from alphalattice.control.product_host.composition import committee, committee_materials
+from alphalattice.control.product_host.composition import (
+    committee,
+    committee_materials,
+    review_operations,
+)
 from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition import portfolio_result_context as context
+from alphalattice.control.product_host.composition.decision_advancement import SCHEMA
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    EvidenceReviewBundles,
+)
+from alphalattice.control.product_host.composition.evidence_review_delivery import (
+    EvidenceReviewDelivery,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.portfolio_research_operations import (
+    PortfolioResearchOperations,
+)
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
 from alphalattice.control.product_host.composition.research_delivery import (
     export_update_delivery,
@@ -31,7 +46,9 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.verified_readbacks import VerifiedReadbacks
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
@@ -1643,6 +1660,115 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert any(
         "no name" in line for line in committee.role_lines("RISK", readback, {}, emptied, NOW) or []
     )
+
+    first, later = UUID(TASK), UUID(int=12)
+    publication = PortfolioUpdatePublication.model_validate(readback["publication"])
+    later_publication = PortfolioUpdatePublication.create(
+        **(dict(publication) | {"plan_hash": "c" * 64})
+    )
+    later_book = {
+        **readback,
+        "task_id": str(later),
+        "publication": later_publication.model_dump(mode="json"),
+        "review_selector": {
+            **readback["review_selector"],
+            "update_task_id": str(later),
+            "update_publication_hash": later_publication.content_hash,
+        },
+    }
+    later_store, _ = _floor(tmp_path / "advanced", later_book)
+    books = {first: readback, later: later_book}
+    verified = []
+
+    def verify(task_id, *, publication_hash=None):
+        verified.append((task_id, publication_hash))
+        return books[task_id]
+
+    app = SimpleNamespace(
+        readbacks=VerifiedReadbacks(),
+        review=object(),
+        research_updates=SimpleNamespace(readback=verify),
+        updates=object(),
+        dispatcher=SimpleNamespace(clock=lambda: NOW),
+        goals=SimpleNamespace(store=store),
+        _date_risk=lambda *_: {},
+        _file_floor=lambda *_: None,
+        workspace_session=SimpleNamespace(
+            task_control_registry=SimpleNamespace(
+                task=lambda task_id: SimpleNamespace(
+                    task_kind=ADVANCEMENT_TASK_KIND,
+                    lifecycle=TaskLifecycle.SUCCEEDED,
+                    record_hash=canonical_hash(str(task_id)),
+                    input=SimpleNamespace(input_schema_id=SCHEMA, payload={"plan": {}}),
+                ),
+                work_items=lambda _: (),
+            ),
+        ),
+    )
+    host = PortfolioResearchOperations
+    app._dated = partial(host._dated, app)
+    app._advancement_readback = partial(host._advancement_readback, app)
+    app._research_update_way = partial(host._research_update_way, app)
+    app._read_review_update = partial(host._read_review_update, app)
+
+    def read(request):
+        if request.operation == "RESEARCH_UPDATE_READBACK":
+            return host._positions(app, host._research_update_readback(app, request.task_id))
+        assert request.operation == "EVIDENCE_CRO"
+        return review_operations.execute(app, request, **caller)
+
+    def current_standing(_, selector, *, read_update):
+        exact = selector.update_publication_hash
+        origin = read_update(selector.update_task_id, exact)
+        assert origin["publication"]["content_hash"] == exact, label
+        standing_reads.append((selector.update_task_id, status))
+        return status
+
+    def current_generation(selector, *_args, **_kwargs):
+        assert selector.update_task_id == task_id, label
+        generation_reads.append(generation)
+        return generations[generation]
+
+    app.execute = read
+    app.evidence_cro = current_generation
+    caller = {"caller": "HUMAN", "read_files": None, "agent_run": None, "accepted_bundle": None}
+    rebuilt = {**EVIDENCE, "explanation": "Read the rebuilt generation's Evidence gaps."}
+    generations = {"original": EVIDENCE, "rebuilt": rebuilt}
+    generation_reads, standing_reads = [], []
+    readings = {}
+    with (
+        patch.object(EvidenceReviewDelivery, "review_standing", current_standing),
+        patch.object(
+            EvidenceReviewBundles,
+            "prepare_agent_bundle",
+            lambda _, **given: {"view": given["view"]},
+        ),
+    ):
+        for index, (label, task_id, role, generation, status, read_count) in enumerate(
+            (
+                ("same sealed book ALPHA", first, "ALPHA", "original", {}, 1),
+                ("same sealed book RISK", first, "RISK", "original", {}, 1),
+                ("advanced book", later, "ALPHA", "original", {}, 2),
+                ("review re-ask", later, "CRO", "original", standing, 2),
+                ("new generation", later, "CRO", "rebuilt", standing, 2),
+            ),
+            1,
+        ):
+            app.goals.store = store if task_id == first else later_store
+            request = Request(
+                operation="AGENT_BUNDLE_PREPARE",
+                task_id=task_id,
+                agent_role=role,
+                bundle_directory=str(directory),
+            )
+            actual = review_operations.execute(app, request, **caller)
+            assert len(verified) == read_count, label
+            assert len(standing_reads) == len(generation_reads) == index, label
+            assert standing_reads[-1] == (task_id, status) and generation_reads[-1] == generation
+            assert "review_standing" not in books[task_id], label
+            readings[label] = actual["view"]
+    assert any(at in line for line in readings["review re-ask"] or ())
+    assert readings["new generation"] != readings["review re-ask"]
 
 
 def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback: dict) -> None:

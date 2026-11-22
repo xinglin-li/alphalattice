@@ -30,6 +30,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 from alphalattice.control.product_host.composition.research_review_outcome import (
     _review_outcome_body,
 )
+from alphalattice.control.product_host.composition.review_updates import bundle_update
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
@@ -63,7 +64,10 @@ def execute(
         case "AGENT_BUNDLE_PREPARE":
             assert request.agent_role is not None and request.bundle_directory is not None
             # A role's view of the date's positions, its floor or review route.
-            dated = None if request.task_id is None else operations._dated(str(request.task_id))
+            dated = None
+            if request.task_id is not None:
+                with bundle_update(request.task_id):
+                    dated = operations._dated(str(request.task_id))
             now, store, file = (
                 operations.dispatcher.clock(),
                 operations.goals.store,
