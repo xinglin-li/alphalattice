@@ -40,6 +40,7 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
 from alphalattice.kernel.shared_kernel import source_identity
 from alphalattice.kernel.shared_kernel.source_identity import (
     IDENTITY_ROLES_PATH,
+    current_module_name,
     number_deciding_closure,
     number_deciding_rule,
 )
@@ -177,10 +178,14 @@ def _by_rule(root: Path, site: ClosureSite) -> ClosureSite:
         if path.startswith("src/") and path.endswith(".py")
     )
     added = []
-    for module in number_deciding_closure(entries, root=root, rule=number_deciding_rule(root)):
-        base = "src/" + module.replace(".", "/")
+    rule = number_deciding_rule(root)
+    for module in number_deciding_closure(entries, root=root, rule=rule):
+        base = "src/" + current_module_name(module, rule).replace(".", "/")
         added.append(base + ".py" if (root / (base + ".py")).is_file() else base + "/__init__.py")
-    return replace(site, tracked_paths=tuple(sorted({*site.tracked_paths, *added})))
+    other = set(site.tracked_paths) - {
+        "src/" + entry.replace(".", "/") + ".py" for entry in entries
+    }
+    return replace(site, tracked_paths=tuple(sorted(other.union(added))))
 
 
 def closures_tracking(sites: Iterable[ClosureSite], path: str) -> tuple[ClosureSite, ...]:

@@ -121,7 +121,12 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
         entries: tuple[str, ...], *, root: Path, rule: Any, excluded: frozenset[str] = frozenset()
     ) -> dict[str, str]:
         found = walk(entries, root=root, rule=rule, excluded=excluded)
-        reached.append(found)
+        reached.append(
+            {
+                source_identity.current_module_name(module, rule): digest
+                for module, digest in found.items()
+            }
+        )
         return found
 
     def watched_canonical(entries: tuple[str, ...], *, root: Path, rule: Any) -> dict[str, str]:

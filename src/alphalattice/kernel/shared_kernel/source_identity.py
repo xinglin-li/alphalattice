@@ -90,7 +90,7 @@ def source_component_id_from_tracked_path(tracked_path: str) -> str:
     return component_id
 
 
-_PARSED: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {}
+_PARSED: dict[tuple[str, str, tuple[tuple[str, str], ...]], tuple[str, tuple[str, ...]]] = {}
 """A module's syntax digest and imports, by its bytes' SHA-256 and its package: the same bytes
 are parsed once a process, and any edit is a new key, so the cache never answers stale."""
 
@@ -150,10 +150,27 @@ class NumberDecidingRule:
     Attributes:
         packages: Owner package names whose modules may decide a numerical result.
         platform_segments: Package-relative segments excluded from the numerical walk.
+        module_bindings: Pairs of current dotted namespaces and their stable identity names.
     """
 
     packages: frozenset[str]
     platform_segments: frozenset[str]
+    module_bindings: tuple[tuple[str, str], ...] = ()
+
+
+def _bound_name(name: str, bindings: Mapping[str, str]) -> str:
+    """Apply the most specific dotted namespace binding to a name."""
+    prefix = name
+    while bindings and prefix:
+        if prefix in bindings:
+            return bindings[prefix] + name[len(prefix) :]
+        prefix = prefix.rpartition(".")[0]
+    return name
+
+
+def current_module_name(name: str, rule: NumberDecidingRule) -> str:
+    """Resolve a stable module name to the module used by this checkout."""
+    return _bound_name(name, {stable: module for module, stable in rule.module_bindings})
 
 
 def number_deciding_closure(
@@ -179,9 +196,20 @@ def number_deciding_closure(
         excluded: Exact module names neither hashed nor traversed.
 
     Returns:
-        Admitted module names mapped to their executable-syntax digests.
+        Stable module names mapped to their executable-syntax digests.
     """
-    return dict(sorted(_walked(entries, root, rule, excluded, _parsed).items()))
+    moved = tuple(pair for pair in rule.module_bindings if pair[0] != pair[1])
+    bindings = dict(moved)
+
+    def read(path: Path, package: str) -> tuple[str, tuple[str, ...]]:
+        return _parsed(path, package, bindings=moved)
+
+    return dict(
+        sorted(
+            (_bound_name(module, bindings), digest)
+            for module, digest in _walked(entries, root, rule, excluded, read).items()
+        )
+    )
 
 
 def _walked[T](
@@ -193,9 +221,13 @@ def _walked[T](
 ) -> dict[str, T]:
     """The closure's walk (``number_deciding_closure``), each module read by ``read``."""
     source = source_root(root)
+    stable = {module: binding for module, binding in rule.module_bindings if module != binding}
+    current = {binding: module for module, binding in stable.items()}
+    entries = tuple(_bound_name(entry, current) for entry in entries)
+    excluded = frozenset(_bound_name(module, current) for module in excluded)
 
     def deciding(module: str) -> bool:
-        parts = module.split(".")
+        parts = _bound_name(module, stable).split(".")
         return (
             len(parts) >= 3
             and parts[0] == "alphalattice"
@@ -240,16 +272,20 @@ def _package(module: str, path: Path) -> str:
     return module if path.name == "__init__.py" else module.rpartition(".")[0]
 
 
-def _parsed(path: Path, package: str) -> tuple[str, tuple[str, ...]]:
+def _parsed(
+    path: Path, package: str, *, bindings: tuple[tuple[str, str], ...] = ()
+) -> tuple[str, tuple[str, ...]]:
     try:
         payload = path.read_bytes()
     except OSError as error:
         raise ValueError("shared_kernel.source_syntax_unreadable") from error
-    return _parsed_payload(payload, package=package, filename=path.name)
+    return _parsed_payload(payload, package=package, filename=path.name, bindings=bindings)
 
 
-def _parsed_payload(payload: bytes, *, package: str, filename: str) -> tuple[str, tuple[str, ...]]:
-    key = _bytes_key(payload, package)
+def _parsed_payload(
+    payload: bytes, *, package: str, filename: str, bindings: tuple[tuple[str, str], ...] = ()
+) -> tuple[str, tuple[str, ...]]:
+    key = (*_bytes_key(payload, package), bindings)
     kept = _PARSED.get(key)
     if kept is None:
         try:
@@ -257,8 +293,28 @@ def _parsed_payload(payload: bytes, *, package: str, filename: str) -> tuple[str
         except (SyntaxError, ValueError) as error:
             raise ValueError("shared_kernel.source_syntax_unreadable") from error
         imported = _imports(tree, package=package)
+        if bindings:
+            _bind_syntax_imports(tree, dict(bindings))
         kept = _PARSED[key] = (_syntax_digest(tree), imported)
     return kept
+
+
+def _bind_syntax_imports(tree: ast.Module, bindings: Mapping[str, str]) -> None:
+    """Give form 1's import syntax stable names while retaining its statements and aliases."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                alias.name = _bound_name(alias.name, bindings)
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            names = [
+                _bound_name(f"{node.module}.{alias.name}", bindings).rsplit(".", 1)
+                for alias in node.names
+            ]
+            stems = {stem for stem, _ in names}
+            if len(stems) == 1:
+                node.module = stems.pop()
+                for alias, (_, name) in zip(node.names, names, strict=True):
+                    alias.name = name
 
 
 SPAN_MODULE = "alphalattice.kernel.shared_kernel.spans"
@@ -506,9 +562,9 @@ def canonical_closure(
     - what an import names is the module it names, or the module and the name it takes from
       it; a ``from`` import of a closure submodule names that submodule. No re-export is
       resolved: reaching the same code through another module rotates, the safe side;
-    - a closure module is named by its digest, never its path, so code moved to a new path
-      with the same body keeps its digest; anything outside the closure is named by its
-      dotted path.
+    - a closure module is named by its digest, so code moved to a new path with the same
+      body keeps its digest; imports outside the closure use their semantic binding when
+      declared and their dotted name otherwise.
 
     A module's digest covers its code, the set of what it imports, and the digest of every
     closure module it names (modules importing each other are hashed as one ring), so a
@@ -549,6 +605,7 @@ def canonical_closure(
         for module in found
     }
     deep: dict[str, str] = {}
+    bindings = {module: stable for module, stable in rule.module_bindings if module != stable}
 
     def marker(target: tuple[str, str], ring: Mapping[str, str]) -> str:
         module, name = target
@@ -557,7 +614,8 @@ def canonical_closure(
         elif module in ring:
             head = f"ring:{ring[module]}"
         else:
-            return "@ext:" + (f"{module}.{name}" if name else module)
+            qualified = f"{module}.{name}" if name else module
+            return "@ext:" + _bound_name(qualified, bindings)
         return f"@{head}:{name}" if name else f"@{head}"
 
     def rendered(module: str, ring: Mapping[str, str]) -> str:
@@ -1037,9 +1095,22 @@ def number_deciding_rule(root: Path) -> NumberDecidingRule:
     """Which code can move a result, as the identity-roles table names it."""
     try:
         document = json.loads((root / IDENTITY_ROLES_PATH).read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError("invalid identity roles table")
+        bindings = document.get("module_bindings", {})
+        if not isinstance(bindings, dict) or any(
+            not isinstance(name, str)
+            or not name.startswith("alphalattice.")
+            or not all(part.isidentifier() for part in name.split("."))
+            for name in (*bindings, *bindings.values())
+        ):
+            raise ValueError("invalid module binding")
+        if len(set(bindings.values())) != len(bindings):
+            raise ValueError("duplicate current module namespace")
         rule = NumberDecidingRule(
             packages=frozenset(str(name) for name in document["number_deciding_packages"]),
             platform_segments=frozenset(str(name) for name in document["platform_segments"]),
+            module_bindings=tuple((module, binding) for binding, module in bindings.items()),
         )
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise ValueError("shared_kernel.identity_roles_unreadable") from error
@@ -1241,6 +1312,7 @@ __all__ = [
     "IDENTITY_SWITCH_PATH",
     "NumberDecidingRule",
     "checkout_root",
+    "current_module_name",
     "identity_switch",
     "number_deciding_closure",
     "number_deciding_rule",

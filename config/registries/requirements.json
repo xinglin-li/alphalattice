@@ -2685,6 +2685,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "shared_kernel.source_identity_survives_relocation": {
+      "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "unit",
+      "seconds": 1
+    },
     "shared_kernel.work_census_tags_each_repeat_of_an_input": {
       "description": "If the work census tagged repeats wrongly, a repeat within one Task, a repeat by another Task, a verification at a process boundary and a write nothing reads would be ranked as the wrong lever.",
       "lower_layer": "The tags are read from the rows each process writes to its own file, by DuckDB's JSON reader and window queries, so the proof needs a real file and a real query engine.",

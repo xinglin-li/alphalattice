@@ -748,9 +748,9 @@
         "src/alphalattice/kernel/shared_kernel/source_identity.py::_PARSED"
       ],
       "definition_line": 93,
-      "key": "SHA-256(source bytes), package",
-      "dependency_coverage": "Yes: bytes and relative-import package",
-      "invalidation_rule": "new byte hash; no removal",
+      "key": "Source content digest, relative-import package and moved module bindings",
+      "dependency_coverage": "Yes: source bytes, relative-import package and bindings used to name syntax imports",
+      "invalidation_rule": "A change to any key input computes a new entry",
       "size_bound": "unbounded",
       "bound_scope": "unbounded",
       "eviction": "none",

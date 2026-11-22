@@ -547,6 +547,67 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     assert (Seen.SAME if identity() == before else Seen.ROTATES) is expected
 
 
+@pytest.mark.proves("shared_kernel.source_identity_survives_relocation")
+@pytest.mark.parametrize("numerical", [False, True], ids=["external", "numerical"])
+def test_a_rule_closure_carries_the_semantic_binding_of_an_import(
+    tmp_path: Path, numerical: bool
+) -> None:
+    """Requirement (LAWS.md ID3): both closure forms preserve resolved source identity on a move."""
+    from alphalattice.kernel.shared_kernel.source_identity import (
+        number_deciding_closure,
+        number_deciding_rule,
+        source_rule_closure_hash,
+    )
+
+    entry = "src/alphalattice/control/host/entry.py"
+    entry_module = "alphalattice.control.host.entry"
+    binding = "alphalattice.kernel.storage"
+    layouts = (
+        (binding, binding),
+        ("alphalattice.foundation.moved_storage", binding),
+        ("alphalattice.foundation.other_storage", "alphalattice.foundation.other_storage"),
+    )
+    values = []
+    for index, (package, semantic_name) in enumerate(layouts):
+        root = tmp_path / ("numerical" if numerical else "external") / str(index)
+        paths = {
+            entry: "from .bridge import value\n",
+            "src/alphalattice/control/host/bridge.py": (
+                f"from {package} import reader\nvalue = reader.load()\n"
+            ),
+            "src/" + package.replace(".", "/") + "/reader.py": "def load():\n    return 7\n",
+            "config/identity-roles.json": json.dumps(
+                {
+                    "number_deciding_packages": ["host", "storage"] if numerical else ["host"],
+                    "platform_segments": [],
+                    "module_bindings": {semantic_name: package},
+                }
+            ),
+        }
+        for name, text in paths.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        bound_entry = "src/" + semantic_name.replace(".", "/") + "/reader.py"
+        form_one = tuple(
+            number_deciding_closure(entries, root=root, rule=number_deciding_rule(root))
+            for entries in ((entry_module,), (entry_module, semantic_name + ".reader"))
+        )
+        form_two = tuple(
+            source_rule_closure_hash(
+                root=root, tracked_paths=entries, semantic_owner="host", numerical_role="EXAMPLE"
+            )
+            for entries in ((entry,), (entry, bound_entry))
+        )
+        values.append((*form_one, *form_two))
+    before, moved, different = values
+    assert (binding + ".reader" in before[0]) is numerical
+    assert before == moved
+    assert before[0] != different[0]
+    assert before[1] != different[1]
+    assert before[2] != different[2]
+
+
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     """A span moves no identity and any other form reads as written."""
 
