@@ -2269,10 +2269,11 @@
       "seconds": 10
     },
     "pipeline.public_worker_timeout_diagnostic": {
-      "description": "A public worker crash prints its matching active timeout event while a crash without a timeout stays distinct.",
+      "description": "A public shard reports the process phase or test that stalled and retains prior failures in JUnit, while a crash without a timeout stays distinct.",
       "owner": "devtools.pipeline",
       "layer": "integration",
-      "seconds": 15
+      "seconds": 15,
+      "lower_layer": "Only a real worker and controller can prove that a blocked pytest session ends and its prior failed report reaches the retained JUnit."
     },
     "pipeline.readmes_name_project_release": {
       "description": "Both public READMEs name the project version as their current release in the heading, current-release sentence, notes link and last-checked line.",

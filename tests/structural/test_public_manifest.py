@@ -6,7 +6,6 @@ import json
 import re
 import subprocess
 import sys
-import textwrap
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -954,11 +953,8 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     # every public test runs nightly and on dispatch, collected at run time, never a file list
     assert re.search(r"^  schedule:\n    - cron: ", workflow, re.M)
     assert "\n  workflow_dispatch:\n" in workflow
-    assert 'python -m pytest tests -m "not real_evidence"' in workflow
-    assert "--splits 4 --group ${{ matrix.group }}" in " ".join(workflow.split())
     assert "public-tests-junit-${{ matrix.os }}-${{ matrix.group }}" in workflow
     assert "public-tests-result-${{ matrix.os }}-${{ github.run_id }}" in workflow
-    assert "--durations-path .test_durations" in workflow
     # every workflow's actions are pinned to a full commit, never a tag or branch
     uses = [
         found
@@ -988,6 +984,16 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
+    shard_command = next(
+        step["run"]
+        for step in jobs["public-tests-shard"]["steps"]
+        if step.get("name") == "Run this shard of every public test"
+    )
+    launcher, pytest_options = " ".join(shard_command.split()).split(" -- ", 1)
+    assert "python scripts/release/public_test_shard.py " in launcher
+    assert pytest_options.startswith('tests -m "not real_evidence" -n 4 ')
+    assert "--splits 4 --group ${{ matrix.group }}" in pytest_options
+    assert "--durations-path .test_durations" in pytest_options
     assert not jobs["public-tests-shard"].get("continue-on-error", False)
     assert not jobs["public-tests"].get("continue-on-error", False)
     supply = yaml.safe_load((root / ".github/workflows/supply-chain.yml").read_text("utf-8"))
@@ -1030,9 +1036,9 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
     public Verify shards cancelled at their 60-minute limit on 11-21)."""
     from tests.structural.pytest_support import child_environment
 
-    workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text("utf-8")
-    plugin = workflow.split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
-    plugin = textwrap.dedent(plugin).replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    root = Path(__file__).resolve().parents[2]
+    plugin = (root / "scripts/release/public_test_shard.py").read_text("utf-8")
+    plugin = plugin.replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
     plugin = plugin.replace("HANG_GRACE = 60", "HANG_GRACE = 2", 1)
     (tmp_path / "ci_worker_diagnostics.py").write_text(plugin, encoding="utf-8")
     if failure == "timeout-end-blocked":  # pytest-timeout's own end never reaches os._exit
@@ -1112,6 +1118,202 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
         assert visible.index('"event": "timeout"') < visible.index("crashed while running")
     if failure == "malformed":
         assert "timeout diagnostic unavailable" in visible and "INTERNALERROR" not in visible
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize(
+    ("phase", "node", "expected"),
+    [
+        ("worker startup", None, "gw0: worker startup"),
+        ("collection", None, "gw0: collection"),
+        (
+            "fixture setup",
+            "test_probe.py::test_probe",
+            "gw0: fixture setup test_probe.py::test_probe",
+        ),
+        ("test call", "test_probe.py::test_probe", "gw0: test call test_probe.py::test_probe"),
+        (
+            "fixture teardown",
+            "test_probe.py::test_probe",
+            "gw0: fixture teardown test_probe.py::test_probe",
+        ),
+        (
+            "worker handoff",
+            "test_probe.py::test_probe",
+            "gw0: worker handoff test_probe.py::test_probe",
+        ),
+        ("session finish", None, "gw0: session finish"),
+        ("worker shutdown", None, "gw0: worker shutdown"),
+    ],
+    ids=(
+        "startup",
+        "collection",
+        "setup",
+        "call",
+        "teardown",
+        "handoff",
+        "session-finish",
+        "shutdown",
+    ),
+)
+def test_a_shard_timeout_names_the_process_phase(phase, node, expected):
+    """A phase has a deadline, and a test transition keeps its original deadline."""
+    from release.public_test_shard import HANG_SECONDS, ShardWatch
+
+    watch = ShardWatch(began=0)
+    watch.observe(
+        dict(
+            event="phase",
+            owner="controller",
+            phase="worker coordination",
+            tick=1,
+            until=None,
+            node=None,
+            pid=1,
+        )
+    )
+    watch.observe(
+        dict(
+            event="phase",
+            owner="gw0",
+            phase="test protocol" if node else phase,
+            tick=2,
+            until=10,
+            node=node,
+            pid=2,
+        )
+    )
+    deadline = 10
+    if phase == "worker handoff":
+        watch.observe(dict(event="end", owner="gw0", node=node, tick=9))
+        deadline = 9 + HANG_SECONDS
+        watch.observe(
+            dict(
+                event="phase",
+                owner="gw1",
+                phase="test call",
+                tick=deadline - 1,
+                until=deadline + 1,
+                node="test_probe.py::test_healthy",
+                pid=3,
+            )
+        )
+    elif node is not None:
+        watch.observe(dict(event="test phase", owner="gw0", phase=phase, node=node, tick=9))
+    before = deadline - 0.1
+    assert watch.expired(deadline, cutoff=deadline + 10, alive=lambda _pid: True) == expected
+    assert watch.expired(before, cutoff=deadline + 10, alive=lambda _pid: True) is None
+    assert watch.expired(deadline, cutoff=deadline + 10, alive=lambda pid: pid == 1) is None
+    assert watch.expired(before, cutoff=before, alive=lambda _pid: True) == expected
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize(
+    "escaped",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux process sessions"),
+            id="detached-host",
+        ),
+    ],
+)
+def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(tmp_path, escaped):
+    """A real xdist worker that hangs after its last report leaves a failed JUnit."""
+    from xml.etree import ElementTree as ET
+
+    from tests.structural.pytest_support import child_environment
+
+    probe = "def test_prior_failure():\n"
+    if escaped:
+        detached = (
+            "import json, os, subprocess, sys\n"
+            "from pathlib import Path\n"
+            "import psutil\n"
+            "from alphalattice.kernel.shared_kernel import spawn\n"
+            "child = spawn.detached(\n"
+            "    [sys.executable, '-c', 'from threading import Event; Event().wait(60)'],\n"
+            "    log=subprocess.DEVNULL, env=dict(os.environ),\n"
+            ")\n"
+            "birth = psutil.Process(child.pid).create_time()\n"
+            "Path('host.json').write_text(json.dumps([child.pid, birth]), encoding='utf-8')\n"
+        )
+        probe += (
+            "    import sys\n"
+            "    from alphalattice.kernel.shared_kernel import spawn\n"
+            f"    spawn.run([sys.executable, '-c', {detached!r}], timeout=8, check=True)\n"
+        )
+    probe += "    assert False, 'record this failure'\n"
+    (tmp_path / "test_probe.py").write_text(probe, encoding="utf-8")
+    (tmp_path / "conftest.py").write_text(
+        "from threading import Event\n"
+        "import pytest\n\n"
+        "@pytest.hookimpl(tryfirst=True)\n"
+        "def pytest_sessionfinish(session):\n"
+        "    if hasattr(session.config, 'workerinput'):\n"
+        "        Event().wait()\n",
+        encoding="utf-8",
+    )
+    junit = tmp_path / "junit.xml"
+    env = child_environment(
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        PYTEST_WORKER_DIAGNOSTICS=str(tmp_path / "diagnostics"),
+    )
+    root = Path(__file__).resolve().parents[2]
+    guard = (root / "scripts/release/public_test_shard.py").read_text("utf-8")
+    # Shorten the phase bound without changing which lifecycle hooks arm it.
+    guard = guard.replace("HANG_SECONDS = 900", "HANG_SECONDS = 4", 1)
+    launcher = tmp_path / "public_test_shard.py"
+    launcher.write_text(guard, encoding="utf-8")
+    run = spawn.run(
+        [
+            sys.executable,
+            str(launcher),
+            "--budget",
+            "20",
+            "--junit",
+            str(junit),
+            "--",
+            "-p",
+            "xdist",
+            "-p",
+            "pytest_timeout",
+            "-n",
+            "1",
+            "--max-worker-restart=0",
+            "-q",
+            "test_probe.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=25,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if escaped:
+        import psutil
+
+        pid, created = json.loads((tmp_path / "host.json").read_text("utf-8"))
+        try:
+            host = psutil.Process(pid)
+            same_host = host.create_time() == created and host.status() != psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            same_host = False
+        if same_host:
+            host.kill()  # Clean only the identified planted process, even on the red base.
+        assert not same_host, f"shard-owned Host {pid} survived the stop"
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "public shard timeout: gw0: session finish" in run.stderr
+    rows = ET.parse(junit).findall(".//testcase")
+    assert len(rows) == 2
+    failure, timeout = rows
+    assert failure.get("name") == "test_prior_failure"
+    assert failure.get("classname") == "test_probe"
+    assert failure.findtext("failure") == "AssertionError"
+    assert timeout.get("name") == "public shard timeout: gw0: session finish"
+    assert timeout.find("error").get("message") == timeout.get("name")
 
 
 @pytest.mark.proves("pipeline.public_durations_come_from_junit")

@@ -17,7 +17,8 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import ExitStack, closing, suppress
+from collections.abc import Iterator
+from contextlib import ExitStack, closing, contextmanager, suppress
 from ctypes import wintypes
 from typing import Any, Literal, overload
 
@@ -172,6 +173,38 @@ def stop_tree(pid: int) -> None:
     _, alive = psutil.wait_procs(members, timeout=REAP_TIMEOUT)
     if alive:
         raise TreeNotStopped(f"spawn.tree_not_stopped: {[p.pid for p in alive]}")
+
+
+@contextmanager
+def reap_detached_sessions() -> Iterator[None]:
+    """A dedicated Linux launcher adopts and reaps descendants across session boundaries."""
+    if sys.platform != "linux":
+        yield
+        return
+    owner = psutil.Process()
+    if owner.children():
+        raise TreeNotStopped("spawn.subreaper_requires_dedicated_launcher")
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    set_child_subreaper = 36  # Linux PR_SET_CHILD_SUBREAPER
+    if prctl(set_child_subreaper, 1, 0, 0, 0) != 0:
+        raise TreeNotStopped("spawn.child_subreaper_unavailable")
+    try:
+        yield
+    finally:
+        # The caller closes its ordinary process group first. A detached Host
+        # whose launcher has exited is still a child of this subreaper.
+        deadline = time.monotonic() + REAP_TIMEOUT
+        while members := owner.children(recursive=True):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TreeNotStopped(
+                    f"spawn.tree_not_stopped: detached session members {[p.pid for p in members]}"
+                )
+            for member in reversed(members):
+                with suppress(psutil.NoSuchProcess):
+                    member.kill()
+            psutil.wait_procs(members, timeout=min(remaining, 0.1))
 
 
 def _in_group(member: Any, pid: int) -> bool:
