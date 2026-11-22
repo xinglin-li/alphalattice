@@ -30,6 +30,7 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.evidence.alternative_evidence.runtime import execution
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
     TASK_LEASES,
     TaskCpuLeases,
@@ -38,6 +39,7 @@ from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
 )
+from alphalattice.kernel.resources import ResourceRefused
 from alphalattice.kernel.shared_kernel.environment import (
     numerical_thread_limit,
     numerical_thread_pools,
@@ -135,7 +137,13 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(
     """requirement: with two running places two Tasks that may run beside others run at once,
     their leases within the CPU budget and the process's priority kept in the execution log."""
     _places(tmp_path / "runtime", "2")
+    execution.CpuBudgetStore(tmp_path / "runtime").write(4, chosen_by="HUMAN", chosen_at=NOW)
     both, leased = Barrier(2, timeout=60), []
+    load_samples: list[object] = []
+
+    def sample_load(**kwargs):
+        load_samples.append(kwargs)
+        return 0.0
 
     class Meeting(FixtureTaskAdapter):
         def execute_stage(self, *, task, execution, work_item):
@@ -157,6 +165,7 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(
     monkeypatch.setattr(platform, "processor", processor)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         assert len(processor_calls) == 1  # the persisted value is acquired at Host start
+        monkeypatch.setattr(execution, "busy_logical_processors", sample_load)
         events = []
         watching = [True]
 
@@ -181,12 +190,17 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(
         finally:
             watching[0] = False
             dispatcher.close()
+    assert not load_samples, "explicit Task CPU budgets do not sample live load"
+    assert not (set(sent) & set(TASK_LEASES.holders()))
     assert events == []  # startup is excluded; served Task requests issue no WMI query
     log = (tmp_path / "runtime" / "execution" / "tasks.jsonl").read_text(encoding="utf-8")
     # Each Task's last line is the one it ran with; a command driven again wrote one before it.
     lines = list({row["task_id"]: row for row in map(json.loads, log.splitlines())}.values())
     assert len(processor_calls) == 1  # no processor/WMI lookup while requests run
     assert {line["platform"]["processor"] for line in lines} == {expected_processor}
+    assert all(
+        line["cpu_budget"] == 4 and line["machine"]["busy_processors"] is None for line in lines
+    )
     # Either task can observe the other after both have started; the barrier above
     # proves overlap, while each snapshot must stay within the two-place budget.
     assert sorted(line["running_beside"] for line in lines) in ([0, 1], [1, 1])
@@ -317,22 +331,58 @@ def test_studies_other_than_alpha_and_the_install_may_run_beside_others() -> Non
     )
 
 
-def test_a_lease_that_would_pass_the_budget_waits_for_cores() -> None:
-    """requirement: the leases of Tasks running at once stay within the budget; a Task that does
-    not fit waits for cores rather than run narrower."""
-    leases, taken = TaskCpuLeases(), Event()
+@pytest.mark.parametrize("shrink", [False, True])
+def test_a_lease_that_would_pass_the_budget_waits_for_cores(monkeypatch, shrink) -> None:
+    """Wait for a grant while it fits the current budget, then admit or refuse by name."""
+    leases, taken, waiting, settled = TaskCpuLeases(), Event(), Event(), Event()
+    with (
+        pytest.raises(ResourceRefused, match=r"^resources.capacity_exceeded:cpu$"),
+        leases.lease(uuid4(), 5, 4),
+    ):
+        pass
     first, second, third = uuid4(), uuid4(), uuid4()
+    refused = []
 
     def hold() -> None:
-        with leases.lease(third, 2, 4):
-            taken.set()
+        try:
+            with leases.lease(third, 2, 8):
+                taken.set()
+        except ResourceRefused as error:
+            refused.append(str(error))
+        finally:
+            settled.set()
 
-    with leases.lease(first, 2, 4), leases.lease(second, 2, 4) as beside:
-        waiting = Thread(target=hold)
-        waiting.start()
-        assert beside == 1 and not taken.wait(0.2) and leases.widest() == 2
-    waiting.join(10)
-    assert taken.is_set() and leases.holders() == ()
+    wait_for = leases._turn.wait_for
+
+    def mark_wait(predicate):
+        waiting.set()
+        return wait_for(predicate)
+
+    with leases.lease(first, 4, 16), leases.lease(second, 4, 16) as beside:
+        monkeypatch.setattr(leases._turn, "wait_for", mark_wait)
+        waiter = Thread(target=hold)
+        waiter.start()
+        assert waiting.wait(5)
+        assert beside == 1 and not taken.is_set() and leases.widest() == 4
+        if shrink:
+            with (
+                pytest.raises(ResourceRefused, match=r"^resources.capacity_exceeded:cpu$"),
+                leases.lease(uuid4(), 2, 1),
+            ):
+                pass
+            settled_while_held = settled.wait(5)
+        else:
+            settled_while_held = settled.is_set()
+    # Reset the budget after the scenario to let even a faulty waiter exit cleanly.
+    with leases.lease(uuid4(), 1, 16):
+        pass
+    waiter.join(5)
+    assert not waiter.is_alive() and leases.holders() == ()
+    if shrink:
+        assert settled_while_held, "a smaller policy must wake the old grant waiter"
+        assert refused == ["resources.capacity_exceeded:cpu"] and not taken.is_set()
+    else:
+        assert not settled_while_held and taken.is_set() and not refused
 
 
 def test_thread_limits_closing_out_of_order_never_leave_an_open_scope_unlimited() -> None:

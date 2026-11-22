@@ -54,6 +54,7 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     record_file_fact,
 )
 from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -233,7 +234,7 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
             check()
 
     failure: BaseException | None = None
-    if _VERIFIED_SOURCE_CHECK_RUNNING.get():
+    if _VERIFIED_SOURCE_CHECK_RUNNING.get() or worker_width(_VERIFIED_SOURCE_CHECK_WORKERS) == 1:
         try:
             for check in checks:
                 try:

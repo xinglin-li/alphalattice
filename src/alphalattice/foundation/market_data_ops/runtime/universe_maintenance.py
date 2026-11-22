@@ -73,6 +73,7 @@ from alphalattice.foundation.market_data_ops.storage.rebase import (
 )
 from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.spans import span
 
 if TYPE_CHECKING:
@@ -324,7 +325,8 @@ class CurrentUniverseMaintenance:
                 before_fetch()
             systemic_failure: str | None = None
             last_chunk = index == len(chunks) - 1
-            with ThreadPoolExecutor(max_workers=min(self.max_workers, len(jobs) or 1)) as pool:
+            width = worker_width(min(self.max_workers, len(jobs) or 1))
+            with ThreadPoolExecutor(max_workers=width) as pool:
                 futures = {
                     pool.submit(
                         self._fetch_with_retry,
@@ -1029,7 +1031,7 @@ class CurrentUniverseMaintenance:
             raise RuntimeError(item.listing_id)
         if needs_full:
             try:
-                with ThreadPoolExecutor(max_workers=1) as pool:
+                with ThreadPoolExecutor(max_workers=worker_width(1)) as pool:
                     hydration = pool.submit(
                         self._fetch_with_retry, listing, bars[0].session_date, False
                     ).result()

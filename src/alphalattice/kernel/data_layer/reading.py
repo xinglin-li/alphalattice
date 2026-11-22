@@ -38,6 +38,7 @@ from alphalattice.kernel.data_layer.root import (
     view_statements,
     world_table_ids,
 )
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
 READING_DEFERRED = "reading views: deferred (DuckDB's sqlite extension absent)"
@@ -140,7 +141,9 @@ class LogReader:
         """A reader of `root`'s log views; its process starts at the first read."""
         self.root = root
         self._child: subprocess.Popen[bytes] | None = None
-        self._answers = ThreadPoolExecutor(max_workers=1, thread_name_prefix="log-reader")
+        self._answers = ThreadPoolExecutor(
+            max_workers=worker_width(1), thread_name_prefix="log-reader"
+        )
 
     def read(self, name: str, **filters: Any) -> Any:
         """The answer of the view read `name` (`serve`'s reads) with `filters`, as that read

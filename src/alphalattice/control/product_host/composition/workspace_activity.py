@@ -136,6 +136,7 @@ from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.admit import SECRET_NAME
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
@@ -302,7 +303,9 @@ class WorkspaceActivity:
                 goal, operations.heartbeats.runtime_paths
             )
         dispatcher.on_command_returned = self.command_returned
-        self._wake_sender = ThreadPoolExecutor(max_workers=1, thread_name_prefix="codex-wake")
+        self._wake_sender = ThreadPoolExecutor(
+            max_workers=worker_width(1), thread_name_prefix="codex-wake"
+        )
         for held in registry.interrupt_wakes(observed_at=self.clock()):
             self._isolated(functools.partial(self._record_wake, held))
 

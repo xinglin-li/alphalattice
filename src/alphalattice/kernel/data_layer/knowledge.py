@@ -29,7 +29,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.encoders import DEADLINE_SECONDS, SHORTLIST
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.shared_kernel.environment import thread_share
+from alphalattice.kernel.resources import carry_resource_lease, cpu_width, worker_width
 
 type Precision = Literal["float16", "int8"]
 type Matrix = NDArray[np.float32]
@@ -1300,8 +1300,10 @@ class NumpyVectorIndex:
     ) -> tuple[tuple[SearchHit, ...], tuple[SearchHit, ...]]:
         """Overlap FTS with matrix ranking while the caller owns both SQLite reads."""
         with self._guard:
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                selected = pool.submit(self._search, query, scope, limit, per_source)
+            with ThreadPoolExecutor(max_workers=worker_width(1)) as pool:
+                selected = pool.submit(
+                    carry_resource_lease(partial(self._search, query, scope, limit, per_source))
+                )
                 words = lexical()
             return words, self._hits(*selected.result(timeout=0))
 
@@ -1556,11 +1558,7 @@ class HybridSearch:
                 limit=window,
                 per_source=per_source,
             )
-            if (
-                language == "zh"
-                and isinstance(self.vector, NumpyVectorIndex)
-                and thread_share() != 1
-            ):
+            if language == "zh" and isinstance(self.vector, NumpyVectorIndex) and cpu_width() > 1:
                 lexical, dense = self.vector._with_lexical(
                     query_vector, scope, window, per_source, read_lexical
                 )

@@ -26,6 +26,7 @@ from alphalattice.kernel.egress import (
     offline,
     running_held_offline,
 )
+from alphalattice.kernel.resources import cpu_width, current_resource_lease
 
 THREAD_SHARE = "OMP_NUM_THREADS"
 """The operator's thread share for each process: OpenMP's variable, which Arrow reads too."""
@@ -59,6 +60,12 @@ def duckdb_thread_config(environment: Mapping[str, str] | None = None) -> dict[s
     """
     share = thread_share(environment)
     return {"threads": share, "async_threads": share} if share else {}
+
+
+def set_duckdb_pool_width(connection: Any, width: int) -> None:
+    """Resize both pools of an existing instance through an owned cursor."""
+    connection.execute("SET threads TO ?", (width,)).complete()
+    connection.execute("SET async_threads TO ?", (width,)).complete()
 
 
 def package_versions(names: Iterable[str]) -> tuple[tuple[str, str], ...]:
@@ -231,6 +238,8 @@ def numerical_thread_limit(limits: int, *, preload_models: bool = True) -> Itera
     scope to close restores the counts from before the first, so a scope closing early leaves
     no other unlimited.
     """
+    if current_resource_lease() is not None:
+        limits = cpu_width(limits)
     _load_limited_libraries(preload_models=preload_models)
     with _LIMITS_LOCK:
         if not _LIMITS:
@@ -261,5 +270,6 @@ __all__ = [
     "package_versions",
     "recorded_environment",
     "running_held_offline",
+    "set_duckdb_pool_width",
     "thread_share",
 ]

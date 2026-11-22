@@ -28,6 +28,7 @@ import psutil
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.kernel.config import Change, declare
+from alphalattice.kernel.resources import logical_cpu_count
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _metric_lock = threading.RLock()
@@ -366,7 +367,7 @@ class ProcessResourceMonitor:
         self._sample_interval_seconds = sample_interval_seconds
         self._include_live_descendants = include_live_descendants
         self._root_pid = os.getpid()
-        self._logical_cpu_count = max(1, os.cpu_count() or 1)
+        self._logical_cpu_count = max(1, logical_cpu_count() or 1)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._start_wall = 0.0
@@ -854,7 +855,7 @@ def runtime_machine_capacity() -> RuntimeMachineCapacity:
     """
     total, available = _memory_capacity()
     return RuntimeMachineCapacity(
-        detected_logical_processors=max(1, os.cpu_count() or 1),
+        detected_logical_processors=max(1, logical_cpu_count() or 1),
         allowed_logical_processor_ids=current_allowed_logical_processors(),
         total_memory_bytes=total,
         available_memory_bytes=available,
@@ -1017,7 +1018,7 @@ def resolve_runtime_capacity_plan(
 
 def default_logical_processor_budget() -> int:
     """Half of this machine's logical processors, and never fewer than one."""
-    detected = os.cpu_count() or 1
+    detected = logical_cpu_count() or 1
     return max(1, detected // LOGICAL_PROCESSOR_BUDGET_DIVISOR)
 
 
@@ -1065,18 +1066,18 @@ def current_allowed_logical_processors() -> tuple[int, ...]:
 
     A container, a job object or an operator may already have narrowed this
     process before it started. That narrowing is authority from outside and must
-    never be widened by a bound that only knows about ``os.cpu_count()``.
+    never be widened by a bound that only knows about ``logical_cpu_count()``.
     """
     if os.name == "nt":
         mask = _windows_process_mask()
-        detected = os.cpu_count() or 1
+        detected = logical_cpu_count() or 1
         return tuple(index for index in range(detected) if mask & (1 << index))
     getter = getattr(os, "sched_getaffinity", None)
     if callable(getter):
         return tuple(sorted(getter(0)))
     if sys.platform == "darwin":
         # macOS has no processor affinity that could have narrowed this process: all are its.
-        return tuple(range(os.cpu_count() or 1))
+        return tuple(range(logical_cpu_count() or 1))
     raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
 
 
@@ -1108,7 +1109,7 @@ def bind_process_logical_processors(
     stop oversubscribing inside the allowance rather than merely being throttled
     by it.
     """
-    detected = os.cpu_count() or 1
+    detected = logical_cpu_count() or 1
     allowed = current_allowed_logical_processors()
     if not allowed:
         raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
@@ -1232,7 +1233,7 @@ def busy_logical_processors(
         if shares:
             busy = sum(float(shares[i]) for i in processor_ids if 0 <= i < len(shares)) / 100.0
             return round(min(float(len(processor_ids)), max(0.0, busy)), 1)
-    detected = os.cpu_count() or 1
+    detected = logical_cpu_count() or 1
     first = _system_times()
     if first is None:
         getter = getattr(os, "getloadavg", None)

@@ -95,6 +95,7 @@ from alphalattice.kernel.data_layer.backup import (
 from alphalattice.kernel.data_layer.inputs import folder_files
 from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -219,7 +220,9 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
         if len(distinct) <= 1:
             digests = {path: _digest_stream(streams[path]) for path in distinct}
         else:
-            with ThreadPoolExecutor(max_workers=min(_DIGEST_WORKERS, len(distinct))) as pool:
+            with ThreadPoolExecutor(
+                max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))
+            ) as pool:
                 digests = dict(
                     zip(
                         distinct,

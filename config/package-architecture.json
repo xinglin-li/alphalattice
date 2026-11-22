@@ -940,6 +940,12 @@
       "alphalattice.foundation.causal_outcomes.execution.compile._ELIGIBLE": "The existing eligible decision states remain the equality fence."
     }
   },
+  "worker_count_reads": {
+    "multiprocessing.cpu_count": "take a worker grant from alphalattice.kernel.resources",
+    "os.cpu_count": "take a worker grant from alphalattice.kernel.resources",
+    "os.process_cpu_count": "take a worker grant from alphalattice.kernel.resources",
+    "psutil.cpu_count": "take a worker grant from alphalattice.kernel.resources"
+  },
   "wall_clock_reads": {
     "datetime.date.today": "read wall time through alphalattice.kernel.clock",
     "datetime.datetime.now": "read wall time through alphalattice.kernel.clock",

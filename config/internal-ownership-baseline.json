@@ -14,6 +14,7 @@
     "factor_research",
     "feature_engine",
     "identity",
+    "kernel_resources",
     "knowledge",
     "market_data_ops",
     "portfolio_backtesting",

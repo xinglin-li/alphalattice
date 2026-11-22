@@ -2639,6 +2639,12 @@
       "seconds": 30,
       "lower_layer": "The real resolver reads the workspace's bound research data when it checks authority."
     },
+    "resources.task_grants_obey_the_budget": {
+      "description": "A resource grant atomically debits the budget and returns exactly its reservation at release or observed process exit.",
+      "owner": "alphalattice.kernel.resources",
+      "layer": "unit",
+      "seconds": 1
+    },
     "shared_kernel.a_wait_ends_at_its_bound": {
       "description": "If a wait could run without a finite deadline, a hung check or a lost event would hold its caller for good.",
       "owner": "alphalattice.kernel.shared_kernel",

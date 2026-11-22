@@ -18,12 +18,13 @@ from alphalattice.kernel.data_layer import create_data_root
 from alphalattice.kernel.data_layer.project import lineage, register, uuid7
 from alphalattice.kernel.data_layer.reading import reading_session
 from alphalattice.kernel.data_layer.root import (
+    LAKE_THREAD_CEILING,
     SCHEMA_VERSION,
-    THREADS,
     catalog,
     duckdb_session,
     seed_rows,
 )
+from alphalattice.kernel.resources import cpu_width
 from tests.integration.data_layer.root_knowledge import assert_knowledge_tables
 from tests.integration.data_layer.root_protected_validation import (
     assert_old_receipt_catalog_opens,
@@ -463,6 +464,8 @@ def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path, count
     session = duckdb_session(tmp_path)
     assert session is not None
     with closing(session):
+        threads = session.execute("SELECT current_setting('threads')").fetchone()
+        assert threads == (cpu_width(LAKE_THREAD_CEILING),)
         path, data = (tmp_path / "catalog.sqlite").as_posix(), (tmp_path / "data").as_posix()
         session.execute(f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{data}/')")
         session.execute("CREATE TABLE lake.bar (listing INTEGER, day INTEGER, version_id UUID)")
@@ -479,4 +482,4 @@ def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path, count
     assert rows == 275_000 and len(list((tmp_path / "data").rglob("*.parquet"))) == 1_100
     # Bounded, a scan's peak at 8 threads was 8 to 11 on Windows and 24 to 28 on macOS, over whole
     # scans; unbounded, it held 334 here and stopped at macOS's 256 with too many open files.
-    assert not count_held or max(held) <= 8 * THREADS, held
+    assert not count_held or max(held) <= 8 * threads[0], held

@@ -4681,6 +4681,7 @@ class EvidenceReviewApplication:
             adapters={adapter.task_kind: adapter},  # type: ignore[attr-defined]
             runtime_path=str(self.runner_runtime_path()),
             clock=self.clock,
+            task_scope=lambda task: self.session.task_resources(task, self.clock),
             stage_scope=storage_capacity_scope,
         )
         try:

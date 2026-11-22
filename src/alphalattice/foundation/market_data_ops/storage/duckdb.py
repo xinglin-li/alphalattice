@@ -781,7 +781,7 @@ class MarketDataRepository(WorkspaceRepository):
         if self._universe_reader == "workspace":
             yield None
             return
-        with world_reads.reading(self.path) as connection:
+        with world_reads.reading(self.path, with_market_tables=False) as connection:
             if connection is None:
                 yield None
                 return

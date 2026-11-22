@@ -277,6 +277,8 @@ class PackageArchitectureRegistry(_Contract):
     owned_imports: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     """Product package paths and the external imports each owns."""
 
+    worker_count_reads: dict[str, str] = Field(default_factory=dict)
+
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> PackageArchitectureRegistry:
         package_ids = tuple(value.package_id for value in self.packages)
@@ -313,6 +315,7 @@ class PackageArchitectureRegistry(_Contract):
             *self.deferred_imports.values(),
             *(r for f in self.private_import_fences.values() for r in f.values()),
             *self.retired_imports.values(),
+            *self.worker_count_reads.values(),
             *self.wall_clock_reads.values(),
         ]
         if any(
@@ -320,6 +323,11 @@ class PackageArchitectureRegistry(_Contract):
             for name in self.retired_imports
         ):
             raise ValueError("a retired import is a dotted logical module name")
+        if any(
+            "." not in name or not all(part.isidentifier() for part in name.split("."))
+            for name in self.worker_count_reads
+        ):
+            raise ValueError("a worker-count ban names a dotted API")
         if any(
             not all(part.isidentifier() for part in name.split(".")) or "." not in name
             for name in self.wall_clock_reads

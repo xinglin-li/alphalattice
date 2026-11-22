@@ -4,11 +4,12 @@ from collections import OrderedDict
 from collections.abc import Callable, Hashable, Iterator, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from os import cpu_count, getpid
+from os import getpid
 from threading import RLock
 from typing import Final
 from uuid import uuid4
 
+from alphalattice.kernel.resources import logical_cpu_count
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, active_ledger
 
 
@@ -69,7 +70,7 @@ class BoundedMemo[K: Hashable, V](MutableMapping[K, V]):
     @staticmethod
     def default_capacity() -> int:
         """Return the metadata-entry allowance derived from this machine's logical CPUs."""
-        return max(1, cpu_count() or 1) * 1024
+        return max(1, logical_cpu_count() or 1) * 1024
 
     def __getitem__(self, key: K) -> V:
         """Return a held value and make its key most recently used."""

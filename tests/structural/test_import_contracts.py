@@ -68,13 +68,14 @@ from devtools.architecture.structural import (
             "from datetime import UTC, datetime\n"
             "from alphalattice.kernel.clock import ReplayClock, carry_observation\n"
             "from alphalattice.kernel.clock import observation_time, task_observation\n"
+            "from alphalattice.kernel.resources import worker_width\n"
             "anchor = datetime(2026, 1, 5, tzinfo=UTC)\n"
             "ticks = iter((1.0, 1.0, 1.5, 2.75))\n"
             "clock = ReplayClock(anchor, ticks=lambda: next(ticks), wall=lambda: anchor)\n"
             "with task_observation(clock()):\n"
             "    read = carry_observation(lambda: tuple(observation_time().isoformat()\n"
             "                                           for row in range(3)))\n"
-            "with ThreadPoolExecutor(max_workers=1) as pool:\n"
+            "with ThreadPoolExecutor(max_workers=worker_width(1)) as pool:\n"
             "    stamps = pool.submit(read).result()\n"
             "later = clock().isoformat()\n",
             None,
@@ -114,11 +115,43 @@ def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
         target.write_text(body, encoding="utf-8")
     if "ignored" in module:  # tracked or not, an ignored file is still the law's
         (tree / ".gitignore").write_text(target.name + "\n", encoding="utf-8")
+    worker_specimens = {}
+    if module == "low/retired.py":
+        worker_specimens = {
+            "cpu.py": ("from os import cpu_count as count\nworkers = count()\n", "TID251"),
+            "keyword_pool.py": (
+                "from concurrent.futures import ThreadPoolExecutor\n"
+                "ThreadPoolExecutor(max_workers=2)\n",
+                "resources.literal_max_workers",
+            ),
+            "positional_pool.py": (
+                "from concurrent.futures import ProcessPoolExecutor as Pool\nPool(2)\n",
+                "resources.literal_max_workers",
+            ),
+            "qualified_pool.py": (
+                "import concurrent.futures as futures\nfutures.ThreadPoolExecutor(1)\n",
+                "resources.literal_max_workers",
+            ),
+            "leased_pool.py": (
+                "from concurrent.futures import ThreadPoolExecutor\n"
+                "from alphalattice.kernel.low.keep import width\nThreadPoolExecutor(width)\n",
+                None,
+            ),
+        }
+        for name, (source, _) in worker_specimens.items():
+            (target.parent / name).write_text(source, encoding="utf-8")
     registry = _registry()
     violations = import_contracts.check(tree, tmp_path / "evidence", registry)
     if target.is_relative_to(tree / "src"):
         qualified = ".".join(target.relative_to(tree / "src").with_suffix("").parts)
         violations += import_contract_violations({qualified: body}, registry=registry)
+    for name, (_, expected) in worker_specimens.items():
+        hits = [finding for finding in violations if f"/{name}:" in finding.replace(chr(92), "/")]
+        if expected:
+            assert len(hits) == 1 and expected in hits[0], (name, hits)
+        else:
+            assert hits == [], (name, hits)
+        violations = tuple(finding for finding in violations if finding not in hits)
     if found is None:
         assert violations == ()
         if module == "low/anchored_clock.py":
@@ -396,6 +429,7 @@ def _registry() -> PackageArchitectureRegistry:
     )
     return PackageArchitectureRegistry.model_validate(
         {
+            "worker_count_reads": product.worker_count_reads,
             "wall_clock_reads": product.wall_clock_reads,
             "schema": "alphalattice.playpen.package-architecture",
             "packages": [

@@ -12,7 +12,6 @@ from __future__ import annotations
 import importlib
 import json
 import math
-import os
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,12 +22,13 @@ from typing import Any, Final
 import numpy as np
 
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.resources import logical_cpu_count
 
 DIMENSION: Final = 512
 SHORTLIST: Final = 20
 PAIR_TOKENS: Final = 256
 DEADLINE_SECONDS: Final = 1.0
-THREADS: Final = min(4, os.cpu_count() or 1)
+THREADS: Final = min(4, logical_cpu_count() or 1)
 """Intra-op threads of each session: the four cores the speed target is measured on, or fewer."""
 
 

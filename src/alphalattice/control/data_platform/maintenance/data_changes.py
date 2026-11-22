@@ -51,6 +51,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
 )
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type BookObligations = dict[str, tuple[str, tuple[str, ...]]]
@@ -682,7 +683,7 @@ class WorkspaceDataChanges:
             manifest=manifest,
             provider=provider,
             as_of_session=plan.request.target_market_session,
-            max_workers=2,
+            max_workers=worker_width(2),
             mutation_gate=self.gate,
             full_audit_listing_ids=approved,
             full_history_escalation_listing_ids=approved,

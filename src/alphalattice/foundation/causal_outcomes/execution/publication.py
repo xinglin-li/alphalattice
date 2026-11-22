@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
@@ -28,6 +27,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.validation.enums import RebalanceFrequency
 from alphalattice.kernel.validation.schedule_contracts import cadence_threshold_profile
@@ -219,8 +219,7 @@ def _derivation_workers(configured: int | None) -> int:
     Host that knows its allowance passes it as ``derivation_workers`` and
     never gets more workers than that allowance.
     """
-    allowed = configured if configured is not None else (os.cpu_count() or 1)
-    return max(1, min(DERIVATION_WORKER_CEILING, allowed))
+    return min(DERIVATION_WORKER_CEILING, worker_width(configured))
 
 
 class CausalExecutionOutcomePublisher:

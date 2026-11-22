@@ -9,6 +9,7 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
@@ -49,11 +50,25 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
 from alphalattice.kernel.data_layer.history import open_history
 from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
+from alphalattice.kernel.data_layer.history_runtime import set_host_duckdb_threads
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
+
+_TASK_READER_POLICY = Lock()
+
+
+def _apply_task_reader_policy() -> int:
+    """Apply the widest remaining grant to the shared Arrow and DuckDB pools."""
+    with _TASK_READER_POLICY:
+        widest = TASK_LEASES.widest()
+        if widest is None:
+            return 1  # No Task remains to use the pool; the next admission sets its width.
+        threads: int = apply_reader_threads(widest)
+        set_host_duckdb_threads(threads)
+        return threads
 
 
 def verify_upgrade_backups(
@@ -200,27 +215,26 @@ class WorkspaceApplicationSession:
         """Run or recover one admitted Host task with this session's runner."""
         if task.lifecycle not in {TaskLifecycle.QUEUED, TaskLifecycle.RECOVERY_REQUIRED}:
             return None
-        with self._cpu_lease(task, clock) as cores:
-            runner = TaskControlRunner(
-                registry=self.task_control_registry,
-                adapters={adapter.task_kind: adapter},
-                runtime_path=str(self.runtime_path),
-                clock=clock,
-                width=cores,
-                stage_gate=gate_for(self.workspace).stage_refusal,
-                stage_scope=storage_capacity_scope,
+        runner = TaskControlRunner(
+            registry=self.task_control_registry,
+            adapters={adapter.task_kind: adapter},
+            runtime_path=str(self.runtime_path),
+            clock=clock,
+            task_scope=lambda record: self.task_resources(record, clock),
+            stage_gate=gate_for(self.workspace).stage_refusal,
+            stage_scope=storage_capacity_scope,
+        )
+        try:
+            if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
+                return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
+            return runner.run_next(
+                expected_task_id=task.task_id, expected_task_hash=expected_task_hash
             )
-            try:
-                if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
-                    return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
-                return runner.run_next(
-                    expected_task_id=task.task_id, expected_task_hash=expected_task_hash
-                )
-            finally:
-                runner.close()
+        finally:
+            runner.close()
 
     @contextmanager
-    def _cpu_lease(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[int]:
+    def task_resources(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[None]:
         """The CPU budget's cores this Task holds while it runs: its reads' threads and the work
         items it runs at once.
 
@@ -233,7 +247,8 @@ class WorkspaceApplicationSession:
 
         store = CpuBudgetStore(self.workspace / "runtime")
         budget = store.read()
-        machine = machine_load()
+        # A fixed budget needs affinity, while automatic sizing also samples load.
+        machine = machine_load(sample_busy=budget.cpu_budget == "auto")
         cores, reason = budget_cores(budget, machine)
         ceiling = (
             machine.processors
@@ -245,16 +260,19 @@ class WorkspaceApplicationSession:
             cores = max(1, min(cores, ceiling // places))
             reason += f"; its share of {places} running places"
         with (
+            ExitStack() as after_release,
             TASK_LEASES.lease(task.task_id, cores, ceiling) as beside,
             below_normal_thread() if beside else nullcontext(False) as lowered,
         ):
+            after_release.callback(_apply_task_reader_policy)
+            reader_threads = _apply_task_reader_policy()
             store.record(
                 TaskReaderExecution(
                     task_id=task.task_id,
                     task_kind=task.task_kind,
                     cpu_budget=budget.cpu_budget,
                     cores=cores,
-                    reader_threads=apply_reader_threads(TASK_LEASES.widest()),
+                    reader_threads=reader_threads,
                     reason=reason,
                     machine=machine,
                     started_at=clock(),
@@ -265,7 +283,7 @@ class WorkspaceApplicationSession:
                     priority=f"{process_priority()}{', thread below_normal' if lowered else ''}",
                 )
             )
-            yield cores
+            yield
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.

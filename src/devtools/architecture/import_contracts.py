@@ -10,6 +10,7 @@ runs both tools over the tracked tree. Each Python file is scanned once with its
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -231,6 +232,76 @@ def launch_batches(
     return batches + [current] * bool(current), alone
 
 
+_POOL_CONSTRUCTORS = ("ThreadPoolExecutor", "ProcessPoolExecutor")
+
+
+def _pool_names(tree: ast.AST) -> set[str]:
+    """The spellings bound to the standard executors by imports in this file."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "concurrent.futures":
+            names.update(
+                alias.asname or alias.name
+                for alias in node.names
+                if alias.name in _POOL_CONSTRUCTORS
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module == "concurrent":
+            names.update(
+                f"{alias.asname or alias.name}.{kind}"
+                for alias in node.names
+                if alias.name == "futures"
+                for kind in _POOL_CONSTRUCTORS
+            )
+        elif isinstance(node, ast.Import):
+            names.update(
+                f"{alias.asname or alias.name}.{kind}"
+                for alias in node.names
+                if alias.name == "concurrent.futures"
+                for kind in _POOL_CONSTRUCTORS
+            )
+    return names
+
+
+def _worker_arguments(tree: ast.AST) -> list[ast.expr]:
+    positional = _pool_names(tree)
+    arguments: list[ast.expr] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.keyword) and node.arg == "max_workers":
+            arguments.append(node.value)
+        elif (
+            isinstance(node, ast.Call)
+            and node.args
+            and positional
+            and (
+                isinstance(node.func, (ast.Name, ast.Attribute))
+                and ast.unparse(node.func) in positional
+            )
+        ):
+            arguments.append(node.args[0])
+    return arguments
+
+
+def _literal_worker_counts(root: Path, files: list[str]) -> list[str]:
+    """Find literal worker counts in product code outside the resource owner."""
+    findings: list[str] = []
+    for file in files:
+        source = (root / file).read_bytes()
+        if b"max_workers" not in source and b"concurrent" not in source:
+            continue
+        try:
+            tree = ast.parse(source, filename=file)
+        except SyntaxError as error:
+            findings.append(f"{file}:{error.lineno}: resources.source_invalid: {error.msg}")
+            continue
+        for argument in _worker_arguments(tree):
+            value = argument.operand if isinstance(argument, ast.UnaryOp) else argument
+            if isinstance(value, ast.Constant):
+                findings.append(
+                    f"{file}:{argument.lineno}: resources.literal_max_workers: use a worker grant"
+                )
+    return findings
+
+
 def _ruff_partitions(
     registry: PackageArchitectureRegistry, files: list[str], out: Path
 ) -> list[tuple[Path, list[str]]]:
@@ -240,6 +311,9 @@ def _ruff_partitions(
         scoped[prefix].update((name, f"Use {owner} for this import") for name in names)
     if registry.wall_clock_reads:
         scoped["src/alphalattice/kernel/clock"].update(registry.wall_clock_reads)
+
+    if registry.worker_count_reads:
+        scoped["src/alphalattice/kernel/resources"].update(registry.worker_count_reads)
 
     groups: dict[tuple[str, ...], list[str]] = defaultdict(list)
     for path in files:
@@ -280,6 +354,14 @@ def check(root: Path, out: Path, registry: PackageArchitectureRegistry) -> tuple
     found = [f"ruff: the checked files are unknown: {unknown}"] if unknown else []
     found += [] if files or unknown else ["ruff: no Python file found to check"]
     tools = {"lint-imports": [run([*lint, "--no-cache"], root, PYTHONPATH=str(root / "src"))]}
+    if registry.worker_count_reads:
+        product = [
+            path
+            for path in files
+            if path.startswith("src/alphalattice/")
+            and not path.startswith("src/alphalattice/kernel/resources/")
+        ]
+        found.extend(_literal_worker_counts(root, product))
     tools["ruff"] = []
     for config, selected in _ruff_partitions(registry, files, out):
         command = [*ruff, "--config", config]

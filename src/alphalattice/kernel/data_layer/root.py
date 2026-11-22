@@ -30,10 +30,9 @@ from typing import Any, Final
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
+from alphalattice.kernel.resources import cpu_width
 from alphalattice.kernel.shared_kernel.environment import (
-    duckdb_thread_config,
     package_versions,
-    thread_share,
 )
 
 SCHEMA_VERSION: Final = 16
@@ -52,10 +51,8 @@ SPEC_FIELDS: Final = {
     "world_tables": ("world_table", ()),
 }
 """Each seed list's definition family and the fields its rows keep as their spec."""
-THREADS: Final = min(8, thread_share() or os.cpu_count() or 1)
-"""Threads of a DuckDB session over the lake. Its statements are many and small, and each pipeline
-fans out to every thread: past eight, a statement pays more in that fan-out than its scans gain.
-The operator's thread share (`thread_share`) lowers it."""
+LAKE_THREAD_CEILING: Final = 8
+"""The lake's small statements pay more in fan-out past eight than their scans gain."""
 READ_AHEAD: Final = 0
 """Scan jobs an instance opened over the lake reads ahead of decoding: none. DuckDB's default is
 bounded only by memory, and each queued job holds its Parquet file open. The lake's files are many
@@ -240,6 +237,12 @@ def configure_read_cache(connection: Any) -> None:
     connection.execute("SET cache_local_files = true").complete()
 
 
+def lake_thread_config() -> dict[str, int]:
+    """Size both of a new lake instance's pools within its execution grant."""
+    width = cpu_width(LAKE_THREAD_CEILING)
+    return {"threads": width, "async_threads": width}
+
+
 def duckdb_session(root: Path) -> Any | None:
     """An in-memory DuckDB session with the SQLite scanner and DuckLake loaded from their installed
     wheels, every download off; None without the data extra. The caller closes it."""
@@ -253,8 +256,7 @@ def duckdb_session(root: Path) -> Any | None:
             "extension_directory": str(root / "extensions"),
             "autoinstall_known_extensions": False,
             "autoload_known_extensions": False,
-            **duckdb_thread_config(),
-            "threads": THREADS,
+            **lake_thread_config(),
         },
     )
     try:

@@ -21,7 +21,12 @@ from threading import Lock
 import duckdb
 import pyarrow as pa
 
-from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config, thread_share
+from alphalattice.kernel.resources import cpu_width, current_resource_lease
+from alphalattice.kernel.shared_kernel.environment import (
+    duckdb_thread_config,
+    set_duckdb_pool_width,
+    thread_share,
+)
 
 _LOCK = Lock()
 _THREADS: list[int] = []
@@ -47,6 +52,8 @@ def configure_duckdb(connection: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyCo
     threads = reader_threads()
     if threads is not None:
         connection.execute(f"SET threads TO {threads}").complete()
+    elif current_resource_lease() is not None:
+        set_duckdb_pool_width(connection, cpu_width())
     return connection
 
 

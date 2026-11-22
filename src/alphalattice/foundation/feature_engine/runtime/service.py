@@ -9,13 +9,13 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed, child_calls
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.control.workspace_runtime.reader_threads import reader_threads
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     MARKET_DEPENDENT_FACTOR_IDS,
     FeatureCatalog,
@@ -134,6 +134,12 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import Trad
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.resources import (
+    carry_resource_lease,
+    cpu_width,
+    current_resource_lease,
+    worker_width,
+)
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
@@ -335,7 +341,7 @@ class FeatureFoundationService:
     feature_persistence: FeatureMaterializationPersistence
     sector_activation: SectorRevisionMapActivationCoordinator
     sector_transport_policy: SectorTransportPolicy = field(
-        default_factory=lambda: SectorTransportPolicy(max_workers=2)
+        default_factory=lambda: SectorTransportPolicy(max_workers=worker_width(2))
     )
     progress_sink: Callable[[WorkProgressUpdate], object] | None = None
     installed_catalog: FeatureCatalog | None = None
@@ -528,12 +534,11 @@ class FeatureFoundationService:
                 activation_coordinator=self.sector_activation,
             )
             sector_executor = ThreadPoolExecutor(
-                max_workers=1,
+                max_workers=worker_width(1),
                 thread_name_prefix="sector-refresh-coordinator",
             )
             sector_future = sector_executor.submit(
-                sector_stager.acquire,
-                observed_at=now,
+                carry_resource_lease(partial(sector_stager.acquire, observed_at=now)),
             )
 
         def flush_feature_writes(base_connection, catalog_hash: str) -> None:
@@ -609,10 +614,11 @@ class FeatureFoundationService:
         completed_listing_count = 0
         # The Task's cores, as the Host applied its CPU budget when the Task started (B7);
         # outside a Task none is applied and the build takes one worker.
-        workers = (
+        lease = current_resource_lease()
+        workers = worker_width(
             self.feature_workers
             if self.feature_workers is not None
-            else worker_processes(reader_threads() or 1)
+            else worker_processes(cpu_width() if lease is not None else 1)
         )
         kernel_capability = self.base.kernel_registry.installed_capability_hash
         # The shipped kernels are rebuilt in the worker, since their functions do not

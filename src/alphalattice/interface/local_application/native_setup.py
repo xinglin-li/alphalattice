@@ -82,6 +82,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.resources import logical_cpu_count
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
@@ -599,9 +600,9 @@ def host_readiness(
         ),
         (
             "cpu",
-            (os.cpu_count() or 0) > 0,
+            (logical_cpu_count() or 0) > 0,
             {
-                "logical_cores": os.cpu_count(),
+                "logical_cores": logical_cpu_count(),
                 "host": facts.get("cpu"),
                 "host_scope": facts["scope"],
             },

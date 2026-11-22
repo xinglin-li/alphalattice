@@ -8,11 +8,10 @@ second store (a graph checkpoint) holds a Task's progress.
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from contextlib import AbstractContextManager, suppress
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -25,6 +24,10 @@ from uuid import UUID, uuid4
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
 from alphalattice.kernel.clock import carry_observation, task_observation, utc_now
 from alphalattice.kernel.data_layer.history import held
+from alphalattice.kernel.resources import (
+    carry_resource_lease,
+    worker_width,
+)
 from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
@@ -256,9 +259,10 @@ class _WorkPool:
             self._finished.append((definition, call()))
             self.failed_stage_id = None
         else:
-            self._running[self._executor.submit(carry_observation(carry_background(call)))] = (
-                definition
+            future = self._executor.submit(
+                carry_resource_lease(carry_observation(carry_background(call)))
             )
+            self._running[future] = definition
 
     def next_done(self) -> tuple[WorkItemDefinition, StageExecutionResult]:
         """The next finished item, the earliest in the plan among those that
@@ -422,6 +426,7 @@ class TaskControlRunner:
         projection_sink: Callable[[TaskSafeProjection], None] | None = None,
         heartbeat_sink: Callable[[TaskHeartbeatSignal], None] | None = None,
         width: int | None = None,
+        task_scope: Callable[[TaskRecord], AbstractContextManager[object]] | None = None,
         stage_gate: Callable[[TaskRecord], str | None] | None = None,
         stage_scope: Callable[[], AbstractContextManager[object]] | None = None,
     ) -> None:
@@ -437,6 +442,8 @@ class TaskControlRunner:
             heartbeat_sink: Optional callback receiving operational heartbeat signals.
             width: The cores a Task may use at once, its workspace's CPU budget as found when
                 it starts (an execution parameter, PA2); the host's processors when None.
+            task_scope: Holds the Host's grant before claiming or recovering a Task until
+                the invocation including worker and heartbeat settlement has ended.
             stage_gate: Asked before each stage starts; a refusal code it returns blocks the
                 stage, recoverably, before any of its work (an execution check, never a
                 result: the Host's memory check).
@@ -456,6 +463,7 @@ class TaskControlRunner:
         self.projection_sink = projection_sink
         self.heartbeat_sink = heartbeat_sink
         self.width = width
+        self.task_scope = task_scope
         self.stage_gate = stage_gate
         self.stage_scope = stage_scope
         self.worker_instance_id = uuid4()
@@ -488,30 +496,32 @@ class TaskControlRunner:
         if expected_task_id is not None and queued.task_id != expected_task_id:
             raise ValueError("task_control.queued_task_identity_mismatch")
         adapter = self._adapter(queued)
-        started = self.registry.start_next(
-            compatibility=adapter.compatibility(queued),
-            worker_instance_id=self.worker_instance_id,
-            observed_at=self._now(),
-            expected_task_id=queued.task_id,
-            expected_task_hash=expected_task_hash,
-        )
-        if started is None:
-            return None
-        task, execution = started
-        return self._invoke(task, execution, adapter)
+        with self.task_scope(queued) if self.task_scope else nullcontext():
+            started = self.registry.start_next(
+                compatibility=adapter.compatibility(queued),
+                worker_instance_id=self.worker_instance_id,
+                observed_at=self._now(),
+                expected_task_id=queued.task_id,
+                expected_task_hash=expected_task_hash,
+            )
+            if started is None:
+                return None
+            task, execution = started
+            return self._invoke(task, execution, adapter)
 
     def recover(self, task_id: UUID, *, expected_task_hash: str | None = None) -> TaskRecord:
         """Resume from the verified prefix; a confirmed version is enforced by the registry."""
         task = self.registry.task(task_id)
         adapter = self._adapter(task)
-        task, execution = self.registry.restart_recovery(
-            task_id=task_id,
-            compatibility=adapter.compatibility(task),
-            worker_instance_id=self.worker_instance_id,
-            observed_at=self._now(),
-            expected_task_hash=expected_task_hash,
-        )
-        return self._invoke(task, execution, adapter, verify_prefix=True)
+        with self.task_scope(task) if self.task_scope else nullcontext():
+            task, execution = self.registry.restart_recovery(
+                task_id=task_id,
+                compatibility=adapter.compatibility(task),
+                worker_instance_id=self.worker_instance_id,
+                observed_at=self._now(),
+                expected_task_hash=expected_task_hash,
+            )
+            return self._invoke(task, execution, adapter, verify_prefix=True)
 
     def _invoke(
         self,
@@ -971,7 +981,7 @@ def _declared_width(adapter: TaskDomainAdapter, task: TaskRecord, width: int | N
     declared = getattr(adapter, "concurrent_work_items", None)
     if declared is None:
         return 1
-    return max(1, min(int(declared(task)), width or os.cpu_count() or 1))
+    return max(1, min(int(declared(task)), worker_width(width)))
 
 
 class _LogHeartbeatStore:

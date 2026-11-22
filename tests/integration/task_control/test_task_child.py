@@ -271,12 +271,19 @@ def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-
 def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
     import numpy as np
 
+    from alphalattice.kernel.resources import current_resource_lease
     from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
 
+    grant = current_resource_lease()
     values = np.arange(64, dtype=np.float64).reshape(8, 8)
     before = numerical_thread_counts()
     product = values @ values.T
-    return {"counts": before, "after": numerical_thread_counts(), "product": product.tolist()}
+    return {
+        "counts": before,
+        "after": numerical_thread_counts(),
+        "product": product.tolist(),
+        "granted_cpu": grant.amounts.cpu if grant is not None else None,
+    }
 
 
 def limited_once(*, cancelled) -> None:  # type: ignore[no-untyped-def]
@@ -372,8 +379,13 @@ def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() 
 
     answer = run_in_child(f"{HERE}:until_cancelled", {"seconds": 30.0}, cancelled=cancelled)
     assert answer == "cancelled"
+    from alphalattice.control.task_control import child
+
+    processes = tuple(child._WORKERS[0]._processes.values())
+    assert len(processes) == 1
     with pytest.raises(ChildInterrupted, match="child_process_ended"):
         run_in_child(f"{HERE}:ended", {})
+    assert processes[0].exitcode == 7
     assert run_in_child(f"{HERE}:doubled", {"value": 5})["value"] == 10
 
 
@@ -587,7 +599,16 @@ def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged
         assert answer["product"] == expected
         assert answer["counts"] and all(threads == 1 for _api, threads in answer["counts"])
         assert answer["after"] == answer["counts"]
+    from alphalattice.kernel.resources import ResourceAmounts, ResourceLeases, use_resource_lease
+
+    amounts = ResourceAmounts(cpu=1, workers=1)
+    with use_resource_lease(ResourceLeases(amounts).grant("child-test", amounts)):
+        scoped = run_in_child(f"{HERE}:numerical_product", {})
+    assert scoped["granted_cpu"] == 1, "the kept child carries the Task's CPU grant"
+    assert scoped["counts"] and all(threads == 1 for _api, threads in scoped["counts"])
+    assert scoped["counts"] == scoped["after"] and scoped["product"] == expected
     again = run_in_child(f"{HERE}:numerical_product", {})
+    assert again["granted_cpu"] is None
     assert ordinary["counts"] and ordinary["counts"] == ordinary["after"]
     assert again["counts"] == again["after"] == ordinary["counts"]
     assert ordinary["product"] == again["product"] == expected

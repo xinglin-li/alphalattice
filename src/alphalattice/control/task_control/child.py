@@ -43,6 +43,14 @@ from typing import TYPE_CHECKING, Any
 
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.resources import (
+    ResourceLease,
+    cpu_width,
+    current_resource_lease,
+    use_resource_lease,
+    worker_resource_lease,
+    worker_width,
+)
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
@@ -181,7 +189,7 @@ class ChildCalls:
         if workers < 1:
             raise ValueError("task_control.child_workers_invalid")
         self._target = target
-        self._workers = workers
+        self._workers = worker_width(workers)
         self._cancelled = cancelled
         self._preload_models = preload_models
         self._made = 0
@@ -249,6 +257,11 @@ class ChildCalls:
         if running:
             self._flag.touch()
             futures.wait(running)
+        for item in pending:
+            if not item.future.cancelled() and isinstance(
+                item.future.exception(), BrokenProcessPool
+            ):
+                _retire_worker(item.worker, item.pool, wait_for_exit=True)
         # Each worker these calls shipped to forgets them, after their calls, in its own order.
         for worker in {worker for worker, _key in self._shipped}:
             if _WORKERS.get(worker) in self._shipped.values():
@@ -321,6 +334,7 @@ def _submitted(
             _carrier(),
             process_config().get(DATA_ROOT_ENV),
             preload_models,
+            worker_resource_lease(threads),
         )
     except BrokenProcessPool:
         ended()
@@ -346,6 +360,8 @@ def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
 
     def ended(_done: Future[Any]) -> None:
         with _WORKER_LOCK:
+            if pool not in _BUSY:
+                return
             _BUSY[pool] -= 1
             idle = not _BUSY[pool]
         if idle:
@@ -407,7 +423,7 @@ def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
     """End a wedged worker's process and retire its pool; its call is interrupted by name."""
     for process in list(getattr(submitted.pool, "_processes", {}).values()):
         process.terminate()
-    _retire_worker(submitted.worker, submitted.pool)
+    _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
     return ChildInterrupted(
         "task_control.child_wedged", type_name="ChildWedged", failure_class=None
     )
@@ -415,7 +431,7 @@ def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
 
 def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:
     """The interruption for a worker that ended; the next call to its place starts a new one."""
-    _retire_worker(worker, pool)
+    _retire_worker(worker, pool, wait_for_exit=True)
     return ChildInterrupted(
         "task_control.child_process_ended", type_name="BrokenProcessPool", failure_class=None
     )
@@ -437,7 +453,7 @@ def _worker(worker: int) -> ProcessPoolExecutor:
         kept = _WORKERS.get(worker)
         if kept is None:
             kept = _WORKERS[worker] = ProcessPoolExecutor(
-                max_workers=1,
+                max_workers=worker_width(1),
                 mp_context=multiprocessing.get_context("spawn"),
                 initializer=_worker_started,
                 initargs=(worker,),
@@ -445,14 +461,18 @@ def _worker(worker: int) -> ProcessPoolExecutor:
         return kept
 
 
-def _retire_worker(worker: int, pool: ProcessPoolExecutor) -> None:
+def _retire_worker(worker: int, pool: ProcessPoolExecutor, *, wait_for_exit: bool = False) -> None:
     """Retire the worker at `worker` if it is still the one that ended, never its replacement."""
+    # On a broken or terminated pool the manager joins the process. The Task keeps
+    # its grant until that exit completes, including when a call loses its reply.
+    if wait_for_exit:
+        pool.shutdown(wait=True, cancel_futures=False)
     with _WORKER_LOCK:
         if _WORKERS.get(worker) is pool:
             del _WORKERS[worker]
         _BUSY.pop(pool, None)
-    # Only the failing call: other Tasks' calls queued on it are answered as they stand.
-    pool.shutdown(wait=False, cancel_futures=False)
+    if not wait_for_exit:
+        pool.shutdown(wait=False, cancel_futures=False)
 
 
 ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
@@ -485,6 +505,7 @@ def _call(
     trace: Mapping[str, str] | None = None,
     root: str | None = None,
     preload_models: bool = True,
+    grant: ResourceLease | None = None,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -501,17 +522,18 @@ def _call(
     ledger: SpanLedger | None = None
     rows: list[dict[str, Any]] = []
     try:
-        _follow_root(root)
-        arguments = _held(arguments)
-        module_name, _, name = target.partition(":")
-        function = getattr(importlib.import_module(module_name), name)
-        with (
-            held_offline(),
-            _numerical_threads(threads, preload_models=preload_models),
-            collect() as ledger,
-            _worker_span(target, trace, rows),
-        ):
-            result = function(**arguments, cancelled=lambda: os.path.exists(flag))
+        with use_resource_lease(grant):
+            _follow_root(root)
+            arguments = _held(arguments)
+            module_name, _, name = target.partition(":")
+            function = getattr(importlib.import_module(module_name), name)
+            with (
+                held_offline(),
+                _numerical_threads(threads, preload_models=preload_models),
+                collect() as ledger,
+                _worker_span(target, trace, rows),
+            ):
+                result = function(**arguments, cancelled=lambda: os.path.exists(flag))
         if answer is not None:
             with open(answer, "wb") as sink:
                 pickle.dump(result, sink, protocol=pickle.HIGHEST_PROTOCOL)
@@ -603,6 +625,8 @@ def _forget(call_set: str, cancelled: Callable[[], bool]) -> None:
 @contextmanager
 def _numerical_threads(threads: int | None, *, preload_models: bool) -> Iterator[None]:
     """The numerical libraries held to `threads` threads for a block; unchanged without one."""
+    if current_resource_lease() is not None:
+        threads = cpu_width(threads)
     if threads is None:
         yield
         return

@@ -17,6 +17,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.kernel.resources import logical_cpu_count
+
 if TYPE_CHECKING:
     from alphalattice.control.task_control.contracts import (
         ResearchPlan,
@@ -146,7 +148,7 @@ def waiting_places(setting: TaskQueueSetting) -> tuple[int, str]:
     if setting.tasks_waiting != "auto":
         return setting.tasks_waiting, f"set to {setting.tasks_waiting}"
     affinity = getattr(os, "sched_getaffinity", None)
-    processors = len(affinity(0)) if affinity is not None else os.cpu_count() or 1
+    processors = len(affinity(0)) if affinity is not None else logical_cpu_count() or 1
     places = max(1, processors // PROCESSORS_PER_WAITING_PLACE)
     return places, (
         f"auto: one waiting place per {PROCESSORS_PER_WAITING_PLACE} of the {processors} processors"
@@ -157,6 +159,6 @@ def running_places(setting: TaskQueueSetting) -> tuple[int, str]:
     """How many Tasks may run at once now, and why."""
     if setting.tasks_running != "auto":
         return setting.tasks_running, f"set to {setting.tasks_running}"
-    processors = os.cpu_count() or 1
+    processors = logical_cpu_count() or 1
     places = 2 if processors >= PROCESSORS_FOR_TWO_RUNNING else 1
     return places, f"auto: {places} at once on {processors} processors"

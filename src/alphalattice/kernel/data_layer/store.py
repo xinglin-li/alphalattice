@@ -50,12 +50,12 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
 from alphalattice.kernel.data_layer.root import (
-    THREADS,
     attach_catalog,
     bound_reads,
     catalog,
     catalog_matches,
     configure_read_cache,
+    lake_thread_config,
     load_extensions,
     schema_text,
     sql_path,
@@ -64,7 +64,6 @@ from alphalattice.kernel.data_layer.root import (
     world_table_ids,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
-from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
 _GROUPING = threading.Lock()
 _grouping: list[threading.Thread] = []
@@ -333,8 +332,7 @@ class StorePort:
                 config={
                     "autoinstall_known_extensions": False,
                     "autoload_known_extensions": False,
-                    **duckdb_thread_config(),
-                    "threads": THREADS,
+                    **lake_thread_config(),
                 },
             )
         )

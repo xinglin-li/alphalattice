@@ -373,7 +373,8 @@ class _WorkspaceObservationHistoryStore:
             parquet = pq.ParquetFile(pa.BufferReader(payload))
             metadata = parquet.metadata
             if key not in verified:
-                table = parquet.read()
+                # A single Arrow worker cannot parallelize these column reads.
+                table = parquet.read(use_threads=pa.cpu_count() > 1)
                 verified[key] = {
                     name: np.ascontiguousarray(table.column(name).to_numpy())
                     for name in table.column_names
