@@ -26,9 +26,10 @@ locally and is open source.
 
 ## 0.2.8, now
 
-- Workspaces under one data root share one event log and one catalog, and each update publishes its market changes there once.
+- Everything the product records, from market data to research results, now lives in one data layer on your machine: one append-only event log and one catalog of versioned tables (DuckLake on DuckDB).
+- Market data is published once and shared by every workspace under the data root, instead of each workspace keeping its own copy.
 - A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back.
-- The Daily, Evidence and queries are faster on the same machine; the release notes give the measured seconds.
+- On the same four-core desktop, the whole Daily took 190 s against 0.2.7's 333 s.
 
 See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each change. The versioned notes keep each measured workload and its limits.
 
@@ -264,26 +265,15 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.8: one data layer.** Every record the product keeps, from market data to research results, in one store per machine: each byte stored once, and upgrades reuse unchanged data.
-- **0.2.9: a plugin kernel.** The data layer's ports and the product's parts register as plugins.
-- **0.2.10: the daily fits the machine.** First use and daily updates within 8 GB of memory, measured on the new data layout.
-- **0.2.11: realistic replay, and data you can trust.** Replay real-world events (corporate actions, late
-  reports, provider outages) through the real data client and its cache, and check the health of the data every day, in the program and the Workbench.
-- **0.2.12: caching and checking, done once.** Hash once, verify at trust boundaries
-  and recompute only what changed, borrowing from Git's index and Bazel's action
-  cache.
-- **0.2.13: less waiting on the program.** The program prepares likely next steps
-  while the agent is thinking.
-- **0.2.14: history you can query by date.** Ask what was known, tried and decided on
-  a past date, with nothing learned after it.
-- **0.2.15: the product in plugins.** The product's parts move onto 0.2.9's plugin kernel, one at a time.
-- **0.2.16: the agent protocol as an API.** The agent protocol is finished as an API that keeps working for existing callers.
-- **0.2.17: an evaluation flywheel.** One runner and fixed gates check every patch
-  from the product's own records.
-- **0.2.18: a first result in ten minutes, and one command to install.** A short trial on a small sample, labelled
-  as a trial, and a one-command install.
-- **0.2.19: ground for daily supervision.** What 0.3's daily supervision needs, including a store for the forward record of
-  positions.
+- **0.2.9: one owner for each job in the program's core.** The clock, settings, network access, hashing and database connections each get one owner. Resources are granted by lease within the four-core budget, a resident Host serves a thin command line, and a check already done is trusted until its input changes.
+- **0.2.10: the daily fits the machine, and you can try it.** First use and daily updates within 8 GB of memory. One command to install and a Claude Code plugin. A first labelled result within ten minutes from an empty folder. Daily health checks on the data, in the program and the Workbench.
+- **0.2.11: realistic replay.** Replay real-world events (corporate actions, late reports, provider outages) through the real data client and its cache.
+- **0.2.12: a plugin platform.** The product's parts register through one interface registry, with profiles and plugin trust; the model families become the first plugins.
+- **0.2.13: history you can query by date.** Ask what was known, tried and decided on a past date, with nothing learned after it.
+- **0.2.14: the product in plugins, and the agent protocol as an API.** The product's parts move onto the plugin platform one at a time, and the agent protocol is finished as an API that keeps working for existing callers.
+- **0.2.15: less waiting on the program.** The program prepares likely next steps while the agent is thinking.
+- **0.2.16: an evaluation flywheel.** One runner and fixed gates check every patch from the product's own records.
+- **0.2.17: ground for daily supervision.** What 0.3's daily supervision needs, including a store for the forward record of positions.
 
 Later minor versions:
 
