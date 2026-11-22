@@ -10,11 +10,13 @@ Old data stays, and the pre-upgrade backup is the way back.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, TypedDict
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical
@@ -23,7 +25,10 @@ if TYPE_CHECKING:
     from alphalattice.kernel.data_layer.log import HostLog
 
 TARGET: Final = "0.2.8"
+CLEAN: Final = f"{TARGET}/clean"
+_WORKSPACE_PLANS: Final = f"{TARGET}/workspace/"
 PROGRESS: Final = "upgrade.progress"
+INPUT_FACTS: Final = "upgrade.input_facts"
 PROGRESS_SPEC: Final = {
     "work": False,
     "subject": "upgrade",
@@ -32,6 +37,9 @@ PROGRESS_SPEC: Final = {
     "durable": True,
 }
 """Durable facts, registered through the existing definition writer before the first move."""
+INPUT_FACTS_SPEC: Final = {**PROGRESS_SPEC, "required": ["part"], "durable": False}
+_FACT_PART_CHARACTERS: Final = 1800
+"""An ASCII fragment can at most double when put in an attr string (log attrs allow 4096)."""
 
 
 def workspace_files(workspace: Path) -> Iterator[Path]:
@@ -48,6 +56,125 @@ def workspace_files(workspace: Path) -> Iterator[Path]:
                 raise ValueError(f"workspace directory is an alias: {path}")
         for name in sorted(files):
             yield parent / name
+
+
+def workspace_plan_prefix(workspace: Path) -> str:
+    """The scope of this physical folder's plans, including after a manifest replacement."""
+    return f"{_WORKSPACE_PLANS}{canonical(str(workspace)).decode()}/"
+
+
+def _fact_subject(folder: str, family: str) -> str:
+    return canonical([TARGET, folder, family]).decode()
+
+
+def start_records(
+    log: HostLog,
+    workspace: Path,
+    candidates: tuple[Path, ...],
+    families: Sequence[str],
+    legacy_id: str | None,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[tuple[str, str], InputStamp]]:
+    """Read current decisions and pending plans with the log's type/subject and sequence indexes.
+
+    Each family has its own subject. Its newest row points at the beginning of the last
+    atomically written set of facts, so even the SQL range read excludes superseded bodies.
+    Only the machine's unfinished plan can name workspaces beyond the one being opened.
+    A folder's exact plan subject points to its unfinished start row or records completion.
+    Older versions used one fixed subject per workspace and deferred family, also exact
+    lookups. Keep fact heads as the outer join loop so the log uses their row IDs.
+    """
+    prefix = workspace_plan_prefix(workspace)
+    legacy = f"{TARGET}/{legacy_id}"
+    rows = log.read(
+        """
+        WITH machine AS (
+            SELECT seq, attrs FROM event
+            WHERE type=?1 AND subject_id=?3
+                AND json_extract(attrs,'$.kind') IN ('started','completed')
+            ORDER BY seq DESC LIMIT 1
+        ), own AS (
+            SELECT json_extract(attrs,'$.started_seq') AS started_seq FROM event
+            WHERE type=?1 AND subject_id=?4 ORDER BY event.seq DESC LIMIT 1
+        ), legacy_subjects AS (
+            SELECT ?5 AS subject_id
+            UNION ALL SELECT ?5 || '/' || value FROM json_each(?8)
+        ), legacy AS (
+            SELECT status.seq FROM legacy_subjects
+            CROSS JOIN event status ON status.seq=(
+                SELECT seq FROM event WHERE type=?1 AND subject_id=legacy_subjects.subject_id
+                    AND json_extract(attrs,'$.kind') IN ('started','completed')
+                ORDER BY seq DESC LIMIT 1
+            )
+            WHERE json_extract(status.attrs,'$.kind')='started'
+                AND EXISTS (SELECT 1 FROM json_each(status.attrs,'$.backups.workspaces')
+                    WHERE json_extract(value,'$.workspace')=?6)
+        ), folders AS (
+            SELECT value AS path FROM json_each(?7)
+                WHERE value=?6 OR NOT EXISTS (
+                    SELECT 1 FROM machine WHERE json_extract(attrs,'$.kind')='completed'
+                )
+            UNION
+            SELECT json_extract(value,'$.workspace')
+                FROM machine, json_each(machine.attrs,'$.backups.workspaces')
+                WHERE json_extract(machine.attrs,'$.kind')='started'
+        ), fact_heads AS MATERIALIZED (
+            SELECT (SELECT seq FROM event
+                WHERE type=?2 AND subject_id=json_array(?3,folders.path,names.value)
+                ORDER BY seq DESC LIMIT 1) AS seq
+            FROM folders, json_each(?8) names
+        )
+        SELECT type,subject_id,attrs,seq FROM event WHERE seq IN (
+            SELECT seq FROM machine
+            UNION ALL SELECT started_seq FROM own
+            UNION ALL SELECT seq FROM legacy
+        )
+        UNION ALL
+        SELECT part.type,part.subject_id,part.attrs,part.seq FROM fact_heads
+            CROSS JOIN event head ON head.seq=fact_heads.seq
+            CROSS JOIN event part ON part.seq
+                BETWEEN coalesce(json_extract(head.attrs,'$.first'),head.seq) AND head.seq
+                AND part.type=?2 AND part.subject_id=head.subject_id
+        ORDER BY seq
+        """,
+        (
+            PROGRESS,
+            INPUT_FACTS,
+            TARGET,
+            prefix[:-1],
+            legacy,
+            str(workspace),
+            canonical([str(path) for path in candidates]).decode(),
+            canonical(list(families)).decode(),
+        ),
+    )
+    records: dict[str, list[dict[str, Any]]] = {}
+    parts: dict[str, list[str]] = {}
+    for type_, subject, attrs, _seq in rows:
+        event = json.loads(attrs)
+        if type_ == PROGRESS:
+            records.setdefault(subject, []).append(event)
+        else:
+            parts.setdefault(subject, []).append(event["part"])
+    facts = {}
+    for subject, fragments in parts.items():
+        _, folder, family = json.loads(subject)
+        facts[folder, family] = json.loads("".join(fragments))
+    return records, facts
+
+
+class InputFileStamp(TypedDict):
+    """Identity and metadata of one declared file, with a digest for shared archival bytes."""
+
+    linked: bool
+    metadata: list[int]
+    content: str | None
+
+
+class InputStamp(TypedDict):
+    """The exact declaration and workspace identity, then the declared files by path."""
+
+    basis: list[object]
+    files: dict[str, InputFileStamp]
 
 
 @dataclass(frozen=True)
@@ -67,6 +194,10 @@ class Family:
     upgraded, so a copy of an upgraded one is not."""
     deferred: Callable[[Path], bool] | None = None
     """Whether this family's old data must stay readable while its admission authority is absent."""
+    trust_paths: tuple[str, ...] = ()
+    """Legacy inputs a first-start decision covers, relative to its workspace."""
+    shared_inputs: tuple[str, ...] = ()
+    """Declared files whose bytes can be vouched for after a hard link changes their stamp."""
 
 
 class UpgradeRunner:
@@ -86,6 +217,14 @@ class UpgradeRunner:
         backup_check: Callable[[Path, tuple[Path, ...], dict[str, Any] | None], dict[str, Any]],
         *,
         subject: str = TARGET,
+        records: Sequence[Mapping[str, Any]] | None = None,
+        completion_inputs: Callable[[Family, tuple[Path, ...]], dict[str, InputStamp]]
+        | None = None,
+        settled_inputs: Callable[
+            [tuple[Family, ...], tuple[Path, ...], Mapping[str, dict[str, InputStamp]]],
+            dict[str, dict[str, InputStamp]],
+        ]
+        | None = None,
     ) -> None:
         """Read this upgrade's indexed progress once; the caller retains the writer's lifetime.
 
@@ -95,17 +234,24 @@ class UpgradeRunner:
         self.root, self.log, self.workspaces = root, log, workspaces
         self.subject = subject
         self.families, self.backup_check = families, backup_check
+        self._completion_inputs = completion_inputs
+        self._settled_inputs = settled_inputs
         self._ids: dict[tuple[str, str], str] = {}
         self._done: set[str] = set()
+        self._verified_inputs: dict[str, dict[str, InputStamp]] = {}
         self._plan: list[str] | None = None
         self._backups: dict[str, Any] | None = None
         self._complete = False
         self._none_due: set[tuple[str, str]] = set()
-        for row in log.read(
-            "SELECT attrs FROM event WHERE type = ? AND subject_id = ? ORDER BY seq",
-            (PROGRESS, subject),
-        ):
-            event = json.loads(row[0])
+        if records is None:
+            records = [
+                json.loads(row[0])
+                for row in log.read(
+                    "SELECT attrs FROM event WHERE type = ? AND subject_id = ? ORDER BY seq",
+                    (PROGRESS, subject),
+                )
+            ]
+        for event in records:
             if event["kind"] == "started":
                 self._plan = event["families"]
                 self._backups = event.get("backups")
@@ -118,7 +264,7 @@ class UpgradeRunner:
             elif event["kind"] == "none_due":
                 self._none_due.add((event["folder"], event["examined"]))
 
-    def run(self) -> bool:
+    def run(self, *, began: float | None = None) -> bool:
         """Verify backups, migrate and verify in order, then permit the Host to serve.
 
         False means the recorded run was already complete: its steps and comparisons are
@@ -176,7 +322,13 @@ class UpgradeRunner:
                         "Family verification did not return ALL EQUAL.", code="upgrade.refused"
                     )
                 point = "completion record"
-                self._record("family_done", family=family.name, verdict="ALL EQUAL")
+                facts = {}
+                if self._completion_inputs is not None:
+                    inputs = self._verified_inputs[family.name] = self._completion_inputs(
+                        family, self.workspaces
+                    )
+                    facts = {(folder, family.name): stamp for folder, stamp in inputs.items()}
+                self._record_facts("family_done", facts, family=family.name, verdict="ALL EQUAL")
                 self._done.add(family.name)
             except Exception:
                 try:
@@ -189,7 +341,18 @@ class UpgradeRunner:
                         "serve. Repair the named family before starting again.",
                         code="upgrade.refused",
                     ) from None
-        self._record("completed")
+        final = (
+            self._settled_inputs(self.families, self.workspaces, self._verified_inputs)
+            if self._settled_inputs is not None
+            else {}
+        )
+        settled = {
+            (folder, name): stamp
+            for folder, inputs in final.items()
+            for name, stamp in inputs.items()
+        }
+        timing = {"upgrade_seconds": perf_counter() - began} if began is not None else {}
+        self._record_facts("completed", settled, **timing)
         self._complete = True
         return True
 
@@ -231,45 +394,89 @@ class UpgradeRunner:
         asked of); another state of the folder is asked again."""
         return (str(workspace.resolve()), examined) in self._none_due
 
-    def record_none_due(self, workspace: Path, examined: str) -> None:
+    def record_none_due(
+        self, workspace: Path, examined: str, *, inputs: Mapping[str, InputStamp] | None = None
+    ) -> None:
         """Record that the workspace folder held no family's old data in the state `examined`:
         only an older version writes old data, and its way back is a restored backup."""
-        if self.none_due(workspace, examined):
+        if inputs is None and self.none_due(workspace, examined):
             return
         self._register()
         folder = str(workspace.resolve())
-        self._record("none_due", folder=folder, examined=examined)
+        facts = {(folder, name): stamp for name, stamp in (inputs or {}).items()}
+        self._record_facts("none_due", facts, folder=folder, examined=examined)
         self._none_due.add((folder, examined))
 
-    def _record(self, kind: str, **attrs: object) -> None:
-        """Append progress through the one log writer; its durable type commits on return."""
-        self.log.record(
-            PROGRESS,
-            ("upgrade", self.subject),
-            {"kind": kind, **attrs},
-            actor=("host", "upgrade"),
-            node="upgrade",
-        )
+    def _record_facts(
+        self, kind: str, facts: Mapping[tuple[str, str], InputStamp], **attrs: object
+    ) -> None:
+        if not facts:
+            self._record(kind, **attrs)
+            return
+        self._register(INPUT_FACTS)
+        with self.log.unit():
+            for (folder, family), stamp in facts.items():
+                subject = ("upgrade", _fact_subject(folder, family))
+                encoded = json.dumps(
+                    stamp, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+                )
+                first = None
+                for offset in range(0, len(encoded), _FACT_PART_CHARACTERS):
+                    seq = self.log.record(
+                        INPUT_FACTS,
+                        subject,
+                        {"part": encoded[offset : offset + _FACT_PART_CHARACTERS], "first": first},
+                        actor=("host", "upgrade"),
+                        node="upgrade",
+                    )
+                    if first is None:
+                        first = seq
+            self._record(kind, **attrs)
 
-    def _register(self) -> None:
-        """Admit the progress type through definition.registered, including an older data root."""
+    def _record(self, kind: str, **attrs: object) -> None:
+        # A start and its folder's pointer commit together. Completion clears the pointer
+        # in the same transaction, including any final input decisions that commit with it.
+        scope = (
+            self.subject.rpartition("/")[0]
+            if kind in {"started", "completed"} and self.subject.startswith(_WORKSPACE_PLANS)
+            else None
+        )
+        with self.log.unit() if scope is not None else nullcontext():
+            seq = self.log.record(
+                PROGRESS,
+                ("upgrade", self.subject),
+                {"kind": kind, **attrs},
+                actor=("host", "upgrade"),
+                node="upgrade",
+            )
+            if scope is not None:
+                self.log.record(
+                    PROGRESS,
+                    ("upgrade", scope),
+                    {"kind": "plan_state", "started_seq": seq if kind == "started" else None},
+                    actor=("host", "upgrade"),
+                    node="upgrade",
+                )
+
+    def _register(self, name: str = PROGRESS) -> None:
+        """Admit the upgrade's events through definition.registered, even on an older root."""
         if self.log.read(
             "SELECT 1 FROM definition WHERE family = 'event_type' AND name = ? AND version = 1",
-            (PROGRESS,),
+            (name,),
         ):
             return
-        definition = {"family": "event_type", "name": PROGRESS, "version": 1}
+        spec, meaning = (
+            (PROGRESS_SPEC, "First 0.2.8 upgrade progress and its immutable ID mapping.")
+            if name == PROGRESS
+            else (INPUT_FACTS_SPEC, "Bounded input facts of a verified upgrade decision.")
+        )
+        definition = {"family": "event_type", "name": name, "version": 1}
         self.log.record(
             "definition.registered",
-            ("definition", f"event_type/{PROGRESS}"),
+            ("definition", f"event_type/{name}"),
             definition,
             text=canonical(
-                {
-                    **definition,
-                    "status": "standard",
-                    "spec": PROGRESS_SPEC,
-                    "text": "First 0.2.8 upgrade progress and its immutable ID mapping.",
-                }
+                {**definition, "status": "standard", "spec": spec, "text": meaning}
             ).decode(),
             actor=("host", "upgrade"),
             node="upgrade",

@@ -1,4 +1,13 @@
 {
  "factory": "alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger:portfolio_results_upgrade_family",
- "mode": "portfolio"
+ "mode": "portfolio",
+ "name": "portfolio-results",
+ "trust_paths": [
+  "*/portfolio-strategy-lab/public/execution-ledgers/*.json",
+  "*/portfolio-strategy-lab/public/reports/*.json",
+  "*/portfolio-strategy-lab/pending-finalization/execution-ledgers/*.json",
+  "*/portfolio-strategy-lab/pending-finalization/reports/*.json",
+  "*/portfolio-strategy-lab/*.parquet",
+  "*/portfolio-strategy-lab/*.bin"
+ ]
 }
