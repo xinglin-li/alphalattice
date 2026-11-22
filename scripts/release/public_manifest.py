@@ -125,6 +125,7 @@ RULES = [
             "scripts/work_census.py",
             "scripts/work_census_site/sitecustomize.py",
             "src/alphalattice/kernel/shared_kernel/work_census.*",
+            "config/registries/data-families-development.json",
             "tests/*/shared_kernel/test_work_census.py",
         ],
         "reason": (
@@ -1499,6 +1500,48 @@ def classify(
     )
 
 
+_REGISTRY_STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"')
+_DOTTED_NAME = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
+
+
+def _registry_private_modules(
+    blobs: dict[str, bytes], private_modules: dict[str, set[str]]
+) -> dict[str, set[str]]:
+    """Resolve physical module names and the registered logical aliases used by registries."""
+    raw = blobs.get("config/package-architecture.json", b"{}")
+    if not raw:
+        raise ValueError(
+            "public_release.registry_layout_missing: config/package-architecture.json; "
+            "load its pinned blob before scanning registry references"
+        )
+    layout = json.loads(raw)
+    owners = {
+        entry["physical_namespace_target"]: entry["package_id"]
+        for entry in layout.get("packages", ())
+    }
+    modules = {name: set(paths) for name, paths in private_modules.items()}
+    for name, paths in private_modules.items():
+        owner = name
+        while owner:
+            if owner in owners:
+                modules.setdefault(owners[owner] + name[len(owner) :], set()).update(paths)
+                break
+            owner = owner.rpartition(".")[0]
+    return modules
+
+
+def _registry_module_targets(line: str, modules: dict[str, set[str]]) -> set[str]:
+    """Private targets of module:attribute strings on a JSON registry line."""
+    targets: set[str] = set()
+    for token in _REGISTRY_STRING.findall(line):
+        if ":" not in token and "\\" not in token:
+            continue
+        module, _, attribute = json.loads(token).partition(":")
+        if module in modules and _DOTTED_NAME.fullmatch(attribute):
+            targets.update(modules[module])
+    return targets
+
+
 def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[dict], list[str]]:
     """Return location-only findings; never retain matched secrets, IDs or contact values."""
     private = {r["path"] for r in decisions if r["kind"] == "PRIVATE"}
@@ -1509,6 +1552,7 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
         for relative in {path, path.removeprefix("src/"), path.removeprefix("scripts/")}:
             module = relative[:-3].replace("/", ".").removesuffix(".__init__")
             private_modules.setdefault(module, set()).add(path)
+    registry_modules: dict[str, set[str]] | None = None
     findings = []
     binary = []
     for row in decisions:
@@ -1562,7 +1606,21 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                     ),
                 }
             )
+        is_registry = row["path"].startswith("config/") and row["path"].endswith(".json")
+        if is_registry and registry_modules is None:
+            registry_modules = _registry_private_modules(blobs, private_modules)
         for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+            if is_registry and (targets := _registry_module_targets(line, registry_modules or {})):
+                findings.append(
+                    {
+                        "kind": "FINDING",
+                        "path": row["path"],
+                        "line": number,
+                        "rule": "NO_PRIVATE_REFERENCE",
+                        "assessment": "PRIVATE_REGISTRY_MODULE",
+                        "private_targets": sorted(targets),
+                    }
+                )
             refs = private_references(row["path"], line, private, blobs.keys())
             findings.extend(
                 {

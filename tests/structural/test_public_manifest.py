@@ -285,7 +285,11 @@ def test_public_manifest_records_locations_without_copying_disclosures():
             "experience/one.md",
         ]
     )
-    blobs = {"src/public.py": text.encode(), "experience/one.md": b"private content"}
+    blobs = {
+        "src/public.py": text.encode(),
+        "experience/one.md": b"private content",
+        "config/package-architecture.json": b"",  # a sparse changed-file scan
+    }
     rows = [
         {"path": "src/public.py", "kind": "PUBLIC"},
         {"path": "experience/one.md", "kind": "PRIVATE"},
@@ -302,6 +306,45 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     serialized = json.dumps(findings)
     assert secret not in serialized and session not in serialized and "person@" not in serialized
     assert all(r["path"] == "src/public.py" and r["line"] > 0 for r in findings)
+
+    # The same scan also resolves fully qualified and logical JSON writer references.
+    families = "config/registries/example.json"
+    identity = "config/identity-roles.json"
+    private = "src/alphalattice/kernel/probe/dev_only.py"
+    public = "src/alphalattice/kernel/probe/reader.py"
+    blobs = {
+        private: b"",
+        public: b"",
+        "config/package-architecture.json": json.dumps(
+            {
+                "packages": [
+                    {
+                        "package_id": "probe",
+                        "physical_namespace_target": "alphalattice.kernel.probe",
+                    }
+                ],
+            }
+        ).encode(),
+    }
+    modules = [{"path": private, "kind": "PRIVATE"}, {"path": public, "kind": "PUBLIC"}]
+    for registry, field, value, target in (
+        (families, "writers", '"probe.dev_only:Writer"', private),
+        (families, "writers", r'"probe.\u0064ev_only:Writer"', private),
+        (families, "writers", '"probe.reader:Reader"', None),
+        (identity, "installed", '"alphalattice.kernel.probe.dev_only:Writer.open"', private),
+        (identity, "installed", '"alphalattice.kernel.probe.reader:Reader"', None),
+    ):
+        blobs[registry] = ('{\n  "' + field + '": ' + value + "\n}\n").encode()
+        findings, binary = scan_public(blobs, [{"path": registry, "kind": "PUBLIC"}, *modules])
+        assert not binary
+        assert [
+            (row["path"], row["line"], row["rule"], row["private_targets"]) for row in findings
+        ] == ([(registry, 2, "NO_PRIVATE_REFERENCE", [target])] if target else [])
+    with pytest.raises(ValueError, match=r"registry_layout_missing.*package-architecture\.json"):
+        scan_public(
+            {**blobs, "config/package-architecture.json": b""},
+            [{"path": identity, "kind": "PUBLIC"}, *modules],
+        )
 
 
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")

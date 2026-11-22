@@ -3754,16 +3754,6 @@
         "data_layer.backup:_files",
         "data_layer.backup:verify_data_root"
       ]
-    },
-    "work-census": {
-      "summary": "the development work census: one row per unit of work a process does, one file per process in the directory its switch names",
-      "class": "cache-scratch",
-      "tier": 4,
-      "home": "outside the data layer: a development diagnostic written only while ALPHALATTICE_WORK_CENSUS names a directory, read by the development census report and never by the product",
-      "location": "host-temp",
-      "bytes": null,
-      "writers": ["shared_kernel.work_census:Census"],
-      "readers": []
     }
   },
   "helpers": {

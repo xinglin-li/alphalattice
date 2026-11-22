@@ -405,9 +405,25 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     return out
 
 
+def load_data_family_registry(root: Path) -> dict[str, Any]:
+    """Read the families for this tree, including development-only writers when present."""
+    directory = root / REGISTRIES
+    registry: dict[str, Any] = json.loads((directory / "data-families.json").read_text("utf-8"))
+    try:
+        private = json.loads((directory / "data-families-development.json").read_text("utf-8"))
+    except FileNotFoundError:
+        return registry
+    if overlap := registry["families"].keys() & private["families"].keys():
+        raise ValueError(
+            f"data families repeated in the development registry: {', '.join(sorted(overlap))}"
+        )
+    registry["families"].update(private["families"])
+    return registry
+
+
 def data_family_problems(root: Path, sources: Sequence[Path]) -> tuple[str, ...]:
     """A persisting writer in ``sources`` that no data family lists (the census, LAWS.md DA2)."""
-    registry = json.loads((root / REGISTRIES / "data-families.json").read_text("utf-8"))
+    registry = load_data_family_registry(root)
     sites = discover_persistence_sites(tuple(sources), source_root=root / "src")
     return data_family_violations(sites, registry, whole_tree=False)
 

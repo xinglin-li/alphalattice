@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
+from devtools.architecture.registries import load_data_family_registry
 from devtools.architecture.structural import (
     authority_groups,
     data_family_violations,
@@ -33,9 +33,7 @@ def test_every_persisting_writer_and_authority_group_is_in_one_data_family() -> 
         load_storage_authority_registry(ROOT / "config" / "storage-authorities.json"),
         load_artifact_authority_registry(ROOT / "config" / "artifact-authorities.json"),
     )
-    registry = json.loads(
-        (ROOT / "config" / "registries" / "data-families.json").read_text(encoding="utf-8")
-    )
+    registry = load_data_family_registry(ROOT)
     sites = discover_persistence_sites(sources, source_root=ROOT / "src")
     assert data_family_violations(sites, registry, groups=groups) == ()
     families = registry["families"]
