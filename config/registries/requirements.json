@@ -2509,6 +2509,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "product_host.prepared_score_read_reuses_its_capture_world": {
+      "description": "A prepared score read takes the capture's world only at its formation while world is unmoved, equals the full reader's values, and is refused once the store changed.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 18,
+      "lower_layer": "The proof reads a real workspace's store, Feature rows and world; the unit layer's contract refuses its database."
+    },
     "product_host.research_input_copies_listed_as_kept": {
       "description": "Each 0.2.7 binding copy is listed as the door keeps it, and a copy whose manifest names another binding is refused.",
       "owner": "alphalattice.control.product_host",
@@ -2652,6 +2659,12 @@
       "owner": "alphalattice.control.task_control",
       "layer": "integration",
       "seconds": 5
+    },
+    "task_control.a_recovery_execution_carries_nothing_from_the_interrupted_one": {
+      "description": "If a recovery execution took what the interrupted execution of its Task had carried in the process, its stages would skip verifying stored work that only the interrupted execution checked.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "unit",
+      "seconds": 1
     },
     "task_control.a_set_aside_set_stays_in_one_directory": {
       "description": "If a 0.2.7 database and its WAL were set aside into different directories when a move was interrupted, the kept copy would lose the database's committed writes.",

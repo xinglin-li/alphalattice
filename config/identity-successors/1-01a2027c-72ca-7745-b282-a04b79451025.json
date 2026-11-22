@@ -1,0 +1,76 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "c81da016132a0f9c734ee779ee1baddb5da2c726d8a4f1c85089cc12b93d3e91",
+   "successor": "a4b7155d7813922632b4e93ad8ab35f15ee632d828da541ddebce548e96e0dc3",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "60ef48a4776ed74cdd4dc75294155e38c519916380aa2c658e971cb19fa8d7c5",
+   "successor": "5aa5e77ce3e71b28d367a1dd580ae648d5905a7f2e0604be815ab4770a2742ba",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "1cbbbdf1c868fb1c4ab49eabd97a728800d25023a98ab14091c75881d271375f",
+   "successor": "d95a10569c7ca6b15ccad5ec1f3ddd5714e438d7def277b2937b8666a5e1854c",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "f064e50462c43c2a7f58a819ceff8ac77b427a12afe6432d1cb4232fd043f020",
+   "successor": "0ca9b02c806dce3553cbc483c754dafc97c36b2d34d3570d0c2629a1a81e937f",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "76b84e8a21cb75f341fc3505f42cdc8cc8e9926660f4d2a3d29d87946417fbda",
+   "successor": "acdeab08ed27fcd6883daf531c44f1561263af05250151b6d4cefb919b4cd13b",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "ba5a538f429c2e8dfbf747c5b3bbcfced548c53ce77c9940fea3f0c5f999bd36",
+   "successor": "337c621a37a0b6b3ab1db3fca44a53f92684be37bc768d492a44ac0aef1526f9",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "917bfe973b843e166bd97600e0ed9c0fb0d14ef16e691a4eacfa9723e61c3f05",
+   "successor": "e564fca41cdc7059d034630fce781f0e8e6d0f0e1eb8ed5f5e87d66baa7dd494",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "4bd23d5fcb19eb70ec22a6fa62ac49ae2f2c1032108aff7e5b979c767b995841",
+   "successor": "625ca262c8a8443b12aa8fb62bb3c22f0cfd8bc9f735eb12a433f08150176bd0",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "2cb0488286540646ee02a6da667b085ed3c618a4552e037e6ae6e0d7318fb19d",
+   "successor": "c8296fde815dcb33555d6fd6fa39b4152e7726f94cf6243740ccb01415c32abb",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "2cb0488286540646ee02a6da667b085ed3c618a4552e037e6ae6e0d7318fb19d",
+   "successor": "c8296fde815dcb33555d6fd6fa39b4152e7726f94cf6243740ccb01415c32abb",
+   "change": "The daily update prepares its scores faster, with the same results",
+   "reason": "Ten roles move only through their source closures under the new fingerprint form, each successor row matching both readouts; the switch file is develop's own and unchanged; the merge adds no score-path code, so the book equality and Feature checks carry."
+  }
+ ]
+}

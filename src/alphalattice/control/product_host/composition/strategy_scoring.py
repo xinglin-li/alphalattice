@@ -25,6 +25,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
+    TRAINING_TARGET_METHOD_ID,
     PreparedWorkspaceComponentInputs,
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
@@ -918,6 +919,10 @@ class StrategyScoringApplication:
                         component=authority.authority.component,
                         source=source,
                         training=training,
+                        # The reader compiled this method's targets over the same inputs.
+                        compiled=(training.total_return_target_z, training.holding_end_sessions)
+                        if authority.authority.component.target_recipe == TRAINING_TARGET_METHOD_ID
+                        else None,
                     )
                 renewed = renew_lifecycle_admission(
                     self.store,

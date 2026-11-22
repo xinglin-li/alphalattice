@@ -81,6 +81,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     read_workspace_inputs,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
+from alphalattice.control.task_control.carried import carried_by
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -375,6 +376,13 @@ _OWN_MOVES = CommittedKind(
 )
 
 
+_VerifiedFeatures = tuple[
+    dict[tuple[str, str, tuple[str, ...]], StrategyScorePlan],
+    dict[str, FrozenFeaturePreparation],
+]
+"""The Feature plans and preparations one execution of a Task verified."""
+
+
 class DecisionAdvancementApplication:
     """One advancement schema, composed into the existing dispatcher and ledger."""
 
@@ -407,6 +415,9 @@ class DecisionAdvancementApplication:
         self.calibration.additional_input = self._completed_input
         data.cycle_owner = self._cycle_owner
         self._waiting: dict[str, tuple[UUID, str, datetime]] = {}
+        # Each running Task's Feature steps as its current execution verified them, carried to
+        # that execution's later stages in this process (task_control.carried).
+        self._verified: dict[UUID, tuple[UUID, _VerifiedFeatures]] = {}
 
     def implementation(self) -> str:
         """Bind advancement rule syntax and its scoring, calibration and decision owner identities.
@@ -1132,7 +1143,7 @@ class DecisionAdvancementApplication:
                 self._cancel(task)
                 value = self._step(plan, stage)
                 if value is None:
-                    value = self._execute(plan, stage, task)
+                    value = self._execute(plan, stage, task, execution)
             return StageExecutionResult(StageDisposition.READY, evidence=self._evidence(value))
         except _Cancelled:
             return StageExecutionResult(StageDisposition.CANCELLED)
@@ -1144,7 +1155,11 @@ class DecisionAdvancementApplication:
             )
 
     def _execute(
-        self, plan: DecisionAdvancementPlan, stage: str, task: TaskRecord
+        self,
+        plan: DecisionAdvancementPlan,
+        stage: str,
+        task: TaskRecord,
+        execution: TaskExecution,
     ) -> DecisionAdvancementStep:
         if stage == STAGES[0]:
             self._fresh(plan)
@@ -1287,6 +1302,7 @@ class DecisionAdvancementApplication:
             }
             prepared_inputs: dict[int, PreparedWorkspaceComponentInputs | None] = {}
             sealed: list[tuple[int, Any]] = []
+            checked = False  # a full source check after every source read of this stage
             for index, day in plan.requests:
                 self._cancel(task)
                 score_plan = self._score_plan(plan, day, source, index)
@@ -1316,17 +1332,24 @@ class DecisionAdvancementApplication:
                             prepared_inputs=prepared_inputs.get(index),
                         )
                     evidence = (score_plan.plan_hash, str(result.evidence[0].content_hash))
+                    # The whole source, the Panel's files with it, before the receipt publishes.
+                    if workspace_score_source_identity(self.session.workspace) != source:
+                        raise ValueError("research_update.source_changed_during_seal")
+                    checked = True
                     held = self._commit(plan, key, evidence, source)
+                plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
                 with span("verify", "score_features"):
-                    self._verify_features(held)
-                feature_preparation, _ = self.scoring.store.load_frozen_feature_preparation(
-                    held.products[1]
-                )
+                    self._verify_features(
+                        held,
+                        verified_feature_plans=plans,
+                        verified_feature_preparations=preparations,
+                    )
+                feature_preparation = preparations[held.products[1]]
                 effective_authorities[index] = feature_preparation.inference_authority_hash
                 sealed.append((index, feature_preparation))
                 products.append(held.content_hash)
             self._record_kept(task, plan, sealed, prepared_inputs)
-            if workspace_score_source_identity(self.session.workspace) != source:
+            if not checked and workspace_score_source_identity(self.session.workspace) != source:
                 raise ValueError("research_update.source_changed_during_seal")
             return self._commit(plan, stage, tuple(products), source)
         captured = self._need(plan, STAGES[2])
@@ -1335,8 +1358,13 @@ class DecisionAdvancementApplication:
             for identity in captured.products[1:]:
                 self._cancel(task)
                 features = self._load("decision-stages", identity, DecisionAdvancementStep)
+                plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
                 with span("verify", "score_features"):
-                    sp = self._verify_features(features)
+                    sp = self._verify_features(
+                        features,
+                        verified_feature_plans=plans,
+                        verified_feature_preparations=preparations,
+                    )
                 with span("predict", "scores"):
                     result = self.scoring.execute_step(
                         sp, SCORE_STAGES[2], {SCORE_STAGES[1]: features.products[1]}.__getitem__
@@ -1962,10 +1990,18 @@ class DecisionAdvancementApplication:
             ValueError: Reopened products or exact declared evidence differ.
         """
         plan = self._plan_of(task)
+        plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
         with verified_lifecycle_admissions():
-            self._verify_products(plan, work_item.stage_id)
+            self._verify_products(
+                plan,
+                work_item.stage_id,
+                verified_feature_plans=plans,
+                verified_feature_preparations=preparations,
+            )
         if evidence != self._evidence(self._need(plan, work_item.stage_id)):
             raise ValueError("research_update.task_evidence_invalid")
+        if work_item.stage_id == STAGES[3]:  # the last stage that reads a Feature step
+            self._verified.pop(task.task_id, None)
         return evidence
 
     def _verify_task_evidence(self, task: TaskRecord, plan: DecisionAdvancementPlan) -> None:

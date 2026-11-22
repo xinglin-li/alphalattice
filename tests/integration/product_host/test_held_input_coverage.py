@@ -244,8 +244,9 @@ def test_research_plan_names_the_same_source_need_its_stage_refuses(
     owner.data.execute_step = lambda *_args, **_kwargs: StageExecutionResult(
         StageDisposition.BLOCKED, failure_code="workspace_data_update.source_access_not_admitted"
     )
+    task = SimpleNamespace(task_id=UUID(int=1))
     with pytest.raises(ValueError) as failed:
-        owner._execute(plan, STAGES[1], SimpleNamespace(task_id=UUID(int=1)))
+        owner._execute(plan, STAGES[1], task, SimpleNamespace(task_id=task.task_id))
     code = str(failed.value)
     words = explain(code)
     assert all(need in words["detail"] for need in needs.values())
